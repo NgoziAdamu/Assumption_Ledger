@@ -22,6 +22,8 @@
 ## Git
 - 每个任务完成后 commit 并 push 到 main，commit message 简短说明做了什么。
 - 不提交数据、模型权重、第三方仓库、密钥或 token。数据放 data/，第三方代码放 external/；在报告里写清来源和下载方式，保证可复现。
+- 用户授权的例外：traces/ 仅放 agent 轨迹、评分记录、agent 最终产出的代码及配套交接说明；不放数据库、gold、初始仓库、原始数据或环境缓存。
+- traces/ 下经用户授权的 .tar.gz 轨迹归档是 .gitignore 中 *.tar.gz 的例外；本次 dacomp_deimpl_prev.tar.gz 压缩后超过 50 MB 时，先报告大小和体积分布，等用户确认再提交。
 - 单次下载超过 2 GB 前先停下来报告，等确认。
 
 ## 安全
