@@ -50,12 +50,12 @@ def contracts(path):
     return tables, mode
 
 
-def schema(connection, table):
+def schema(connection, table, schema_name="staging"):
     rows = connection.execute("SELECT column_name, data_type FROM information_schema.columns "
-                              "WHERE table_schema='staging' AND table_name=? ORDER BY ordinal_position", [table]).fetchall()
+                              "WHERE table_schema=? AND table_name=? ORDER BY ordinal_position", [schema_name, table]).fetchall()
     if not rows:
         return {"exists": False, "row_count": None, "columns": []}
-    count = connection.execute("SELECT count(*) FROM staging." + quote(table)).fetchone()[0]
+    count = connection.execute("SELECT count(*) FROM " + quote(schema_name) + "." + quote(table)).fetchone()[0]
     return {"exists": True, "row_count": count,
             "columns": [{"name": name, "type": kind} for name, kind in rows]}
 
@@ -65,12 +65,12 @@ def constraints(column):
     return [str(x).lower().replace(" ", "_") for x in ([values] if isinstance(values, str) else values)]
 
 
-def read_rows(connection, table, columns):
+def read_rows(connection, table, columns, schema_name="staging"):
     expressions = []
     for column in columns:
         raw = "CAST(" + quote(column) + " AS VARCHAR)"
         expressions.extend(["COALESCE(LOWER(TRIM(" + raw + ")), 'null')", raw])
-    return connection.execute("SELECT " + ",".join(expressions) + " FROM staging." + quote(table)).fetchall()
+    return connection.execute("SELECT " + ",".join(expressions) + " FROM " + quote(schema_name) + "." + quote(table)).fetchall()
 
 
 def key_candidates(spec, columns):
@@ -220,8 +220,8 @@ def align_and_compare(pred_rows, gold_rows, columns, spec, official_columns):
     return alignment, differences
 
 
-def compare_table(pred, gold, table, table_config, spec):
-    pm, gm = schema(pred, table), schema(gold, table)
+def compare_table(pred, gold, table, table_config, spec, pred_schema="staging", gold_schema="staging", alignment_engine=None):
+    pm, gm = schema(pred, table, pred_schema), schema(gold, table, gold_schema)
     ptypes = {x["name"]: x["type"] for x in pm["columns"]}
     gtypes = {x["name"]: x["type"] for x in gm["columns"]}
     gmapping, pmapping = {c.lower(): c for c in gtypes}, {c.lower(): c for c in ptypes}
@@ -239,8 +239,11 @@ def compare_table(pred, gold, table, table_config, spec):
     if not pm["exists"] or not gm["exists"] or not common:
         result.update(alignment={"status": "missing_table_or_no_common_columns", "columns": []}, column_differences=[])
     else:
-        pr, gr = read_rows(pred, table, common), read_rows(gold, table, common)
-        result["alignment"], result["column_differences"] = align_and_compare(pr, gr, common, spec, official)
+        if alignment_engine is not None:
+            result["alignment"], result["column_differences"] = alignment_engine(pred, gold, table, common, spec, official, pred_schema, gold_schema)
+        else:
+            pr, gr = read_rows(pred, table, common, pred_schema), read_rows(gold, table, common, gold_schema)
+            result["alignment"], result["column_differences"] = align_and_compare(pr, gr, common, spec, official)
     result["mismatching_official_columns"] = sum(c["included_in_official_comparison"] and c["mismatch_rows_or_minimum_pairs"] > 0 for c in result["column_differences"])
     result["mismatching_all_common_columns"] = sum(c["mismatch_rows_or_minimum_pairs"] > 0 for c in result["column_differences"])
     if result["alignment"]["status"] in {"missing_table_or_no_common_columns", "no_common_key_columns"}:
