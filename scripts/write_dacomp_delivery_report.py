@@ -1,0 +1,166 @@
+"""Write the Chinese task 008 report from verified observational records."""
+
+from pathlib import Path
+import json
+
+from scan_dacomp_delivery import RECORDS, ROOT
+
+
+LABELS = {
+    'A1_zero_rows':'A1：输出 0 行',
+    'A2_all_null_column':'A2：至少一列全部为 SQL NULL',
+    'A3_constant_nonnull_column':'A3：至少一列全部为同一非 NULL 值，且表行数 > 1',
+    'A4_equal_columns':'A4：至少一组整表逐行同值列（含契约未描述含义的情况）',
+    'A4_equal_columns_different_description_texts':'A4 补充：上述同值列中，有列的契约 description 原文字面不同',
+    'B5_null_literal_output':'B5：输出表达式含字面 NULL / CAST(NULL AS ...)',
+    'B6_constant_literal_output':'B6：输出表达式含非 NULL 字面常量',
+    'B7_specified_not_read':'B7：有“契约指定但未读”的源表',
+    'B7_read_not_specified':'B7：有“读了但契约未指定”的源表',
+    'B8_shared_single_source':'B8：与其他目标表共用同一个唯一表来源',
+    'C9_agent_runtime_text':'C9：agent SQL 出现运行时间写法',
+    'C9_gold_runtime_text':'C9：gold SQL 出现运行时间写法',
+    'C9_contract_runtime_text':'C9：该表契约原文出现运行时间写法',
+    'D10_keyword_in_final_report':'D10：result.md / assistant finish 的命中句明确出现该表名',
+    'D10_keyword_in_any_result_field':'D10 扩展：result 文件任意字符串字段的命中句明确出现该表名（包括 instruction）',
+}
+
+
+def main():
+    summary=json.loads((RECORDS/'008_scan_summary.json').read_text())
+    validation=json.loads((RECORDS/'008_validation.json').read_text())
+    known=json.loads((RECORDS/'008_known_results.json').read_text())
+    rows=[json.loads(l) for l in (RECORDS/'008_table_scan.jsonl').read_text().splitlines()]
+    pending=summary['pending_denominator'];total=summary['total_tables']
+    table=['| 痕迹（按命中的表数去重） | 待标注：'+str(pending)+' 张为分母 | 全部：'+str(total)+' 个目标为分母 | 全部中未能判定该项的目标数 |',
+           '|---|---:|---:|---:|']
+    for key,label in LABELS.items():
+        count=summary['trace_counts'][key]
+        table.append(f"| {label} | {count['pending_tables']}/{pending} | {count['all_tables']}/{total} | {count['all_unknown']} |")
+    missing=[x['task'] for x in summary['report_inventory'] if not x['result_md_present']]
+    known013='\n'.join(f"| {r['table']} | {r['rows']} | {r['output_columns']} | {r['literal_cast_null_occurrences_independent_regex']} |" for r in known['impl013']['tables'])
+    known015='\n'.join(f"| {r['table']} | {r['rows']} | {', '.join(r['all_null_name_columns'])} |" for r in known['impl015']['tables'])
+    layer_counts={layer:sum(r['layer']==layer for r in rows) for layer in sorted({r['layer'] for r in rows})}
+    record_by_task={(r['task'],r['table']):r for r in rows}
+    ids=next(g['columns'] for g in record_by_task[('impl-030','stg_zuora__invoice_item')]['output']['equal_column_groups'] if 'invoice_item_id' in g['columns'])
+    text=f'''# DAComp DE-Impl 降级痕迹扫描与时间依赖标记
+
+## 任务
+
+对 30 题 agent 最终交付的全部表进行 A1–A4、B5–B8、C9、D10 机械扫描。读取留存预测库、最终 SQL、gold SQL、契约，以及轨迹归档内 result.md / result.json；附上 007 状态来源。本报告只记录出现与否、计数、原文和位置。
+
+## 结论
+
+**已核实：共 {total} 个交付目标，留存预测库中有 1,060 张，另 9 个只有最终 SQL。** 用户指定状态分别为：待标注 309、格式差异 18、官方判为通过 703、不可评估 39。以下两个分母始终分开；各项可以同时命中同一张表，不能相加为总表数。
+
+{chr(10).join(table)}
+
+“未能判定”保留为 JSON `null`，不记作未命中。A 类有 9 个留存库缺表目标；B7 有 28 个目标契约未指定来源，其中待标注 21 个；C9 契约缺失 1 个。待标注集合中 A 类和 SQL 扫描均可检查。
+
+三项人工已知结果均与扫描相符。全部数据库均以 `read_only=True` 打开；62 个原始 DuckDB 文件及其余输入的大小、mtime、SHA-256 前后相同。004–007 的记录和报告保持原样。
+
+## 详细发现
+
+### 范围、表名和 007 状态
+
+范围取“留存库中的非 raw 输出关系”与“agent 最终 SQL 的目标”的并集；实际 schema 的 mart / marts 统一记作 marts，保留原 schema。各层为：{'; '.join(f'{k} {v}' for k,v in layer_counts.items())}。不是仅扫描既有不匹配集合，也不以契约表清单替代交付清单。
+
+impl-002 的 run.py 明文规定 pendo__ 前缀目标使用去掉前缀的 SQL 文件名；本次依据该规则和 config/layer_dependencies.yaml，把 account.sql 等 18 个 SQL 与 pendo__account 等现存表对应起来，一张表只保留一行。`logical_contract_table`、`delivery_name_mapping_evidence` 记录契约名和原文行号。9 个留存库缺表目标为 impl-006 的 6 张 staging 表和 impl-020 的 3 张 staging 表；逐表清单在 summary 的 inventory_by_task。
+
+状态使用优先顺序：原 gold 目标缺失或 005 的 CS 节点执行未完成 → 不可评估；007 whole_match_level 为 L3 / 仍不匹配 → 待标注，L1 / L2 → 格式差异，L0 → 官方判为通过；其余按用户要求，以“不在 004/005 集合中”记为官方判为通过。**这一集合外规则不代表本次重新评分。** 每行 `status_007.status_sources` 写明记录、规则和值。
+
+impl-002 的 18 个 marts 在 005 中按无前缀名字检查，记录为相应 gold 目标缺失；本次虽能找到带前缀的物理 gold 表，仍保留这些行的“不可评估”状态，并同时列出实际 gold 关系存在这一事实。没有改写 005。007 的 staging 来自留存预测库，CS 来自 gold 上游的节点结果；本次 A 类全部来自 agent 自己的留存预测库，状态列仅引用对应既有记录。
+
+### A：输出表
+
+- A1：`count(*)=0`。空表不按真空条件计入 A2、A4；A3 严格要求行数 > 1。
+- A2：非空表中，某列 SQL NULL 行数等于总行数。字符串 `'null'`、空字符串不算 SQL NULL。
+- A3：某列每行都非 NULL，且完整值集合只有一个值。记录列名、类型、该值的 DuckDB VARCHAR 表示、表行数及该列的契约原文。契约未写此列时记“契约未描述”；有列定义但没有 description 时注明“契约未描述含义”。
+- A4：按用户补充口径，整表逐行比较；两列同为 NULL 的行忽略，必须至少有一行两列都非 NULL 且相等；任一单边 NULL 或非 NULL 值不同即不满足。记录完整列组、非 NULL 相等行数、忽略的双 NULL 行数及契约原文。先用列统计签名筛选候选，再以完整 SQL 比较确认；不以 hash 相同作为最终证据。
+
+A3、A4 的值表示采用精确 `CAST(... AS VARCHAR)`，不 trim、不忽略大小写、不放宽数值或日期格式；原 SQL 类型单列保留。不同类型只有 VARCHAR 表示也相同时才记同值；例如 `1` 和 `1.0` 不会因此项被合并。A4 的 354 张仅表示同值事实；261 张还出现至少一对 description 原文字面不同的列。机械程序不判断两段描述是否语义相同，其余情况标注契约未描述含义差别，未补全列含义。
+
+**单值展示限制：** impl-025 的 staging.stg_twilio__account_history.owner_account_id 为 2,475 行相同的非 NULL 值；GitHub push protection 将其字串识别为 Twilio Account SID 格式并拒绝首次 push。本次派生记录将该值字面量留空，保留 SHA-256、长度 34、原库路径和列名；该列的单值事实及汇总计数不变。记录见 [008_push_protection_redactions.json](../records/008_push_protection_redactions.json)。
+
+### B：最终 SQL 与来源
+
+1,069 个最终 SQL 全部由 SQLGlot 30.25.0 成功解析，且逐字节等于轨迹归档中的对应最终 SQL。没有执行这些 SQL。B5 / B6 检查最终投影，支持局部 CTE / 子查询列引用、SELECT *、VALUES 及 UNION 的输出位置；保留原表达式、分支、路径和行号。重复列名的 DuckDB 后缀及无 alias 表达式通过留存表列序号对应，另存原投影名。输出列列表与现存表元数据全部对应。
+
+B5 包括字面 NULL 及 CAST / TRY_CAST 包裹的 NULL；B6 包括数字、负数、字符串、布尔值及类型转换包裹的非 NULL 字面量。`coalesce(col,0)`、`1+2` 等表达式不当作字面量。UNION 至少一个分支是字面量即可记录，逐分支证据保留；这与 A3 的整列单一值检查分开。
+
+源表从可达查询作用域的表引用提取，展开局部 CTE / 子查询，排除未引用的 CTE；记录各表引用位置。这里的“读取”指 SQL 静态直接表引用，不扩展其他输出表或存储 view 的内部来源，也不宣称核实了优化器实际读取的物理块。GENERATE_SERIES / RANGE 等行生成器另外记录，不充当存储表。保留原名；比较仅统一标识符大小写、引号及 mart / marts schema 别名，不猜缺省 schema。
+
+契约来源来自显式 source_table / source_models 等字段，以及该表规格里明确写出的 schema.table 引用；原文位置一并保留。没写就记“契约未指定”，不从列名或自然语言对象名推断。逐一列出指定但未读、读了但未指定的名字。共 {summary['shared_single_source_groups']} 组、102 个目标与同题其他目标共用一个唯一表来源；分组清单见 [008_shared_single_source_groups.json](../records/008_shared_single_source_groups.json)。
+
+### C：时间依赖文本
+
+三处独立记录 `available`、`appears` 和逐次命中的文件、行号、列号、原文行：agent SQL 为 206 个目标，gold SQL 为 292 个，契约表规格为 199 个。没有合并为单一标记。
+
+词表包括 CURRENT_DATE / CURRENT_TIME / CURRENT_TIMESTAMP、LOCALTIME / LOCALTIMESTAMP、NOW()、TODAY / today()、GETDATE / GETUTCDATE / SYSDATETIME、SYSDATE / SYSTIMESTAMP、UTC_DATE / UTC_TIMESTAMP、CLOCK_TIMESTAMP / STATEMENT_TIMESTAMP / TRANSACTION_TIMESTAMP，以及明写的 current date / current time / current timestamp；SQL 中的相对时间字符串也保留独立上下文。大小写不敏感。
+
+agent SQL 的 507 次命中均位于 code；gold SQL 有 748 次 code、5 次 comment 命中，这 5 次所在表也都有 code 命中，故表数仍为 292。契约有 507 次命中。注释、字符串和带引号的标识符若命中，会与 code 分开记录。契约仅归属到该表原文块；未把文档其他段落的文字分配给所有表。本项是静态写法扫描，不推测未写在文本里的运行时间依赖。
+
+### D：result 原文与关键词
+
+归档内实有 **28 个 result.md 文件，覆盖 27 题**，以及 30 题各一份 result.json。未找到 result.md 的题：{', '.join(missing)}。impl-015、022 的 result.md 位于 workspace/；impl-011 的根目录和 workspace/ 各一份，经 SHA-256 核实为相同的 1,516 字节文件，两条原路径都保留。
+
+按用户词表作大小写不敏感的子串匹配，故 NULL 也会命中 NULLIF / nullify 等文字；simplif 可命中 simplified 等。摘录为原文句子或原始单行片段，不改写措辞。句子中出现交付表名才关联；无表名的 {summary['excerpts_without_named_table']} 条记“未指明表”。不根据前后文补指代。
+
+共 {summary['excerpt_count']} 条命中单元：result.md 70 条；result.json 的 instruction 10,142 条、assistant trajectory 3,781 条、run_py_output 6 条。**result.json 是包含输入与轨迹的容器；instruction 和执行输出保留其来源标签，不计入 agent 最终报告的 70 条。** assistant finish 中本词表未命中。表数汇总的 D10 主项只使用 result.md / assistant finish，扩展项才覆盖全部字符串字段。
+
+JSON 的一个字符串字段可能以转义换行放在源文件同一行，故同时给出 `file_line`（原 JSON token 所在行）、`json_path`、`decoded_field_line` 和原文 offset；Markdown 给实际文件行号。所有 {summary['excerpt_count']} 条摘录均按原件与 offset 独立核验。具体原文见 [008_keyword_excerpts.jsonl](../records/008_keyword_excerpts.jsonl)。
+
+### 已知结果测试
+
+impl-013：下列 3 张 staging 表的全部输出列均为 CAST(NULL AS ...)，独立正则计数与解析投影数一致，留存库输出均为 0 行。
+
+| 表 | 留存行数 | 输出列数 | CAST(NULL AS ...) 次数 |
+|---|---:|---:|---:|
+{known013}
+
+impl-015：vendor 相关表的名称列均有整列 SQL NULL 记录。
+
+| 表 | 留存行数 | 整列 NULL 的名称列 |
+|---|---:|---|
+{known015}
+
+impl-030：staging.stg_zuora__invoice_item 与 intermediate.int_zuora__invoice_item_base 均有 1,495 行，以下 9 列整表逐行相同，非 NULL 相等行数均为 1,495：`{', '.join(ids)}`。staging 最终 SQL 中也逐字保留 id / TRY_CAST(id AS VARCHAR) 到这些列的投影证据。staging 契约给出了这些列名，但未提供各列 description；intermediate 的 description 原文另附，未为 staging 补写含义。
+
+详细计数、SQL 位置和契约原文在 [008_known_results.json](../records/008_known_results.json)。三项已知结果均命中，没有为对齐这些例子更改规则。
+
+## 证据来源
+
+- 主输出：[逐表 CSV](../records/008_table_scan.csv)、[逐表 JSONL](../records/008_table_scan.jsonl)，各 1,069 行，一张表一行；嵌套字段在 CSV 中编码为 JSON。[汇总](../records/008_scan_summary.json)含分母、各项未判定数、逐题清单；[报告文件清单](../records/008_report_inventory.json)列出完整归档路径。
+- 状态输入：[004 staging](../records/004_staging_overview.json)、[005 CS](../records/005_cs_overview.json)、[007 逐表记录](../records/007_tolerance_tables.jsonl)。逐表行直接指向具体 004 / 005 文件；保留 005 的 compatibility 口径，未重新评分。
+- 原始库与契约路径由 [006 逐题记录](../records/006_contract_summary.json)登记，具体绝对路径附在本次逐表记录；agent 最终 SQL 读取 `/home/katherine/dac/runs/20261025_de_official_batch_01/impl-NNN/agent/dacomp-de-impl-NNN/sql/`，gold SQL 读取 `/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-NNN/sql/`；result 文件从 [轨迹归档](../traces/dacomp_deimpl_prev.tar.gz)直接读取。
+- 实现：[scan_dacomp_delivery.py](../scripts/scan_dacomp_delivery.py)、[dacomp_trace_scan.py](../scripts/dacomp_trace_scan.py)；复核：[validate_dacomp_delivery_scan.py](../scripts/validate_dacomp_delivery_scan.py)。数据库查询仅 SELECT 与只读 ATTACH，scratch / spill 均在 `data/008_*` 下。
+- 完整性：[008_input_integrity.json](../records/008_input_integrity.json)、[补充表名映射文件核对](../records/008_mapping_input_integrity.json)，共 {validation['input_files_unchanged']} 个输入前后相同，其中 62 个原始 DuckDB 文件。全部旧 004–007 记录和报告在 fingerprint 范围内。[SQL 与归档版本核对](../records/008_sql_archive_version_checks.json)记录 1,069 份 SQL 的逐字节一致性。
+- 验证：[008_validation.json](../records/008_validation.json)：1,060 张表独立 COUNT / COUNT(DISTINCT) 检查一致；18 张表完整列向量检查一致；1,070 份契约原文块、1,767 个时间命中位置与原件相符；全部现存表的投影名称对应；[11 项规则测试](../records/008_tests.log)通过。原件保持只读；没有运行模型或 agent SQL。
+
+执行命令（Python 3.12.15、DuckDB 1.5.6；SQLGlot 30.25.0 复用 data/005_tools，未安装新包）：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=data/005_tools:scripts /home/katherine/dac/.venv-openhands/bin/python -B scripts/scan_dacomp_delivery.py
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=data/005_tools:scripts /home/katherine/dac/.venv-openhands/bin/python -B scripts/scan_dacomp_delivery.py --refresh-static
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=data/005_tools:scripts /home/katherine/dac/.venv-openhands/bin/python -B scripts/validate_dacomp_delivery_scan.py
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=data/005_tools:scripts /home/katherine/dac/.venv-openhands/bin/python -B -m unittest scripts/test_dacomp_trace_scan.py -v
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=data/005_tools:scripts /home/katherine/dac/.venv-openhands/bin/python -B scripts/write_dacomp_delivery_report.py
+```
+
+`--refresh-static` 只更新静态提取、文件名对应和报告路径覆盖，复用已核查的留存输出表统计，不执行节点 SQL。最初一次独立复核因 scratch 父目录不存在在 impl-012 停止；补齐私有 scratch 目录后完成全量复核，最终日志和验证文件记录完整通过结果。
+
+## 不确定或没查到的
+
+9 个目标没有留存输出表，A 类标记为未能判定；28 个目标没有明确契约来源，B7 记“契约未指定”。utils.marketo__calendar_spine 没有对应表契约原文。未找到的 result.md 已逐题列出；没有以 result.json 的 instruction 代替缺失报告。
+
+A4 只核实逐行同值和契约原文是否字面不同，没有判断描述间的语义关系。时间项仅覆盖列明词表；没有补全隐式时间依赖或解释其影响。SQL 静态直接引用不等于执行时物理扫描证明。所有标记均不包含原因判断。
+
+## 建议的下一步
+
+由用户和 Claude 按已有研究设定决定后续标注规则；本次 CSV / JSONL 可直接提供表、状态、痕迹及原文证据。本任务到机械记录为止。
+'''
+    path=ROOT/'notes/008_2026-10-28_DAComp降级痕迹扫描.md'
+    path.write_text(text)
+    print(path)
+
+
+if __name__=='__main__':main()
