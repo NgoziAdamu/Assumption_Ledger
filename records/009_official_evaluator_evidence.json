@@ -1,0 +1,209 @@
+{
+  "source_sha256": "e8fc0d525d0a3894f13f070defe99586690f49310522cd22e059d1726fa14e0b",
+  "code": [
+    {
+      "path": "/home/katherine/dac/benchmarks/DAComp-code/dacomp-de/evaluation_suite/utils.py",
+      "symbol": "CSEvaluator._sql_name_for_table",
+      "start_line": 460,
+      "end_line": 464,
+      "original_text": "    def _sql_name_for_table(self, layer: str, table: str) -> str:\n        entry = self._table_entry(layer, table)\n        if isinstance(entry, dict):\n            return entry.get('sql_name') or table\n        return table\n"
+    },
+    {
+      "path": "/home/katherine/dac/benchmarks/DAComp-code/dacomp-de/evaluation_suite/utils.py",
+      "symbol": "CSEvaluator._read_sql",
+      "start_line": 466,
+      "end_line": 471,
+      "original_text": "    def _read_sql(self, dir_path: Path, layer: str, table: str) -> str:\n        sql_name = self._sql_name_for_table(layer, table)\n        p = dir_path / 'sql' / layer / f'{sql_name}.sql'\n        if not p.exists():\n            return ''\n        return p.read_text(encoding='utf-8')\n"
+    },
+    {
+      "path": "/home/katherine/dac/benchmarks/DAComp-code/dacomp-de/evaluation_suite/utils.py",
+      "symbol": "CSEvaluator._resolve_schema_name",
+      "start_line": 516,
+      "end_line": 528,
+      "original_text": "    def _resolve_schema_name(self, conn: duckdb.DuckDBPyConnection, layer: str) -> str:\n        schema_hint = self._schema_for_layer(layer)\n        try:\n            names = {row[0] for row in conn.execute(\"SELECT schema_name FROM information_schema.schemata\").fetchall()}\n            if schema_hint in names:\n                return schema_hint\n            if schema_hint == 'mart' and 'marts' in names:\n                return 'marts'\n            if schema_hint == 'marts' and 'mart' in names:\n                return 'mart'\n        except Exception:\n            pass\n        return schema_hint\n"
+    },
+    {
+      "path": "/home/katherine/dac/benchmarks/DAComp-code/dacomp-de/evaluation_suite/utils.py",
+      "symbol": "CSEvaluator._list_tables",
+      "start_line": 535,
+      "end_line": 545,
+      "original_text": "    def _list_tables(self, conn: duckdb.DuckDBPyConnection, schema: str) -> set:\n        if not conn or not schema:\n            return set()\n        try:\n            rows = conn.execute(\n                \"SELECT table_name FROM information_schema.tables WHERE table_schema = ?\",\n                (schema,),\n            ).fetchall()\n            return {r[0] for r in rows}\n        except Exception:\n            return set()\n"
+    },
+    {
+      "path": "/home/katherine/dac/benchmarks/DAComp-code/dacomp-de/evaluation_suite/utils.py",
+      "symbol": "CSEvaluator._ensure_gold_dependencies",
+      "start_line": 595,
+      "end_line": 614,
+      "original_text": "    def _ensure_gold_dependencies(\n        self,\n        conn: duckdb.DuckDBPyConnection,\n        current_layer: str,\n        target_table: str,\n        alias: str,\n        layer_schemas: Dict[str, str],\n        layer_tables: Dict[str, set],\n        ordered_layers: List[str],\n    ) -> None:\n        if not alias:\n            return\n        idx = ordered_layers.index(current_layer)\n        for lower in ordered_layers[:idx]:\n            schema = layer_schemas.get(lower)\n            available = layer_tables.get(lower, set())\n            self._restore_layer_tables(conn, lower, schema, alias, available)\n        schema = layer_schemas.get(current_layer)\n        available = layer_tables.get(current_layer, set())\n        self._restore_layer_tables(conn, current_layer, schema, alias, available, skip_table=target_table)\n"
+    },
+    {
+      "path": "/home/katherine/dac/benchmarks/DAComp-code/dacomp-de/evaluation_suite/utils.py",
+      "symbol": "CSEvaluator._build_pred_table",
+      "start_line": 616,
+      "end_line": 626,
+      "original_text": "    def _build_pred_table(self, conn: duckdb.DuckDBPyConnection, layer: str, table: str, schema: str) -> bool:\n        raw_sql = self._read_sql(self.pred_dir, layer, table)\n        sql = self._process_sql(raw_sql, layer, schema)\n        if not sql:\n            return False\n        try:\n            conn.execute(f\"CREATE SCHEMA IF NOT EXISTS {schema}\")\n        except Exception:\n            return False\n        create_sql = f\"CREATE OR REPLACE TABLE {schema}.{table} AS ({sql})\"\n        return self._exec_sql_safely(conn, create_sql)\n"
+    },
+    {
+      "path": "/home/katherine/dac/benchmarks/DAComp-code/dacomp-de/evaluation_suite/utils.py",
+      "symbol": "CSEvaluator.evaluate_all_layers",
+      "start_line": 635,
+      "end_line": 760,
+      "original_text": "    def evaluate_all_layers(self) -> Tuple[float, List[Dict[str, Any]]]:\n        import shutil\n\n        ordered_layers = self._ordered_layers()\n        if not ordered_layers:\n            return 0.0, []\n\n        temp_dir = self.pred_dir / \"tmp\"\n        shutil.rmtree(temp_dir, ignore_errors=True)\n        try:\n            temp_dir.mkdir(parents=True, exist_ok=True)\n        except Exception:\n            return 0.0, []\n\n        hybrid_db = temp_dir / \"cs_hybrid.duckdb\"\n        try:\n            shutil.copy2(self.gold_db, hybrid_db)\n        except Exception:\n            shutil.rmtree(temp_dir, ignore_errors=True)\n            return 0.0, []\n\n        layer_results: List[Dict[str, Any]] = []\n        scores: List[Tuple[float, float]] = []\n\n        def _open_hybrid_conn():\n            try:\n                conn = duckdb.connect(str(hybrid_db))\n                alias = self._attach_gold_alias(conn)\n                return conn, alias\n            except Exception:\n                return None, \"\"\n\n        def _close_hybrid_conn(conn, alias):\n            if conn:\n                self._detach_gold_alias(conn, alias)\n                conn.close()\n\n        hybrid_conn, gold_alias = _open_hybrid_conn()\n        if not hybrid_conn:\n            shutil.rmtree(temp_dir, ignore_errors=True)\n            return 0.0, []\n\n        try:\n            gold_conn = duckdb.connect(str(self.gold_db), read_only=True)\n        except Exception:\n            gold_conn = None\n        layer_schemas: Dict[str, str] = {}\n        layer_tables: Dict[str, set] = {}\n        if gold_conn:\n            for layer in ordered_layers:\n                schema = self._resolve_schema_name(gold_conn, layer)\n                if not schema:\n                    schema = self._schema_for_layer(layer)\n                layer_schemas[layer] = schema\n                layer_tables[layer] = self._list_tables(gold_conn, schema)\n        else:\n            for layer in ordered_layers:\n                layer_schemas[layer] = self._schema_for_layer(layer)\n                layer_tables[layer] = set()\n\n        evaluator = CoreAccuracyEvaluator(\n            hybrid_db, self.gold_db, self.config\n        )\n\n        try:\n            for layer in ordered_layers:\n                tables_cfg = self.config.get('layers', {}).get(layer, {}).get('tables', {})\n                table_names = list(tables_cfg.keys())\n                total_points = sum(self._table_weight(v) for v in tables_cfg.values())\n                earned_points = 0\n                pred_exec: Dict[str, bool] = {}\n                comparison: Dict[str, bool] = {}\n                gold_exec: Dict[str, bool] = {}\n                schema = layer_schemas.get(layer) or self._schema_for_layer(layer)\n                gold_tables = layer_tables.get(layer, set())\n                for t in table_names:\n                    gold_exec[t] = t in gold_tables\n\n                for table in table_names:\n                    self._ensure_gold_dependencies(\n                        hybrid_conn,\n                        layer,\n                        table,\n                        gold_alias,\n                        layer_schemas,\n                        layer_tables,\n                        ordered_layers,\n                    )\n                    ok_pred = self._build_pred_table(hybrid_conn, layer, table, schema)\n                    pred_exec[table] = ok_pred\n                    _close_hybrid_conn(hybrid_conn, gold_alias)\n                    match = False\n                    if ok_pred:\n                        try:\n                            match = evaluator.compare_table(schema, table)\n                        except Exception:\n                            match = False\n                    comparison[table] = match\n                    if match:\n                        earned_points += self._table_weight(tables_cfg.get(table, 0))\n                    hybrid_conn, gold_alias = _open_hybrid_conn()\n                    if not hybrid_conn:\n                        raise RuntimeError(\"Failed to reopen hybrid database for CS evaluation\")\n                    self._copy_table_from_gold(hybrid_conn, schema, table, gold_alias, gold_tables)\n\n                layer_score = (earned_points / total_points) if total_points > 0 else 0.0\n                layer_weight = self.config.get('layers', {}).get(layer, {}).get('weight', 0)\n                layer_results.append({\n                    'layer_name': layer,\n                    'pred_execution': pred_exec,\n                    'gold_execution': gold_exec,\n                    'comparison_results': comparison,\n                    'total_points': total_points,\n                    'earned_points': earned_points,\n                    'layer_score': layer_score,\n                    'layer_weight': layer_weight,\n                })\n                scores.append((layer_score, float(layer_weight)))\n\n            final_score = weighted_score(scores)\n            return final_score, layer_results\n        finally:\n            if gold_conn:\n                gold_conn.close()\n            _close_hybrid_conn(hybrid_conn, gold_alias)\n            shutil.rmtree(temp_dir, ignore_errors=True)\n"
+    },
+    {
+      "path": "/home/katherine/dac/benchmarks/DAComp-code/dacomp-de/evaluation_suite/utils.py",
+      "symbol": "CoreAccuracyEvaluator.compare_table",
+      "start_line": 105,
+      "end_line": 271,
+      "original_text": "    def compare_table(self, schema: str, table: str) -> bool:\n        \"\"\"Row-hash multiset comparison with diagnostic logging.\n\n        This version performs the intersection-column, per-row-hash grouped comparison\n        (Python-aggregated). It logs diagnostic reasons for failure so we can identify\n        why a table was judged mismatched (missing columns, count mismatch, timeout,\n        or differing row counts by hash).\n        \"\"\"\n        try:\n            pred_ro = duckdb.connect(str(self.pred_db), read_only=True)\n            gold_ro = duckdb.connect(str(self.gold_db), read_only=True)\n\n            def _resolve(conn: duckdb.DuckDBPyConnection, s: str) -> str:\n                try:\n                    if s in ('mart', 'marts'):\n                        names = {r[0] for r in conn.execute(\"SELECT schema_name FROM information_schema.schemata\").fetchall()}\n                        if 'marts' in names:\n                            return 'marts'\n                        if 'mart' in names:\n                            return 'mart'\n                except Exception:\n                    pass\n                return s\n\n            pred_schema = _resolve(pred_ro, schema)\n            gold_schema = _resolve(gold_ro, schema)\n\n            # Ensure tables exist\n            pred_exists = pred_ro.execute(\n                f\"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '{pred_schema}' AND table_name = '{table}'\"\n            ).fetchone()[0] > 0\n            gold_exists = gold_ro.execute(\n                f\"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '{gold_schema}' AND table_name = '{table}'\"\n            ).fetchone()[0] > 0\n            if not pred_exists or not gold_exists:\n                logger.debug(f\"compare_table: missing table {schema}.{table} pred_exists={pred_exists} gold_exists={gold_exists}\")\n                pred_ro.close(); gold_ro.close()\n                return False\n\n            # Get columns with data types (use gold's type info for numeric detection)\n            gold_rows = gold_ro.execute(\n                f\"SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = '{gold_schema}' AND table_name = '{table}' ORDER BY ordinal_position\"\n            ).fetchall()\n            pred_rows = pred_ro.execute(\n                f\"SELECT column_name FROM information_schema.columns WHERE table_schema = '{pred_schema}' AND table_name = '{table}' ORDER BY ordinal_position\"\n            ).fetchall()\n            gold_cols = [r[0] for r in gold_rows]\n            pred_cols = [r[0] for r in pred_rows]\n            gold_types = {r[0]: (r[1] or '').lower() for r in gold_rows}\n\n            # If config specifies compare_cols for this table, restrict to those\n            try:\n                cfg_layers = self.config.get('layers', {})\n                # schema maps to layer name; attempt reverse map\n                layer_name = schema if schema in cfg_layers else ('marts' if schema == 'mart' else schema)\n                tbl_cfg = cfg_layers.get(layer_name, {}).get('tables', {}).get(table)\n                allowed_cols = []\n                if isinstance(tbl_cfg, dict):\n                    allowed_cols = list(tbl_cfg.get('compare_cols') or [])\n                if allowed_cols:\n                    # normalize by case-insensitive compare, preserve original casing in gold order\n                    gold_map = {c.lower(): c for c in gold_cols}\n                    pred_set = {c.lower() for c in pred_cols}\n                    inter_cols = [gold_map[a.lower()] for a in allowed_cols if a.lower() in gold_map and a.lower() in pred_set]\n                else:\n                    # fallback: intersection of gold and pred\n                    inter_cols = [c for c in gold_cols if c in pred_cols]\n            except Exception:\n                inter_cols = [c for c in gold_cols if c in pred_cols]\n\n            # Quick short-circuit if gold has no columns\n            if not gold_cols:\n                logger.debug(f\"compare_table: no gold columns for {schema}.{table}\")\n                pred_ro.close(); gold_ro.close()\n                return False\n\n            if not inter_cols:\n                logger.debug(f\"compare_table: no intersection columns for {schema}.{table}; gold_cols={gold_cols} pred_cols={pred_cols}\")\n                pred_ro.close(); gold_ro.close()\n                return False\n\n            # Row count short-circuit\n            try:\n                pred_count = pred_ro.execute(f\"SELECT COUNT(*) FROM {pred_schema}.{table}\").fetchone()[0]\n                gold_count = gold_ro.execute(f\"SELECT COUNT(*) FROM {gold_schema}.{table}\").fetchone()[0]\n                if pred_count != gold_count:\n                    logger.debug(f\"compare_table: row count mismatch for {schema}.{table}: pred={pred_count} gold={gold_count}\")\n                    pred_ro.close(); gold_ro.close()\n                    return False\n            except Exception as e:\n                logger.debug(f\"compare_table: row count check error for {schema}.{table}: {e}\")\n                pred_ro.close(); gold_ro.close()\n                return False\n\n            pred_ro.close(); gold_ro.close()\n\n            # Strict hash-based comparison on intersection columns (no numeric tolerance).\n            col_expr_parts = []\n            for c in inter_cols:\n                # Cast to string, trim, lower for case-insensitive; treat NULL as literal 'null'\n                col_expr_parts.append(f\"COALESCE(LOWER(TRIM(CAST({c} AS VARCHAR))), 'null')\")\n            col_expr = \", \".join(col_expr_parts)\n\n            # Queries to compute (hash, count) per DB\n            pred_query = f\"SELECT MD5(CONCAT_WS('|', {col_expr})) AS rh, COUNT(*) AS cnt FROM {pred_schema}.{table} GROUP BY rh\"\n            gold_query = f\"SELECT MD5(CONCAT_WS('|', {col_expr})) AS rh, COUNT(*) AS cnt FROM {gold_schema}.{table} GROUP BY rh\"\n\n            # Helper to run a query with timeout and return dict(rh->cnt)\n            import signal\n            class _Timeout(Exception):\n                pass\n            def run_with_timeout(conn, query, timeout_seconds=300):\n                def handler(signum, frame):\n                    raise _Timeout()\n                old = None\n                try:\n                    if hasattr(signal, 'SIGALRM'):\n                        old = signal.signal(signal.SIGALRM, handler)\n                        signal.alarm(timeout_seconds)\n                    rows = conn.execute(query).fetchall()\n                    return {r[0]: int(r[1]) for r in rows}\n                finally:\n                    if hasattr(signal, 'SIGALRM'):\n                        signal.alarm(0)\n                        if old:\n                            signal.signal(signal.SIGALRM, old)\n\n            # Open connections and fetch grouped hashes\n            pconn = duckdb.connect(str(self.pred_db), read_only=True)\n            gconn = duckdb.connect(str(self.gold_db), read_only=True)\n            try:\n                pred_hash_counts = run_with_timeout(pconn, pred_query)\n                gold_hash_counts = run_with_timeout(gconn, gold_query)\n            except _Timeout:\n                logger.debug(f\"compare_table: timeout when hashing {schema}.{table}\")\n                try:\n                    pconn.close(); gconn.close()\n                except Exception:\n                    pass\n                return False\n            except Exception as e:\n                logger.debug(f\"compare_table: error when hashing {schema}.{table}: {e}\")\n                try:\n                    pconn.close(); gconn.close()\n                except Exception:\n                    pass\n                return False\n\n            # Close DB connections\n            try:\n                pconn.close(); gconn.close()\n            except Exception:\n                pass\n\n            # Compare dictionaries; if mismatch, compute diagnostic counts\n            if pred_hash_counts == gold_hash_counts:\n                return True\n            else:\n                # compute total differing rows\n                all_keys = set(pred_hash_counts.keys()) | set(gold_hash_counts.keys())\n                diff_rows = sum(abs(pred_hash_counts.get(k,0) - gold_hash_counts.get(k,0)) for k in all_keys)\n                logger.debug(f\"compare_table: hash-count mismatch for {schema}.{table}: differing_rows={diff_rows} pred_unique_hashes={len(pred_hash_counts)} gold_unique_hashes={len(gold_hash_counts)}\")\n                return False\n\n        except Exception as e:\n            logger.debug(f\"compare_table: unexpected error for {schema}.{table}: {e}\")\n            return False\n"
+    }
+  ],
+  "impl002_name_checks": [
+    {
+      "scoring_table": "account",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__account",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "account"
+    },
+    {
+      "scoring_table": "account_daily_metrics",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__account_daily_metrics",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "account_daily_metrics"
+    },
+    {
+      "scoring_table": "customer_lifecycle_insights",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__customer_lifecycle_insights",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "customer_lifecycle_insights"
+    },
+    {
+      "scoring_table": "executive_dashboard_metrics",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__executive_dashboard_metrics",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "executive_dashboard_metrics"
+    },
+    {
+      "scoring_table": "feature",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__feature",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "feature"
+    },
+    {
+      "scoring_table": "feature_daily_metrics",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__feature_daily_metrics",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "feature_daily_metrics"
+    },
+    {
+      "scoring_table": "feature_event",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__feature_event",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "feature_event"
+    },
+    {
+      "scoring_table": "guide",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__guide",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "guide"
+    },
+    {
+      "scoring_table": "guide_daily_metrics",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__guide_daily_metrics",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "guide_daily_metrics"
+    },
+    {
+      "scoring_table": "guide_event",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__guide_event",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "guide_event"
+    },
+    {
+      "scoring_table": "page",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__page",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "page"
+    },
+    {
+      "scoring_table": "page_daily_metrics",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__page_daily_metrics",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "page_daily_metrics"
+    },
+    {
+      "scoring_table": "page_event",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__page_event",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "page_event"
+    },
+    {
+      "scoring_table": "product_adoption_analytics",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__product_adoption_analytics",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "product_adoption_analytics"
+    },
+    {
+      "scoring_table": "product_adoption_summary",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__product_adoption_summary",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "product_adoption_summary"
+    },
+    {
+      "scoring_table": "visitor",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__visitor",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "visitor"
+    },
+    {
+      "scoring_table": "visitor_daily_metrics",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__visitor_daily_metrics",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "visitor_daily_metrics"
+    },
+    {
+      "scoring_table": "visitor_feature",
+      "official_schema": "marts",
+      "official_gold_membership": false,
+      "prefixed_table": "pendo__visitor_feature",
+      "prefixed_gold_membership": true,
+      "official_sql_name": "visitor_feature"
+    }
+  ],
+  "behavior": "Gold membership and compare_table require the exact configured table name; only mart/marts schema names are resolved. No Pendo table-name prefix fallback is present.",
+  "replay_adapter": "In-memory config maps each impl-002 marts target to pendo__<configured name>, preserves compare_cols and weights, and sets sql_name=<configured name>. Original config and SQL remain unchanged."
+}
