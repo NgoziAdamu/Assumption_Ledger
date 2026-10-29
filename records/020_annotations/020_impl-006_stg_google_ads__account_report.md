@@ -1,0 +1,125 @@
+> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
+
+# impl-006 / stg_google_ads__account_report（全量）
+
+## 结论
+
+主要原因：**A**；把握：高。布尔文本转换为数值1/0，还是TRY_CAST失败置NULL，契约未定。
+
+参与因素：无。标记：无。
+
+## 差异与归因依据
+
+两列仅规定DECIMAL/BIGINT；agent采用明确披露的TRY_CAST，gold把字符串true/false变为数值。不能把gold选择反推为唯一正确的源语义；各减少700格。
+
+层：staging；比较库schema：staging；评测键：account_id, date_day, ad_network_type, device。staging使用agent留存raw，后续层采用gold上游的CS口径，不把上游传导错误归给本表。
+
+已核实的契约原文位置：
+
+- `/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-006/docs/data_contract.yaml:699–732`；完整逐字原文见材料包。
+- agent SQL：`/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_google_ads__account_report.sql:1–19`；SHA-256 `694159f56fad0072e04d39e8f5f596bccc25d3278c1450001411d99131508cca`。
+- gold（只作差异定位） SQL：`/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-006/sql/staging/stg_google_ads__account_report.sql:1–43`；SHA-256 `3948582a77169f28f50c4365f4716bf0f61880a5c07daca028f16a95796927b3`。
+
+具体差异表达式和替换（未列出的字节保持不变；共同固定时间除外）：
+
+- conversions_value：
+```sql
+TRY_CAST("conversions_value" AS DECIMAL(15,2)) AS conversions_value
+```
+→
+```sql
+CASE WHEN conversions_value = 'true' THEN 1.0 WHEN conversions_value = 'false' THEN 0.0 ELSE CAST(conversions_value AS DECIMAL(15, 2)) END AS conversions_value
+```
+
+- view_through_conversions：
+```sql
+TRY_CAST("view_through_conversions" AS BIGINT) AS view_through_conversions
+```
+→
+```sql
+CASE WHEN view_through_conversions = 'true' THEN 1 WHEN view_through_conversions = 'false' THEN 0 ELSE CAST(view_through_conversions AS BIGINT) END AS view_through_conversions
+```
+
+## agent可见证据与不确定性
+
+不确定性四档：**只有通用策略说明**。
+
+event 97（args.final_thought）：脏值转换采用 DuckDB `TRY_CAST`；不可解析值转为 NULL，避免全批失败，但该字段数据会缺失并可能降低后续统计有效性。
+
+完整事件扫描数：99；可见输出的机械命中及原始截断标记：
+
+| event | cause | 命中名 | 显式截断 |
+|---|---|---|---|
+| 8 | 7 | stg_google_ads__account_report | False |
+| 12 | 11 | google_ads_account_stats_data | False |
+| 16 | 15 | google_ads_account_stats_data | False |
+| 18 | 17 | google_ads_account_stats_data | False |
+| 30 | 29 | stg_google_ads__account_report | False |
+| 32 | 31 | google_ads_account_stats_data | False |
+| 38 | 37 | stg_google_ads__account_report | False |
+| 82 | 81 | stg_google_ads__account_report | False |
+| 86 | 85 | stg_google_ads__account_report | False |
+
+此表的可见性判定以原始输出和上面引句为准；命中表名的执行日志或只返回列数，不证明已核实值或业务性质。event中的args.command/message重复代码不当作选择理由，最终报告中的策略按其实际覆盖范围引用。
+
+## 核实查询与诊断
+
+核实查询条数（含失败尝试）：2；核实代价档：多条查询。全部连接原件read_only=True，查询只用agent当时可见库。
+
+### 核实 1
+
+数据库：`/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/ad_reporting.duckdb`
+
+```sql
+SELECT table_schema,table_name,column_name,data_type FROM information_schema.columns WHERE (table_schema='raw' AND table_name='google_ads_account_stats_data') ORDER BY table_schema,table_name,ordinal_position
+```
+
+结果：`[["raw", "google_ads_account_stats_data", "customer_id", "VARCHAR"], ["raw", "google_ads_account_stats_data", "date", "VARCHAR"], ["raw", "google_ads_account_stats_data", "active_view_impressions", "VARCHAR"], ["raw", "google_ads_account_stats_data", "active_view_measurability", "VARCHAR"], ["raw", "google_ads_account_stats_data", "active_view_measurable_cost_micros", "VARCHAR"], ["raw", "google_ads_account_stats_data", "active_view_measurable_impressions", "VARCHAR"], ["raw", "google_ads_account_stats_data", "active_view_viewability", "VARCHAR"], ["raw", "google_ads_account_stats_data", "ad_network_type", "VARCHAR"], ["raw", "google_ads_account_stats_data", "clicks", "BIGINT"], ["raw", "google_ads_account_stats_data", "conversions", "BIGINT"], ["raw", "google_ads_account_stats_data", "conversions_value", "VARCHAR"], ["raw", "google_ads_account_stats_data", "cost_micros", "BIGINT"], ["raw", "google_ads_account_stats_data", "device", "VARCHAR"], ["raw", "google_ads_account_stats_data", "impressions", "BIGINT"], ["raw", "google_ads_account_stats_data", "interaction_event_types", "VARCHAR"], ["raw", "google_ads_account_stats_data", "interactions", "BIGINT"], ["raw", "google_ads_account_stats_data", "view_through_conversions", "VARCHAR"]]`
+
+### 核实 2
+
+数据库：`/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/ad_reporting.duckdb`
+
+```sql
+SELECT count(*) n,count(*) FILTER(WHERE "conversions" IS NULL) AS c0_null,count(*) FILTER(WHERE "conversions" IS NOT NULL AND TRY_CAST("conversions" AS DOUBLE) IS NULL) AS c1_not_numeric,count(*) FILTER(WHERE "conversions_value" IS NULL) AS c2_null,count(*) FILTER(WHERE "conversions_value" IS NOT NULL AND TRY_CAST("conversions_value" AS DOUBLE) IS NULL) AS c3_not_numeric,count(*) FILTER(WHERE "view_through_conversions" IS NULL) AS c4_null,count(*) FILTER(WHERE "view_through_conversions" IS NOT NULL AND TRY_CAST("view_through_conversions" AS DOUBLE) IS NULL) AS c5_not_numeric FROM raw.google_ads_account_stats_data
+```
+
+结果：`[[719, 0, 0, 0, 700, 0, 700]]`
+
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=23 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+
+## 固定时间与重跑
+
+私有目录：`data/020_work/impl-006_stg_google_ads__account_report/`。原始数据库仅READ_ONLY attach；只复制所需上游表。共同时间替换：`[{"pattern": "\\bcurrent_timestamp\\b", "replacement": "TIMESTAMPTZ '2025-10-12 12:00:00+00'", "count": 0}, {"pattern": "\\bcurrent_date\\b", "replacement": "DATE '2025-10-12'", "count": 0}]`。
+
+留存结果同口径规模：700行 / 1400格；重跑基线：700行 / 1400格。
+
+| 实验 | L0–L3 行数/格子规模 | 整表首次匹配 |
+|---|---|---|
+| baseline | L0:700行/1400格 / L1:700行/1400格 / L2:700行/1400格 / L3:700行/1400格 | 均未整表匹配 |
+| conversions_value | L0:700行/700格 / L1:700行/700格 / L2:700行/700格 / L3:700行/700格 | 均未整表匹配 |
+| view_through_conversions | L0:700行/700格 / L1:700行/700格 / L2:700行/700格 / L3:700行/700格 | 均未整表匹配 |
+
+不适用：主要原因不是U；完整实现诊断不当作U局部修复。
+
+完整每列不一致数（含键，L0–L3）和单侧/重复键额外行数见本表配套重跑JSON的每个comparison.levels；这里另展开L0非零列计数：
+
+| 实验 | L0每列不一致数 |
+|---|---|
+| baseline | {"conversions_value": 700, "view_through_conversions": 700} |
+| conversions_value | {"view_through_conversions": 700} |
+| view_through_conversions | {"conversions_value": 700} |
+
+规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
+
+## 规则问题
+
+无。
+
+## 证据路径
+
+- 精简材料包：`records/020_packages/020_impl-006_stg_google_ads__account_report.md`。
+- 重跑：`records/020_reruns_impl-006_stg_google_ads__account_report.json`（含old/new、偏移、SHA-256、全部层级逐列计数）。
+- 核实：`records/020_queries.json`；校准另见 `records/020_calibration_queries.json`。
+- 轨迹：`records/020_trace_audit.json` 中逐event路径；归档 `traces/dacomp_deimpl_prev.tar.gz`。
+- 输入快照：`records/020_input_before.json`。

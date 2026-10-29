@@ -1,0 +1,209 @@
+> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
+
+# impl-006 / ad_reporting__monthly_campaign_region_report（全量）
+
+## 结论
+
+主要原因：**D**；把握：高。月度地区 mart 多个财务/KPI映射与生成时间均被填 NULL。
+
+参与因素：D：spend（减0行/136格）；D：attributed_sales_14_day（减0行/5785格）；D：attributed_sales_30_day（减0行/5318格）；D：avg_ctr_percent（减0行/55格）；D：avg_cpc（减0行/225格）；D：avg_cpa（减0行/4994格）；D：avg_roas（减0行/435格）；D：mart_created_at（减0行/4236格）。标记：已披露。
+
+## 差异与归因依据
+
+上游有 total_cost、total_attributed和monthly_regional_*；event27通用映射未覆盖这些名称，未作业务判断就置空。mart_created_at也未计算。
+
+层：marts；比较库schema：marts；评测键：region, account_id, campaign_id。staging使用agent留存raw，后续层采用gold上游的CS口径，不把上游传导错误归给本表。
+
+已核实的契约原文位置：
+
+- `/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-006/docs/data_contract.yaml:3910–4039`；完整逐字原文见材料包。
+- agent SQL：`/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/marts/ad_reporting__monthly_campaign_region_report.sql:1–43`；SHA-256 `0aa68a8ce1fea747560b46c0a639bb5815010f21fcfa798724ef155b83e5c55c`。
+- gold（只作差异定位） SQL：`/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-006/sql/marts/ad_reporting__monthly_campaign_region_report.sql:1–78`；SHA-256 `97c4bfd6c2be65b4de1d17ace6bf14045e1210ab6c71d4b0c8c45e2a3dfc53a4`。
+
+具体差异表达式和替换（未列出的字节保持不变；共同固定时间除外）：
+
+- spend：
+```sql
+NULL::DECIMAL(38,2) AS "spend"
+```
+→
+```sql
+total_cost AS spend
+```
+
+- attributed_sales_14_day：
+```sql
+NULL::DECIMAL(38,2) AS "attributed_sales_14_day"
+```
+→
+```sql
+total_attributed_sales_14_d AS attributed_sales_14_day
+```
+
+- attributed_sales_30_day：
+```sql
+NULL::DECIMAL(38,2) AS "attributed_sales_30_day"
+```
+→
+```sql
+total_attributed_sales_30_d AS attributed_sales_30_day
+```
+
+- attributed_conversions_14_day：
+```sql
+NULL::HUGEINT AS "attributed_conversions_14_day"
+```
+→
+```sql
+total_attributed_conversions_14_d AS attributed_conversions_14_day
+```
+
+- attributed_conversions_30_day：
+```sql
+NULL::HUGEINT AS "attributed_conversions_30_day"
+```
+→
+```sql
+total_attributed_conversions_30_d AS attributed_conversions_30_day
+```
+
+- avg_ctr_percent：
+```sql
+NULL::DOUBLE AS "avg_ctr_percent"
+```
+→
+```sql
+monthly_regional_click_through_rate AS avg_ctr_percent
+```
+
+- avg_cpc：
+```sql
+NULL::DOUBLE AS "avg_cpc"
+```
+→
+```sql
+monthly_regional_cost_per_click AS avg_cpc
+```
+
+- avg_cpm：
+```sql
+NULL::DOUBLE AS "avg_cpm"
+```
+→
+```sql
+monthly_regional_cost_per_thousand_impressions AS avg_cpm
+```
+
+- avg_cpa：
+```sql
+NULL::DOUBLE AS "avg_cpa"
+```
+→
+```sql
+monthly_regional_cost_per_conversion AS avg_cpa
+```
+
+- avg_roas：
+```sql
+NULL::DOUBLE AS "avg_roas"
+```
+→
+```sql
+monthly_regional_return_on_ad_spend AS avg_roas
+```
+
+- mart_created_at：
+```sql
+NULL::TIMESTAMP WITH TIME ZONE AS "mart_created_at"
+```
+→
+```sql
+TIMESTAMPTZ '2025-10-12 17:12:43.768000+08:00' AS mart_created_at
+```
+
+## agent可见证据与不确定性
+
+不确定性四档：**只有通用策略说明**。
+
+event 97（args.final_thought）：对缺失源字段采用类型明确的 NULL，占用可用字段进行投影，并在缺失加载时间时采用运行时 `CURRENT_TIMESTAMP`。
+
+完整事件扫描数：99；可见输出的机械命中及原始截断标记：
+
+| event | cause | 命中名 | 显式截断 |
+|---|---|---|---|
+| 8 | 7 | ad_reporting__monthly_campaign_region_report,int_ad_reporting__monthly_campaign_region_report | False |
+| 26 | 25 | ad_reporting__monthly_campaign_region_report,int_ad_reporting__monthly_campaign_region_report | False |
+| 38 | 37 | ad_reporting__monthly_campaign_region_report,int_ad_reporting__monthly_campaign_region_report | False |
+| 84 | 83 | ad_reporting__monthly_campaign_region_report,int_ad_reporting__monthly_campaign_region_report | False |
+
+此表的可见性判定以原始输出和上面引句为准；命中表名的执行日志或只返回列数，不证明已核实值或业务性质。event中的args.command/message重复代码不当作选择理由，最终报告中的策略按其实际覆盖范围引用。
+
+## 核实查询与诊断
+
+核实查询条数（含失败尝试）：1；核实代价档：一条查询。全部连接原件read_only=True，查询只用agent当时可见库。
+
+### 核实 1
+
+数据库：`/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/ad_reporting.duckdb`
+
+```sql
+SELECT table_schema,table_name,column_name,data_type FROM information_schema.columns WHERE (table_schema='intermediate' AND table_name='int_ad_reporting__monthly_campaign_region_report') ORDER BY table_schema,table_name,ordinal_position
+```
+
+结果：`[["intermediate", "int_ad_reporting__monthly_campaign_region_report", "platform", "VARCHAR"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "region", "VARCHAR"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "month_year", "DATE"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "year", "BIGINT"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "month", "BIGINT"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "account_id", "INTEGER"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "campaign_id", "VARCHAR"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "campaign_name", "INTEGER"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "countries_in_region", "BIGINT"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "country_list", "VARCHAR"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "total_impressions", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "total_clicks", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "total_interactions", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "total_cost", "DECIMAL(38,2)"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "total_conversions", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "total_conversions_value", "DECIMAL(38,2)"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "total_view_through_conversions", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "total_active_view_impressions", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "total_active_view_measurable_impressions", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "total_attributed_sales_14_d", "DECIMAL(38,2)"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "total_attributed_sales_30_d", "DECIMAL(38,2)"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "total_attributed_conversions_14_d", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "total_attributed_conversions_30_d", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "monthly_regional_click_through_rate", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "monthly_regional_cost_per_click", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "monthly_regional_cost_per_thousand_impressions", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "monthly_regional_cost_per_conversion", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "monthly_regional_return_on_ad_spend", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "monthly_regional_amazon_roas_30d", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "days_active_in_month", "BIGINT"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "avg_daily_regional_spend", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "avg_daily_regional_impressions", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "avg_daily_regional_clicks", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "regional_cost_share_pct", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "regional_impression_share_pct", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "regional_cost_concentration", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "regional_conversion_concentration", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "first_active_date", "DATE"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "last_active_date", "DATE"], ["intermediate", "int_ad_reporting__monthly_campaign_region_report", "_dbt_loaded_at", "TIMESTAMP WITH TIME ZONE"]]`
+
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=11 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+
+## 固定时间与重跑
+
+私有目录：`data/020_work/impl-006_ad_reporting__monthly_campaign_region_report/`。原始数据库仅READ_ONLY attach；只复制所需上游表。共同时间替换：`[{"pattern": "\\bcurrent_timestamp\\b", "replacement": "TIMESTAMPTZ '2025-10-12 17:12:43.768000+08:00'", "count": 0}, {"pattern": "\\bcurrent_date\\b", "replacement": "DATE '2025-10-12'", "count": 0}]`。
+
+留存结果同口径规模：4236行 / 116737格；重跑基线：4236行 / 116737格。
+
+| 实验 | L0–L3 行数/格子规模 | 整表首次匹配 |
+|---|---|---|
+| baseline | L0:4236行/116737格 / L1:4236行/116952格 / L2:4236行/114023格 / L3:4236行/114023格 | 均未整表匹配 |
+| spend | L0:4236行/116601格 / L1:4236行/116811格 / L2:4236行/113882格 / L3:4236行/113882格 | 均未整表匹配 |
+| attributed_sales_14_day | L0:4236行/110952格 / L1:4236行/111480格 / L2:4236行/108775格 / L3:4236行/108775格 | 均未整表匹配 |
+| attributed_sales_30_day | L0:4236行/111419格 / L1:4236行/111607格 / L2:4236行/108908格 / L3:4236行/108908格 | 均未整表匹配 |
+| attributed_conversions_14_day | L0:4236行/78279格 / L1:4236行/78291格 / L2:4236行/75455格 / L3:4236行/75455格 | 均未整表匹配 |
+| attributed_conversions_30_day | L0:4236行/78279格 / L1:4236行/78291格 / L2:4236行/75455格 / L3:4236行/75455格 | 均未整表匹配 |
+| avg_ctr_percent | L0:4236行/116682格 / L1:4236行/117135格 / L2:4236行/114075格 / L3:4236行/114075格 | 均未整表匹配 |
+| avg_cpc | L0:4236行/116512格 / L1:4236行/116764格 / L2:4236行/113846格 / L3:4236行/113846格 | 均未整表匹配 |
+| avg_cpm | L0:4236行/117148格 / L1:4236行/116887格 / L2:4236行/113960格 / L3:4236行/113960格 | 均未整表匹配 |
+| avg_cpa | L0:4236行/111743格 / L1:4236行/111730格 / L2:4236行/108918格 / L3:4236行/108918格 | 均未整表匹配 |
+| avg_roas | L0:4236行/116302格 / L1:4236行/116568格 / L2:4236行/113609格 / L3:4236行/113609格 | 均未整表匹配 |
+| mart_created_at | L0:4236行/112501格 / L1:4236行/112716格 / L2:4236行/109787格 / L3:4236行/109787格 | 均未整表匹配 |
+
+不适用：主要原因不是U；完整实现诊断不当作U局部修复。
+
+完整每列不一致数（含键，L0–L3）和单侧/重复键额外行数见本表配套重跑JSON的每个comparison.levels；这里另展开L0非零列计数：
+
+| 实验 | L0每列不一致数 |
+|---|---|
+| baseline | {"attributed_conversions_14_day": 4236, "attributed_conversions_30_day": 4236, "attributed_sales_14_day": 4236, "attributed_sales_30_day": 4236, "avg_cpa": 4236, "avg_cpc": 4236, "avg_cpm": 4236, "avg_ctr_percent": 4236, "avg_daily_regional_clicks": 4064, "avg_daily_regional_impressions": 4096, "avg_daily_regional_spend": 4099, "avg_roas": 4236, "clicks": 4083, "conversions": 3623, "conversions_value": 3801, "days_active_in_month": 3189, "first_active_date": 4100, "impressions": 4100, "last_active_date": 4100, "mart_created_at": 4236, "month": 3839, "monthly_regional_amazon_roas_30d": 3801, "regional_conversion_concentration": 3800, "regional_cost_concentration": 4100, "regional_cost_share_pct": 4054, "regional_impression_share_pct": 4069, "report_month": 4100, "spend": 4236, "year": 3123} |
+| spend | {"attributed_conversions_14_day": 4236, "attributed_conversions_30_day": 4236, "attributed_sales_14_day": 4236, "attributed_sales_30_day": 4236, "avg_cpa": 4236, "avg_cpc": 4236, "avg_cpm": 4236, "avg_ctr_percent": 4236, "avg_daily_regional_clicks": 4064, "avg_daily_regional_impressions": 4096, "avg_daily_regional_spend": 4099, "avg_roas": 4236, "clicks": 4083, "conversions": 3623, "conversions_value": 3801, "days_active_in_month": 3189, "first_active_date": 4100, "impressions": 4100, "last_active_date": 4100, "mart_created_at": 4236, "month": 3839, "monthly_regional_amazon_roas_30d": 3801, "regional_conversion_concentration": 3800, "regional_cost_concentration": 4100, "regional_cost_share_pct": 4054, "regional_impression_share_pct": 4069, "report_month": 4100, "spend": 4100, "year": 3123} |
+| attributed_sales_14_day | {"attributed_conversions_14_day": 4236, "attributed_conversions_30_day": 4236, "attributed_sales_14_day": 3108, "attributed_sales_30_day": 4236, "avg_cpa": 4236, "avg_cpc": 4236, "avg_cpm": 4236, "avg_ctr_percent": 4236, "avg_daily_regional_clicks": 3927, "avg_daily_regional_impressions": 3969, "avg_daily_regional_spend": 3971, "avg_roas": 4236, "clicks": 3948, "conversions": 2936, "conversions_value": 3106, "days_active_in_month": 2997, "first_active_date": 3971, "impressions": 3970, "last_active_date": 3971, "mart_created_at": 4236, "month": 3707, "monthly_regional_amazon_roas_30d": 3108, "regional_conversion_concentration": 3108, "regional_cost_concentration": 3971, "regional_cost_share_pct": 3902, "regional_impression_share_pct": 3922, "report_month": 3971, "spend": 4236, "year": 3029} |
+| attributed_sales_30_day | {"attributed_conversions_14_day": 4236, "attributed_conversions_30_day": 4236, "attributed_sales_14_day": 4236, "attributed_sales_30_day": 3131, "avg_cpa": 4236, "avg_cpc": 4236, "avg_cpm": 4236, "avg_ctr_percent": 4236, "avg_daily_regional_clicks": 3959, "avg_daily_regional_impressions": 3992, "avg_daily_regional_spend": 3995, "avg_roas": 4236, "clicks": 3976, "conversions": 2934, "conversions_value": 3131, "days_active_in_month": 3043, "first_active_date": 3995, "impressions": 3994, "last_active_date": 3995, "mart_created_at": 4236, "month": 3710, "monthly_regional_amazon_roas_30d": 3131, "regional_conversion_concentration": 3132, "regional_cost_concentration": 3995, "regional_cost_share_pct": 3928, "regional_impression_share_pct": 3952, "report_month": 3995, "spend": 4236, "year": 3071} |
+| attributed_conversions_14_day | {"attributed_conversions_30_day": 4236, "attributed_sales_14_day": 4236, "attributed_sales_30_day": 4236, "avg_cpa": 4236, "avg_cpc": 4236, "avg_cpm": 4236, "avg_ctr_percent": 4236, "avg_daily_regional_clicks": 2319, "avg_daily_regional_impressions": 2353, "avg_daily_regional_spend": 2354, "avg_roas": 4236, "clicks": 2332, "conversions_value": 1491, "days_active_in_month": 1709, "first_active_date": 2354, "impressions": 2352, "last_active_date": 2354, "mart_created_at": 4236, "month": 2192, "monthly_regional_amazon_roas_30d": 1491, "regional_conversion_concentration": 1484, "regional_cost_concentration": 2354, "regional_cost_share_pct": 2287, "regional_impression_share_pct": 2303, "report_month": 2354, "spend": 4236, "year": 1836} |
+| attributed_conversions_30_day | {"attributed_conversions_14_day": 4236, "attributed_sales_14_day": 4236, "attributed_sales_30_day": 4236, "avg_cpa": 4236, "avg_cpc": 4236, "avg_cpm": 4236, "avg_ctr_percent": 4236, "avg_daily_regional_clicks": 2319, "avg_daily_regional_impressions": 2353, "avg_daily_regional_spend": 2354, "avg_roas": 4236, "clicks": 2332, "conversions_value": 1491, "days_active_in_month": 1709, "first_active_date": 2354, "impressions": 2352, "last_active_date": 2354, "mart_created_at": 4236, "month": 2192, "monthly_regional_amazon_roas_30d": 1491, "regional_conversion_concentration": 1484, "regional_cost_concentration": 2354, "regional_cost_share_pct": 2287, "regional_impression_share_pct": 2303, "report_month": 2354, "spend": 4236, "year": 1836} |
+| avg_ctr_percent | {"attributed_conversions_14_day": 4236, "attributed_conversions_30_day": 4236, "attributed_sales_14_day": 4236, "attributed_sales_30_day": 4236, "avg_cpa": 4236, "avg_cpc": 4236, "avg_cpm": 4236, "avg_ctr_percent": 4099, "avg_daily_regional_clicks": 4067, "avg_daily_regional_impressions": 4097, "avg_daily_regional_spend": 4099, "avg_roas": 4236, "clicks": 4084, "conversions": 3658, "conversions_value": 3824, "days_active_in_month": 3141, "first_active_date": 4099, "impressions": 4098, "last_active_date": 4099, "mart_created_at": 4236, "month": 3808, "monthly_regional_amazon_roas_30d": 3824, "regional_conversion_concentration": 3823, "regional_cost_concentration": 4099, "regional_cost_share_pct": 4056, "regional_impression_share_pct": 4076, "report_month": 4099, "spend": 4236, "year": 3172} |
+| avg_cpc | {"attributed_conversions_14_day": 4236, "attributed_conversions_30_day": 4236, "attributed_sales_14_day": 4236, "attributed_sales_30_day": 4236, "avg_cpa": 4236, "avg_cpc": 4073, "avg_cpm": 4236, "avg_ctr_percent": 4236, "avg_daily_regional_clicks": 4057, "avg_daily_regional_impressions": 4086, "avg_daily_regional_spend": 4086, "avg_roas": 4236, "clicks": 4075, "conversions": 3664, "conversions_value": 3817, "days_active_in_month": 3195, "first_active_date": 4086, "impressions": 4086, "last_active_date": 4086, "mart_created_at": 4236, "month": 3810, "monthly_regional_amazon_roas_30d": 3817, "regional_conversion_concentration": 3817, "regional_cost_concentration": 4086, "regional_cost_share_pct": 4037, "regional_impression_share_pct": 4062, "report_month": 4086, "spend": 4236, "year": 3126} |
+| avg_cpm | {"attributed_conversions_14_day": 4236, "attributed_conversions_30_day": 4236, "attributed_sales_14_day": 4236, "attributed_sales_30_day": 4236, "avg_cpa": 4236, "avg_cpc": 4236, "avg_cpm": 4106, "avg_ctr_percent": 4236, "avg_daily_regional_clicks": 4082, "avg_daily_regional_impressions": 4104, "avg_daily_regional_spend": 4106, "avg_roas": 4236, "clicks": 4096, "conversions": 3746, "conversions_value": 3886, "days_active_in_month": 3194, "first_active_date": 4106, "impressions": 4106, "last_active_date": 4106, "mart_created_at": 4236, "month": 3881, "monthly_regional_amazon_roas_30d": 3886, "regional_conversion_concentration": 3886, "regional_cost_concentration": 4106, "regional_cost_share_pct": 4070, "regional_impression_share_pct": 4082, "report_month": 4106, "spend": 4236, "year": 3133} |
+| avg_cpa | {"attributed_conversions_14_day": 4236, "attributed_conversions_30_day": 4236, "attributed_sales_14_day": 4236, "attributed_sales_30_day": 4236, "avg_cpa": 3147, "avg_cpc": 4236, "avg_cpm": 4236, "avg_ctr_percent": 4236, "avg_daily_regional_clicks": 3973, "avg_daily_regional_impressions": 4008, "avg_daily_regional_spend": 4011, "avg_roas": 4236, "clicks": 3992, "conversions": 2958, "conversions_value": 3148, "days_active_in_month": 3078, "first_active_date": 4011, "impressions": 4009, "last_active_date": 4011, "mart_created_at": 4236, "month": 3753, "monthly_regional_amazon_roas_30d": 3148, "regional_conversion_concentration": 3148, "regional_cost_concentration": 4011, "regional_cost_share_pct": 3949, "regional_impression_share_pct": 3966, "report_month": 4011, "spend": 4236, "year": 3051} |
+| avg_roas | {"attributed_conversions_14_day": 4236, "attributed_conversions_30_day": 4236, "attributed_sales_14_day": 4236, "attributed_sales_30_day": 4236, "avg_cpa": 4236, "avg_cpc": 4236, "avg_cpm": 4236, "avg_ctr_percent": 4236, "avg_daily_regional_clicks": 4064, "avg_daily_regional_impressions": 4096, "avg_daily_regional_spend": 4099, "avg_roas": 3801, "clicks": 4083, "conversions": 3623, "conversions_value": 3801, "days_active_in_month": 3189, "first_active_date": 4100, "impressions": 4100, "last_active_date": 4100, "mart_created_at": 4236, "month": 3839, "monthly_regional_amazon_roas_30d": 3801, "regional_conversion_concentration": 3800, "regional_cost_concentration": 4100, "regional_cost_share_pct": 4054, "regional_impression_share_pct": 4069, "report_month": 4100, "spend": 4236, "year": 3123} |
+| mart_created_at | {"attributed_conversions_14_day": 4236, "attributed_conversions_30_day": 4236, "attributed_sales_14_day": 4236, "attributed_sales_30_day": 4236, "avg_cpa": 4236, "avg_cpc": 4236, "avg_cpm": 4236, "avg_ctr_percent": 4236, "avg_daily_regional_clicks": 4064, "avg_daily_regional_impressions": 4096, "avg_daily_regional_spend": 4099, "avg_roas": 4236, "clicks": 4083, "conversions": 3623, "conversions_value": 3801, "days_active_in_month": 3189, "first_active_date": 4100, "impressions": 4100, "last_active_date": 4100, "month": 3839, "monthly_regional_amazon_roas_30d": 3801, "regional_conversion_concentration": 3800, "regional_cost_concentration": 4100, "regional_cost_share_pct": 4054, "regional_impression_share_pct": 4069, "report_month": 4100, "spend": 4236, "year": 3123} |
+
+规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
+
+## 规则问题
+
+ 评测键并不唯一，v2未指定重复键残余行如何配对；沿用已验证脚本：先抵消相同行，再在同键内按整行字典序配对。格子数会包含配对变化，主因排序是此固定口径下的结果；没有把单列边际差异直接当整表格子规模。
+
+## 证据路径
+
+- 精简材料包：`records/020_packages/020_impl-006_ad_reporting__monthly_campaign_region_report.md`。
+- 重跑：`records/020_reruns_impl-006_ad_reporting__monthly_campaign_region_report.json`（含old/new、偏移、SHA-256、全部层级逐列计数）。
+- 核实：`records/020_queries.json`；校准另见 `records/020_calibration_queries.json`。
+- 轨迹：`records/020_trace_audit.json` 中逐event路径；归档 `traces/dacomp_deimpl_prev.tar.gz`。
+- 输入快照：`records/020_input_before.json`。
