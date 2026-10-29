@@ -1,0 +1,3432 @@
+# impl-004 / stg_salesforce__contact_history
+
+## basic_information
+
+```json
+{
+  "task": "impl-004",
+  "layer": "staging",
+  "table": "stg_salesforce__contact_history",
+  "status": "待标注",
+  "difference_source": {
+    "kind": "original_007_009",
+    "record": "records/007_tolerance_tables.jsonl",
+    "detail_record": "/home/katherine/Assumption_Ledger/records/004_staging_impl-004.json",
+    "candidate_date": null,
+    "selection_reason": "未进入 011，沿用原差异"
+  },
+  "status_record": "records/012_statuses.jsonl",
+  "package_scope": "仅原文和机械统计；未概括轨迹、未推测原因"
+}
+```
+
+## contract_specification
+
+```json
+{
+  "source_path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-004/docs/data_contract.yaml",
+  "source_sha256": "d433529813aab287d308bae72d207de1f80e4ce970b626d50a6806bae2b08442",
+  "parse_mode": "strict",
+  "requested_table": "stg_salesforce__contact_history",
+  "status": "found"
+}
+```
+```json
+{
+  "yaml_path": [
+    "staging_contract",
+    "tables",
+    4
+  ],
+  "start_line": 432,
+  "end_line": 490
+}
+```
+```yaml
+    - name: stg_salesforce__contact_history
+      description: "Historical tracking of contact changes"
+      source_table: "raw.contact_history"
+      columns:
+        - name: contact_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: account_id
+          data_type: VARCHAR
+        - name: created_date
+          data_type: TIMESTAMP
+        - name: contact_description
+          data_type: VARCHAR
+        - name: email
+          data_type: VARCHAR
+        - name: first_name
+          data_type: VARCHAR
+        - name: is_deleted
+          data_type: BOOLEAN
+        - name: last_activity_date
+          data_type: DATE
+          validation_rules:
+            - rule: "last_activity_date = CASE WHEN last_activity_date IS NOT NULL AND last_activity_date > CURRENT_DATE THEN NULL WHEN last_activity_date IS NOT NULL AND last_activity_date < '2020-01-01' THEN NULL ELSE last_activity_date END"
+              on_failure: nullify_field
+        - name: last_modified_date
+          data_type: TIMESTAMP
+        - name: last_name
+          data_type: VARCHAR
+        - name: lead_source
+          data_type: VARCHAR
+        - name: mailing_city
+          data_type: VARCHAR
+        - name: mailing_country
+          data_type: VARCHAR
+        - name: mailing_postal_code
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "mailing_postal_code = CASE WHEN mailing_postal_code = '' THEN NULL WHEN mailing_postal_code IS NOT NULL AND LENGTH(TRIM(mailing_postal_code)) < 3 THEN DELETE_ROW WHEN mailing_postal_code IS NOT NULL AND LENGTH(TRIM(mailing_postal_code)) > 12 THEN NULL ELSE UPPER(TRIM(mailing_postal_code)) END"
+              on_failure: correct
+        - name: mailing_state
+          data_type: VARCHAR
+        - name: mailing_street
+          data_type: VARCHAR
+        - name: mobile_phone
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "mobile_phone = CASE WHEN mobile_phone = '' THEN NULL WHEN mobile_phone IS NOT NULL AND LENGTH(REGEXP_REPLACE(mobile_phone, '[^0-9]', '')) < 10 THEN NULL ELSE REGEXP_REPLACE(mobile_phone, '[^0-9+()-]', '') END"
+              on_failure: nullify_field
+        - name: contact_name
+          data_type: VARCHAR
+        - name: owner_id
+          data_type: VARCHAR
+        - name: phone
+          data_type: VARCHAR
+        - name: title
+          data_type: VARCHAR
+        - name: history_unique_key
+          data_type: VARCHAR
+
+```
+
+## agent_final_SQL
+
+```json
+{
+  "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+  "sha256": "6fbac2cdaddd1bdd3dcab9b556649f35b3dc780b74d1f217fd60298d5940727f",
+  "start_line": 1,
+  "end_line": 30
+}
+```
+```sql
+WITH source_rows AS (
+    SELECT
+        CAST("id" AS VARCHAR) AS contact_id,
+        CAST("account_id" AS VARCHAR) AS account_id,
+        CAST("_fivetran_start" AS TIMESTAMP) AS created_date,
+        CAST("description" AS VARCHAR) AS contact_description,
+        CAST("email" AS VARCHAR) AS email,
+        CAST("first_name" AS VARCHAR) AS first_name,
+        CAST("is_deleted" AS BOOLEAN) AS is_deleted,
+        CAST("last_activity_date" AS DATE) AS last_activity_date,
+        CAST("last_modified_date" AS TIMESTAMP) AS last_modified_date,
+        CAST("last_name" AS VARCHAR) AS last_name,
+        CAST("lead_source" AS VARCHAR) AS lead_source,
+        CAST("mailing_city" AS VARCHAR) AS mailing_city,
+        CAST("mailing_country" AS VARCHAR) AS mailing_country,
+        CASE WHEN CAST("mailing_postal_code" AS VARCHAR) = '' THEN NULL WHEN LENGTH(TRIM(CAST("mailing_postal_code" AS VARCHAR))) > 12 THEN NULL ELSE UPPER(TRIM(CAST("mailing_postal_code" AS VARCHAR))) END AS mailing_postal_code,
+        CAST("mailing_state" AS VARCHAR) AS mailing_state,
+        CAST("mailing_street" AS VARCHAR) AS mailing_street,
+        CASE WHEN CAST("mobile_phone" AS VARCHAR) = '' THEN NULL WHEN LENGTH(REGEXP_REPLACE(CAST("mobile_phone" AS VARCHAR), '[^0-9]', '')) < 10 THEN NULL ELSE REGEXP_REPLACE(CAST("mobile_phone" AS VARCHAR), '[^0-9+()-]', '') END AS mobile_phone,
+        CAST("name" AS VARCHAR) AS contact_name,
+        CAST("owner_id" AS VARCHAR) AS owner_id,
+        CAST("phone" AS VARCHAR) AS phone,
+        CAST("title" AS VARCHAR) AS title,
+        CAST(hash("_fivetran_start", "_fivetran_end") AS VARCHAR) AS history_unique_key
+    FROM raw.contact_history
+)
+SELECT *
+FROM source_rows
+WHERE contact_id IS NOT NULL AND
+        ("mailing_postal_code" IS NULL OR "mailing_postal_code" = '' OR LENGTH(TRIM(CAST("mailing_postal_code" AS VARCHAR))) >= 3)
+```
+
+## gold_SQL_仅供定位差异
+
+```json
+{
+  "path": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+  "sha256": "4f31eb34711521500102c6de935495c2fc48a6247320d57eb5e3662799aca094",
+  "start_line": 1,
+  "end_line": 110
+}
+```
+```sql
+with base as (
+    select *
+    from raw.contact_history
+),
+
+validated as (
+    select
+        id,
+        account_id,
+        -- Generate created_date as current timestamp for history tracking since raw table might not have it
+        current_timestamp as created_date,
+        description,
+        email,
+        first_name,
+        -- Apply validation rule for is_deleted
+        case
+            when is_deleted is null then false
+            when is_deleted not in (true, false) then false
+            else is_deleted
+        end as is_deleted,
+        -- Apply validation rule for last_activity_date
+        case
+            when last_activity_date is not null and last_activity_date > current_date then null
+            when last_activity_date is not null and last_activity_date < '2020-01-01' then null
+            else last_activity_date
+        end as last_activity_date,
+        last_modified_date,
+        last_name,
+        lead_source,
+        mailing_city,
+        mailing_country,
+        -- Missing column from raw data - set to null
+        cast(null as varchar) as mailing_country_code,
+        -- Apply validation rule for mailing_postal_code
+        case
+            when mailing_postal_code = '' then null
+            when mailing_postal_code is not null and length(trim(mailing_postal_code)) < 3 then null
+            when mailing_postal_code is not null and length(trim(mailing_postal_code)) > 12 then null
+            else upper(trim(mailing_postal_code))
+        end as mailing_postal_code,
+        mailing_state,
+        mailing_street,
+        -- Apply validation rule for mobile_phone - delete rows with invalid phone numbers
+        case
+            when mobile_phone = '' then null
+            when mobile_phone is not null and length(regexp_replace(mobile_phone, '[^0-9]', '')) < 10 then null
+            else regexp_replace(mobile_phone, '[^0-9+()-]', '')
+        end as mobile_phone,
+        name,
+        owner_id,
+        phone,
+        title,
+        -- Generate unique key for history tracking
+        concat(id, '_', current_timestamp::varchar) as history_unique_key
+    from base
+    -- Delete rows with invalid phone numbers according to YAML spec
+    where (mobile_phone = '' or mobile_phone is null or length(regexp_replace(mobile_phone, '[^0-9]', '')) >= 10)
+)
+
+select
+    cast(contact_id as varchar) as contact_id,
+    cast(account_id as varchar) as account_id,
+    cast(created_date as timestamp) as created_date,
+    cast(description as varchar) as contact_description,
+    cast(email as varchar) as email,
+    cast(first_name as varchar) as first_name,
+    cast(is_deleted as boolean) as is_deleted,
+    cast(last_activity_date as date) as last_activity_date,
+    cast(last_modified_date as timestamp) as last_modified_date,
+    cast(last_name as varchar) as last_name,
+    cast(lead_source as varchar) as lead_source,
+    cast(mailing_city as varchar) as mailing_city,
+    cast(mailing_country as varchar) as mailing_country,
+    cast(mailing_country_code as varchar) as mailing_country_code,
+    cast(mailing_postal_code as varchar) as mailing_postal_code,
+    cast(mailing_state as varchar) as mailing_state,
+    cast(mailing_street as varchar) as mailing_street,
+    cast(mobile_phone as varchar) as mobile_phone,
+    cast(name as varchar) as contact_name,
+    cast(owner_id as varchar) as owner_id,
+    cast(phone as varchar) as phone,
+    cast(title as varchar) as title,
+    cast(history_unique_key as varchar) as history_unique_key
+from (
+    select
+        id as contact_id,
+        account_id,
+        created_date,
+        description,
+        email,
+        first_name,
+        is_deleted,
+        last_activity_date,
+        last_modified_date,
+        last_name,
+        lead_source,
+        mailing_city,
+        mailing_country,
+        mailing_country_code,
+        mailing_postal_code,
+        mailing_state,
+        mailing_street,
+        mobile_phone,
+        name,
+        owner_id,
+        phone,
+        title,
+        history_unique_key
+    from validated
+) as final_data
+```
+
+## differences
+
+```json
+{
+  "kind": "original_007_009",
+  "record": "records/007_tolerance_tables.jsonl",
+  "detail_record": "/home/katherine/Assumption_Ledger/records/004_staging_impl-004.json",
+  "prediction_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/salesforce.duckdb",
+  "gold_database": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-004/salesforce.duckdb",
+  "actual_schema": "staging",
+  "table": "stg_salesforce__contact_history",
+  "candidate_date": null,
+  "comparison_columns": [
+    "account_id",
+    "contact_description",
+    "contact_name",
+    "email",
+    "first_name",
+    "is_deleted",
+    "last_activity_date",
+    "last_modified_date",
+    "last_name",
+    "lead_source",
+    "mailing_city",
+    "mailing_country",
+    "mailing_postal_code",
+    "mailing_state",
+    "mailing_street",
+    "mobile_phone",
+    "owner_id",
+    "phone",
+    "title"
+  ],
+  "key_columns": [
+    "contact_id",
+    "account_id",
+    "mailing_postal_code",
+    "owner_id",
+    "history_unique_key"
+  ],
+  "prediction_rows": 3000,
+  "gold_rows": 3000,
+  "row_delta": 0,
+  "key_statistics": {
+    "pred_distinct_keys": 3000,
+    "gold_distinct_keys": 2369,
+    "pred_duplicate_key_groups": 0,
+    "gold_duplicate_key_groups": 559,
+    "pred_only_keys": 3000,
+    "gold_only_keys": 2369,
+    "shared_keys": 0,
+    "shared_nonunique_key_groups": 0
+  },
+  "l0_column_differences": [
+    {
+      "column": "account_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "contact_description",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "email",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "first_name",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "is_deleted",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "last_activity_date",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "last_modified_date",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "last_name",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "lead_source",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "mailing_city",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "mailing_country",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "mailing_postal_code",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "mailing_state",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "mailing_street",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "mobile_phone",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "contact_name",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "owner_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "phone",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "title",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    }
+  ],
+  "l3_column_differences": null,
+  "whole_match_level": "仍不匹配",
+  "keyed_match_level": null,
+  "selection_reason": "未进入 011，沿用原差异",
+  "value_representation": "Unmodified DuckDB CAST AS VARCHAR; SQL NULL is JSON null. Keys use the unchanged historical L0 normalization.",
+  "new_queries_only_read_existing_results": true,
+  "one_side_key_examples": {
+    "prediction_only": [
+      {
+        "key_normalized": {
+          "contact_id": "00302eq38cvteod",
+          "account_id": "00183xzbvywn0mm",
+          "mailing_postal_code": "69843",
+          "owner_id": "005hmn9btohnmdp",
+          "history_unique_key": "4938918593705415477"
+        },
+        "key_raw_text": {
+          "contact_id": "00302EQ38cvTeOD",
+          "account_id": "00183XzBVYWN0mM",
+          "mailing_postal_code": "69843",
+          "owner_id": "005HmN9BTohnmdp",
+          "history_unique_key": "4938918593705415477"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "00302eq38cvteod",
+          "account_id": "00183xzbvywn0mm",
+          "mailing_postal_code": "69843",
+          "owner_id": "005hmn9btohnmdp",
+          "history_unique_key": "9858790954915291170"
+        },
+        "key_raw_text": {
+          "contact_id": "00302EQ38cvTeOD",
+          "account_id": "00183XzBVYWN0mM",
+          "mailing_postal_code": "69843",
+          "owner_id": "005HmN9BTohnmdp",
+          "history_unique_key": "9858790954915291170"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "00302xsineeu7po",
+          "account_id": "001kafbrz7nsuyq",
+          "mailing_postal_code": "89468",
+          "owner_id": "005qwqe3wccg6dr",
+          "history_unique_key": "13740525663967025893"
+        },
+        "key_raw_text": {
+          "contact_id": "00302XSINEEu7pO",
+          "account_id": "001KAFBrz7NSUyQ",
+          "mailing_postal_code": "89468",
+          "owner_id": "005QWQE3wcCg6Dr",
+          "history_unique_key": "13740525663967025893"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "00304g8e3czm60c",
+          "account_id": "001twajuqkhennu",
+          "mailing_postal_code": "19774",
+          "owner_id": "005gsostem9gsum",
+          "history_unique_key": "7820150521184537574"
+        },
+        "key_raw_text": {
+          "contact_id": "00304G8e3czm60C",
+          "account_id": "001TWaJUQkHENNu",
+          "mailing_postal_code": "19774",
+          "owner_id": "005GsOSTEM9gsuM",
+          "history_unique_key": "7820150521184537574"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "00306xqxxhokuf1",
+          "account_id": "001td22iyaji4q2",
+          "mailing_postal_code": "23558",
+          "owner_id": "005e7g2czedicdr",
+          "history_unique_key": "16311265144497965042"
+        },
+        "key_raw_text": {
+          "contact_id": "00306XQXXhoKuF1",
+          "account_id": "001TD22iyaji4Q2",
+          "mailing_postal_code": "23558",
+          "owner_id": "005e7g2czEDicdr",
+          "history_unique_key": "16311265144497965042"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "0030bffnwfxxuye",
+          "account_id": "001msu7xtlzwqi6",
+          "mailing_postal_code": "04853",
+          "owner_id": "005rio1cjb4lvzd",
+          "history_unique_key": "10223632994051610023"
+        },
+        "key_raw_text": {
+          "contact_id": "0030bfFnWfXxUye",
+          "account_id": "001mSu7xTLzwqi6",
+          "mailing_postal_code": "04853",
+          "owner_id": "005rio1CjB4LvZd",
+          "history_unique_key": "10223632994051610023"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "0030c7xpwdefgyi",
+          "account_id": "001lwj2e3lndrps",
+          "mailing_postal_code": "10356",
+          "owner_id": "005efzp0x2crlqk",
+          "history_unique_key": "14396876341584446272"
+        },
+        "key_raw_text": {
+          "contact_id": "0030c7XpWDEfgyi",
+          "account_id": "001lwJ2E3lNDrPs",
+          "mailing_postal_code": "10356",
+          "owner_id": "005eFZP0x2cRlqK",
+          "history_unique_key": "14396876341584446272"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "0030d0sqzkn7yds",
+          "account_id": "001grdqr45kyvp2",
+          "mailing_postal_code": "65449",
+          "owner_id": "00595i1jwqv7vbe",
+          "history_unique_key": "18122359511253777559"
+        },
+        "key_raw_text": {
+          "contact_id": "0030D0sqZkN7YDS",
+          "account_id": "001GrDQR45Kyvp2",
+          "mailing_postal_code": "65449",
+          "owner_id": "00595i1JwQV7Vbe",
+          "history_unique_key": "18122359511253777559"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "0030dcai2l33sop",
+          "account_id": "001sornwmo9loit",
+          "mailing_postal_code": "89787",
+          "owner_id": "0050a8fwycyom0m",
+          "history_unique_key": "15397239939876879225"
+        },
+        "key_raw_text": {
+          "contact_id": "0030Dcai2l33SoP",
+          "account_id": "001sorNWMo9LOit",
+          "mailing_postal_code": "89787",
+          "owner_id": "0050a8fwyCYOM0M",
+          "history_unique_key": "15397239939876879225"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "0030ffqzyiei9cl",
+          "account_id": "001rns5hll7vfpd",
+          "mailing_postal_code": "88734",
+          "owner_id": "005jolxywcfrzvo",
+          "history_unique_key": "3461701501144488164"
+        },
+        "key_raw_text": {
+          "contact_id": "0030ffqzyIEI9Cl",
+          "account_id": "001rNS5HLl7Vfpd",
+          "mailing_postal_code": "88734",
+          "owner_id": "005JOLXyWCFRzVo",
+          "history_unique_key": "3461701501144488164"
+        },
+        "rows_with_key": 1
+      }
+    ],
+    "gold_only": [
+      {
+        "key_normalized": {
+          "contact_id": "00302eq38cvteod",
+          "account_id": "00183xzbvywn0mm",
+          "mailing_postal_code": "69843",
+          "owner_id": "005hmn9btohnmdp",
+          "history_unique_key": "00302eq38cvteod_2025-10-24 15:03:11.630125+08"
+        },
+        "key_raw_text": {
+          "contact_id": "00302EQ38cvTeOD",
+          "account_id": "00183XzBVYWN0mM",
+          "mailing_postal_code": "69843",
+          "owner_id": "005HmN9BTohnmdp",
+          "history_unique_key": "00302EQ38cvTeOD_2025-10-24 15:03:11.630125+08"
+        },
+        "rows_with_key": 2
+      },
+      {
+        "key_normalized": {
+          "contact_id": "00302xsineeu7po",
+          "account_id": "001kafbrz7nsuyq",
+          "mailing_postal_code": "89468",
+          "owner_id": "005qwqe3wccg6dr",
+          "history_unique_key": "00302xsineeu7po_2025-10-24 15:03:11.630125+08"
+        },
+        "key_raw_text": {
+          "contact_id": "00302XSINEEu7pO",
+          "account_id": "001KAFBrz7NSUyQ",
+          "mailing_postal_code": "89468",
+          "owner_id": "005QWQE3wcCg6Dr",
+          "history_unique_key": "00302XSINEEu7pO_2025-10-24 15:03:11.630125+08"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "00304g8e3czm60c",
+          "account_id": "001twajuqkhennu",
+          "mailing_postal_code": "19774",
+          "owner_id": "005gsostem9gsum",
+          "history_unique_key": "00304g8e3czm60c_2025-10-24 15:03:11.630125+08"
+        },
+        "key_raw_text": {
+          "contact_id": "00304G8e3czm60C",
+          "account_id": "001TWaJUQkHENNu",
+          "mailing_postal_code": "19774",
+          "owner_id": "005GsOSTEM9gsuM",
+          "history_unique_key": "00304G8e3czm60C_2025-10-24 15:03:11.630125+08"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "00306xqxxhokuf1",
+          "account_id": "001td22iyaji4q2",
+          "mailing_postal_code": "23558",
+          "owner_id": "005e7g2czedicdr",
+          "history_unique_key": "00306xqxxhokuf1_2025-10-24 15:03:11.630125+08"
+        },
+        "key_raw_text": {
+          "contact_id": "00306XQXXhoKuF1",
+          "account_id": "001TD22iyaji4Q2",
+          "mailing_postal_code": "23558",
+          "owner_id": "005e7g2czEDicdr",
+          "history_unique_key": "00306XQXXhoKuF1_2025-10-24 15:03:11.630125+08"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "0030bffnwfxxuye",
+          "account_id": "001msu7xtlzwqi6",
+          "mailing_postal_code": "04853",
+          "owner_id": "005rio1cjb4lvzd",
+          "history_unique_key": "0030bffnwfxxuye_2025-10-24 15:03:11.630125+08"
+        },
+        "key_raw_text": {
+          "contact_id": "0030bfFnWfXxUye",
+          "account_id": "001mSu7xTLzwqi6",
+          "mailing_postal_code": "04853",
+          "owner_id": "005rio1CjB4LvZd",
+          "history_unique_key": "0030bfFnWfXxUye_2025-10-24 15:03:11.630125+08"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "0030c7xpwdefgyi",
+          "account_id": "001lwj2e3lndrps",
+          "mailing_postal_code": "10356",
+          "owner_id": "005efzp0x2crlqk",
+          "history_unique_key": "0030c7xpwdefgyi_2025-10-24 15:03:11.630125+08"
+        },
+        "key_raw_text": {
+          "contact_id": "0030c7XpWDEfgyi",
+          "account_id": "001lwJ2E3lNDrPs",
+          "mailing_postal_code": "10356",
+          "owner_id": "005eFZP0x2cRlqK",
+          "history_unique_key": "0030c7XpWDEfgyi_2025-10-24 15:03:11.630125+08"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "0030d0sqzkn7yds",
+          "account_id": "001grdqr45kyvp2",
+          "mailing_postal_code": "65449",
+          "owner_id": "00595i1jwqv7vbe",
+          "history_unique_key": "0030d0sqzkn7yds_2025-10-24 15:03:11.630125+08"
+        },
+        "key_raw_text": {
+          "contact_id": "0030D0sqZkN7YDS",
+          "account_id": "001GrDQR45Kyvp2",
+          "mailing_postal_code": "65449",
+          "owner_id": "00595i1JwQV7Vbe",
+          "history_unique_key": "0030D0sqZkN7YDS_2025-10-24 15:03:11.630125+08"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "0030dcai2l33sop",
+          "account_id": "001sornwmo9loit",
+          "mailing_postal_code": "89787",
+          "owner_id": "0050a8fwycyom0m",
+          "history_unique_key": "0030dcai2l33sop_2025-10-24 15:03:11.630125+08"
+        },
+        "key_raw_text": {
+          "contact_id": "0030Dcai2l33SoP",
+          "account_id": "001sorNWMo9LOit",
+          "mailing_postal_code": "89787",
+          "owner_id": "0050a8fwyCYOM0M",
+          "history_unique_key": "0030Dcai2l33SoP_2025-10-24 15:03:11.630125+08"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "0030ffqzyiei9cl",
+          "account_id": "001rns5hll7vfpd",
+          "mailing_postal_code": "88734",
+          "owner_id": "005jolxywcfrzvo",
+          "history_unique_key": "0030ffqzyiei9cl_2025-10-24 15:03:11.630125+08"
+        },
+        "key_raw_text": {
+          "contact_id": "0030ffqzyIEI9Cl",
+          "account_id": "001rNS5HLl7Vfpd",
+          "mailing_postal_code": "88734",
+          "owner_id": "005JOLXyWCFRzVo",
+          "history_unique_key": "0030ffqzyIEI9Cl_2025-10-24 15:03:11.630125+08"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "contact_id": "0030h3tqqlnz5dh",
+          "account_id": "001fvroubpcnwff",
+          "mailing_postal_code": "53775",
+          "owner_id": "005oyxdjmceata7",
+          "history_unique_key": "0030h3tqqlnz5dh_2025-10-24 15:03:11.630125+08"
+        },
+        "key_raw_text": {
+          "contact_id": "0030H3TQqLNZ5dH",
+          "account_id": "001FVrOUbPCNWfF",
+          "mailing_postal_code": "53775",
+          "owner_id": "005oYXdJmceAta7",
+          "history_unique_key": "0030H3TQqLNZ5dH_2025-10-24 15:03:11.630125+08"
+        },
+        "rows_with_key": 1
+      }
+    ]
+  },
+  "column_details": [
+    {
+      "column": "account_id",
+      "l0_counts_verbatim": {
+        "column": "account_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "contact_description",
+      "l0_counts_verbatim": {
+        "column": "contact_description",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "email",
+      "l0_counts_verbatim": {
+        "column": "email",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "first_name",
+      "l0_counts_verbatim": {
+        "column": "first_name",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "is_deleted",
+      "l0_counts_verbatim": {
+        "column": "is_deleted",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "BOOLEAN",
+      "gold_actual_type": "BOOLEAN"
+    },
+    {
+      "column": "last_activity_date",
+      "l0_counts_verbatim": {
+        "column": "last_activity_date",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "DATE",
+      "gold_actual_type": "DATE"
+    },
+    {
+      "column": "last_modified_date",
+      "l0_counts_verbatim": {
+        "column": "last_modified_date",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "TIMESTAMP",
+      "gold_actual_type": "TIMESTAMP"
+    },
+    {
+      "column": "last_name",
+      "l0_counts_verbatim": {
+        "column": "last_name",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "lead_source",
+      "l0_counts_verbatim": {
+        "column": "lead_source",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "mailing_city",
+      "l0_counts_verbatim": {
+        "column": "mailing_city",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "mailing_country",
+      "l0_counts_verbatim": {
+        "column": "mailing_country",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "mailing_postal_code",
+      "l0_counts_verbatim": {
+        "column": "mailing_postal_code",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "mailing_state",
+      "l0_counts_verbatim": {
+        "column": "mailing_state",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "mailing_street",
+      "l0_counts_verbatim": {
+        "column": "mailing_street",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "mobile_phone",
+      "l0_counts_verbatim": {
+        "column": "mobile_phone",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "contact_name",
+      "l0_counts_verbatim": {
+        "column": "contact_name",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "owner_id",
+      "l0_counts_verbatim": {
+        "column": "owner_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "phone",
+      "l0_counts_verbatim": {
+        "column": "phone",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "title",
+      "l0_counts_verbatim": {
+        "column": "title",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    }
+  ]
+}
+```
+
+## agent_constraints_006
+
+```json
+{
+  "source_record": "records/006_contract_impl-004.json",
+  "declarations": {
+    "grain": [],
+    "primary_key": [],
+    "not_null": [
+      {
+        "columns": [
+          "contact_id"
+        ],
+        "sources": [
+          {
+            "yaml_path": [
+              "staging_contract",
+              "tables",
+              4,
+              "columns",
+              0,
+              "constraints",
+              0
+            ],
+            "start_line": 438,
+            "end_line": 438,
+            "original_excerpt": "          constraints: [not_null]\n",
+            "decoded_value": [
+              "not_null"
+            ]
+          }
+        ]
+      }
+    ],
+    "unique": []
+  },
+  "agent": {
+    "table_exists": true,
+    "actual_schema": "staging",
+    "table_type": "BASE TABLE",
+    "same_name_other_schemas": [],
+    "row_count": 3000,
+    "checks": {
+      "grain": [],
+      "primary_key": [],
+      "not_null": [
+        {
+          "columns": [
+            "contact_id"
+          ],
+          "status": "checked",
+          "violated": false,
+          "sql_null_rows": 0
+        }
+      ],
+      "unique": []
+    },
+    "actual_table": "stg_salesforce__contact_history",
+    "actual_columns": [
+      "contact_id",
+      "account_id",
+      "created_date",
+      "contact_description",
+      "email",
+      "first_name",
+      "is_deleted",
+      "last_activity_date",
+      "last_modified_date",
+      "last_name",
+      "lead_source",
+      "mailing_city",
+      "mailing_country",
+      "mailing_postal_code",
+      "mailing_state",
+      "mailing_street",
+      "mobile_phone",
+      "contact_name",
+      "owner_id",
+      "phone",
+      "title",
+      "history_unique_key"
+    ],
+    "missing_declared_columns": [],
+    "not_null_count_sql": "SELECT count(*) FILTER(WHERE \"contact_id\" IS NULL) FROM \"staging\".\"stg_salesforce__contact_history\"",
+    "categories": {
+      "grain": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      },
+      "primary_key": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      },
+      "not_null": {
+        "status": "checked_no_violation",
+        "violated": false,
+        "declared_checks": 1,
+        "checked_checks": 1,
+        "unknown_checks": 0,
+        "complete": true
+      },
+      "unique": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      }
+    },
+    "any_constraint_violated": false
+  }
+}
+```
+
+## all_markers_and_evidence_008
+
+```json
+{
+  "source_record": "records/008_table_scan.jsonl",
+  "verbatim_record": {
+    "task": "impl-004",
+    "layer": "staging",
+    "table": "stg_salesforce__contact_history",
+    "logical_contract_table": "stg_salesforce__contact_history",
+    "delivery_name_mapping_evidence": [],
+    "inventory_sources": {
+      "retained_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/salesforce.duckdb",
+      "present_in_database": true,
+      "agent_final_sql_files": [
+        "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql"
+      ]
+    },
+    "status_007": {
+      "gold_table_exists_in_original_gold": true,
+      "whole_level_007": "仍不匹配",
+      "007_present": true,
+      "004_failed_set_member": true,
+      "005_failed_set_member": false,
+      "005_current_pred_execution": null,
+      "status_sources": [
+        {
+          "record": "records/007_tolerance_tables.jsonl",
+          "scope": "staging",
+          "rule": "whole_match_level",
+          "value": "仍不匹配",
+          "007_prediction_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/salesforce.duckdb"
+        }
+      ],
+      "status": "待标注",
+      "comparison_lookup_layer": "staging",
+      "comparison_lookup_table": "stg_salesforce__contact_history",
+      "actual_gold_relation_exists": true
+    },
+    "contract": {
+      "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-004/docs/data_contract.yaml",
+      "blocks": [
+        {
+          "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-004/docs/data_contract.yaml",
+          "start_line": 432,
+          "end_line": 489,
+          "original_text": "    - name: stg_salesforce__contact_history\n      description: \"Historical tracking of contact changes\"\n      source_table: \"raw.contact_history\"\n      columns:\n        - name: contact_id\n          data_type: VARCHAR\n          constraints: [not_null]\n        - name: account_id\n          data_type: VARCHAR\n        - name: created_date\n          data_type: TIMESTAMP\n        - name: contact_description\n          data_type: VARCHAR\n        - name: email\n          data_type: VARCHAR\n        - name: first_name\n          data_type: VARCHAR\n        - name: is_deleted\n          data_type: BOOLEAN\n        - name: last_activity_date\n          data_type: DATE\n          validation_rules:\n            - rule: \"last_activity_date = CASE WHEN last_activity_date IS NOT NULL AND last_activity_date > CURRENT_DATE THEN NULL WHEN last_activity_date IS NOT NULL AND last_activity_date < '2020-01-01' THEN NULL ELSE last_activity_date END\"\n              on_failure: nullify_field\n        - name: last_modified_date\n          data_type: TIMESTAMP\n        - name: last_name\n          data_type: VARCHAR\n        - name: lead_source\n          data_type: VARCHAR\n        - name: mailing_city\n          data_type: VARCHAR\n        - name: mailing_country\n          data_type: VARCHAR\n        - name: mailing_postal_code\n          data_type: VARCHAR\n          validation_rules:\n            - rule: \"mailing_postal_code = CASE WHEN mailing_postal_code = '' THEN NULL WHEN mailing_postal_code IS NOT NULL AND LENGTH(TRIM(mailing_postal_code)) < 3 THEN DELETE_ROW WHEN mailing_postal_code IS NOT NULL AND LENGTH(TRIM(mailing_postal_code)) > 12 THEN NULL ELSE UPPER(TRIM(mailing_postal_code)) END\"\n              on_failure: correct\n        - name: mailing_state\n          data_type: VARCHAR\n        - name: mailing_street\n          data_type: VARCHAR\n        - name: mobile_phone\n          data_type: VARCHAR\n          validation_rules:\n            - rule: \"mobile_phone = CASE WHEN mobile_phone = '' THEN NULL WHEN mobile_phone IS NOT NULL AND LENGTH(REGEXP_REPLACE(mobile_phone, '[^0-9]', '')) < 10 THEN NULL ELSE REGEXP_REPLACE(mobile_phone, '[^0-9+()-]', '') END\"\n              on_failure: nullify_field\n        - name: contact_name\n          data_type: VARCHAR\n        - name: owner_id\n          data_type: VARCHAR\n        - name: phone\n          data_type: VARCHAR\n        - name: title\n          data_type: VARCHAR\n        - name: history_unique_key\n          data_type: VARCHAR\n",
+          "yaml_path": [
+            "staging_contract",
+            "tables",
+            4
+          ]
+        }
+      ]
+    },
+    "output": {
+      "status": "checked",
+      "exists": true,
+      "row_count": 3000,
+      "zero_rows": false,
+      "columns": [
+        {
+          "name": "contact_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "account_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "contact_description",
+          "type": "VARCHAR",
+          "nonnull_rows": 847,
+          "sql_null_rows": 2153
+        },
+        {
+          "name": "email",
+          "type": "VARCHAR",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "first_name",
+          "type": "VARCHAR",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "is_deleted",
+          "type": "BOOLEAN",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "last_activity_date",
+          "type": "DATE",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "last_modified_date",
+          "type": "TIMESTAMP",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "last_name",
+          "type": "VARCHAR",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "lead_source",
+          "type": "VARCHAR",
+          "nonnull_rows": 2090,
+          "sql_null_rows": 910
+        },
+        {
+          "name": "mailing_city",
+          "type": "VARCHAR",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "mailing_country",
+          "type": "VARCHAR",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "mailing_postal_code",
+          "type": "VARCHAR",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "mailing_state",
+          "type": "VARCHAR",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "mailing_street",
+          "type": "VARCHAR",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "mobile_phone",
+          "type": "VARCHAR",
+          "nonnull_rows": 2133,
+          "sql_null_rows": 867
+        },
+        {
+          "name": "contact_name",
+          "type": "VARCHAR",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "owner_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "phone",
+          "type": "VARCHAR",
+          "nonnull_rows": 2411,
+          "sql_null_rows": 589
+        },
+        {
+          "name": "title",
+          "type": "VARCHAR",
+          "nonnull_rows": 2585,
+          "sql_null_rows": 415
+        },
+        {
+          "name": "history_unique_key",
+          "type": "VARCHAR",
+          "nonnull_rows": 3000,
+          "sql_null_rows": 0
+        }
+      ],
+      "all_null_columns": [],
+      "constant_nonnull_columns": [
+        {
+          "column": "is_deleted",
+          "type": "BOOLEAN",
+          "value": "false",
+          "value_representation": "DuckDB CAST AS VARCHAR, exact, no normalization",
+          "table_rows": 3000,
+          "contract": {
+            "status": "found",
+            "definitions": [
+              {
+                "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-004/docs/data_contract.yaml",
+                "start_line": 449,
+                "end_line": 450,
+                "original_text": "        - name: is_deleted\n          data_type: BOOLEAN\n",
+                "name": "is_deleted",
+                "description": null,
+                "specification": {
+                  "name": "is_deleted",
+                  "data_type": "BOOLEAN"
+                }
+              }
+            ],
+            "meaning_description_status": "契约未描述含义"
+          }
+        }
+      ],
+      "equal_column_groups": [],
+      "profile_sql": "SELECT count(*),count(\"contact_id\"),min(CAST(\"contact_id\" AS VARCHAR)),max(CAST(\"contact_id\" AS VARCHAR)),sum(hash(CAST(\"contact_id\" AS VARCHAR))),count(\"account_id\"),min(CAST(\"account_id\" AS VARCHAR)),max(CAST(\"account_id\" AS VARCHAR)),sum(hash(CAST(\"account_id\" AS VARCHAR))),count(\"created_date\"),min(CAST(\"created_date\" AS VARCHAR)),max(CAST(\"created_date\" AS VARCHAR)),sum(hash(CAST(\"created_date\" AS VARCHAR))),count(\"contact_description\"),min(CAST(\"contact_description\" AS VARCHAR)),max(CAST(\"contact_description\" AS VARCHAR)),sum(hash(CAST(\"contact_description\" AS VARCHAR))),count(\"email\"),min(CAST(\"email\" AS VARCHAR)),max(CAST(\"email\" AS VARCHAR)),sum(hash(CAST(\"email\" AS VARCHAR))),count(\"first_name\"),min(CAST(\"first_name\" AS VARCHAR)),max(CAST(\"first_name\" AS VARCHAR)),sum(hash(CAST(\"first_name\" AS VARCHAR))),count(\"is_deleted\"),min(CAST(\"is_deleted\" AS VARCHAR)),max(CAST(\"is_deleted\" AS VARCHAR)),sum(hash(CAST(\"is_deleted\" AS VARCHAR))),count(\"last_activity_date\"),min(CAST(\"last_activity_date\" AS VARCHAR)),max(CAST(\"last_activity_date\" AS VARCHAR)),sum(hash(CAST(\"last_activity_date\" AS VARCHAR))),count(\"last_modified_date\"),min(CAST(\"last_modified_date\" AS VARCHAR)),max(CAST(\"last_modified_date\" AS VARCHAR)),sum(hash(CAST(\"last_modified_date\" AS VARCHAR))),count(\"last_name\"),min(CAST(\"last_name\" AS VARCHAR)),max(CAST(\"last_name\" AS VARCHAR)),sum(hash(CAST(\"last_name\" AS VARCHAR))),count(\"lead_source\"),min(CAST(\"lead_source\" AS VARCHAR)),max(CAST(\"lead_source\" AS VARCHAR)),sum(hash(CAST(\"lead_source\" AS VARCHAR))),count(\"mailing_city\"),min(CAST(\"mailing_city\" AS VARCHAR)),max(CAST(\"mailing_city\" AS VARCHAR)),sum(hash(CAST(\"mailing_city\" AS VARCHAR))),count(\"mailing_country\"),min(CAST(\"mailing_country\" AS VARCHAR)),max(CAST(\"mailing_country\" AS VARCHAR)),sum(hash(CAST(\"mailing_country\" AS VARCHAR))),count(\"mailing_postal_code\"),min(CAST(\"mailing_postal_code\" AS VARCHAR)),max(CAST(\"mailing_postal_code\" AS VARCHAR)),sum(hash(CAST(\"mailing_postal_code\" AS VARCHAR))),count(\"mailing_state\"),min(CAST(\"mailing_state\" AS VARCHAR)),max(CAST(\"mailing_state\" AS VARCHAR)),sum(hash(CAST(\"mailing_state\" AS VARCHAR))),count(\"mailing_street\"),min(CAST(\"mailing_street\" AS VARCHAR)),max(CAST(\"mailing_street\" AS VARCHAR)),sum(hash(CAST(\"mailing_street\" AS VARCHAR))),count(\"mobile_phone\"),min(CAST(\"mobile_phone\" AS VARCHAR)),max(CAST(\"mobile_phone\" AS VARCHAR)),sum(hash(CAST(\"mobile_phone\" AS VARCHAR))),count(\"contact_name\"),min(CAST(\"contact_name\" AS VARCHAR)),max(CAST(\"contact_name\" AS VARCHAR)),sum(hash(CAST(\"contact_name\" AS VARCHAR))),count(\"owner_id\"),min(CAST(\"owner_id\" AS VARCHAR)),max(CAST(\"owner_id\" AS VARCHAR)),sum(hash(CAST(\"owner_id\" AS VARCHAR))),count(\"phone\"),min(CAST(\"phone\" AS VARCHAR)),max(CAST(\"phone\" AS VARCHAR)),sum(hash(CAST(\"phone\" AS VARCHAR))),count(\"title\"),min(CAST(\"title\" AS VARCHAR)),max(CAST(\"title\" AS VARCHAR)),sum(hash(CAST(\"title\" AS VARCHAR))),count(\"history_unique_key\"),min(CAST(\"history_unique_key\" AS VARCHAR)),max(CAST(\"history_unique_key\" AS VARCHAR)),sum(hash(CAST(\"history_unique_key\" AS VARCHAR))) FROM \"staging\".\"stg_salesforce__contact_history\"",
+      "equal_column_confirmation_queries": [],
+      "equality_policy": "exact CAST AS VARCHAR per row; no trim/case/numeric/date normalization; both NULL ignored; at least one nonnull equal row; one-sided NULL differs",
+      "actual_schema": "staging",
+      "actual_table": "stg_salesforce__contact_history",
+      "relation_type": "BASE TABLE"
+    },
+    "agent_sql": [
+      {
+        "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+        "status": "parsed",
+        "parser": "30.25.0",
+        "sources": [
+          {
+            "name": "raw.contact_history",
+            "canonical": "raw.contact_history",
+            "locations": [
+              {
+                "line": 25,
+                "end_line": 25
+              }
+            ]
+          }
+        ],
+        "unresolved_source_expressions": [],
+        "row_generator_expressions": [],
+        "outputs": [
+          {
+            "name": "contact_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"id\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 3,
+                "end_line": 3,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "contact_id",
+            "retained_output_ordinal": 1
+          },
+          {
+            "name": "account_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"account_id\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 4,
+                "end_line": 4,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "account_id",
+            "retained_output_ordinal": 2
+          },
+          {
+            "name": "created_date",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"_fivetran_start\" AS TIMESTAMP)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 5,
+                "end_line": 5,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "created_date",
+            "retained_output_ordinal": 3
+          },
+          {
+            "name": "contact_description",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"description\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 6,
+                "end_line": 6,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "contact_description",
+            "retained_output_ordinal": 4
+          },
+          {
+            "name": "email",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"email\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 7,
+                "end_line": 7,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "email",
+            "retained_output_ordinal": 5
+          },
+          {
+            "name": "first_name",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"first_name\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 8,
+                "end_line": 8,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "first_name",
+            "retained_output_ordinal": 6
+          },
+          {
+            "name": "is_deleted",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"is_deleted\" AS BOOLEAN)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 9,
+                "end_line": 9,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "is_deleted",
+            "retained_output_ordinal": 7
+          },
+          {
+            "name": "last_activity_date",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"last_activity_date\" AS DATE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 10,
+                "end_line": 10,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "last_activity_date",
+            "retained_output_ordinal": 8
+          },
+          {
+            "name": "last_modified_date",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"last_modified_date\" AS TIMESTAMP)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 11,
+                "end_line": 11,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "last_modified_date",
+            "retained_output_ordinal": 9
+          },
+          {
+            "name": "last_name",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"last_name\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 12,
+                "end_line": 12,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "last_name",
+            "retained_output_ordinal": 10
+          },
+          {
+            "name": "lead_source",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"lead_source\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 13,
+                "end_line": 13,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "lead_source",
+            "retained_output_ordinal": 11
+          },
+          {
+            "name": "mailing_city",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"mailing_city\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 14,
+                "end_line": 14,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "mailing_city",
+            "retained_output_ordinal": 12
+          },
+          {
+            "name": "mailing_country",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"mailing_country\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 15,
+                "end_line": 15,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "mailing_country",
+            "retained_output_ordinal": 13
+          },
+          {
+            "name": "mailing_postal_code",
+            "alternatives": [
+              {
+                "expression_sql": "CASE WHEN CAST(\"mailing_postal_code\" AS TEXT) = '' THEN NULL WHEN LENGTH(TRIM(CAST(\"mailing_postal_code\" AS TEXT))) > 12 THEN NULL ELSE UPPER(TRIM(CAST(\"mailing_postal_code\" AS TEXT))) END",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 16,
+                "end_line": 16,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "mailing_postal_code",
+            "retained_output_ordinal": 14
+          },
+          {
+            "name": "mailing_state",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"mailing_state\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 17,
+                "end_line": 17,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "mailing_state",
+            "retained_output_ordinal": 15
+          },
+          {
+            "name": "mailing_street",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"mailing_street\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 18,
+                "end_line": 18,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "mailing_street",
+            "retained_output_ordinal": 16
+          },
+          {
+            "name": "mobile_phone",
+            "alternatives": [
+              {
+                "expression_sql": "CASE WHEN CAST(\"mobile_phone\" AS TEXT) = '' THEN NULL WHEN LENGTH(REGEXP_REPLACE(CAST(\"mobile_phone\" AS TEXT), '[^0-9]', '')) < 10 THEN NULL ELSE REGEXP_REPLACE(CAST(\"mobile_phone\" AS TEXT), '[^0-9+()-]', '') END",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 19,
+                "end_line": 19,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "mobile_phone",
+            "retained_output_ordinal": 17
+          },
+          {
+            "name": "contact_name",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"name\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 20,
+                "end_line": 20,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "contact_name",
+            "retained_output_ordinal": 18
+          },
+          {
+            "name": "owner_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"owner_id\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 21,
+                "end_line": 21,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "owner_id",
+            "retained_output_ordinal": 19
+          },
+          {
+            "name": "phone",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"phone\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 22,
+                "end_line": 22,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "phone",
+            "retained_output_ordinal": 20
+          },
+          {
+            "name": "title",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(\"title\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 23,
+                "end_line": 23,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "title",
+            "retained_output_ordinal": 21
+          },
+          {
+            "name": "history_unique_key",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(HASH(\"_fivetran_start\", \"_fivetran_end\") AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+                "line": 24,
+                "end_line": 24,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "history_unique_key",
+            "retained_output_ordinal": 22
+          }
+        ],
+        "null_literal_outputs": [],
+        "constant_literal_outputs": [],
+        "runtime_hits": []
+      }
+    ],
+    "source_comparison": {
+      "contract": {
+        "status": "specified",
+        "references": [
+          {
+            "name": "raw.contact_history",
+            "canonical": "raw.contact_history",
+            "basis": "source_table",
+            "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-004/docs/data_contract.yaml",
+            "block_start_line": 432
+          },
+          {
+            "name": "raw.contact_history",
+            "canonical": "raw.contact_history",
+            "basis": "explicit_schema_qualified_reference_in_original_block",
+            "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-004/docs/data_contract.yaml",
+            "line": 434,
+            "line_text": "      source_table: \"raw.contact_history\""
+          }
+        ],
+        "canonical_names": [
+          "raw.contact_history"
+        ]
+      },
+      "agent_direct_read_sources": [
+        "raw.contact_history"
+      ],
+      "scope": "direct physical relation references through reachable local CTE/subqueries; no transitive expansion through other output tables or stored views",
+      "complete": true,
+      "specified_but_not_read": [],
+      "read_but_not_specified": []
+    },
+    "time_dependencies": {
+      "agent_sql": {
+        "available": true,
+        "appears": false,
+        "hits": []
+      },
+      "gold_sql": {
+        "available": true,
+        "appears": true,
+        "hits": [
+          {
+            "path": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+            "line": 10,
+            "column": 37,
+            "matched_text": "current timestamp",
+            "line_text": "        -- Generate created_date as current timestamp for history tracking since raw table might not have it",
+            "context": "comment"
+          },
+          {
+            "path": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+            "line": 11,
+            "column": 9,
+            "matched_text": "current_timestamp",
+            "line_text": "        current_timestamp as created_date,",
+            "context": "code"
+          },
+          {
+            "path": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+            "line": 23,
+            "column": 74,
+            "matched_text": "current_date",
+            "line_text": "            when last_activity_date is not null and last_activity_date > current_date then null",
+            "context": "code"
+          },
+          {
+            "path": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+            "line": 54,
+            "column": 25,
+            "matched_text": "current_timestamp",
+            "line_text": "        concat(id, '_', current_timestamp::varchar) as history_unique_key",
+            "context": "code"
+          }
+        ],
+        "paths": [
+          "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql"
+        ]
+      },
+      "contract": {
+        "available": true,
+        "appears": true,
+        "hits": [
+          {
+            "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-004/docs/data_contract.yaml",
+            "line": 454,
+            "column": 109,
+            "matched_text": "CURRENT_DATE",
+            "line_text": "            - rule: \"last_activity_date = CASE WHEN last_activity_date IS NOT NULL AND last_activity_date > CURRENT_DATE THEN NULL WHEN last_activity_date IS NOT NULL AND last_activity_date < '2020-01-01' THEN NULL ELSE last_activity_date END\"",
+            "context": "contract_text"
+          }
+        ]
+      }
+    },
+    "trace_flags": {
+      "A1_zero_rows": false,
+      "A2_all_null_column": false,
+      "A3_constant_nonnull_column": true,
+      "A4_equal_columns": false,
+      "A4_equal_columns_different_description_texts": false,
+      "B5_null_literal_output": false,
+      "B6_constant_literal_output": false,
+      "B7_specified_not_read": false,
+      "B7_read_not_specified": false,
+      "B8_shared_single_source": false,
+      "C9_agent_runtime_text": false,
+      "C9_gold_runtime_text": true,
+      "C9_contract_runtime_text": true,
+      "D10_keyword_in_final_report": false,
+      "D10_keyword_in_any_result_field": false
+    }
+  }
+}
+```
+
+## trace_excerpts
+
+```json
+{
+  "archive": "/home/katherine/Assumption_Ledger/traces/dacomp_deimpl_prev.tar.gz",
+  "event_source_root": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent",
+  "actual_read_sources_from_008_B7": [
+    "raw.contact_history"
+  ],
+  "name_match_policy": "Case-insensitive complete identifier-name boundaries; source names include qualified form and bare leaf name. No semantic association inferred.",
+  "matched_step_count": 14,
+  "full_original_characters_before_budget": 77796,
+  "budget_triggered": true,
+  "source_only_steps_indexed": 4,
+  "retained_full_original_characters": 27960,
+  "full_target_steps_exceed_60000": false,
+  "budget_policy": "If total command/output text exceeds 60000 characters, keep every target-table step complete and retain only id/location/first line for source-only steps. Do not rewrite or truncate a kept original step."
+}
+```
+
+### event 7
+
+```json
+{
+  "event_id": 7,
+  "agent_command_sequence": 2,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/7.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2026,
+    "decoded_characters": 91
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/7.json",
+  "timestamp": "2026-10-25T01:11:58.546961",
+  "target_table_name_hits": [
+    "stg_salesforce__contact_history"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 1566,
+  "retention": "full_original"
+}
+```
+```bash
+find sql -type f -maxdepth 3 -print -exec wc -l {} \; && cat config/layer_dependencies.yaml
+```
+```json
+{
+  "event_id": 8,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/8.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1711,
+    "decoded_characters": 1475
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/8.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+find: warning: you have specified the global option -maxdepth after the argument -type, but global options are not positional, i.e., -maxdepth affects tests specified before it as well as those specified after it.  Please specify global options before other arguments.
+layers:
+  staging:
+    description: "Normalized Raw Data Layer - cleans and normalizes raw data from Salesforce"
+    dependencies: []
+    tables:
+      - stg_salesforce__account
+      - stg_salesforce__contact
+      - stg_salesforce__event
+      - stg_salesforce__lead
+      - stg_salesforce__account_history
+      - stg_salesforce__contact_history
+
+  intermediate:
+    description: "Middle layer - business logic and data aggregation processing"
+    dependencies: ["staging"]
+    tables:
+      - int_salesforce__account_enhanced
+      - int_salesforce__lead_conversion_funnel
+
+  marts:
+    description: "Data mart layer - analytics-ready business view"
+    dependencies: ["staging", "intermediate"]
+    tables:
+      - salesforce__account_daily_history
+      - salesforce__contact_daily_history
+
+execution_order:
+  staging:
+    - stg_salesforce__account
+    - stg_salesforce__contact
+    - stg_salesforce__event
+    - stg_salesforce__lead
+    - stg_salesforce__account_history
+    - stg_salesforce__contact_history
+
+  intermediate:
+    - int_salesforce__account_enhanced
+    - int_salesforce__lead_conversion_funnel
+
+  marts:
+    - salesforce__account_daily_history
+    - salesforce__contact_daily_history
+```
+
+### event 9
+
+```json
+{
+  "event_id": 9,
+  "agent_command_sequence": 3,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/9.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1956,
+    "decoded_characters": 22
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/9.json",
+  "timestamp": "2026-10-25T01:11:58.574195",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "raw.contact_history",
+    "contact_history"
+  ],
+  "full_original_characters": 9395,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "sed -n '1,240p' run.py"
+}
+```
+```json
+{
+  "event_id": 10,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/10.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1642,
+    "decoded_characters": 9373
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/10.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+### event 11
+
+```json
+{
+  "event_id": 11,
+  "agent_command_sequence": 4,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/11.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2249,
+    "decoded_characters": 308
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/11.json",
+  "timestamp": "2026-10-25T01:11:58.601170",
+  "target_table_name_hits": [
+    "stg_salesforce__contact_history"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 662,
+  "retention": "full_original"
+}
+```
+```bash
+python - <<'PY'
+import yaml
+x=yaml.safe_load(open('docs/data_contract.yaml'))
+print('tables', [a['name'] for a in x['staging_contract']['tables']])
+print('intermediate', [a['name'] for a in x['modeling_spec']['intermediate_models']])
+print('marts', [a['name'] for a in x['modeling_spec']['marts_models']])
+PY
+```
+```json
+{
+  "event_id": 12,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/12.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1935,
+    "decoded_characters": 354
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/12.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+tables ['stg_salesforce__account', 'stg_salesforce__contact', 'stg_salesforce__lead', 'stg_salesforce__account_history', 'stg_salesforce__contact_history', 'stg_salesforce__event']
+intermediate ['int_salesforce__account_enhanced', 'int_salesforce__lead_conversion_funnel']
+marts ['salesforce__account_daily_history', 'salesforce__contact_daily_history']
+```
+
+### event 15
+
+```json
+{
+  "event_id": 15,
+  "agent_command_sequence": 6,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/15.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2037,
+    "decoded_characters": 285
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/15.json",
+  "timestamp": "2026-10-25T01:12:07.281160",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "contact_history"
+  ],
+  "full_original_characters": 31685,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "python - <<'PY'\n"
+}
+```
+```json
+{
+  "event_id": 16,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/16.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1723,
+    "decoded_characters": 31400
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/16.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+### event 21
+
+```json
+{
+  "event_id": 21,
+  "agent_command_sequence": 9,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/21.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 6340,
+    "decoded_characters": 2379
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/21.json",
+  "timestamp": "2026-10-25T01:13:11.948595",
+  "target_table_name_hits": [
+    "stg_salesforce__contact_history"
+  ],
+  "source_table_name_hits": [
+    "raw.contact_history",
+    "contact_history"
+  ],
+  "full_original_characters": 9309,
+  "retention": "full_original"
+}
+```
+```bash
+cat > sql/marts/salesforce__account_daily_history.sql <<'SQL'
+WITH history_rows AS (
+    SELECT
+        account_id,
+        CAST(created_date AS DATE) AS snapshot_date,
+        account_name,
+        account_source,
+        industry,
+        annual_revenue,
+        number_of_employees,
+        owner_id,
+        type,
+        billing_city,
+        billing_state,
+        billing_country,
+        website,
+        rating,
+        ownership,
+        parent_id,
+        last_activity_date,
+        created_date
+    FROM staging.stg_salesforce__account_history
+    WHERE COALESCE(is_deleted, FALSE) = FALSE
+),
+ranked_history AS (
+    SELECT
+        *,
+        ROW_NUMBER() OVER (
+            PARTITION BY account_id, snapshot_date
+            ORDER BY created_date DESC
+        ) AS row_num
+    FROM history_rows
+)
+SELECT
+    account_id,
+    snapshot_date,
+    account_name,
+    account_source,
+    industry,
+    annual_revenue,
+    number_of_employees,
+    owner_id,
+    type,
+    billing_city,
+    billing_state,
+    billing_country,
+    website,
+    rating,
+    ownership,
+    parent_id,
+    last_activity_date
+FROM ranked_history
+WHERE row_num = 1
+ORDER BY account_id, snapshot_date
+SQL
+cat > sql/marts/salesforce__contact_daily_history.sql <<'SQL'
+WITH history_rows AS (
+    SELECT
+        contact_id,
+        CAST(created_date AS DATE) AS snapshot_date,
+        account_id,
+        contact_name,
+        first_name,
+        last_name,
+        email,
+        phone,
+        mobile_phone,
+        title,
+        lead_source,
+        owner_id,
+        mailing_city,
+        mailing_state,
+        mailing_country,
+        mailing_postal_code,
+        last_activity_date,
+        created_date
+    FROM staging.stg_salesforce__contact_history
+    WHERE COALESCE(is_deleted, FALSE) = FALSE
+),
+ranked_history AS (
+    SELECT
+        *,
+        ROW_NUMBER() OVER (
+            PARTITION BY contact_id, snapshot_date
+            ORDER BY created_date DESC
+        ) AS row_num
+    FROM history_rows
+)
+SELECT
+    contact_id,
+    snapshot_date,
+    account_id,
+    contact_name,
+    first_name,
+    last_name,
+    email,
+    phone,
+    mobile_phone,
+    title,
+    lead_source,
+    owner_id,
+    mailing_city,
+    mailing_state,
+    mailing_country,
+    mailing_postal_code,
+    last_activity_date
+FROM ranked_history
+WHERE row_num = 1
+ORDER BY contact_id, snapshot_date
+SQL
+python run.py
+```
+```json
+{
+  "event_id": 22,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/22.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 6024,
+    "decoded_characters": 6930
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/22.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+2026-10-25 01:13:12,067 - INFO - 🚀 Starting Salesforce data pipeline execution
+2026-10-25 01:13:12,067 - INFO - Source database: salesforce_start.duckdb
+2026-10-25 01:13:12,067 - INFO - Target database: salesforce.duckdb
+2026-10-25 01:13:12,067 - INFO - Target database does not exist, starting initialization...
+2026-10-25 01:13:12,068 - INFO - 📥 Creating new layered database: salesforce.duckdb
+2026-10-25 01:13:12,081 - INFO - 🏗️ Creating Schema layered architecture
+2026-10-25 01:13:12,086 - INFO -   ✓ Created schema: raw
+2026-10-25 01:13:12,090 - INFO -   ✓ Created schema: staging
+2026-10-25 01:13:12,094 - INFO -   ✓ Created schema: intermediate
+2026-10-25 01:13:12,097 - INFO -   ✓ Created schema: marts
+2026-10-25 01:13:12,097 - INFO - 📥 Importing raw data to raw schema
+2026-10-25 01:13:12,117 - INFO - Found 14 raw tables
+2026-10-25 01:13:28,967 - INFO -   ✓ raw.account: 3000 rows
+2026-10-25 01:13:46,055 - INFO -   ✓ raw.account_history: 3000 rows
+2026-10-25 01:14:03,248 - INFO -   ✓ raw.contact: 3000 rows
+2026-10-25 01:14:18,364 - INFO -   ✓ raw.contact_history: 3000 rows
+2026-10-25 01:14:34,230 - INFO -   ✓ raw.event: 3000 rows
+2026-10-25 01:14:51,058 - INFO -   ✓ raw.lead: 3000 rows
+2026-10-25 01:15:05,220 - INFO -   ✓ raw.opportunity: 3000 rows
+2026-10-25 01:15:22,219 - INFO -   ✓ raw.opportunity_history: 3000 rows
+2026-10-25 01:15:36,239 - INFO -   ✓ raw.opportunity_line_item: 3000 rows
+2026-10-25 01:15:54,411 - INFO -   ✓ raw.order_data: 3000 rows
+2026-10-25 01:15:56,789 - INFO -   ✓ raw.product_2: 500 rows
+2026-10-25 01:16:12,251 - INFO -   ✓ raw.task: 3000 rows
+2026-10-25 01:16:18,789 - INFO -   ✓ raw.user: 1000 rows
+2026-10-25 01:16:18,983 - INFO -   ✓ raw.user_role: 50 rows
+2026-10-25 01:16:18,993 - INFO - ✓ Raw data import complete
+2026-10-25 01:16:18,994 - INFO - ✓ Layered database initialization complete: salesforce.duckdb
+2026-10-25 01:16:18,994 - INFO - 🧼 Cleaning up previously generated schemas and tables...
+2026-10-25 01:16:18,998 - INFO - ✓ Dropped schema: staging
+2026-10-25 01:16:19,002 - INFO - ✓ Dropped schema: intermediate
+2026-10-25 01:16:19,006 - INFO - ✓ Dropped schema: marts
+2026-10-25 01:16:19,006 - INFO - Cleanup complete
+2026-10-25 01:16:19,006 - INFO - 🏗️ Creating Schema layered architecture
+2026-10-25 01:16:19,007 - INFO -   ✓ Created schema: raw
+2026-10-25 01:16:19,009 - INFO -   ✓ Created schema: staging
+2026-10-25 01:16:19,012 - INFO -   ✓ Created schema: intermediate
+2026-10-25 01:16:19,016 - INFO -   ✓ Created schema: marts
+2026-10-25 01:16:19,016 - INFO - 
+=== Executing STAGING Layer ===
+2026-10-25 01:16:19,016 - INFO - Description: Normalized Raw Data Layer - cleans and normalizes raw data from Salesforce
+2026-10-25 01:16:19,018 - INFO - Executing: staging.stg_salesforce__account
+2026-10-25 01:16:19,021 - ERROR - ✗ staging.stg_salesforce__account: Binder Error: Referenced column "id" not found in FROM clause!
+Candidate bindings: "industry", "is_deleted", "billing_city", "billing_state", "shipping_city"
+
+LINE 41:     WHERE "id" IS NOT NULL AND
+                   ^
+2026-10-25 01:16:19,022 - INFO - Executing: staging.stg_salesforce__contact
+2026-10-25 01:16:19,023 - ERROR - ✗ staging.stg_salesforce__contact: Binder Error: Column "created_date" referenced that exists in the SELECT clause - but this column cannot be referenced before it is defined
+2026-10-25 01:16:19,024 - INFO - Executing: staging.stg_salesforce__event
+2026-10-25 01:16:19,025 - ERROR - ✗ staging.stg_salesforce__event: Binder Error: Column "event_description" referenced that exists in the SELECT clause - but this column cannot be referenced before it is defined
+2026-10-25 01:16:19,026 - INFO - Executing: staging.stg_salesforce__lead
+2026-10-25 01:16:19,028 - ERROR - ✗ staging.stg_salesforce__lead: Binder Error: Referenced column "id" not found in FROM clause!
+Candidate bindings: "industry", "is_deleted", "is_unread_by_owner", "city", "title"
+
+LINE 56:     WHERE "id" IS NOT NULL AND
+                   ^
+2026-10-25 01:16:19,028 - INFO - Executing: staging.stg_salesforce__account_history
+2026-10-25 01:16:19,029 - ERROR - ✗ staging.stg_salesforce__account_history: Binder Error: Referenced column "id" not found in FROM clause!
+Candidate bindings: "industry", "is_deleted", "billing_city", "created_date", "billing_state"
+
+LINE 35: WHERE "id" IS NOT NULL
+               ^
+2026-10-25 01:16:19,030 - INFO - Executing: staging.stg_salesforce__contact_history
+2026-10-25 01:16:19,031 - ERROR - ✗ staging.stg_salesforce__contact_history: Binder Error: Referenced column "id" not found in FROM clause!
+Candidate bindings: "is_deleted", "title", "last_modified_date", "first_name", "lead_source"
+
+LINE 29: WHERE "id" IS NOT NULL AND
+               ^
+2026-10-25 01:16:19,031 - INFO - STAGING layer complete: 0/6 tables created successfully
+2026-10-25 01:16:19,031 - INFO - 
+=== Executing INTERMEDIATE Layer ===
+2026-10-25 01:16:19,031 - INFO - Description: Middle layer - business logic and data aggregation processing
+2026-10-25 01:16:19,032 - INFO - Executing: intermediate.int_salesforce__account_enhanced
+2026-10-25 01:16:19,034 - ERROR - ✗ intermediate.int_salesforce__account_enhanced: Catalog Error: Table with name stg_salesforce__account does not exist!
+Did you mean "pg_catalog.pg_constraint"?
+
+LINE 16:     from staging.stg_salesforce__account
+                  ^
+2026-10-25 01:16:19,035 - INFO - Executing: intermediate.int_salesforce__lead_conversion_funnel
+2026-10-25 01:16:19,036 - ERROR - ✗ intermediate.int_salesforce__lead_conversion_funnel: Catalog Error: Table with name stg_salesforce__lead does not exist!
+Did you mean "raw.user"?
+
+LINE 3:     from staging.stg_salesforce__lead
+                 ^
+2026-10-25 01:16:19,036 - INFO - INTERMEDIATE layer complete: 0/2 tables created successfully
+2026-10-25 01:16:19,036 - INFO - 
+=== Executing MARTS Layer ===
+2026-10-25 01:16:19,036 - INFO - Description: Data mart layer - analytics-ready business view
+2026-10-25 01:16:19,036 - INFO - Executing: marts.salesforce__account_daily_history
+2026-10-25 01:16:19,037 - ERROR - ✗ marts.salesforce__account_daily_history: Catalog Error: Table with name stg_salesforce__account_history does not exist!
+Did you mean "information_schema.referential_constraints"?
+
+LINE 21:     from staging.stg_salesforce__account_history
+                  ^
+2026-10-25 01:16:19,037 - INFO - Executing: marts.salesforce__contact_daily_history
+2026-10-25 01:16:19,038 - ERROR - ✗ marts.salesforce__contact_daily_history: Catalog Error: Table with name stg_salesforce__contact_history does not exist!
+Did you mean "information_schema.referential_constraints"?
+
+LINE 21:     from staging.stg_salesforce__contact_history
+                  ^
+2026-10-25 01:16:19,038 - INFO - MARTS layer complete: 0/2 tables created successfully
+2026-10-25 01:16:19,038 - ERROR - 
+❌ Errors occurred during data pipeline execution
+
+❌ Errors occurred during data transformation, please check the logs
+```
+
+### event 25
+
+```json
+{
+  "event_id": 25,
+  "agent_command_sequence": 11,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/25.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 7578,
+    "decoded_characters": 2938
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/25.json",
+  "timestamp": "2026-10-25T01:17:04.189700",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "contact_history"
+  ],
+  "full_original_characters": 3366,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "python - <<'PY'\n"
+}
+```
+```json
+{
+  "event_id": 26,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/26.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 7262,
+    "decoded_characters": 428
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/26.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 1
+}
+```
+
+### event 27
+
+```json
+{
+  "event_id": 27,
+  "agent_command_sequence": 12,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/27.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1304,
+    "decoded_characters": 36
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/27.json",
+  "timestamp": "2026-10-25T01:17:13.005734",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "contact_history"
+  ],
+  "full_original_characters": 5390,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "nl -ba /tmp/gen.py | sed -n '1,100p'"
+}
+```
+```json
+{
+  "event_id": 28,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/28.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 988,
+    "decoded_characters": 5354
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/28.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+### event 31
+
+```json
+{
+  "event_id": 31,
+  "agent_command_sequence": 14,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/31.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2350,
+    "decoded_characters": 534
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/31.json",
+  "timestamp": "2026-10-25T01:17:41.694339",
+  "target_table_name_hits": [
+    "stg_salesforce__contact_history"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 1173,
+  "retention": "full_original"
+}
+```
+```bash
+python - <<'PY'
+import duckdb, pathlib
+c=duckdb.connect('salesforce_start.duckdb')
+for schema in ('staging','intermediate','marts'): c.execute(f'create schema if not exists {schema}')
+for layer in ('staging','intermediate','marts'):
+ for p in sorted(pathlib.Path('sql',layer).glob('*.sql')):
+  try:
+   c.execute(f'create or replace table {layer}.{p.stem} as ({p.read_text()})')
+   print('OK',layer,p.name,c.execute(f'select count(*) from {layer}.{p.stem}').fetchone()[0])
+  except Exception as e: print('ERROR',layer,p.name,str(e))
+PY
+```
+```json
+{
+  "event_id": 32,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/32.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2034,
+    "decoded_characters": 639
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/32.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+OK staging stg_salesforce__account.sql 3000
+OK staging stg_salesforce__account_history.sql 3000
+ERROR staging stg_salesforce__contact.sql Binder Error: Column "created_date" referenced that exists in the SELECT clause - but this column cannot be referenced before it is defined
+OK staging stg_salesforce__contact_history.sql 3000
+OK staging stg_salesforce__event.sql 3000
+OK staging stg_salesforce__lead.sql 3000
+OK intermediate int_salesforce__account_enhanced.sql 3000
+OK intermediate int_salesforce__lead_conversion_funnel.sql 3000
+OK marts salesforce__account_daily_history.sql 3000
+OK marts salesforce__contact_daily_history.sql 3000
+```
+
+### event 37
+
+```json
+{
+  "event_id": 37,
+  "agent_command_sequence": 17,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/37.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2779,
+    "decoded_characters": 740
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/37.json",
+  "timestamp": "2026-10-25T01:18:13.318373",
+  "target_table_name_hits": [
+    "stg_salesforce__contact_history"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 1241,
+  "retention": "full_original"
+}
+```
+```bash
+python - <<'PY'
+p='sql/staging/stg_salesforce__contact.sql'; s=open(p).read().replace('CAST("created_date" AS TIMESTAMP) AS created_date','CAST(NULL AS TIMESTAMP) AS created_date'); open(p,'w').write(s)
+PY
+python - <<'PY'
+import duckdb, pathlib
+c=duckdb.connect('salesforce_start.duckdb')
+for schema in ('staging','intermediate','marts'): c.execute(f'create schema if not exists {schema}')
+for layer in ('staging','intermediate','marts'):
+ for p in sorted(pathlib.Path('sql',layer).glob('*.sql')):
+  try:
+   c.execute(f'create or replace table {layer}.{p.stem} as ({p.read_text()})')
+   print('OK',layer,p.name,c.execute(f'select count(*) from {layer}.{p.stem}').fetchone()[0])
+  except Exception as e: print('ERROR',layer,p.name,str(e))
+PY
+```
+```json
+{
+  "event_id": 38,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/38.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2463,
+    "decoded_characters": 501
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/38.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+OK staging stg_salesforce__account.sql 3000
+OK staging stg_salesforce__account_history.sql 3000
+OK staging stg_salesforce__contact.sql 2999
+OK staging stg_salesforce__contact_history.sql 3000
+OK staging stg_salesforce__event.sql 3000
+OK staging stg_salesforce__lead.sql 3000
+OK intermediate int_salesforce__account_enhanced.sql 3000
+OK intermediate int_salesforce__lead_conversion_funnel.sql 3000
+OK marts salesforce__account_daily_history.sql 3000
+OK marts salesforce__contact_daily_history.sql 3000
+```
+
+### event 39
+
+```json
+{
+  "event_id": 39,
+  "agent_command_sequence": 18,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/39.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1278,
+    "decoded_characters": 13
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/39.json",
+  "timestamp": "2026-10-25T01:18:23.086356",
+  "target_table_name_hits": [
+    "stg_salesforce__contact_history"
+  ],
+  "source_table_name_hits": [
+    "raw.contact_history",
+    "contact_history"
+  ],
+  "full_original_characters": 6120,
+  "retention": "full_original"
+}
+```
+```bash
+python run.py
+```
+```json
+{
+  "event_id": 40,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/40.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 962,
+    "decoded_characters": 6107
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/40.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+2026-10-25 01:18:23,203 - INFO - 🚀 Starting Salesforce data pipeline execution
+2026-10-25 01:18:23,203 - INFO - Source database: salesforce_start.duckdb
+2026-10-25 01:18:23,203 - INFO - Target database: salesforce.duckdb
+2026-10-25 01:18:23,203 - INFO - Found existing target database, using it directly...
+2026-10-25 01:18:23,221 - INFO - 🧼 Cleaning up previously generated schemas and tables...
+2026-10-25 01:18:23,227 - INFO - ✓ Dropped schema: staging
+2026-10-25 01:18:23,232 - INFO - ✓ Dropped schema: intermediate
+2026-10-25 01:18:23,236 - INFO - ✓ Dropped schema: marts
+2026-10-25 01:18:23,237 - INFO - Cleanup complete
+2026-10-25 01:18:23,237 - INFO - 🏗️ Creating Schema layered architecture
+2026-10-25 01:18:23,237 - INFO -   ✓ Created schema: raw
+2026-10-25 01:18:23,240 - INFO -   ✓ Created schema: staging
+2026-10-25 01:18:23,244 - INFO -   ✓ Created schema: intermediate
+2026-10-25 01:18:23,247 - INFO -   ✓ Created schema: marts
+2026-10-25 01:18:23,247 - INFO - 
+=== Executing STAGING Layer ===
+2026-10-25 01:18:23,247 - INFO - Description: Normalized Raw Data Layer - cleans and normalizes raw data from Salesforce
+2026-10-25 01:18:23,249 - INFO - Executing: staging.stg_salesforce__account
+2026-10-25 01:18:23,295 - INFO - ✓ staging.stg_salesforce__account: 3,000 rows
+2026-10-25 01:18:23,296 - INFO - Executing: staging.stg_salesforce__contact
+2026-10-25 01:18:23,347 - INFO - ✓ staging.stg_salesforce__contact: 2,999 rows
+2026-10-25 01:18:23,348 - INFO - Executing: staging.stg_salesforce__event
+2026-10-25 01:18:23,367 - INFO - ✓ staging.stg_salesforce__event: 3,000 rows
+2026-10-25 01:18:23,368 - INFO - Executing: staging.stg_salesforce__lead
+2026-10-25 01:18:23,415 - INFO - ✓ staging.stg_salesforce__lead: 3,000 rows
+2026-10-25 01:18:23,415 - INFO - Executing: staging.stg_salesforce__account_history
+2026-10-25 01:18:23,439 - INFO - ✓ staging.stg_salesforce__account_history: 3,000 rows
+2026-10-25 01:18:23,440 - INFO - Executing: staging.stg_salesforce__contact_history
+2026-10-25 01:18:23,462 - INFO - ✓ staging.stg_salesforce__contact_history: 3,000 rows
+2026-10-25 01:18:23,462 - INFO - STAGING layer complete: 6/6 tables created successfully
+2026-10-25 01:18:23,462 - INFO - 
+=== Executing INTERMEDIATE Layer ===
+2026-10-25 01:18:23,462 - INFO - Description: Middle layer - business logic and data aggregation processing
+2026-10-25 01:18:23,463 - INFO - Executing: intermediate.int_salesforce__account_enhanced
+2026-10-25 01:18:23,487 - INFO - ✓ intermediate.int_salesforce__account_enhanced: 3,000 rows
+2026-10-25 01:18:23,488 - INFO - Executing: intermediate.int_salesforce__lead_conversion_funnel
+2026-10-25 01:18:23,516 - INFO - ✓ intermediate.int_salesforce__lead_conversion_funnel: 3,000 rows
+2026-10-25 01:18:23,516 - INFO - INTERMEDIATE layer complete: 2/2 tables created successfully
+2026-10-25 01:18:23,516 - INFO - 
+=== Executing MARTS Layer ===
+2026-10-25 01:18:23,516 - INFO - Description: Data mart layer - analytics-ready business view
+2026-10-25 01:18:23,516 - INFO - Executing: marts.salesforce__account_daily_history
+2026-10-25 01:18:23,539 - INFO - ✓ marts.salesforce__account_daily_history: 3,000 rows
+2026-10-25 01:18:23,540 - INFO - Executing: marts.salesforce__contact_daily_history
+2026-10-25 01:18:23,559 - INFO - ✓ marts.salesforce__contact_daily_history: 3,000 rows
+2026-10-25 01:18:23,559 - INFO - MARTS layer complete: 2/2 tables created successfully
+2026-10-25 01:18:23,559 - INFO - 
+🎉 Salesforce data pipeline execution completed successfully!
+2026-10-25 01:18:23,559 - INFO - ✨ The complete data warehouse has been generated: salesforce.duckdb
+2026-10-25 01:18:23,559 - INFO - 
+=== Final Data Statistics (by Schema Layer) ===
+2026-10-25 01:18:23,562 - INFO - 
+RAW Layer (Schema: raw):
+2026-10-25 01:18:23,562 - INFO -   ✓ raw.account: 3,000 rows
+2026-10-25 01:18:23,563 - INFO -   ✓ raw.account_history: 3,000 rows
+2026-10-25 01:18:23,563 - INFO -   ✓ raw.contact: 3,000 rows
+2026-10-25 01:18:23,564 - INFO -   ✓ raw.contact_history: 3,000 rows
+2026-10-25 01:18:23,564 - INFO -   ✓ raw.event: 3,000 rows
+2026-10-25 01:18:23,565 - INFO -   ✓ raw.lead: 3,000 rows
+2026-10-25 01:18:23,566 - INFO -   ✓ raw.opportunity: 3,000 rows
+2026-10-25 01:18:23,566 - INFO -   ✓ raw.opportunity_history: 3,000 rows
+2026-10-25 01:18:23,567 - INFO -   ✓ raw.opportunity_line_item: 3,000 rows
+2026-10-25 01:18:23,567 - INFO -   ✓ raw.order_data: 3,000 rows
+2026-10-25 01:18:23,568 - INFO -   ✓ raw.product_2: 500 rows
+2026-10-25 01:18:23,568 - INFO -   ✓ raw.task: 3,000 rows
+2026-10-25 01:18:23,569 - INFO -   ✓ raw.user: 1,000 rows
+2026-10-25 01:18:23,569 - INFO -   ✓ raw.user_role: 50 rows
+2026-10-25 01:18:23,571 - INFO - 
+STAGING Layer (Schema: staging):
+2026-10-25 01:18:23,572 - INFO -   ✓ staging.stg_salesforce__account: 3,000 rows
+2026-10-25 01:18:23,572 - INFO -   ✓ staging.stg_salesforce__account_history: 3,000 rows
+2026-10-25 01:18:23,573 - INFO -   ✓ staging.stg_salesforce__contact: 2,999 rows
+2026-10-25 01:18:23,574 - INFO -   ✓ staging.stg_salesforce__contact_history: 3,000 rows
+2026-10-25 01:18:23,574 - INFO -   ✓ staging.stg_salesforce__event: 3,000 rows
+2026-10-25 01:18:23,575 - INFO -   ✓ staging.stg_salesforce__lead: 3,000 rows
+2026-10-25 01:18:23,577 - INFO - 
+INTERMEDIATE Layer (Schema: intermediate):
+2026-10-25 01:18:23,578 - INFO -   ✓ intermediate.int_salesforce__account_enhanced: 3,000 rows
+2026-10-25 01:18:23,578 - INFO -   ✓ intermediate.int_salesforce__lead_conversion_funnel: 3,000 rows
+2026-10-25 01:18:23,580 - INFO - 
+MARTS Layer (Schema: marts):
+2026-10-25 01:18:23,581 - INFO -   ✓ marts.salesforce__account_daily_history: 3,000 rows
+2026-10-25 01:18:23,581 - INFO -   ✓ marts.salesforce__contact_daily_history: 3,000 rows
+
+✅ Salesforce data transformation completed successfully!
+📋 Transformation Results:
+  📥 Source Database: salesforce_start.duckdb (Raw Salesforce data)
+  📤 Target Database: salesforce.duckdb (Complete layered architecture)
+
+🏗️ Data Architecture:
+  📊 Staging Layer - Standardized Salesforce data
+  🔄 Intermediate Layer - Business logic processing
+  🎯 Mart Layer - Analysis-ready business views
+```
+
+### event 41
+
+```json
+{
+  "event_id": 41,
+  "agent_command_sequence": 19,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/41.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 11599,
+    "decoded_characters": 1910
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/41.json",
+  "timestamp": "2026-10-25T01:18:42.932112",
+  "target_table_name_hits": [
+    "stg_salesforce__contact_history"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 1992,
+  "retention": "full_original"
+}
+```
+```bash
+mkdir -p /workspace && cat > /workspace/result.md <<'EOF'
+【回复用户】
+
+已根据 `docs/data_contract.yaml` 与 `config/layer_dependencies.yaml` 完成 Salesforce SQL pipeline，实现顺序为 staging → intermediate → marts，SQL 位于规定的 `sql/<layer>/<name>.sql` 目录中。所有 SQL 使用 DuckDB 语法、直接引用 `schema.table`，且无文件末尾分号或 dbt `ref()`。
+
+**执行结果**
+
+已运行 `python run.py`，整个 pipeline 成功，目标数据库 `salesforce.duckdb` 已生成。
+
+| Layer | 已完成模型 | 运行行数 |
+|---|---|---:|
+| Staging | `stg_salesforce__account` | 3,000 |
+| Staging | `stg_salesforce__contact` | 2,999 |
+| Staging | `stg_salesforce__event` | 3,000 |
+| Staging | `stg_salesforce__lead` | 3,000 |
+| Staging | `stg_salesforce__account_history` | 3,000 |
+| Staging | `stg_salesforce__contact_history` | 3,000 |
+| Intermediate | `int_salesforce__account_enhanced` | 3,000 |
+| Intermediate | `int_salesforce__lead_conversion_funnel` | 3,000 |
+| Marts | `salesforce__account_daily_history` | 3,000 |
+| Marts | `salesforce__contact_daily_history` | 3,000 |
+
+已按契约实现字段映射和类型转换、脏值清理、必要字段筛除、主键去重、账户分群/地理区域/完整度/高价值标识、Lead 转化与评分逻辑，以及历史表按实体和日期保留最新记录的快照逻辑。对主键去重采取每个键保留一行；日快照同一时间戳存在并列时按契约接受非确定性选择。
+
+**数据质量与残余影响**
+
+- 原始 Contact 3,000 行，staging 2,999 行；减少的记录由 staging 必填约束/日期或邮编验证筛除。其他实际运行表各为 3,000 行。
+- 唯一键模型以窗口函数保留每个主键一条记录；被去重记录不进入下游，可能丢失重复来源记录，但保证声明粒度和键唯一性。
+- 可修复的格式问题（Lead 邮箱大小写/空格、电话符号、邮编大小写/空格）按契约标准化；不适用或不可恢复的可选电话值置 NULL；不合格的必填字段、无效日期和过短邮编按规则筛除。被置 NULL 的可选字段会降低下游可用信息量，但不会删除其余记录。
+
+**契约与源数据差异的安全处理**
+
+源 Contact 未提供 `created_date`，故 staging 字段保留但置为 `NULL`。History 原始表没有契约字段 `created_date` / `history_unique_key`，使用源 `_fivetran_start` 作为变更时间，并以 `_fivetran_start` 与 `_fivetran_end` 计算字符串唯一标识；该映射使快照能够按源可用的版本时间运行。历史记录同一实体同日时间戳完全相同的并列记录，按契约定义仍可能任意选取。
+
+**验证及修复记录**
+
+首次本地 SQL 验证发现 staging 查询中个别校验误用了输出字段别名，并发现源 Contact 不存在 `created_date`。已将校验条件改为可用的输出别名、将 Contact unavailable `created_date` 输出为 NULL，并重新逐层执行全部 SQL；随后再次运行 `python run.py`，全部 10 个模型执行成功。最终验证包含各层执行/行数检查与 pipeline 成功完成；无剩余 SQL 执行失败。
+EOF
+cat /workspace/result.md
+```
+```json
+{
+  "event_id": 42,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/42.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 11282,
+    "decoded_characters": 82
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/42.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 1
+}
+```
+```text
+mkdir: Read-only file system
+cat: /workspace/result.md: No such file or directory
+```
+
+### event 43
+
+```json
+{
+  "event_id": 43,
+  "agent_command_sequence": 20,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/43.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 11386,
+    "decoded_characters": 1884
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/43.json",
+  "timestamp": "2026-10-25T01:18:54.371049",
+  "target_table_name_hits": [
+    "stg_salesforce__contact_history"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 2053,
+  "retention": "full_original"
+}
+```
+```bash
+ls -ld /workspace /tmp && cat > result.md <<'EOF'
+【回复用户】
+
+已根据 `docs/data_contract.yaml` 与 `config/layer_dependencies.yaml` 完成 Salesforce SQL pipeline，实现顺序为 staging → intermediate → marts，SQL 位于规定的 `sql/<layer>/<name>.sql` 目录中。所有 SQL 使用 DuckDB 语法、直接引用 `schema.table`，且无文件末尾分号或 dbt `ref()`。
+
+**执行结果**
+
+已运行 `python run.py`，整个 pipeline 成功，目标数据库 `salesforce.duckdb` 已生成。
+
+| Layer | 已完成模型 | 运行行数 |
+|---|---|---:|
+| Staging | `stg_salesforce__account` | 3,000 |
+| Staging | `stg_salesforce__contact` | 2,999 |
+| Staging | `stg_salesforce__event` | 3,000 |
+| Staging | `stg_salesforce__lead` | 3,000 |
+| Staging | `stg_salesforce__account_history` | 3,000 |
+| Staging | `stg_salesforce__contact_history` | 3,000 |
+| Intermediate | `int_salesforce__account_enhanced` | 3,000 |
+| Intermediate | `int_salesforce__lead_conversion_funnel` | 3,000 |
+| Marts | `salesforce__account_daily_history` | 3,000 |
+| Marts | `salesforce__contact_daily_history` | 3,000 |
+
+实现了字段映射和类型转换、脏值清理、必要字段筛除、主键去重、账户分群/地理区域/完整度/高价值标识、Lead 转化与评分逻辑，以及历史表按实体和日期保留最新记录的快照逻辑。对主键去重采取每个键保留一行；日快照同一时间戳存在并列时按契约接受非确定性选择。
+
+**数据质量与残余影响**
+
+- 原始 Contact 3,000 行，staging 2,999 行；减少的记录由 staging 必填约束/日期或邮编验证筛除。其他实际运行表各为 3,000 行。
+- 唯一键模型以窗口函数保留每个主键一条记录；被去重记录不进入下游，可能丢失重复来源记录，但保证声明粒度和键唯一性。
+- 可修复格式问题（Lead 邮箱大小写/空格、电话符号、邮编大小写/空格）按契约标准化；不可恢复的可选电话值置 NULL；不合格必填字段、无效日期和过短邮编按规则筛除。置 NULL 的可选字段会降低下游可用信息量，但不会删除其余记录。
+
+**契约与源数据差异的安全处理**
+
+源 Contact 未提供 `created_date`，故 staging 字段保留但置为 `NULL`。History 原始表没有契约字段 `created_date` / `history_unique_key`，使用源 `_fivetran_start` 作为变更时间，并以 `_fivetran_start` 与 `_fivetran_end` 计算字符串唯一标识；该映射使快照能够按源可用的版本时间运行。历史记录同一实体同日时间戳完全相同的并列记录，按契约定义仍可能任意选取。
+
+**验证及修复记录**
+
+首次本地 SQL 验证发现 staging 查询中个别校验误用了输出字段别名，并发现源 Contact 不存在 `created_date`。已修正校验条件、将 Contact 不可用的 `created_date` 输出为 NULL，并重新逐层执行所有 SQL；随后再次运行 `python run.py`，全部 10 个模型执行成功。验证包含逐层执行/行数检查和 pipeline 成功完成；无剩余 SQL 执行失败。
+EOF
+cp result.md /workspace/result.md
+```
+```json
+{
+  "event_id": 44,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/44.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 11069,
+    "decoded_characters": 169
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/44.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 1
+}
+```
+```text
+ls: cannot access '/workspace': No such file or directory
+drwxr-xr-x 2 katherine katherine 4096 Oct 25 01:12 /tmp
+cp: cannot stat 'result.md': No such file or directory
+```
+
+### event 47
+
+```json
+{
+  "event_id": 47,
+  "agent_command_sequence": 22,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/47.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 11305,
+    "decoded_characters": 1843
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/47.json",
+  "timestamp": "2026-10-25T01:19:13.845260",
+  "target_table_name_hits": [
+    "stg_salesforce__contact_history"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 1996,
+  "retention": "full_original"
+}
+```
+```bash
+id && cat > .tmp/report/result.md <<'EOF'
+【回复用户】
+
+已根据 `docs/data_contract.yaml` 与 `config/layer_dependencies.yaml` 完成 Salesforce SQL pipeline，实现顺序为 staging → intermediate → marts，SQL 位于规定的 `sql/<layer>/<name>.sql` 目录中。所有 SQL 使用 DuckDB 语法、直接引用 `schema.table`，且无文件末尾分号或 dbt `ref()`。
+
+**执行结果**
+
+已运行 `python run.py`，整个 pipeline 成功，目标数据库 `salesforce.duckdb` 已生成。
+
+| Layer | 已完成模型 | 运行行数 |
+|---|---|---:|
+| Staging | `stg_salesforce__account` | 3,000 |
+| Staging | `stg_salesforce__contact` | 2,999 |
+| Staging | `stg_salesforce__event` | 3,000 |
+| Staging | `stg_salesforce__lead` | 3,000 |
+| Staging | `stg_salesforce__account_history` | 3,000 |
+| Staging | `stg_salesforce__contact_history` | 3,000 |
+| Intermediate | `int_salesforce__account_enhanced` | 3,000 |
+| Intermediate | `int_salesforce__lead_conversion_funnel` | 3,000 |
+| Marts | `salesforce__account_daily_history` | 3,000 |
+| Marts | `salesforce__contact_daily_history` | 3,000 |
+
+实现了字段映射和类型转换、脏值清理、必要字段筛除、主键去重、账户分群/地理区域/完整度/高价值标识、Lead 转化与评分逻辑，以及历史表按实体和日期保留最新记录的快照逻辑。对主键去重采取每个键保留一行；日快照同一时间戳存在并列时按契约接受非确定性选择。
+
+**数据质量与残余影响**
+
+- 原始 Contact 3,000 行，staging 2,999 行；减少的记录由 staging 必填约束/日期或邮编验证筛除。其他实际运行表各为 3,000 行。
+- 唯一键模型以窗口函数保留每个主键一条记录；被去重记录不进入下游，可能丢失重复来源记录，但保证声明粒度和键唯一性。
+- 可修复格式问题（Lead 邮箱大小写/空格、电话符号、邮编大小写/空格）按契约标准化；不可恢复的可选电话值置 NULL；不合格必填字段、无效日期和过短邮编按规则筛除。置 NULL 的可选字段会降低下游可用信息量，但不会删除其余记录。
+
+**契约与源数据差异的安全处理**
+
+源 Contact 未提供 `created_date`，故 staging 字段保留但置为 `NULL`。History 原始表没有契约字段 `created_date` / `history_unique_key`，使用源 `_fivetran_start` 作为变更时间，并以 `_fivetran_start` 与 `_fivetran_end` 计算字符串唯一标识；该映射使快照能够按源可用的版本时间运行。历史记录同一实体同日时间戳完全相同的并列记录，按契约定义仍可能任意选取。
+
+**验证及修复记录**
+
+首次本地 SQL 验证发现 staging 查询中个别校验误用了输出字段别名，并发现源 Contact 不存在 `created_date`。已修正校验条件、将 Contact 不可用的 `created_date` 输出为 NULL，并重新逐层执行所有 SQL；随后再次运行 `python run.py`，全部 10 个模型执行成功。验证包含逐层执行/行数检查和 pipeline 成功完成；无剩余 SQL 执行失败。
+EOF
+```
+```json
+{
+  "event_id": 48,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/48.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 10988,
+    "decoded_characters": 153
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/48.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+uid=1000(katherine) gid=1000(katherine) groups=1000(katherine),65534(nogroup),65534(nogroup),65534(nogroup),65534(nogroup),65534(nogroup),65534(nogroup)
+```
+
+### event 49
+
+```json
+{
+  "event_id": 49,
+  "agent_command_sequence": 23,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/49.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1336,
+    "decoded_characters": 51
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/49.json",
+  "timestamp": "2026-10-25T01:19:18.078778",
+  "target_table_name_hits": [
+    "stg_salesforce__contact_history"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 1848,
+  "retention": "full_original"
+}
+```
+```bash
+cp .tmp/report/result.md result.md && cat result.md
+```
+```json
+{
+  "event_id": 50,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/50.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1019,
+    "decoded_characters": 1797
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/50.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+【回复用户】
+
+已根据 `docs/data_contract.yaml` 与 `config/layer_dependencies.yaml` 完成 Salesforce SQL pipeline，实现顺序为 staging → intermediate → marts，SQL 位于规定的 `sql/<layer>/<name>.sql` 目录中。所有 SQL 使用 DuckDB 语法、直接引用 `schema.table`，且无文件末尾分号或 dbt `ref()`。
+
+**执行结果**
+
+已运行 `python run.py`，整个 pipeline 成功，目标数据库 `salesforce.duckdb` 已生成。
+
+| Layer | 已完成模型 | 运行行数 |
+|---|---|---:|
+| Staging | `stg_salesforce__account` | 3,000 |
+| Staging | `stg_salesforce__contact` | 2,999 |
+| Staging | `stg_salesforce__event` | 3,000 |
+| Staging | `stg_salesforce__lead` | 3,000 |
+| Staging | `stg_salesforce__account_history` | 3,000 |
+| Staging | `stg_salesforce__contact_history` | 3,000 |
+| Intermediate | `int_salesforce__account_enhanced` | 3,000 |
+| Intermediate | `int_salesforce__lead_conversion_funnel` | 3,000 |
+| Marts | `salesforce__account_daily_history` | 3,000 |
+| Marts | `salesforce__contact_daily_history` | 3,000 |
+
+实现了字段映射和类型转换、脏值清理、必要字段筛除、主键去重、账户分群/地理区域/完整度/高价值标识、Lead 转化与评分逻辑，以及历史表按实体和日期保留最新记录的快照逻辑。对主键去重采取每个键保留一行；日快照同一时间戳存在并列时按契约接受非确定性选择。
+
+**数据质量与残余影响**
+
+- 原始 Contact 3,000 行，staging 2,999 行；减少的记录由 staging 必填约束/日期或邮编验证筛除。其他实际运行表各为 3,000 行。
+- 唯一键模型以窗口函数保留每个主键一条记录；被去重记录不进入下游，可能丢失重复来源记录，但保证声明粒度和键唯一性。
+- 可修复格式问题（Lead 邮箱大小写/空格、电话符号、邮编大小写/空格）按契约标准化；不可恢复的可选电话值置 NULL；不合格必填字段、无效日期和过短邮编按规则筛除。置 NULL 的可选字段会降低下游可用信息量，但不会删除其余记录。
+
+**契约与源数据差异的安全处理**
+
+源 Contact 未提供 `created_date`，故 staging 字段保留但置为 `NULL`。History 原始表没有契约字段 `created_date` / `history_unique_key`，使用源 `_fivetran_start` 作为变更时间，并以 `_fivetran_start` 与 `_fivetran_end` 计算字符串唯一标识；该映射使快照能够按源可用的版本时间运行。历史记录同一实体同日时间戳完全相同的并列记录，按契约定义仍可能任意选取。
+
+**验证及修复记录**
+
+首次本地 SQL 验证发现 staging 查询中个别校验误用了输出字段别名，并发现源 Contact 不存在 `created_date`。已修正校验条件、将 Contact 不可用的 `created_date` 输出为 NULL，并重新逐层执行所有 SQL；随后再次运行 `python run.py`，全部 10 个模型执行成功。验证包含逐层执行/行数检查和 pipeline 成功完成；无剩余 SQL 执行失败。
+```
+
+## result_md_table_sentences
+
+```json
+{
+  "present": true,
+  "path": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/result.md",
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/result.md",
+  "sha256": "df89aece122dd6d60e4ab17ca4e1fd8c0a5293d88f16695b23f3e8e05fd64b28",
+  "sentences": [
+    {
+      "original_text": "| Staging | `stg_salesforce__contact_history` | 3,000 |",
+      "path": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/result.md",
+      "start_offset": 600,
+      "end_offset": 655,
+      "start_line": 16,
+      "end_line": 16,
+      "matching_008_D10_excerpt_ids": []
+    }
+  ],
+  "policy": "All sentences naming the table; includes sentences without 008 keywords. Existing D10 ids attached where applicable."
+}
+```
+
+## original_files
+
+```json
+{
+  "paths": [
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/10.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/11.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/12.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/15.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/16.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/21.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/22.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/25.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/26.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/27.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/28.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/31.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/32.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/37.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/38.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/39.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/40.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/41.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/42.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/43.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/44.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/47.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/48.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/49.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/50.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/7.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/8.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/.events/sessions/024a80d8-934c-43-4e69514191069ca/events/9.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/result.md",
+    "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-004/salesforce.duckdb",
+    "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql",
+    "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-004/docs/data_contract.yaml",
+    "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/salesforce.duckdb",
+    "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-004/agent/dacomp-de-impl-004/sql/staging/stg_salesforce__contact_history.sql"
+  ],
+  "archive": "/home/katherine/Assumption_Ledger/traces/dacomp_deimpl_prev.tar.gz",
+  "gold_SQL_search_root": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-004/sql",
+  "gold_SQL_search_names": [
+    "stg_salesforce__contact_history",
+    "stg_salesforce__contact_history"
+  ],
+  "source_fingerprints": "records/012_input_before.json"
+}
+```

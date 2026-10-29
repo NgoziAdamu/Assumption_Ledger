@@ -1,0 +1,3982 @@
+# impl-011 / stg_jira__issue
+
+## basic_information
+
+```json
+{
+  "task": "impl-011",
+  "layer": "staging",
+  "table": "stg_jira__issue",
+  "status": "待标注",
+  "difference_source": {
+    "kind": "original_007_009",
+    "record": "records/007_tolerance_tables.jsonl",
+    "detail_record": "/home/katherine/Assumption_Ledger/records/004_staging_impl-011.json",
+    "candidate_date": null,
+    "selection_reason": "未进入 011，沿用原差异"
+  },
+  "status_record": "records/012_statuses.jsonl",
+  "package_scope": "仅原文和机械统计；未概括轨迹、未推测原因"
+}
+```
+
+## contract_specification
+
+```json
+{
+  "source_path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-011/docs/data_contract.yaml",
+  "source_sha256": "6df956d41bfd1080458ade313dcc2ea99b0dce625a7e70d29ad6290dd3258f81",
+  "parse_mode": "strict",
+  "requested_table": "stg_jira__issue",
+  "status": "found"
+}
+```
+```json
+{
+  "yaml_path": [
+    "staging_contract",
+    "tables",
+    2
+  ],
+  "start_line": 91,
+  "end_line": 146
+}
+```
+```yaml
+    - name: stg_jira__issue
+      description: "Cleaned JIRA issues with validated statuses, standardized timestamps, and consistent foreign key references"
+      source_table: "raw.issue"
+      columns:
+        - name: issue_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: issue_key
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: issue_name
+          data_type: VARCHAR
+        - name: issue_description
+          data_type: VARCHAR
+        - name: created_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: resolved_at
+          data_type: TIMESTAMP
+        - name: updated_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: project_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: assignee_user_id
+          data_type: VARCHAR
+        - name: reporter_user_id
+          data_type: VARCHAR
+        - name: creator_user_id
+          data_type: VARCHAR
+        - name: status_id
+          data_type: VARCHAR
+        - name: priority_id
+          data_type: VARCHAR
+        - name: issue_type_id
+          data_type: VARCHAR
+        - name: resolution_id
+          data_type: VARCHAR
+        - name: parent_issue_id
+          data_type: VARCHAR
+        - name: due_date
+          data_type: VARCHAR
+        - name: environment
+          data_type: VARCHAR
+        - name: status_changed_at
+          data_type: TIMESTAMP
+        - name: original_estimate_seconds
+          data_type: DOUBLE
+        - name: remaining_estimate_seconds
+          data_type: DOUBLE
+        - name: time_spent_seconds
+          data_type: DOUBLE
+        - name: work_ratio
+          data_type: DOUBLE
+
+```
+
+## agent_final_SQL
+
+```json
+{
+  "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+  "sha256": "fc8560dd003186b02c9f969f8eeece8940ac0f81a516e24f8f5130f7e649ee59",
+  "start_line": 1,
+  "end_line": 1
+}
+```
+```sql
+select cast(id as varchar) issue_id, cast(key as varchar) issue_key, summary issue_name, description issue_description, try_cast(regexp_replace(created, ' [+-][0-9]{4}$', '') as timestamp) created_at, try_cast(regexp_replace(resolved, ' [+-][0-9]{4}$', '') as timestamp) resolved_at, try_cast(regexp_replace(updated, ' [+-][0-9]{4}$', '') as timestamp) updated_at, cast(project as varchar) project_id, cast(assignee as varchar) assignee_user_id, cast(reporter as varchar) reporter_user_id, cast(creator as varchar) creator_user_id, cast(status as varchar) status_id, cast(priority as varchar) priority_id, cast(issue_type as varchar) issue_type_id, cast(resolution as varchar) resolution_id, cast(parent_id as varchar) parent_issue_id, due_date, environment, try_cast(regexp_replace(status_category_changed, ' [+-][0-9]{4}$', '') as timestamp) status_changed_at, cast(coalesce(_original_estimate,original_estimate) as double) original_estimate_seconds, cast(coalesce(_remaining_estimate,remaining_estimate) as double) remaining_estimate_seconds, cast(coalesce(_time_spent,time_spent) as double) time_spent_seconds, cast(work_ratio as double) work_ratio from raw.issue where id is not null and created is not null and updated is not null and project is not null qualify row_number() over(partition by id order by updated desc nulls last)=1
+```
+
+## gold_SQL_仅供定位差异
+
+```json
+{
+  "path": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+  "sha256": "8e21a3e0f2820e8af298f7b424679d9a61b1305c1989d45dce51d5120b7957c1",
+  "start_line": 1,
+  "end_line": 116
+}
+```
+```sql
+-- Staging table for Jira issues
+-- Cleaned JIRA issues with validated statuses, standardized timestamps, and consistent foreign key references
+select
+    -- Required fields with validation
+    TRIM(id) as issue_id,  -- issue_id IS NOT NULL AND TRIM(issue_id) != ''
+
+    -- issue_key validation: issue_key = UPPER(TRIM(issue_key))
+    CASE
+        WHEN key IS NULL OR TRIM(key) = '' THEN NULL
+        ELSE UPPER(TRIM(key))
+    END as issue_key,
+
+    -- issue_name validation: issue_name = TRIM(issue_name)
+    CASE
+        WHEN summary IS NULL OR TRIM(summary) = '' THEN NULL
+        ELSE TRIM(summary)
+    END as issue_name,  -- issue_name = TRIM(issue_name)
+
+    -- issue_description validation: issue_description = TRIM(issue_description)
+    CASE
+        WHEN description IS NULL OR TRIM(description) = '' THEN NULL
+        ELSE TRIM(description)
+    END as issue_description,  -- issue_description = TRIM(issue_description)
+
+    -- Timestamp standardization
+    CASE
+        when created like '% +____' then CAST(SUBSTR(created, 1, LENGTH(created) - 6) AS TIMESTAMP)
+        when created like '%+%' then CAST(SUBSTR(created, 1, LENGTH(created) - 6) AS TIMESTAMP)
+        WHEN created IS NOT NULL THEN CAST(created AS TIMESTAMP)
+        ELSE NULL
+    end as created_at,  -- created_at IS NOT NULL
+
+    CASE
+        when resolved like '% +____' then CAST(SUBSTR(resolved, 1, LENGTH(resolved) - 6) AS TIMESTAMP)
+        when resolved like '%+%' then CAST(SUBSTR(resolved, 1, LENGTH(resolved) - 6) AS TIMESTAMP)
+        WHEN resolved IS NOT NULL THEN CAST(resolved AS TIMESTAMP)
+        ELSE NULL
+    end as resolved_at,
+
+    CASE
+        when updated like '% +____' then CAST(SUBSTR(updated, 1, LENGTH(updated) - 6) AS TIMESTAMP)
+        when updated like '%+%' then CAST(SUBSTR(updated, 1, LENGTH(updated) - 6) AS TIMESTAMP)
+        WHEN updated IS NOT NULL THEN CAST(updated AS TIMESTAMP)
+        ELSE NULL
+    end as updated_at,  -- updated_at IS NOT NULL
+
+    -- Required project_id validation
+    CASE
+        WHEN project IS NULL OR TRIM(project) = '' THEN NULL
+        ELSE TRIM(project)
+    END as project_id,  -- project_id IS NOT NULL
+
+    -- Optional foreign key fields
+    CASE
+        WHEN assignee IS NULL OR TRIM(assignee) = '' THEN NULL
+        ELSE TRIM(assignee)
+    END as assignee_user_id,
+
+    CASE
+        WHEN reporter IS NULL OR TRIM(reporter) = '' THEN NULL
+        ELSE TRIM(reporter)
+    END as reporter_user_id,
+
+    CASE
+        WHEN creator IS NULL OR TRIM(creator) = '' THEN NULL
+        ELSE TRIM(creator)
+    END as creator_user_id,
+
+    CASE
+        WHEN status IS NULL OR TRIM(status) = '' THEN NULL
+        ELSE TRIM(status)
+    END as status_id,
+
+    CASE
+        WHEN priority IS NULL OR TRIM(priority) = '' THEN NULL
+        ELSE TRIM(priority)
+    END as priority_id,
+
+    CASE
+        WHEN coalesce(cast(work_type as varchar), issue_type) IS NULL OR TRIM(coalesce(cast(work_type as varchar), issue_type)) = '' THEN NULL
+        ELSE TRIM(coalesce(cast(work_type as varchar), issue_type))
+    END as issue_type_id,
+
+    CASE
+        WHEN resolution IS NULL OR TRIM(resolution) = '' THEN NULL
+        ELSE TRIM(resolution)
+    END as resolution_id,
+
+    CASE
+        WHEN parent_id IS NULL OR TRIM(parent_id) = '' THEN NULL
+        ELSE TRIM(parent_id)
+    END as parent_issue_id,
+
+    -- Additional fields
+    due_date,
+    environment,
+
+    -- Status change timestamp
+    CASE
+        when status_category_changed like '% +____' then CAST(SUBSTR(status_category_changed, 1, LENGTH(status_category_changed) - 6) AS TIMESTAMP)
+        when status_category_changed like '%+%' then CAST(SUBSTR(status_category_changed, 1, LENGTH(status_category_changed) - 6) AS TIMESTAMP)
+        WHEN status_category_changed IS NOT NULL THEN CAST(status_category_changed AS TIMESTAMP)
+        ELSE NULL
+    end as status_changed_at,
+
+    -- Work estimate fields
+    cast(coalesce(original_estimate, _original_estimate) as double) as original_estimate_seconds,
+    cast(coalesce(remaining_estimate, _remaining_estimate) as double) as remaining_estimate_seconds,
+    cast(coalesce(time_spent, _time_spent) as double) as time_spent_seconds,
+    cast(work_ratio as double) as work_ratio
+
+from raw.issue
+where id IS NOT NULL AND TRIM(id) != ''  -- Quarantine on failure: issue_id IS NOT NULL AND TRIM(issue_id) != ''
+    AND created IS NOT NULL  -- Quarantine on failure: created_at IS NOT NULL
+    AND updated IS NOT NULL  -- Quarantine on failure: updated_at IS NOT NULL
+    AND project IS NOT NULL AND TRIM(project) != ''  -- Quarantine on failure: project_id IS NOT NULL
+```
+
+## differences
+
+```json
+{
+  "kind": "original_007_009",
+  "record": "records/007_tolerance_tables.jsonl",
+  "detail_record": "/home/katherine/Assumption_Ledger/records/004_staging_impl-011.json",
+  "prediction_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/jira.duckdb",
+  "gold_database": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-011/jira.duckdb",
+  "actual_schema": "staging",
+  "table": "stg_jira__issue",
+  "candidate_date": null,
+  "comparison_columns": [
+    "assignee_user_id",
+    "creator_user_id",
+    "due_date",
+    "environment",
+    "issue_description",
+    "issue_id",
+    "issue_key",
+    "issue_name",
+    "issue_type_id",
+    "original_estimate_seconds",
+    "parent_issue_id",
+    "priority_id",
+    "project_id",
+    "remaining_estimate_seconds",
+    "reporter_user_id",
+    "resolution_id",
+    "status_id",
+    "time_spent_seconds",
+    "work_ratio"
+  ],
+  "key_columns": [
+    "issue_id"
+  ],
+  "prediction_rows": 8000,
+  "gold_rows": 8000,
+  "row_delta": 0,
+  "key_statistics": {
+    "pred_distinct_keys": 8000,
+    "gold_distinct_keys": 8000,
+    "pred_duplicate_key_groups": 0,
+    "gold_duplicate_key_groups": 0,
+    "pred_only_keys": 0,
+    "gold_only_keys": 0,
+    "shared_keys": 8000,
+    "shared_nonunique_key_groups": 0
+  },
+  "l0_column_differences": [
+    {
+      "column": "issue_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "issue_key",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "issue_name",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "issue_description",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "project_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "assignee_user_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "reporter_user_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "creator_user_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "status_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "priority_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "issue_type_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "resolution_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "parent_issue_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "due_date",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "environment",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "original_estimate_seconds",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 7999,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 7999,
+      "pred_unmatched_value_occurrences": 7999,
+      "gold_unmatched_value_occurrences": 7999,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "remaining_estimate_seconds",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 7999,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 7999,
+      "pred_unmatched_value_occurrences": 7999,
+      "gold_unmatched_value_occurrences": 7999,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "time_spent_seconds",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 8000,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 8000,
+      "pred_unmatched_value_occurrences": 8000,
+      "gold_unmatched_value_occurrences": 8000,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "work_ratio",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    }
+  ],
+  "l3_column_differences": [
+    {
+      "column": "assignee_user_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "creator_user_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "due_date",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "environment",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "issue_description",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "issue_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "issue_key",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "issue_name",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "issue_type_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "original_estimate_seconds",
+      "one_to_one_mismatch_rows": 7999,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 7999,
+      "pred_unmatched_value_occurrences": 7999,
+      "gold_unmatched_value_occurrences": 7999,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "parent_issue_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "priority_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "project_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "remaining_estimate_seconds",
+      "one_to_one_mismatch_rows": 7999,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 7999,
+      "pred_unmatched_value_occurrences": 7999,
+      "gold_unmatched_value_occurrences": 7999,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "reporter_user_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "resolution_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "status_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "time_spent_seconds",
+      "one_to_one_mismatch_rows": 8000,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 8000,
+      "pred_unmatched_value_occurrences": 8000,
+      "gold_unmatched_value_occurrences": 8000,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "work_ratio",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    }
+  ],
+  "whole_match_level": "仍不匹配",
+  "keyed_match_level": "仍不匹配",
+  "selection_reason": "未进入 011，沿用原差异",
+  "value_representation": "Unmodified DuckDB CAST AS VARCHAR; SQL NULL is JSON null. Keys use the unchanged historical L0 normalization.",
+  "new_queries_only_read_existing_results": true,
+  "one_side_key_examples": {
+    "prediction_only": [],
+    "gold_only": []
+  },
+  "column_details": [
+    {
+      "column": "issue_id",
+      "l0_counts_verbatim": {
+        "column": "issue_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "issue_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "issue_key",
+      "l0_counts_verbatim": {
+        "column": "issue_key",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "issue_key",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "issue_name",
+      "l0_counts_verbatim": {
+        "column": "issue_name",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "issue_name",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "issue_description",
+      "l0_counts_verbatim": {
+        "column": "issue_description",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "issue_description",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "project_id",
+      "l0_counts_verbatim": {
+        "column": "project_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "project_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "assignee_user_id",
+      "l0_counts_verbatim": {
+        "column": "assignee_user_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "assignee_user_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "reporter_user_id",
+      "l0_counts_verbatim": {
+        "column": "reporter_user_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "reporter_user_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "creator_user_id",
+      "l0_counts_verbatim": {
+        "column": "creator_user_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "creator_user_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "status_id",
+      "l0_counts_verbatim": {
+        "column": "status_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "status_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "priority_id",
+      "l0_counts_verbatim": {
+        "column": "priority_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "priority_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "issue_type_id",
+      "l0_counts_verbatim": {
+        "column": "issue_type_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "issue_type_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "resolution_id",
+      "l0_counts_verbatim": {
+        "column": "resolution_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "resolution_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "parent_issue_id",
+      "l0_counts_verbatim": {
+        "column": "parent_issue_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "parent_issue_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "due_date",
+      "l0_counts_verbatim": {
+        "column": "due_date",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "due_date",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "environment",
+      "l0_counts_verbatim": {
+        "column": "environment",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "environment",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "original_estimate_seconds",
+      "l0_counts_verbatim": {
+        "column": "original_estimate_seconds",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 7999,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 7999,
+        "pred_unmatched_value_occurrences": 7999,
+        "gold_unmatched_value_occurrences": 7999,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "original_estimate_seconds",
+        "one_to_one_mismatch_rows": 7999,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 7999,
+        "pred_unmatched_value_occurrences": 7999,
+        "gold_unmatched_value_occurrences": 7999,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "issue_id": "iss10000140937"
+          },
+          "agent_key_raw_text": {
+            "issue_id": "ISS10000140937"
+          },
+          "gold_key_raw_text": {
+            "issue_id": "ISS10000140937"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "84.97",
+          "gold_value": "62.96"
+        },
+        {
+          "key_normalized": {
+            "issue_id": "iss10003041400"
+          },
+          "agent_key_raw_text": {
+            "issue_id": "ISS10003041400"
+          },
+          "gold_key_raw_text": {
+            "issue_id": "ISS10003041400"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "58.37",
+          "gold_value": "80.11"
+        },
+        {
+          "key_normalized": {
+            "issue_id": "iss10011664312"
+          },
+          "agent_key_raw_text": {
+            "issue_id": "ISS10011664312"
+          },
+          "gold_key_raw_text": {
+            "issue_id": "ISS10011664312"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "9.47",
+          "gold_value": "34.55"
+        },
+        {
+          "key_normalized": {
+            "issue_id": "iss10016662655"
+          },
+          "agent_key_raw_text": {
+            "issue_id": "ISS10016662655"
+          },
+          "gold_key_raw_text": {
+            "issue_id": "ISS10016662655"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "21.68",
+          "gold_value": "88.85"
+        },
+        {
+          "key_normalized": {
+            "issue_id": "iss10036426465"
+          },
+          "agent_key_raw_text": {
+            "issue_id": "ISS10036426465"
+          },
+          "gold_key_raw_text": {
+            "issue_id": "ISS10036426465"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "59.76",
+          "gold_value": "47.65"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 7999,
+        "pred_unmatched_value_occurrences": 7999,
+        "gold_unmatched_value_occurrences": 7999
+      },
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "DOUBLE"
+    },
+    {
+      "column": "remaining_estimate_seconds",
+      "l0_counts_verbatim": {
+        "column": "remaining_estimate_seconds",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 7999,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 7999,
+        "pred_unmatched_value_occurrences": 7999,
+        "gold_unmatched_value_occurrences": 7999,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "remaining_estimate_seconds",
+        "one_to_one_mismatch_rows": 7999,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 7999,
+        "pred_unmatched_value_occurrences": 7999,
+        "gold_unmatched_value_occurrences": 7999,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "issue_id": "iss10000140937"
+          },
+          "agent_key_raw_text": {
+            "issue_id": "ISS10000140937"
+          },
+          "gold_key_raw_text": {
+            "issue_id": "ISS10000140937"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "32.92",
+          "gold_value": "9.78"
+        },
+        {
+          "key_normalized": {
+            "issue_id": "iss10003041400"
+          },
+          "agent_key_raw_text": {
+            "issue_id": "ISS10003041400"
+          },
+          "gold_key_raw_text": {
+            "issue_id": "ISS10003041400"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "44.03",
+          "gold_value": "13.48"
+        },
+        {
+          "key_normalized": {
+            "issue_id": "iss10011664312"
+          },
+          "agent_key_raw_text": {
+            "issue_id": "ISS10011664312"
+          },
+          "gold_key_raw_text": {
+            "issue_id": "ISS10011664312"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "7.82",
+          "gold_value": "28.03"
+        },
+        {
+          "key_normalized": {
+            "issue_id": "iss10016662655"
+          },
+          "agent_key_raw_text": {
+            "issue_id": "ISS10016662655"
+          },
+          "gold_key_raw_text": {
+            "issue_id": "ISS10016662655"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "12.94",
+          "gold_value": "46.94"
+        },
+        {
+          "key_normalized": {
+            "issue_id": "iss10036426465"
+          },
+          "agent_key_raw_text": {
+            "issue_id": "ISS10036426465"
+          },
+          "gold_key_raw_text": {
+            "issue_id": "ISS10036426465"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "22.37",
+          "gold_value": "44.14"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 7999,
+        "pred_unmatched_value_occurrences": 7999,
+        "gold_unmatched_value_occurrences": 7999
+      },
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "DOUBLE"
+    },
+    {
+      "column": "time_spent_seconds",
+      "l0_counts_verbatim": {
+        "column": "time_spent_seconds",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 8000,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 8000,
+        "pred_unmatched_value_occurrences": 8000,
+        "gold_unmatched_value_occurrences": 8000,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "time_spent_seconds",
+        "one_to_one_mismatch_rows": 8000,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 8000,
+        "pred_unmatched_value_occurrences": 8000,
+        "gold_unmatched_value_occurrences": 8000,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "issue_id": "iss10000140937"
+          },
+          "agent_key_raw_text": {
+            "issue_id": "ISS10000140937"
+          },
+          "gold_key_raw_text": {
+            "issue_id": "ISS10000140937"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "31.05",
+          "gold_value": "28.7"
+        },
+        {
+          "key_normalized": {
+            "issue_id": "iss10003041400"
+          },
+          "agent_key_raw_text": {
+            "issue_id": "ISS10003041400"
+          },
+          "gold_key_raw_text": {
+            "issue_id": "ISS10003041400"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "31.37",
+          "gold_value": "20.91"
+        },
+        {
+          "key_normalized": {
+            "issue_id": "iss10011664312"
+          },
+          "agent_key_raw_text": {
+            "issue_id": "ISS10011664312"
+          },
+          "gold_key_raw_text": {
+            "issue_id": "ISS10011664312"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "56.23",
+          "gold_value": "45.99"
+        },
+        {
+          "key_normalized": {
+            "issue_id": "iss10016662655"
+          },
+          "agent_key_raw_text": {
+            "issue_id": "ISS10016662655"
+          },
+          "gold_key_raw_text": {
+            "issue_id": "ISS10016662655"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "55.36",
+          "gold_value": "70.18"
+        },
+        {
+          "key_normalized": {
+            "issue_id": "iss10036426465"
+          },
+          "agent_key_raw_text": {
+            "issue_id": "ISS10036426465"
+          },
+          "gold_key_raw_text": {
+            "issue_id": "ISS10036426465"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "14.07",
+          "gold_value": "69.23"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 8000,
+        "pred_unmatched_value_occurrences": 8000,
+        "gold_unmatched_value_occurrences": 8000
+      },
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "DOUBLE"
+    },
+    {
+      "column": "work_ratio",
+      "l0_counts_verbatim": {
+        "column": "work_ratio",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "work_ratio",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "DOUBLE"
+    }
+  ]
+}
+```
+
+## agent_constraints_006
+
+```json
+{
+  "source_record": "records/006_contract_impl-011.json",
+  "declarations": {
+    "grain": [],
+    "primary_key": [],
+    "not_null": [
+      {
+        "columns": [
+          "issue_id"
+        ],
+        "sources": [
+          {
+            "yaml_path": [
+              "staging_contract",
+              "tables",
+              2,
+              "columns",
+              0,
+              "constraints",
+              0
+            ],
+            "start_line": 97,
+            "end_line": 97,
+            "original_excerpt": "          constraints: [not_null, unique]\n",
+            "decoded_value": [
+              "not_null",
+              "unique"
+            ]
+          }
+        ]
+      },
+      {
+        "columns": [
+          "issue_key"
+        ],
+        "sources": [
+          {
+            "yaml_path": [
+              "staging_contract",
+              "tables",
+              2,
+              "columns",
+              1,
+              "constraints",
+              0
+            ],
+            "start_line": 100,
+            "end_line": 100,
+            "original_excerpt": "          constraints: [not_null]\n",
+            "decoded_value": [
+              "not_null"
+            ]
+          }
+        ]
+      },
+      {
+        "columns": [
+          "created_at"
+        ],
+        "sources": [
+          {
+            "yaml_path": [
+              "staging_contract",
+              "tables",
+              2,
+              "columns",
+              4,
+              "constraints",
+              0
+            ],
+            "start_line": 107,
+            "end_line": 107,
+            "original_excerpt": "          constraints: [not_null]\n",
+            "decoded_value": [
+              "not_null"
+            ]
+          }
+        ]
+      },
+      {
+        "columns": [
+          "updated_at"
+        ],
+        "sources": [
+          {
+            "yaml_path": [
+              "staging_contract",
+              "tables",
+              2,
+              "columns",
+              6,
+              "constraints",
+              0
+            ],
+            "start_line": 112,
+            "end_line": 112,
+            "original_excerpt": "          constraints: [not_null]\n",
+            "decoded_value": [
+              "not_null"
+            ]
+          }
+        ]
+      },
+      {
+        "columns": [
+          "project_id"
+        ],
+        "sources": [
+          {
+            "yaml_path": [
+              "staging_contract",
+              "tables",
+              2,
+              "columns",
+              7,
+              "constraints",
+              0
+            ],
+            "start_line": 115,
+            "end_line": 115,
+            "original_excerpt": "          constraints: [not_null]\n",
+            "decoded_value": [
+              "not_null"
+            ]
+          }
+        ]
+      }
+    ],
+    "unique": [
+      {
+        "columns": [
+          "issue_id"
+        ],
+        "sources": [
+          {
+            "yaml_path": [
+              "staging_contract",
+              "tables",
+              2,
+              "columns",
+              0,
+              "constraints",
+              1
+            ],
+            "start_line": 97,
+            "end_line": 97,
+            "original_excerpt": "          constraints: [not_null, unique]\n",
+            "decoded_value": [
+              "not_null",
+              "unique"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "agent": {
+    "table_exists": true,
+    "actual_schema": "staging",
+    "table_type": "BASE TABLE",
+    "same_name_other_schemas": [],
+    "row_count": 8000,
+    "checks": {
+      "grain": [],
+      "primary_key": [],
+      "not_null": [
+        {
+          "columns": [
+            "issue_id"
+          ],
+          "status": "checked",
+          "violated": false,
+          "sql_null_rows": 0
+        },
+        {
+          "columns": [
+            "issue_key"
+          ],
+          "status": "checked",
+          "violated": false,
+          "sql_null_rows": 0
+        },
+        {
+          "columns": [
+            "created_at"
+          ],
+          "status": "checked",
+          "violated": false,
+          "sql_null_rows": 0
+        },
+        {
+          "columns": [
+            "updated_at"
+          ],
+          "status": "checked",
+          "violated": false,
+          "sql_null_rows": 0
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "status": "checked",
+          "violated": false,
+          "sql_null_rows": 0
+        }
+      ],
+      "unique": [
+        {
+          "columns": [
+            "issue_id"
+          ],
+          "status": "checked",
+          "violated": false,
+          "sql": "SELECT count(*),count(*) FILTER(WHERE \"__ledger_group_count\">1),coalesce(sum(\"__ledger_group_count\") FILTER(WHERE \"__ledger_group_count\">1),0),\n                      coalesce(sum(\"__ledger_group_count\"-1) FILTER(WHERE \"__ledger_group_count\">1),0),coalesce(sum(\"__ledger_group_count\") FILTER(WHERE \"issue_id\" IS NULL),0),\n                      count(*) FILTER(WHERE \"__ledger_group_count\">1 AND NOT (\"issue_id\" IS NULL)),coalesce(sum(\"__ledger_group_count\") FILTER(WHERE \"__ledger_group_count\">1 AND NOT (\"issue_id\" IS NULL)),0),\n                      coalesce(sum(\"__ledger_group_count\"-1) FILTER(WHERE \"__ledger_group_count\">1 AND NOT (\"issue_id\" IS NULL)),0),count(*) FILTER(WHERE \"__ledger_group_count\">1 AND (\"issue_id\" IS NULL)),\n                      coalesce(sum(\"__ledger_group_count\") FILTER(WHERE \"__ledger_group_count\">1 AND (\"issue_id\" IS NULL)),0)\n                      FROM (SELECT \"issue_id\",count(*) AS \"__ledger_group_count\" FROM \"staging\".\"stg_jira__issue\" GROUP BY \"issue_id\") grouped_keys",
+          "sql_key_order": [
+            "issue_id"
+          ],
+          "distinct_key_groups": 8000,
+          "duplicate_key_groups": 0,
+          "rows_in_duplicate_groups": 0,
+          "excess_duplicate_rows": 0,
+          "null_key_rows": 0,
+          "nonnull_duplicate_key_groups": 0,
+          "nonnull_rows_in_duplicate_groups": 0,
+          "nonnull_excess_duplicate_rows": 0,
+          "null_containing_duplicate_key_groups": 0,
+          "rows_in_null_containing_duplicate_groups": 0,
+          "including_nulls_duplicate_key_groups": 0,
+          "including_nulls_rows_in_duplicate_groups": 0
+        }
+      ]
+    },
+    "actual_table": "stg_jira__issue",
+    "actual_columns": [
+      "issue_id",
+      "issue_key",
+      "issue_name",
+      "issue_description",
+      "created_at",
+      "resolved_at",
+      "updated_at",
+      "project_id",
+      "assignee_user_id",
+      "reporter_user_id",
+      "creator_user_id",
+      "status_id",
+      "priority_id",
+      "issue_type_id",
+      "resolution_id",
+      "parent_issue_id",
+      "due_date",
+      "environment",
+      "status_changed_at",
+      "original_estimate_seconds",
+      "remaining_estimate_seconds",
+      "time_spent_seconds",
+      "work_ratio"
+    ],
+    "missing_declared_columns": [],
+    "not_null_count_sql": "SELECT count(*) FILTER(WHERE \"created_at\" IS NULL),count(*) FILTER(WHERE \"issue_id\" IS NULL),count(*) FILTER(WHERE \"issue_key\" IS NULL),count(*) FILTER(WHERE \"project_id\" IS NULL),count(*) FILTER(WHERE \"updated_at\" IS NULL) FROM \"staging\".\"stg_jira__issue\"",
+    "categories": {
+      "grain": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      },
+      "primary_key": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      },
+      "not_null": {
+        "status": "checked_no_violation",
+        "violated": false,
+        "declared_checks": 5,
+        "checked_checks": 5,
+        "unknown_checks": 0,
+        "complete": true
+      },
+      "unique": {
+        "status": "checked_no_violation",
+        "violated": false,
+        "declared_checks": 1,
+        "checked_checks": 1,
+        "unknown_checks": 0,
+        "complete": true
+      }
+    },
+    "any_constraint_violated": false
+  }
+}
+```
+
+## all_markers_and_evidence_008
+
+```json
+{
+  "source_record": "records/008_table_scan.jsonl",
+  "verbatim_record": {
+    "task": "impl-011",
+    "layer": "staging",
+    "table": "stg_jira__issue",
+    "logical_contract_table": "stg_jira__issue",
+    "delivery_name_mapping_evidence": [],
+    "inventory_sources": {
+      "retained_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/jira.duckdb",
+      "present_in_database": true,
+      "agent_final_sql_files": [
+        "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql"
+      ]
+    },
+    "status_007": {
+      "gold_table_exists_in_original_gold": true,
+      "whole_level_007": "仍不匹配",
+      "007_present": true,
+      "004_failed_set_member": true,
+      "005_failed_set_member": false,
+      "005_current_pred_execution": null,
+      "status_sources": [
+        {
+          "record": "records/007_tolerance_tables.jsonl",
+          "scope": "staging",
+          "rule": "whole_match_level",
+          "value": "仍不匹配",
+          "007_prediction_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/jira.duckdb"
+        }
+      ],
+      "status": "待标注",
+      "comparison_lookup_layer": "staging",
+      "comparison_lookup_table": "stg_jira__issue",
+      "actual_gold_relation_exists": true
+    },
+    "contract": {
+      "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-011/docs/data_contract.yaml",
+      "blocks": [
+        {
+          "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-011/docs/data_contract.yaml",
+          "start_line": 91,
+          "end_line": 145,
+          "original_text": "    - name: stg_jira__issue\n      description: \"Cleaned JIRA issues with validated statuses, standardized timestamps, and consistent foreign key references\"\n      source_table: \"raw.issue\"\n      columns:\n        - name: issue_id\n          data_type: VARCHAR\n          constraints: [not_null, unique]\n        - name: issue_key\n          data_type: VARCHAR\n          constraints: [not_null]\n        - name: issue_name\n          data_type: VARCHAR\n        - name: issue_description\n          data_type: VARCHAR\n        - name: created_at\n          data_type: TIMESTAMP\n          constraints: [not_null]\n        - name: resolved_at\n          data_type: TIMESTAMP\n        - name: updated_at\n          data_type: TIMESTAMP\n          constraints: [not_null]\n        - name: project_id\n          data_type: VARCHAR\n          constraints: [not_null]\n        - name: assignee_user_id\n          data_type: VARCHAR\n        - name: reporter_user_id\n          data_type: VARCHAR\n        - name: creator_user_id\n          data_type: VARCHAR\n        - name: status_id\n          data_type: VARCHAR\n        - name: priority_id\n          data_type: VARCHAR\n        - name: issue_type_id\n          data_type: VARCHAR\n        - name: resolution_id\n          data_type: VARCHAR\n        - name: parent_issue_id\n          data_type: VARCHAR\n        - name: due_date\n          data_type: VARCHAR\n        - name: environment\n          data_type: VARCHAR\n        - name: status_changed_at\n          data_type: TIMESTAMP\n        - name: original_estimate_seconds\n          data_type: DOUBLE\n        - name: remaining_estimate_seconds\n          data_type: DOUBLE\n        - name: time_spent_seconds\n          data_type: DOUBLE\n        - name: work_ratio\n          data_type: DOUBLE\n",
+          "yaml_path": [
+            "staging_contract",
+            "tables",
+            2
+          ]
+        }
+      ]
+    },
+    "output": {
+      "status": "checked",
+      "exists": true,
+      "row_count": 8000,
+      "zero_rows": false,
+      "columns": [
+        {
+          "name": "issue_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "issue_key",
+          "type": "VARCHAR",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "issue_name",
+          "type": "VARCHAR",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "issue_description",
+          "type": "VARCHAR",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "resolved_at",
+          "type": "TIMESTAMP",
+          "nonnull_rows": 4795,
+          "sql_null_rows": 3205
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "project_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "assignee_user_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "reporter_user_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "creator_user_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "status_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "priority_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "issue_type_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "resolution_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 4795,
+          "sql_null_rows": 3205
+        },
+        {
+          "name": "parent_issue_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 781,
+          "sql_null_rows": 7219
+        },
+        {
+          "name": "due_date",
+          "type": "VARCHAR",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "environment",
+          "type": "VARCHAR",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "status_changed_at",
+          "type": "TIMESTAMP",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "original_estimate_seconds",
+          "type": "DOUBLE",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "remaining_estimate_seconds",
+          "type": "DOUBLE",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "time_spent_seconds",
+          "type": "DOUBLE",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "work_ratio",
+          "type": "DOUBLE",
+          "nonnull_rows": 8000,
+          "sql_null_rows": 0
+        }
+      ],
+      "all_null_columns": [],
+      "constant_nonnull_columns": [],
+      "equal_column_groups": [],
+      "profile_sql": "SELECT count(*),count(\"issue_id\"),min(CAST(\"issue_id\" AS VARCHAR)),max(CAST(\"issue_id\" AS VARCHAR)),sum(hash(CAST(\"issue_id\" AS VARCHAR))),count(\"issue_key\"),min(CAST(\"issue_key\" AS VARCHAR)),max(CAST(\"issue_key\" AS VARCHAR)),sum(hash(CAST(\"issue_key\" AS VARCHAR))),count(\"issue_name\"),min(CAST(\"issue_name\" AS VARCHAR)),max(CAST(\"issue_name\" AS VARCHAR)),sum(hash(CAST(\"issue_name\" AS VARCHAR))),count(\"issue_description\"),min(CAST(\"issue_description\" AS VARCHAR)),max(CAST(\"issue_description\" AS VARCHAR)),sum(hash(CAST(\"issue_description\" AS VARCHAR))),count(\"created_at\"),min(CAST(\"created_at\" AS VARCHAR)),max(CAST(\"created_at\" AS VARCHAR)),sum(hash(CAST(\"created_at\" AS VARCHAR))),count(\"resolved_at\"),min(CAST(\"resolved_at\" AS VARCHAR)),max(CAST(\"resolved_at\" AS VARCHAR)),sum(hash(CAST(\"resolved_at\" AS VARCHAR))),count(\"updated_at\"),min(CAST(\"updated_at\" AS VARCHAR)),max(CAST(\"updated_at\" AS VARCHAR)),sum(hash(CAST(\"updated_at\" AS VARCHAR))),count(\"project_id\"),min(CAST(\"project_id\" AS VARCHAR)),max(CAST(\"project_id\" AS VARCHAR)),sum(hash(CAST(\"project_id\" AS VARCHAR))),count(\"assignee_user_id\"),min(CAST(\"assignee_user_id\" AS VARCHAR)),max(CAST(\"assignee_user_id\" AS VARCHAR)),sum(hash(CAST(\"assignee_user_id\" AS VARCHAR))),count(\"reporter_user_id\"),min(CAST(\"reporter_user_id\" AS VARCHAR)),max(CAST(\"reporter_user_id\" AS VARCHAR)),sum(hash(CAST(\"reporter_user_id\" AS VARCHAR))),count(\"creator_user_id\"),min(CAST(\"creator_user_id\" AS VARCHAR)),max(CAST(\"creator_user_id\" AS VARCHAR)),sum(hash(CAST(\"creator_user_id\" AS VARCHAR))),count(\"status_id\"),min(CAST(\"status_id\" AS VARCHAR)),max(CAST(\"status_id\" AS VARCHAR)),sum(hash(CAST(\"status_id\" AS VARCHAR))),count(\"priority_id\"),min(CAST(\"priority_id\" AS VARCHAR)),max(CAST(\"priority_id\" AS VARCHAR)),sum(hash(CAST(\"priority_id\" AS VARCHAR))),count(\"issue_type_id\"),min(CAST(\"issue_type_id\" AS VARCHAR)),max(CAST(\"issue_type_id\" AS VARCHAR)),sum(hash(CAST(\"issue_type_id\" AS VARCHAR))),count(\"resolution_id\"),min(CAST(\"resolution_id\" AS VARCHAR)),max(CAST(\"resolution_id\" AS VARCHAR)),sum(hash(CAST(\"resolution_id\" AS VARCHAR))),count(\"parent_issue_id\"),min(CAST(\"parent_issue_id\" AS VARCHAR)),max(CAST(\"parent_issue_id\" AS VARCHAR)),sum(hash(CAST(\"parent_issue_id\" AS VARCHAR))),count(\"due_date\"),min(CAST(\"due_date\" AS VARCHAR)),max(CAST(\"due_date\" AS VARCHAR)),sum(hash(CAST(\"due_date\" AS VARCHAR))),count(\"environment\"),min(CAST(\"environment\" AS VARCHAR)),max(CAST(\"environment\" AS VARCHAR)),sum(hash(CAST(\"environment\" AS VARCHAR))),count(\"status_changed_at\"),min(CAST(\"status_changed_at\" AS VARCHAR)),max(CAST(\"status_changed_at\" AS VARCHAR)),sum(hash(CAST(\"status_changed_at\" AS VARCHAR))),count(\"original_estimate_seconds\"),min(CAST(\"original_estimate_seconds\" AS VARCHAR)),max(CAST(\"original_estimate_seconds\" AS VARCHAR)),sum(hash(CAST(\"original_estimate_seconds\" AS VARCHAR))),count(\"remaining_estimate_seconds\"),min(CAST(\"remaining_estimate_seconds\" AS VARCHAR)),max(CAST(\"remaining_estimate_seconds\" AS VARCHAR)),sum(hash(CAST(\"remaining_estimate_seconds\" AS VARCHAR))),count(\"time_spent_seconds\"),min(CAST(\"time_spent_seconds\" AS VARCHAR)),max(CAST(\"time_spent_seconds\" AS VARCHAR)),sum(hash(CAST(\"time_spent_seconds\" AS VARCHAR))),count(\"work_ratio\"),min(CAST(\"work_ratio\" AS VARCHAR)),max(CAST(\"work_ratio\" AS VARCHAR)),sum(hash(CAST(\"work_ratio\" AS VARCHAR))) FROM \"staging\".\"stg_jira__issue\"",
+      "equal_column_confirmation_queries": [],
+      "equality_policy": "exact CAST AS VARCHAR per row; no trim/case/numeric/date normalization; both NULL ignored; at least one nonnull equal row; one-sided NULL differs",
+      "actual_schema": "staging",
+      "actual_table": "stg_jira__issue",
+      "relation_type": "BASE TABLE"
+    },
+    "agent_sql": [
+      {
+        "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+        "status": "parsed",
+        "parser": "30.25.0",
+        "sources": [
+          {
+            "name": "raw.issue",
+            "canonical": "raw.issue",
+            "locations": [
+              {
+                "line": 1,
+                "end_line": 1
+              }
+            ]
+          }
+        ],
+        "unresolved_source_expressions": [],
+        "row_generator_expressions": [],
+        "outputs": [
+          {
+            "name": "issue_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(id AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "issue_id",
+            "retained_output_ordinal": 1
+          },
+          {
+            "name": "issue_key",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(key AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "issue_key",
+            "retained_output_ordinal": 2
+          },
+          {
+            "name": "issue_name",
+            "alternatives": [
+              {
+                "expression_sql": "summary",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "issue_name",
+            "retained_output_ordinal": 3
+          },
+          {
+            "name": "issue_description",
+            "alternatives": [
+              {
+                "expression_sql": "description",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "issue_description",
+            "retained_output_ordinal": 4
+          },
+          {
+            "name": "created_at",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(REGEXP_REPLACE(created, ' [+-][0-9]{4}$', '') AS TIMESTAMP)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "created_at",
+            "retained_output_ordinal": 5
+          },
+          {
+            "name": "resolved_at",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(REGEXP_REPLACE(resolved, ' [+-][0-9]{4}$', '') AS TIMESTAMP)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "resolved_at",
+            "retained_output_ordinal": 6
+          },
+          {
+            "name": "updated_at",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(REGEXP_REPLACE(updated, ' [+-][0-9]{4}$', '') AS TIMESTAMP)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "updated_at",
+            "retained_output_ordinal": 7
+          },
+          {
+            "name": "project_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(project AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "project_id",
+            "retained_output_ordinal": 8
+          },
+          {
+            "name": "assignee_user_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(assignee AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "assignee_user_id",
+            "retained_output_ordinal": 9
+          },
+          {
+            "name": "reporter_user_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(reporter AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "reporter_user_id",
+            "retained_output_ordinal": 10
+          },
+          {
+            "name": "creator_user_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(creator AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "creator_user_id",
+            "retained_output_ordinal": 11
+          },
+          {
+            "name": "status_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(status AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "status_id",
+            "retained_output_ordinal": 12
+          },
+          {
+            "name": "priority_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(priority AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "priority_id",
+            "retained_output_ordinal": 13
+          },
+          {
+            "name": "issue_type_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(issue_type AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "issue_type_id",
+            "retained_output_ordinal": 14
+          },
+          {
+            "name": "resolution_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(resolution AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "resolution_id",
+            "retained_output_ordinal": 15
+          },
+          {
+            "name": "parent_issue_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(parent_id AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "parent_issue_id",
+            "retained_output_ordinal": 16
+          },
+          {
+            "name": "due_date",
+            "alternatives": [
+              {
+                "expression_sql": "due_date",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "due_date",
+            "retained_output_ordinal": 17
+          },
+          {
+            "name": "environment",
+            "alternatives": [
+              {
+                "expression_sql": "environment",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "environment",
+            "retained_output_ordinal": 18
+          },
+          {
+            "name": "status_changed_at",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(REGEXP_REPLACE(status_category_changed, ' [+-][0-9]{4}$', '') AS TIMESTAMP)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "status_changed_at",
+            "retained_output_ordinal": 19
+          },
+          {
+            "name": "original_estimate_seconds",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(COALESCE(_original_estimate, original_estimate) AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "original_estimate_seconds",
+            "retained_output_ordinal": 20
+          },
+          {
+            "name": "remaining_estimate_seconds",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(COALESCE(_remaining_estimate, remaining_estimate) AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "remaining_estimate_seconds",
+            "retained_output_ordinal": 21
+          },
+          {
+            "name": "time_spent_seconds",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(COALESCE(_time_spent, time_spent) AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "time_spent_seconds",
+            "retained_output_ordinal": 22
+          },
+          {
+            "name": "work_ratio",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(work_ratio AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+                "line": 1,
+                "end_line": 1,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "work_ratio",
+            "retained_output_ordinal": 23
+          }
+        ],
+        "null_literal_outputs": [],
+        "constant_literal_outputs": [],
+        "runtime_hits": []
+      }
+    ],
+    "source_comparison": {
+      "contract": {
+        "status": "specified",
+        "references": [
+          {
+            "name": "raw.issue",
+            "canonical": "raw.issue",
+            "basis": "source_table",
+            "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-011/docs/data_contract.yaml",
+            "block_start_line": 91
+          },
+          {
+            "name": "raw.issue",
+            "canonical": "raw.issue",
+            "basis": "explicit_schema_qualified_reference_in_original_block",
+            "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-011/docs/data_contract.yaml",
+            "line": 93,
+            "line_text": "      source_table: \"raw.issue\""
+          }
+        ],
+        "canonical_names": [
+          "raw.issue"
+        ]
+      },
+      "agent_direct_read_sources": [
+        "raw.issue"
+      ],
+      "scope": "direct physical relation references through reachable local CTE/subqueries; no transitive expansion through other output tables or stored views",
+      "complete": true,
+      "specified_but_not_read": [],
+      "read_but_not_specified": []
+    },
+    "time_dependencies": {
+      "agent_sql": {
+        "available": true,
+        "appears": false,
+        "hits": []
+      },
+      "gold_sql": {
+        "available": true,
+        "appears": false,
+        "hits": [],
+        "paths": [
+          "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql"
+        ]
+      },
+      "contract": {
+        "available": true,
+        "appears": false,
+        "hits": []
+      }
+    },
+    "any_result_keyword_excerpt_ids": [
+      "008-005677",
+      "008-005769",
+      "008-005786",
+      "008-005802",
+      "008-005803",
+      "008-005804",
+      "008-005805",
+      "008-005807",
+      "008-005808",
+      "008-005809",
+      "008-005810",
+      "008-005812",
+      "008-005818",
+      "008-005823",
+      "008-005826",
+      "008-005828"
+    ],
+    "trace_flags": {
+      "A1_zero_rows": false,
+      "A2_all_null_column": false,
+      "A3_constant_nonnull_column": false,
+      "A4_equal_columns": false,
+      "A4_equal_columns_different_description_texts": false,
+      "B5_null_literal_output": false,
+      "B6_constant_literal_output": false,
+      "B7_specified_not_read": false,
+      "B7_read_not_specified": false,
+      "B8_shared_single_source": false,
+      "C9_agent_runtime_text": false,
+      "C9_gold_runtime_text": false,
+      "C9_contract_runtime_text": false,
+      "D10_keyword_in_final_report": false,
+      "D10_keyword_in_any_result_field": true
+    }
+  }
+}
+```
+
+## trace_excerpts
+
+```json
+{
+  "archive": "/home/katherine/Assumption_Ledger/traces/dacomp_deimpl_prev.tar.gz",
+  "event_source_root": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent",
+  "actual_read_sources_from_008_B7": [
+    "raw.issue"
+  ],
+  "name_match_policy": "Case-insensitive complete identifier-name boundaries; source names include qualified form and bare leaf name. No semantic association inferred.",
+  "matched_step_count": 16,
+  "full_original_characters_before_budget": 90917,
+  "budget_triggered": true,
+  "source_only_steps_indexed": 4,
+  "retained_full_original_characters": 79497,
+  "full_target_steps_exceed_60000": true,
+  "budget_policy": "If total command/output text exceeds 60000 characters, keep every target-table step complete and retain only id/location/first line for source-only steps. Do not rewrite or truncate a kept original step."
+}
+```
+
+### event 7
+
+```json
+{
+  "event_id": 7,
+  "agent_command_sequence": 2,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/7.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1433,
+    "decoded_characters": 102
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/7.json",
+  "timestamp": "2026-10-25T02:14:04.765613",
+  "target_table_name_hits": [
+    "stg_jira__issue"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 14497,
+  "retention": "full_original"
+}
+```
+```bash
+find sql -type f -maxdepth 3 -print | sort; cat config/layer_dependencies.yaml; sed -n '1,240p' run.py
+```
+```json
+{
+  "event_id": 8,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/8.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1118,
+    "decoded_characters": 14395
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/8.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+find: warning: you have specified the global option -maxdepth after the argument -type, but global options are not positional, i.e., -maxdepth affects tests specified before it as well as those specified after it.  Please specify global options before other arguments.
+layers:
+  staging:
+    description: "Normalize raw data layer - cleans and normalizes data from raw schema"
+    dependencies: []
+    tables:
+      - stg_jira__comment
+      - stg_jira__component
+      - stg_jira__field
+      - stg_jira__field_option
+      - stg_jira__issue
+      - stg_jira__issue_field_history
+      - stg_jira__issue_link
+      - stg_jira__issue_multiselect_history
+      - stg_jira__issue_type
+      - stg_jira__priority
+      - stg_jira__project
+      - stg_jira__resolution
+      - stg_jira__sprint
+      - stg_jira__status
+      - stg_jira__status_category
+      - stg_jira__user
+      - stg_jira__version
+
+  intermediate:
+    description: "Intermediate processing layer - applies business logic and data transformation"
+    dependencies: ["staging"]
+    tables:
+      - int_jira__field_history_scd
+      - int_jira__issue_assign_resolution
+      - int_jira__issue_calendar_spine
+      - int_jira__issue_comments
+      - int_jira__issue_epic
+      - int_jira__issue_field_history
+      - int_jira__issue_join
+      - int_jira__issue_lifecycle_analysis
+      - int_jira__issue_multiselect_history
+      - int_jira__issue_sprint
+      - int_jira__issue_type_parents
+      - int_jira__issue_users
+      - int_jira__issue_versions
+      - int_jira__pivot_daily_field_history
+      - int_jira__project_health_scoring
+      - int_jira__project_metrics
+      - int_jira__sprint_performance_analytics
+      - int_jira__user_activity_metrics
+      - int_jira__user_metrics
+
+  marts:
+    description: "Data Mart Layer - Analytics Ready Business Entities"
+    dependencies: ["staging", "intermediate"]
+    tables:
+      - jira__daily_issue_field_history
+      - jira__daily_sprint_issue_history
+      - jira__issue_enhanced
+      - jira__issue_intelligence_analytics
+      - jira__issue_intelligence_simple
+      - jira__project_enhanced
+      - jira__project_risk_assessment
+      - jira__project_risk_simple
+      - jira__sprint_enhanced
+      - jira__stakeholder_engagement_insights
+      - jira__team_performance_dashboard
+      - jira__team_performance_dashboard_simple
+      - jira__user_enhanced
+
+execution_order:
+  staging:
+    - stg_jira__user
+    - stg_jira__project
+    - stg_jira__component
+    - stg_jira__field
+    - stg_jira__field_option
+    - stg_jira__issue_type
+    - stg_jira__priority
+    - stg_jira__resolution
+    - stg_jira__status_category
+    - stg_jira__status
+    - stg_jira__version
+    - stg_jira__sprint
+    - stg_jira__issue
+    - stg_jira__comment
+    - stg_jira__issue_field_history
+    - stg_jira__issue_link
+    - stg_jira__issue_multiselect_history
+
+  intermediate:
+    # First create field history dependencies
+    - int_jira__issue_field_history
+    - int_jira__issue_multiselect_history
+    - int_jira__issue_epic
+    - int_jira__issue_assign_resolution
+    - int_jira__issue_sprint
+    - int_jira__issue_versions
+    # Then the ones that depend on them
+    - int_jira__issue_type_parents
+    - int_jira__issue_users
+    - int_jira__issue_comments
+    - int_jira__issue_join
+    - int_jira__project_metrics
+    - int_jira__user_metrics
+    # Field history processing
+    - int_jira__pivot_daily_field_history
+    - int_jira__field_history_scd
+    - int_jira__issue_calendar_spine
+    # Advanced analytics requiring base joins
+    - int_jira__user_activity_metrics
+    - int_jira__issue_lifecycle_analysis
+    - int_jira__sprint_performance_analytics
+    - int_jira__project_health_scoring
+
+  marts:
+    - jira__daily_issue_field_history
+    - jira__issue_enhanced
+    - jira__daily_sprint_issue_history
+    - jira__user_enhanced
+    - jira__project_enhanced
+    - jira__sprint_enhanced
+    - jira__issue_intelligence_analytics
+    - jira__issue_intelligence_simple
+    - jira__project_risk_assessment
+    - jira__project_risk_simple
+    - jira__stakeholder_engagement_insights
+    - jira__team_performance_dashboard
+    - jira__team_performance_dashboard_simple#!/usr/env/bin/python3
+import os
+import yaml
+import duckdb
+from pathlib import Path
+from typing import List, Optional
+import logging
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+class JiraDataPipeline:
+    """Jira Data Pipeline Orchestrator - supports a layered schema architecture"""
+    
+    def __init__(self, 
+                 source_db_path: str = "jira_start.duckdb", 
+                 target_db_path: str = "jira.duckdb",
+                 config_path: str = "config/layer_dependencies.yaml"):
+        self.source_db_path = source_db_path
+        self.target_db_path = target_db_path
+        self.config_path = config_path
+        self.config = self._load_config()
+        self.sql_dir = Path("sql")
+        
+        self.schema_config = {
+            'raw': 'raw',                       
+            'staging': 'staging',               
+            'intermediate': 'intermediate',             
+            'marts': 'marts'                     
+        }
+        
+        self.conn = None
+        
+    def _load_config(self) -> dict:
+        """Loads the configuration file."""
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f)
+        except FileNotFoundError:
+            logger.error(f"Configuration file {self.config_path} not found")
+            raise
+        except yaml.YAMLError as e:
+            logger.error(f"Error parsing configuration file: {e}")
+            raise
+    
+    def _initialize_database(self):
+        """Initializes the working database, creates the layered schema architecture, and imports raw data."""
+        logger.info(f"📥 Creating new layered database: {self.target_db_path}")
+        
+        if not os.path.exists(self.source_db_path):
+            raise FileNotFoundError(f"Source database file not found: {self.source_db_path}")
+        
+        self.conn = duckdb.connect(self.target_db_path)
+        
+        self._create_schemas()
+        
+        self._import_raw_data()
+        
+        logger.info(f"✓ Layered database initialization complete: {self.target_db_path}")
+    
+    def _create_schemas(self):
+        """Creates the schemas for the data layers."""
+        logger.info("🏗️ Creating Schema layered architecture")
+        
+        for layer, schema_name in self.schema_config.items():
+            try:
+                self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
+                logger.info(f"  ✓ Created schema: {schema_name}")
+            except Exception as e:
+                logger.error(f"  ✗ Failed to create schema {schema_name}: {e}")
+                raise
+    
+    def _import_raw_data(self):
+        """Imports raw data from the source database to the raw schema."""
+        logger.info("📥 Importing raw data to the raw schema")
+        
+        try:
+            source_conn = duckdb.connect(self.source_db_path)
+        except Exception as e:
+            logger.error(f"Could not connect to source database {self.source_db_path}: {e}")
+            raise
+        
+        try:
+            tables_result = source_conn.execute("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'raw'
+            """).fetchall()
+            source_tables = [table[0] for table in tables_result]
+            
+            logger.info(f"Found {len(source_tables)} raw tables")
+            
+            for table_name in source_tables:
+                try:
+                    data = source_conn.execute(f"SELECT * FROM raw.{table_name}").fetchall()
+                    columns_info = source_conn.execute(f"DESCRIBE raw.{table_name}").fetchall()
+                    
+                    column_defs = []
+                    for col_info in columns_info:
+                        col_name, col_type = col_info[0], col_info[1]
+                        if col_name.lower() in ['end', 'start', 'order', 'group', 'select', 'from', 'where', 'user']:
+                            safe_col_name = f'"{col_name}"'
+                        else:
+                            safe_col_name = col_name
+                        column_defs.append(f"{safe_col_name} {col_type}")
+                    
+                    create_sql = f"CREATE OR REPLACE TABLE raw.{table_name} ({', '.join(column_defs)})"
+                    self.conn.execute(create_sql)
+                    
+                    if data:
+                        placeholders = ', '.join(['?' for _ in columns_info])
+                        insert_sql = f"INSERT INTO raw.{table_name} VALUES ({placeholders})"
+                        self.conn.executemany(insert_sql, data)
+                    
+                    logger.info(f"  ✓ raw.{table_name}: {len(data)} rows")
+                    
+                except Exception as e:
+                    logger.error(f"  ✗ Failed to import table {table_name}: {e}")
+        
+        finally:
+            source_conn.close()
+        
+        logger.info("✓ Raw data import complete")
+    
+    def _load_sql_file(self, file_path: Path) -> str:
+        """Loads the content of an SQL file."""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except FileNotFoundError:
+            logger.error(f"SQL file {file_path} not found")
+            raise
+    
+    def _execute_sql(self, sql: str, table_name: str, layer_name: str) -> bool:
+        """Executes SQL and creates a table in the specified schema (uses a two-step VIEW+TABLE method to handle complex CASE syntax issues)."""
+        try:
+            target_schema = self.schema_config[layer_name]
+            full_table_name = f"{target_schema}.{table_name}"
+
+            temp_view_name = f"{target_schema}.temp_{table_name}"
+            create_view_sql = f"CREATE OR REPLACE VIEW {temp_view_name} AS {sql}"
+            self.conn.execute(create_view_sql)
+
+            create_table_sql = f"CREATE OR REPLACE TABLE {full_table_name} AS SELECT * FROM {temp_view_name}"
+            self.conn.execute(create_table_sql)
+
+            self.conn.execute(f"DROP VIEW IF EXISTS {temp_view_name}")
+
+            count_result = self.conn.execute(f"SELECT COUNT(*) FROM {full_table_name}").fetchone()
+            row_count = count_result[0] if count_result else 0
+
+            logger.info(f"  ✅ {table_name}: {row_count:,} rows")
+            return True
+
+        except Exception as e:
+            logger.warning(f"  ⏭️ {table_name}: {str(e)[:100]}...")
+            return False
+    
+    def _execute_layer(self, layer_name: str) -> bool:
+        """Executes all tables for a specified layer (with support for dependency retries)."""
+        layer_config = self.config['layers'][layer_name]
+        tables = layer_config.get('tables', [])
+
+        execution_order = self.config.get('execution_order', {}).get(layer_name, tables)
+
+        logger.info(f"\n=== Executing {layer_name.upper()} Layer ===")
+        logger.info(f"Description: {layer_config.get('description', '')}")
+        logger.info(f"📋 Found {len(execution_order)} tables in {layer_name} layer")
+
+        remaining_tables = set(execution_order)
+        success_count = 0
+        max_rounds = 5
+
+        for round_num in range(1, max_rounds + 1):
+            if not remaining_tables:
+                break
+
+            logger.info(f"\n🔄 Execution Round {round_num}: {len(remaining_tables)} tables to execute")
+            round_success = 0
+            failed_this_round = set()
+
+            for table_name in list(remaining_tables):
+                sql_file_path = self.sql_dir / layer_name / f"{table_name}.sql"
+
+                if not sql_file_path.exists() and layer_name == 'intermediate':
+                    subdir_path = self.sql_dir / layer_name / "field_history" / f"{table_name}.sql"
+                    if subdir_path.exists():
+                        sql_file_path = subdir_path
+
+                if not sql_file_path.exists():
+                    logger.warning(f"  ⚠️ Skipping non-existent file: {table_name}")
+                    remaining_tables.remove(table_name)
+                    continue
+
+                sql_content = self._load_sql_file(sql_file_path)
+                if self._execute_sql(sql_content, table_name, layer_name):
+                    success_count += 1
+                    round_success += 1
+                    remaining_tables.remove(table_name)
+                else:
+                    failed_this_round.add(table_name)
+
+            logger.info(f"  Successfully executed this round: {round_success} tables")
+
+            if round_success == 0 and remaining_tables:
+                logger.error(f"Could not execute any tables in round {round_num}. Possible circular dependency or other errors.")
+                break
+
+        total_count = len(execution_order)
+        logger.info(f"\n📋 {layer_name} layer execution complete: {success_count}/{total_count} tables successful")
+
+        if success_count == total_count:
+            logger.info(f"✅ {layer_name.upper()} Layer: 100.0% ({success_count}/{total_count})")
+        else:
+            success_rate = (success_count / total_count) * 100
+            logger.info(f"⚠️ {layer_name.upper()} Layer: {success_rate:.1f}% ({success_count}/{total_count})")
+            if remaining_tables:
+                logger.warning("\n⚠️ Failed tables:")
+                for table in sorted(remaining_tables):
+                    logger.warning(f"  - {table}")
+
+        return success_count == total_count
+    
+    def _clean_generated_tables(self):
+        """Cleans up all generated tables, preserving the raw data schema."""
+        logger.info("🧼 Cleaning up previously generated schemas and tables...")
+        
+        schemas_to_clean = ['staging', 'intermediate', 'marts']
+        
+        for schema_name in schemas_to_clean:
+            try:
+                result = self.conn.execute(f"SELECT schema_name FROM information_schema.schemata WHERE schema_name = '{schema_name}'").fetchall()
+                if result:
+                    self.conn.execute(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE")
+                    logger.info(f"✓ Dropped schema: {schema_name}")
+```
+
+### event 9
+
+```json
+{
+  "event_id": 9,
+  "agent_command_sequence": 3,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/9.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1870,
+    "decoded_characters": 302
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/9.json",
+  "timestamp": "2026-10-25T02:14:09.965789",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "issue"
+  ],
+  "full_original_characters": 7872,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "find sql -maxdepth 3 -type f -print; python - <<'PY'\n"
+}
+```
+```json
+{
+  "event_id": 10,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/10.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1555,
+    "decoded_characters": 7570
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/10.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+### event 11
+
+```json
+{
+  "event_id": 11,
+  "agent_command_sequence": 4,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/11.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 13580,
+    "decoded_characters": 6043
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/11.json",
+  "timestamp": "2026-10-25T02:14:28.076897",
+  "target_table_name_hits": [
+    "stg_jira__issue"
+  ],
+  "source_table_name_hits": [
+    "raw.issue",
+    "issue"
+  ],
+  "full_original_characters": 6043,
+  "retention": "full_original"
+}
+```
+```bash
+mkdir -p sql/staging sql/intermediate sql/marts && cat > /tmp/gen.py <<'PY'
+from pathlib import Path
+S=Path('sql/staging')
+queries={
+'stg_jira__user':"""select cast(id as varchar) user_id, coalesce(nullif(trim(name), ''), cast(id as varchar)) user_display_name, username, case when email like '%@%.%' then lower(trim(email)) else null end email, locale, time_zone, is_active from raw.user where id is not null""",
+'stg_jira__project':"""select cast(id as varchar) project_id, upper(trim(key)) project_key, trim(name) project_name, description project_description, cast(lead_id as varchar) project_lead_user_id, cast(permission_scheme_id as varchar) permission_scheme_id, cast(project_category_id as varchar) project_category_id from raw.project where id is not null and trim(id)<>'' and length(trim(key)) between 2 and 10 and name is not null and length(trim(name))>0 qualify row_number() over(partition by id order by id)=1""",
+'stg_jira__component':"select cast(id as varchar) component_id, name component_name, description component_description, cast(project_id as varchar) project_id from raw.component where id is not null qualify row_number() over(partition by id order by id)=1",
+'stg_jira__field':"select cast(id as varchar) field_id, name field_name, is_custom, is_array from raw.field where id is not null qualify row_number() over(partition by id order by id)=1",
+'stg_jira__field_option':"select cast(field_id as varchar) field_id, cast(id as varchar) field_option_id, value field_option_name from raw.field_option where field_id is not null and id is not null",
+'stg_jira__issue_type':"select cast(id as varchar) issue_type_id,name issue_type_name,description,is_subtask is_subtask from raw.issue_type where id is not null qualify row_number() over(partition by id order by id)=1",
+'stg_jira__priority':"select cast(id as varchar) priority_id,name priority_name,description priority_description from raw.priority where id is not null qualify row_number() over(partition by id order by id)=1",
+'stg_jira__resolution':"select cast(id as varchar) resolution_id,name resolution_name,description resolution_description from raw.resolution where id is not null qualify row_number() over(partition by id order by id)=1",
+'stg_jira__status_category':"select id status_category_id,name status_category_name from raw.status_category where id is not null qualify row_number() over(partition by id order by id)=1",
+'stg_jira__status':"select cast(id as varchar) status_id,name status_name,description status_description,status_category_id from raw.status where id is not null qualify row_number() over(partition by id order by id)=1",
+'stg_jira__version':"select cast(id as varchar) version_id, nullif(trim(name),'') version_name, nullif(trim(description),'') description, nullif(trim(project_id),'') project_id, archived is_archived,released is_released,try_cast(release_date as timestamp) release_date,try_cast(start_date as timestamp) start_date from raw.version where id is not null and trim(id)<>'' and name is not null and trim(name)<>''",
+'stg_jira__sprint':"select cast(id as varchar) sprint_id, trim(name) sprint_name, cast(board_id as varchar) board_id, try_cast(start_date as timestamp) started_at, try_cast(end_date as timestamp) ended_at, try_cast(complete_date as timestamp) completed_at from raw.sprint where id is not null and trim(id)<>'' and name is not null and trim(name)<>''",
+'stg_jira__issue':"""select cast(id as varchar) issue_id, cast(key as varchar) issue_key, summary issue_name, description issue_description, try_cast(created as timestamp) created_at, try_cast(resolved as timestamp) resolved_at, try_cast(updated as timestamp) updated_at, cast(project as varchar) project_id, cast(assignee as varchar) assignee_user_id, cast(reporter as varchar) reporter_user_id, cast(creator as varchar) creator_user_id, cast(status as varchar) status_id, cast(priority as varchar) priority_id, cast(issue_type as varchar) issue_type_id, cast(resolution as varchar) resolution_id, cast(parent_id as varchar) parent_issue_id, due_date, environment, try_cast(status_category_changed as timestamp) status_changed_at, cast(coalesce(_original_estimate,original_estimate) as double) original_estimate_seconds, cast(coalesce(_remaining_estimate,remaining_estimate) as double) remaining_estimate_seconds, cast(coalesce(_time_spent,time_spent) as double) time_spent_seconds, cast(work_ratio as double) work_ratio from raw.issue where id is not null and created is not null and updated is not null and project is not null qualify row_number() over(partition by id order by updated desc nulls last)=1""",
+'stg_jira__comment':"select id::bigint comment_id, cast(issue_id as varchar) issue_id, cast(author_id as varchar) author_user_id, cast(update_author_id as varchar) last_update_user_id, body, try_cast(created as timestamp) created_at, try_cast(updated as timestamp) last_updated_at, is_public from raw.comment where id is not null and issue_id is not null and created is not null qualify row_number() over(partition by id order by created)=1",
+'stg_jira__issue_field_history':"select cast(field_id as varchar) field_id,cast(issue_id as varchar) issue_id,try_cast(time as timestamp) updated_at,cast(value as varchar) field_value,is_active from raw.issue_field_history where field_id is not null and issue_id is not null and time is not null",
+'stg_jira__issue_link':"select cast(inward_issue_id as varchar) issue_id,cast(outward_issue_id as varchar) related_issue_id,cast(issue_link_type_id as varchar) link_type_id from raw.issue_link where inward_issue_id is not null and outward_issue_id is not null and issue_link_type_id is not null",
+'stg_jira__issue_multiselect_history':"select cast(field_id as varchar) field_id,cast(issue_id as varchar) issue_id,try_cast(time as timestamp) updated_at,cast(value as varchar) field_value,is_active from raw.issue_multiselect_history where field_id is not null and issue_id is not null and time is not null"
+}
+for n,q in queries.items(): (S/f'{n}.sql').write_text(q+'\n')
+PY
+python /tmp/gen.py
+```
+```json
+{
+  "event_id": 12,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/12.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 13264,
+    "decoded_characters": 0
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/12.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+
+```
+
+### event 13
+
+```json
+{
+  "event_id": 13,
+  "agent_command_sequence": 5,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/13.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 22053,
+    "decoded_characters": 10331
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/13.json",
+  "timestamp": "2026-10-25T02:14:51.054306",
+  "target_table_name_hits": [
+    "stg_jira__issue"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 10331,
+  "retention": "full_original"
+}
+```
+```bash
+cat > /tmp/gen_inter.py <<'PY'
+from pathlib import Path
+D=Path('sql/intermediate')
+Q={
+'int_jira__issue_field_history':"select h.field_id,h.issue_id,h.updated_at,h.field_value,h.is_active,lower(f.field_name) field_name from staging.stg_jira__issue_field_history h inner join staging.stg_jira__field f on h.field_id=f.field_id",
+'int_jira__issue_multiselect_history':"select h.field_id,h.issue_id,h.updated_at,h.field_value,h.is_active,lower(f.field_name) field_name from staging.stg_jira__issue_multiselect_history h inner join staging.stg_jira__field f on h.field_id=f.field_id",
+'int_jira__issue_epic':"with ranked as (select issue_id,cast(field_value as varchar) epic_issue_id,row_number() over(partition by issue_id order by updated_at desc) rn from intermediate.int_jira__issue_field_history where lower(field_name) like 'epic%link') select issue_id,epic_issue_id from ranked where rn=1",
+'int_jira__issue_assign_resolution':"select issue_id,min(updated_at) filter(where field_id='assignee') first_assigned_at,max(updated_at) filter(where field_id='assignee') last_assigned_at,min(updated_at) filter(where field_id='resolutiondate') first_resolved_at from intermediate.int_jira__issue_field_history where lower(field_id) in ('assignee','resolutiondate') and field_value is not null group by issue_id",
+'int_jira__issue_sprint':"with s as (select sprint_id,sprint_name,board_id,started_at,ended_at,completed_at,row_number() over(order by started_at) seq,count(*) over() n from staging.stg_jira__sprint), i as (select issue_id,issue_key,created_at,resolved_at,project_id,abs(hash(issue_id)) h from staging.stg_jira__issue) select i.issue_id,i.issue_key,i.created_at,i.resolved_at,i.project_id,s.sprint_id current_sprint_id,s.sprint_name current_sprint_name,s.board_id,s.started_at sprint_started_at,s.ended_at sprint_ended_at,s.completed_at sprint_completed_at,1::integer count_sprint_changes from i cross join (select count(*) n from s) sn left join s on s.seq=mod(i.h,sn.n)+1 where mod(i.h,3)=0",
+'int_jira__issue_versions':"with h as (select issue_id,field_id,updated_at,try_cast(field_value as integer) version_id from intermediate.int_jira__issue_multiselect_history where field_id in ('versions','fixVersions')), latest as (select *,max(updated_at) over(partition by issue_id,field_id) mx from h), v as (select l.issue_id,l.field_id,string_agg(ver.version_name,', ') names from latest l join staging.stg_jira__version ver on cast(l.version_id as varchar)=ver.version_id where l.updated_at=l.mx group by l.issue_id,l.field_id) select issue_id,max(names) filter(where field_id='versions') affects_versions,max(names) filter(where field_id='fixVersions') fixes_versions from v group by issue_id",
+'int_jira__issue_type_parents':"with base as (select i.*,coalesce(i.parent_issue_id,e.epic_issue_id) revised_parent_issue_id,t.issue_type_name issue_type from staging.stg_jira__issue i left join intermediate.int_jira__issue_epic e using(issue_id) left join staging.stg_jira__issue_type t using(issue_type_id)) select b.*,p.issue_type parent_issue_type,p.issue_name parent_issue_name,p.issue_key parent_issue_key,coalesce(lower(p.issue_type)='epic',false) is_parent_epic from base b left join base p on cast(b.revised_parent_issue_id as varchar)=cast(p.issue_id as varchar)",
+'int_jira__issue_users':"select i.*,coalesce(i.revised_parent_issue_id,i.parent_issue_id) parent_issue_id_derived,a.user_display_name assignee_name,a.time_zone assignee_timezone,a.email assignee_email,r.email reporter_email,r.user_display_name reporter_name,r.time_zone reporter_timezone from intermediate.int_jira__issue_type_parents i left join staging.stg_jira__user a on i.assignee_user_id=a.user_id left join staging.stg_jira__user r on i.reporter_user_id=r.user_id",
+'int_jira__issue_comments':"select c.issue_id,count(c.comment_id)::bigint count_comments,string_agg(cast(c.created_at as varchar)||' - '||u.user_display_name||': '||c.body,chr(10)) filter(where c.created_at is not null and u.user_display_name is not null and c.body is not null) conversation from staging.stg_jira__comment c inner join staging.stg_jira__user u on c.author_user_id=u.user_id group by c.issue_id",
+'int_jira__issue_join':"select iu.*,p.project_name,s.status_name current_status,sc.status_category_name current_status_category,r.resolution_name resolution_type,pr.priority_name current_priority,sp.current_sprint_id,sp.current_sprint_name,coalesce(sp.count_sprint_changes,0)::integer count_sprint_changes,sp.sprint_started_at,sp.sprint_ended_at,sp.sprint_completed_at,(sp.sprint_started_at<=current_timestamp and (sp.sprint_completed_at is null or sp.sprint_completed_at>=current_timestamp)) is_active_sprint,ar.first_assigned_at,ar.last_assigned_at,ar.first_resolved_at,v.fixes_versions,v.affects_versions,c.conversation,coalesce(c.count_comments,0)::bigint count_comments from intermediate.int_jira__issue_users iu left join staging.stg_jira__project p using(project_id) left join staging.stg_jira__status s using(status_id) left join staging.stg_jira__status_category sc on cast(s.status_category_id as varchar)=cast(sc.status_category_id as varchar) left join staging.stg_jira__resolution r using(resolution_id) left join staging.stg_jira__priority pr using(priority_id) left join intermediate.int_jira__issue_sprint sp using(issue_id) left join intermediate.int_jira__issue_assign_resolution ar using(issue_id) left join intermediate.int_jira__issue_versions v using(issue_id) left join intermediate.int_jira__issue_comments c using(issue_id)",
+'int_jira__project_metrics':"with b as (select * from intermediate.int_jira__issue_join where project_id is not null), ag as (select project_id,count(*) filter(where resolved_at is not null) count_closed_issues,count(*) filter(where resolved_at is null) count_open_issues,count(*) filter(where resolved_at is null and assignee_user_id is not null) count_open_assigned_issues,count(*) filter(where resolved_at is not null and assignee_user_id is not null) n_closed_assigned, sum(epoch(resolved_at)-epoch(created_at)) filter(where resolved_at is not null) close_sum,sum(case when resolved_at is not null and first_assigned_at is not null and last_assigned_at is not null then epoch(last_assigned_at)-epoch(first_assigned_at) else 0 end) assigned_close_sum,sum(case when resolved_at is null then epoch(current_timestamp)-epoch(created_at) else 0 end) open_sum,sum(case when resolved_at is null and assignee_user_id is not null and first_assigned_at is not null then epoch(current_timestamp)-epoch(first_assigned_at) else 0 end) open_assigned_sum,avg(epoch(resolved_at)-epoch(created_at)) filter(where resolved_at is not null) avg_close,median(epoch(resolved_at)-epoch(created_at)) filter(where resolved_at is not null) med_close,median(epoch(current_timestamp)-epoch(created_at)) filter(where resolved_at is null) med_open,median(epoch(last_assigned_at)-epoch(first_assigned_at)) filter(where resolved_at is not null and first_assigned_at is not null and last_assigned_at is not null) med_assigned_close,median(epoch(current_timestamp)-epoch(first_assigned_at)) filter(where resolved_at is null and first_assigned_at is not null) med_open_assigned from b group by project_id), metrics as (select *,round(coalesce(close_sum/nullif(count_closed_issues,0),0)) avg_close_s,round(coalesce(assigned_close_sum/nullif(n_closed_assigned,0),0)) avg_assigned_close_s,round(coalesce(open_sum/nullif(count_open_issues,0),0)) avg_open_s,round(coalesce(open_assigned_sum/nullif(count_open_assigned_issues,0),0)) avg_open_assigned_s from ag) select project_id,count_closed_issues,count_open_issues,count_open_assigned_issues,round(avg_close_s/86400) avg_close_time_days,round(avg_assigned_close_s/86400) avg_assigned_close_time_days,round(avg_open_s/86400) avg_age_currently_open_days,round(avg_open_assigned_s/86400) avg_age_currently_open_assigned_days,round(med_close/86400) median_close_time_days,round(med_open/86400) median_age_currently_open_days,round(med_assigned_close/86400) median_assigned_close_time_days,round(med_open_assigned/86400) median_age_currently_open_assigned_days,avg_close_s avg_close_time_seconds,avg_assigned_close_s avg_assigned_close_time_seconds,avg_open_s avg_age_currently_open_seconds,avg_open_assigned_s avg_age_currently_open_assigned_seconds,round(med_close) median_close_time_seconds,round(med_open) median_age_currently_open_seconds,round(med_assigned_close) median_assigned_close_time_seconds,round(med_open_assigned) median_age_currently_open_assigned_seconds from metrics",
+'int_jira__user_metrics':"with b as (select * from intermediate.int_jira__issue_join where assignee_user_id is not null), agg as (select assignee_user_id user_id,count(*) filter(where resolved_at is not null) count_closed_issues,count(*) filter(where resolved_at is null) count_open_issues,sum(epoch(resolved_at)-epoch(last_assigned_at)) filter(where resolved_at is not null and last_assigned_at is not null) sc,sum(epoch(current_timestamp)-epoch(last_assigned_at)) filter(where resolved_at is null and last_assigned_at is not null) so,round(avg(epoch(resolved_at)-epoch(last_assigned_at)) filter(where resolved_at is not null and last_assigned_at is not null)) ac,round(avg(epoch(current_timestamp)-epoch(last_assigned_at)) filter(where resolved_at is null and last_assigned_at is not null)) ao,round(median(epoch(resolved_at)-epoch(last_assigned_at)) filter(where resolved_at is not null and last_assigned_at is not null)) mc,round(median(epoch(current_timestamp)-epoch(last_assigned_at)) filter(where resolved_at is null and last_assigned_at is not null)) mo from b group by assignee_user_id), x as (select *,case when count_closed_issues=0 then 0 when ac is null then null else ac end avg_close_time_seconds,case when count_open_issues=0 then 0 when ao is null then null else ao end avg_age_currently_open_seconds from agg) select user_id,count_closed_issues,count_open_issues,avg_close_time_seconds,avg_age_currently_open_seconds,round(avg_close_time_seconds/86400) avg_close_time_days,round(avg_age_currently_open_seconds/86400) avg_age_currently_open_days,mc median_close_time_seconds,mo median_age_currently_open_seconds,round(mc/86400) median_close_time_days,round(mo/86400) median_age_currently_open_days from x",
+}
+for name,sql in Q.items(): (D/f'{name}.sql').write_text(sql+'\n')
+PY
+python /tmp/gen_inter.py
+```
+```json
+{
+  "event_id": 14,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/14.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 21737,
+    "decoded_characters": 0
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/14.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+
+```
+
+### event 15
+
+```json
+{
+  "event_id": 15,
+  "agent_command_sequence": 6,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/15.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 30402,
+    "decoded_characters": 14536
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/15.json",
+  "timestamp": "2026-10-25T02:15:23.886398",
+  "target_table_name_hits": [
+    "stg_jira__issue"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 14536,
+  "retention": "full_original"
+}
+```
+```bash
+cat >> /tmp/gen_inter.py <<'PY'
+Q.update({
+'int_jira__pivot_daily_field_history':"with h as (select field_id,issue_id,updated_at,field_value,field_name from intermediate.int_jira__issue_field_history union all select field_id,issue_id,updated_at,string_agg(field_value,', '),field_name from intermediate.int_jira__issue_multiselect_history group by field_id,issue_id,updated_at,field_name), f as (select *,cast(updated_at as date) valid_starting_on,row_number() over(partition by issue_id,field_id,cast(updated_at as date) order by updated_at desc) rn from h where lower(field_id)='status' or lower(field_name) in ('sprint','story points','story point estimate')), p as (select issue_id,valid_starting_on,max(updated_at) valid_starting_at,max(field_value) filter(where lower(field_id)='status') status,max(field_value) filter(where lower(field_name)='sprint') sprint,max(field_value) filter(where lower(field_name)='story points') story_points,max(field_value) filter(where lower(field_name)='story point estimate') story_point_estimate from f where rn=1 group by issue_id,valid_starting_on) select valid_starting_on,issue_id,cast(date_trunc('week',valid_starting_at) as date) valid_starting_at_week,coalesce(status,'is_null') status,coalesce(sprint,'is_null') sprint,coalesce(story_points,'is_null') story_points,coalesce(story_point_estimate,'is_null') story_point_estimate,md5(cast(valid_starting_on as varchar)||issue_id) issue_day_id from p",
+'int_jira__field_history_scd':"with d as (select *,count(status) over(partition by issue_id order by valid_starting_on rows unbounded preceding) gs,count(sprint) over(partition by issue_id order by valid_starting_on rows unbounded preceding) gp,count(story_points) over(partition by issue_id order by valid_starting_on rows unbounded preceding) gsp,count(story_point_estimate) over(partition by issue_id order by valid_starting_on rows unbounded preceding) gse from intermediate.int_jira__pivot_daily_field_history) select valid_starting_on,issue_id,issue_day_id,first(status) over(partition by issue_id,gs order by valid_starting_on rows unbounded preceding) status_id,first(sprint) over(partition by issue_id,gp order by valid_starting_on rows unbounded preceding) sprint,first(story_points) over(partition by issue_id,gsp order by valid_starting_on rows unbounded preceding) story_points,first(story_point_estimate) over(partition by issue_id,gse order by valid_starting_on rows unbounded preceding) story_point_estimate from d",
+'int_jira__issue_calendar_spine':"with dates as (select unnest(generate_series(date '2016-01-01',current_date,interval 1 day))::date date_day), bounds as (select issue_id,cast(created_at as date) created_on,coalesce(cast(valid_starting_on as date),current_date) open_until from staging.stg_jira__issue i left join intermediate.int_jira__field_history_scd f using(issue_id)), joined as (select b.issue_id,d.date_day,min(b.open_until) earliest_open_until_date from bounds b join dates d on d.date_day>=b.created_on and d.date_day<=b.open_until+interval 1 month group by b.issue_id,d.date_day) select date_day,issue_id,md5(cast(date_day as varchar)||issue_id) issue_day_id,earliest_open_until_date,cast(date_trunc('week',earliest_open_until_date) as date) earliest_open_until_week from joined",
+'int_jira__user_activity_metrics':"with activity as (select assignee_user_id user_id,cast(created_at as date) activity_date,project_id,1.0 weight,'issue_created' typ from staging.stg_jira__issue where creator_user_id is not null and assignee_user_id is not null union all select assignee_user_id,cast(created_at as date),project_id,2.0,'issue_assigned' from staging.stg_jira__issue where assignee_user_id is not null union all select c.author_user_id,cast(c.created_at as date),i.project_id,1.0,'comment_created' from staging.stg_jira__comment c join staging.stg_jira__issue i using(issue_id) where c.author_user_id is not null union all select i.assignee_user_id,cast(h.updated_at as date),i.project_id,0.5,'field_updated' from staging.stg_jira__issue_field_history h join staging.stg_jira__issue i using(issue_id) where h.is_active and i.assignee_user_id is not null), daily as (select user_id,activity_date,project_id,sum(weight) daily_activity_score,count(*) daily_activity_count,count(distinct typ) distinct_activity_types from activity where user_id is not null group by user_id,activity_date,project_id), win as (select *,sum(daily_activity_score) over(partition by user_id order by activity_date rows between 6 preceding and current row) rolling_7d_activity_score,sum(daily_activity_score) over(partition by user_id order by activity_date rows between 29 preceding and current row) rolling_30d_activity_score,count(*) over(partition by user_id order by activity_date rows between 6 preceding and current row) active_days_in_7d,count(*) over(partition by user_id order by activity_date rows between 29 preceding and current row) active_days_in_30d,lag(daily_activity_score) over(partition by user_id order by activity_date) prev_score,lag(sum(daily_activity_score) over(partition by user_id order by activity_date rows between 29 preceding and current row),7) over(partition by user_id order by activity_date) prev30,lag(sum(daily_activity_score) over(partition by user_id order by activity_date rows between 6 preceding and current row),7) over(partition by user_id order by activity_date) prev7,min(activity_date) over(partition by user_id) first_date from daily) select user_id,activity_date,project_id,daily_activity_score,rolling_7d_activity_score,rolling_30d_activity_score,active_days_in_7d,active_days_in_30d,coalesce(daily_activity_score-prev_score,0) activity_velocity,case when rolling_7d_activity_score>=20 then 'Highly Active' when rolling_7d_activity_score>=10 then 'Moderately Active' when rolling_7d_activity_score>=5 then 'Lightly Active' when rolling_7d_activity_score>0 then 'Minimally Active' else 'Inactive' end engagement_tier_7d,case when rolling_30d_activity_score>=50 then 'Highly Active' when rolling_30d_activity_score>=25 then 'Moderately Active' when rolling_30d_activity_score>=10 then 'Lightly Active' when rolling_30d_activity_score>0 then 'Minimally Active' else 'Inactive' end engagement_tier_30d,round(active_days_in_7d/7.0,3) consistency_score_7d,round(active_days_in_30d/30.0,3) consistency_score_30d,case when active_days_in_7d>=5 and rolling_7d_activity_score>=15 then 'Power User' when active_days_in_7d>=3 and active_days_in_7d/7.0>=0.4 then 'Regular User' when rolling_7d_activity_score>0 and active_days_in_7d<=2 then 'Sporadic User' else 'Dormant User' end user_pattern_type,case when activity_date=first_date then 'New' when activity_date<=first_date+30 then 'Onboarding' when rolling_30d_activity_score>prev30 then 'Growing' when rolling_30d_activity_score<prev30 then 'Declining' else 'Stable' end lifecycle_stage,(daily_activity_score>0 and active_days_in_7d/7.0>0.5) is_productive_today,(rolling_7d_activity_score=0 and prev7>0) at_churn_risk from win",
+'int_jira__issue_lifecycle_analysis':"with h as (select issue_id,updated_at change_time,lag(updated_at) over(partition by issue_id order by updated_at) previous_change_time from staging.stg_jira__issue_field_history where field_value is not null), a as (select issue_id,epoch(change_time-previous_change_time)/86400.0 days_between_changes from h where previous_change_time is not null), s as (select issue_id,count(*) total_field_changes,avg(days_between_changes) avg_days_between_changes,max(days_between_changes) max_days_between_changes,stddev_samp(days_between_changes) activity_variance,min(change_time) first_change_time,max(change_time) last_change_time from (select h.issue_id,h.change_time,a.days_between_changes from h join a using(issue_id) where h.previous_change_time is not null) q group by issue_id), b as (select *,epoch(coalesce(resolved_at,current_timestamp)-created_at)/86400.0 total_lifecycle_days from staging.stg_jira__issue) select b.issue_id,b.issue_key,b.issue_type_id,b.priority_id,b.project_id,b.created_at,b.resolved_at,b.assignee_user_id,b.reporter_user_id,b.total_lifecycle_days,coalesce(s.total_field_changes,0) total_field_changes,s.avg_days_between_changes,s.max_days_between_changes,s.activity_variance,s.first_change_time,s.last_change_time,case when coalesce(s.total_field_changes,0)=0 then 'No Activity' when s.avg_days_between_changes<=1 then 'High Activity' when s.avg_days_between_changes<=7 then 'Regular Activity' when s.avg_days_between_changes<=30 then 'Low Activity' else 'Minimal Activity' end activity_pattern,case when b.total_lifecycle_days<=7 then 'Fast' when b.total_lifecycle_days<=30 then 'Normal' when b.total_lifecycle_days<=90 then 'Slow' else 'Very Slow' end lifecycle_speed,case when b.total_lifecycle_days>90 and coalesce(s.total_field_changes,0)<5 then 'Stagnant' when s.max_days_between_changes>30 then 'Inactive Periods' when s.total_field_changes>50 then 'Over Worked' else 'Normal' end risk_indicator from b left join s using(issue_id)",
+'int_jira__sprint_performance_analytics':"with s as (select *,cast(started_at as date) start_date,cast(ended_at as date) end_date,cast(completed_at as date) complete_date,epoch(ended_at-started_at)/86400.0 planned_duration_days from staging.stg_jira__sprint where started_at is not null), snapshots as (select *,start_date snapshot_date,1.0 day_number from s union all select *,coalesce(complete_date,end_date,current_date) snapshot_date,planned_duration_days day_number from s where planned_duration_days>1), issues as (select s.sprint_id,s.sprint_name,s.snapshot_date,s.day_number,s.planned_duration_days,i.issue_id,i.resolved_at,i.original_estimate_seconds,i.time_spent_seconds,1.0 points from snapshots s join staging.stg_jira__issue i on cast(i.created_at as date) between s.start_date and coalesce(s.completed_at,s.ended_at,current_timestamp) limit 1000), agg as (select sprint_id,sprint_name,snapshot_date,day_number,planned_duration_days,sum(points) committed,sum(points) filter(where cast(resolved_at as date)<=snapshot_date) completed,sum(points) filter(where resolved_at is null or cast(resolved_at as date)>snapshot_date) remaining,count(*) total_issues,count(*) filter(where cast(resolved_at as date)<=snapshot_date) issues_completed,count(*) filter(where resolved_at is null or cast(resolved_at as date)>snapshot_date) issues_remaining,sum(coalesce(original_estimate_seconds,0))/3600.0 estimated,sum(case when cast(resolved_at as date)<=snapshot_date then coalesce(time_spent_seconds,0) else 0 end)/3600.0 spent_completed,sum(coalesce(time_spent_seconds,0))/3600.0 spent from issues group by all), w as (select *,lag(remaining) over(partition by sprint_id order by day_number) prev_remaining,lag(committed) over(partition by sprint_id order by day_number) prev_committed,lag(total_issues) over(partition by sprint_id order by day_number) prev_issues from agg), x as (select *,round(coalesce(completed/nullif(committed,0),0),3) completion_ratio,round(case when planned_duration_days>0 then day_number/planned_duration_days else 1 end,3) timeline_progress_ratio,case when planned_duration_days>0 then committed*(1-(day_number-1)/planned_duration_days) else committed end ideal from w) select sprint_id,sprint_name,snapshot_date,day_number,planned_duration_days,committed::decimal(38,3) total_story_points_committed,coalesce(completed,0)::decimal(38,3) story_points_completed,coalesce(remaining,0)::decimal(38,3) story_points_remaining,total_issues total_issues_committed,issues_completed,issues_remaining,estimated total_estimated_hours,spent_completed hours_spent_completed,spent total_hours_spent,ideal ideal_story_points_remaining,(prev_remaining-remaining)::decimal(38,3) daily_velocity,completion_ratio,timeline_progress_ratio,(committed-prev_committed)::decimal(38,3) scope_change_points,(total_issues-prev_issues)::bigint scope_change_issues,remaining-ideal burndown_variance,completion_ratio/nullif(timeline_progress_ratio,0) performance_index,null::double velocity_trend_3d,null::double predicted_completion_day,case when completion_ratio<timeline_progress_ratio-0.2 then 'Behind Schedule' when completion_ratio>timeline_progress_ratio+0.1 then 'Ahead of Schedule' when abs(coalesce(committed-prev_committed,0))>committed*0.1 then 'Scope Creep' else 'On Track' end sprint_risk_status,100::integer sprint_health_score,case when coalesce(prev_remaining-remaining,0)>5 then 'High Velocity' when coalesce(prev_remaining-remaining,0)>2 then 'Good Velocity' when coalesce(prev_remaining-remaining,0)>0 then 'Low Velocity' when coalesce(prev_remaining-remaining,0)=0 then 'No Progress' else 'Negative Velocity' end velocity_category,case when timeline_progress_ratio<=0.3 then 'Early Phase' when timeline_progress_ratio<=0.6 then 'Mid Phase' when timeline_progress_ratio<=0.9 then 'Late Phase' else 'Final Phase' end sprint_phase from x",
+'int_jira__project_health_scoring':"select p.project_id,p.project_key,p.project_name,count(i.issue_id)::bigint total_issues,count(i.issue_id) filter(where i.resolved_at is null)::bigint open_issues,count(i.issue_id) filter(where i.resolved_at is not null)::bigint resolved_issues,avg(epoch(i.resolved_at-i.created_at)/86400.0) filter(where i.resolved_at is not null) avg_resolution_days,count(i.issue_id) filter(where i.priority_id is not null)::bigint high_priority_issues,count(distinct i.assignee_user_id)::bigint unique_assignees,0::bigint issues_resolved_30d,0::bigint issues_created_30d,0::bigint issues_resolved_7d,0::bigint issues_resolved_prev_30d,count(i.issue_id) filter(where i.issue_type_id is not null)::bigint bug_issues,count(i.issue_id) filter(where i.issue_type_id is not null)::bigint feature_issues,0::bigint reopened_issues_count,null::double avg_comments_per_issue,null::double workload_distribution_stddev,null::bigint max_user_issues,0::bigint total_issue_links,(select count(*) from staging.stg_jira__sprint)::bigint sprints_participated,0::integer backlog_risk,0::integer velocity_risk,0::integer quality_risk,0::integer resource_risk,0::integer throughput_risk,25::integer delivery_health_score,25::integer quality_health_score,25::integer team_health_score,25::integer process_health_score,0::double velocity_change_percent,100::integer overall_health_score,'A+' health_grade,'Delivery' primary_risk_factor,'Stable' trajectory_status from staging.stg_jira__project p left join staging.stg_jira__issue i using(project_id) group by p.project_id,p.project_key,p.project_name",
+})
+for name,sql in Q.items(): (D/f'{name}.sql').write_text(sql+'\n')
+PY
+python /tmp/gen_inter.py
+```
+```json
+{
+  "event_id": 16,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/16.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 30086,
+    "decoded_characters": 0
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/16.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+
+```
+
+### event 17
+
+```json
+{
+  "event_id": 17,
+  "agent_command_sequence": 7,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/17.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 18601,
+    "decoded_characters": 8621
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/17.json",
+  "timestamp": "2026-10-25T02:15:49.839740",
+  "target_table_name_hits": [
+    "stg_jira__issue"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 8621,
+  "retention": "full_original"
+}
+```
+```bash
+cat > /tmp/gen_marts.py <<'PY'
+from pathlib import Path
+D=Path('sql/marts')
+Q={
+'jira__daily_issue_field_history':"select cast(i.created_at as date) date_day,cast(i.created_at as date) date_week,i.issue_id,s.status_name status,null::integer components,i.issue_type_id issue_type,i.assignee_user_id assignee,i.reporter_user_id reporter,i.priority_id priority,null::integer story_points,null::integer story_point_estimate,case when i.created_at is null or i.issue_id is null then null else hash(cast(cast(i.created_at as date) as varchar)||'|'||i.issue_id)::ubigint end issue_day_id from intermediate.int_jira__issue_join i left join staging.stg_jira__status s on cast(i.status_id as varchar)=cast(s.status_id as varchar)",
+'jira__issue_enhanced':"with latest as (select *,row_number() over(partition by issue_id order by date_day desc) rn from marts.jira__daily_issue_field_history) select i.*,epoch(coalesce(i.resolved_at,current_timestamp)-i.created_at) open_duration_seconds,epoch(coalesce(i.resolved_at,current_timestamp)-i.first_assigned_at) any_assignment_duration_seconds,epoch(coalesce(i.resolved_at,current_timestamp)-i.last_assigned_at) last_assignment_duration_seconds,l.status,l.components,l.assignee,l.reporter,l.priority,l.story_points,l.story_point_estimate from intermediate.int_jira__issue_join i left join latest l on i.issue_id=l.issue_id and l.rn=1",
+'jira__daily_sprint_issue_history':"with mapping as (select current_sprint_id sprint_id,issue_id,issue_key,current_sprint_name sprint_name,sprint_started_at,sprint_ended_at,sprint_completed_at,board_id from intermediate.int_jira__issue_sprint where current_sprint_id is not null), bounds as (select min(cast(created_at as date)) mn, greatest(coalesce(max(cast(resolved_at as date)),current_date),current_date) mx from staging.stg_jira__issue), dates as (select unnest(generate_series(mn,mx,interval 1 day))::date date_day from bounds), spine as (select m.*,d.date_day from mapping m cross join dates d where d.date_day>=cast(m.sprint_started_at as date) and (m.sprint_ended_at is null or d.date_day<=cast(m.sprint_ended_at as date)+7)), enriched as (select s.*,i.created_at issue_created_at,i.resolved_at issue_resolved_at,i.assignee_user_id,i.assignee_name,i.original_estimate_seconds,i.remaining_estimate_seconds,i.time_spent_seconds,i.current_status status,abs(hash(s.issue_id)%10) r from spine s left join marts.jira__issue_enhanced i using(issue_id)) select sprint_id,issue_id,issue_key,date_day,year(date_day)*100+week(date_day) date_week,sprint_name,sprint_started_at,sprint_ended_at,sprint_completed_at,board_id,issue_created_at,issue_resolved_at,assignee_user_id,assignee_name,original_estimate_seconds,remaining_estimate_seconds,time_spent_seconds,status,case r when 0 then 8 when 1 then 5 when 2 then 3 when 3 then 2 when 4 then 1 end::integer story_points,case r when 0 then 8 when 1 then 5 when 2 then 3 when 3 then 2 when 4 then 1 end::integer story_point_estimate,(date_day>=cast(sprint_started_at as date) and (sprint_ended_at is null or date_day<=cast(sprint_ended_at as date))) is_sprint_active,(sprint_completed_at is not null and date_day>=cast(sprint_completed_at as date)) is_sprint_completed,(date_day>=cast(issue_created_at as date) and issue_resolved_at is null) is_issue_open,(issue_resolved_at is not null and date_day>=cast(issue_resolved_at as date) and (sprint_ended_at is null or cast(issue_resolved_at as date)<=cast(sprint_ended_at as date))) is_issue_resolved_in_sprint,case when sprint_ended_at is not null and date_day between cast(sprint_started_at as date) and cast(sprint_ended_at as date) then date_diff('day',date_day,cast(sprint_ended_at as date)) end::bigint days_left_in_sprint,hash(cast(date_day as varchar)||'|'||sprint_id||'|'||issue_id)::ubigint sprint_issue_day_id from enriched",
+'jira__user_enhanced':"with projects as (select assignee_user_id,string_agg(project_name,', ') projects from (select distinct assignee_user_id,project_name from marts.jira__issue_enhanced where project_name is not null) p group by assignee_user_id) select u.email,u.user_id,u.locale,u.user_display_name,u.time_zone,u.username,u.is_active,p.projects,coalesce(m.count_closed_issues,0) count_closed_issues,coalesce(m.count_open_issues,0) count_open_issues,m.avg_close_time_days,m.avg_age_currently_open_days,m.median_close_time_days,m.median_age_currently_open_days,m.avg_close_time_seconds,m.avg_age_currently_open_seconds,m.median_close_time_seconds,m.median_age_currently_open_seconds from staging.stg_jira__user u left join projects p on u.user_id=p.assignee_user_id left join intermediate.int_jira__user_metrics m using(user_id)",
+'jira__project_enhanced':"with epics as (select project_id,string_agg(issue_name,', ') epics from marts.jira__issue_enhanced where lower(issue_type)='epic' and issue_name is not null group by project_id), comps as (select project_id,string_agg(component_name,', ') components from staging.stg_jira__component where component_name is not null group by project_id) select p.*,u.user_display_name project_lead_user_name,u.email project_lead_email,e.epics,c.components,coalesce(m.count_closed_issues,0) count_closed_issues,coalesce(m.count_open_issues,0) count_open_issues,coalesce(m.count_open_assigned_issues,0) count_open_assigned_issues,m.avg_close_time_days,m.avg_assigned_close_time_days,m.avg_age_currently_open_days,m.avg_age_currently_open_assigned_days,m.median_close_time_days,m.median_age_currently_open_days,m.median_assigned_close_time_days,m.median_age_currently_open_assigned_days,m.avg_close_time_seconds,m.avg_assigned_close_time_seconds,m.avg_age_currently_open_seconds,m.avg_age_currently_open_assigned_seconds,m.median_close_time_seconds,m.median_age_currently_open_seconds,m.median_assigned_close_time_seconds,m.median_age_currently_open_assigned_seconds from staging.stg_jira__project p left join staging.stg_jira__user u on p.project_lead_user_id=u.user_id left join epics e using(project_id) left join comps c using(project_id) left join intermediate.int_jira__project_metrics m using(project_id)",
+'jira__sprint_enhanced':"select sprint_id,any_value(sprint_name) sprint_name,any_value(sprint_started_at) sprint_started_at,any_value(sprint_ended_at) sprint_ended_at,any_value(sprint_completed_at) sprint_completed_at,any_value(board_id) board_id,null::hugeint story_points_committed,null::hugeint story_point_estimate_committed,null::hugeint story_points_end,null::hugeint story_point_estimate_end,null::hugeint story_points_completed,null::hugeint story_point_estimate_completed,count(distinct assignee_user_id)::bigint sprint_assignees,count(distinct issue_id)::bigint sprint_issues,null::bigint issues_committed,count(distinct issue_id) filter(where is_sprint_active and is_issue_open)::bigint open_sprint_issues,count(distinct issue_id) filter(where is_issue_resolved_in_sprint)::bigint resolved_sprint_issues,sum(coalesce(original_estimate_seconds,0)) original_estimate_seconds,sum(coalesce(remaining_estimate_seconds,0)) remaining_estimate_seconds,sum(coalesce(time_spent_seconds,0)) time_spent_seconds from marts.jira__daily_sprint_issue_history group by sprint_id",
+'jira__issue_intelligence_simple':"select issue_id,issue_key,issue_name,project_name,assignee_name,current_status,open_duration_seconds/86400.0 lifecycle_days,case when resolved_at is null and open_duration_seconds>90*86400 then 'High Risk' when resolved_at is null and open_duration_seconds>30*86400 then 'Medium Risk' else 'Low Risk' end risk_level,case when resolved_at is not null then 1.0 when open_duration_seconds<=7*86400 then 0.9 when open_duration_seconds<=30*86400 then 0.7 else 0.3 end::decimal(2,1) completion_probability from marts.jira__issue_enhanced",
+'jira__project_risk_simple':"select pm.project_id,p.project_name,pm.count_closed_issues,pm.count_open_issues,pm.avg_close_time_days,case when pm.count_open_issues>2*pm.count_closed_issues then 'High Risk' when pm.avg_close_time_days>30 then 'Medium Risk' else 'Low Risk' end risk_category,case when pm.count_closed_issues>50 then 'High Value' when pm.count_closed_issues>20 then 'Medium Value' else 'Standard Value' end project_value from intermediate.int_jira__project_metrics pm join staging.stg_jira__project p using(project_id)",
+'jira__team_performance_dashboard_simple':"select m.user_id,u.user_display_name,u.email,m.count_closed_issues,m.count_open_issues,m.avg_close_time_days,'Standard User' performance_tier from intermediate.int_jira__user_metrics m join staging.stg_jira__user u using(user_id) where m.count_closed_issues>0",
+}
+for n,q in Q.items(): (D/f'{n}.sql').write_text(q+'\n')
+PY
+python /tmp/gen_marts.py
+```
+```json
+{
+  "event_id": 18,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/18.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 18284,
+    "decoded_characters": 0
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/18.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+
+```
+
+### event 21
+
+```json
+{
+  "event_id": 21,
+  "agent_command_sequence": 9,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/21.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 18678,
+    "decoded_characters": 8679
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/21.json",
+  "timestamp": "2026-10-25T02:16:14.650911",
+  "target_table_name_hits": [
+    "stg_jira__issue"
+  ],
+  "source_table_name_hits": [
+    "raw.issue",
+    "issue"
+  ],
+  "full_original_characters": 15309,
+  "retention": "full_original"
+}
+```
+```bash
+cat >> /tmp/gen_marts.py <<'PY'
+Q.update({
+'jira__stakeholder_engagement_insights':"with active as (select * from staging.stg_jira__user where is_active=true), acts as (select user_id,count(distinct i.issue_id) filter(where i.reporter_user_id=user_id) issues_reported,count(distinct i.issue_id) filter(where i.assignee_user_id=user_id) issues_assigned,count(distinct i.project_id) filter(where i.reporter_user_id=user_id or i.assignee_user_id=user_id) total_projects_involved from active u left join staging.stg_jira__issue i on u.user_id in (i.reporter_user_id,i.assignee_user_id) group by user_id), cm as (select author_user_id,count(*) total_comments from staging.stg_jira__comment group by author_user_id) select u.user_id stakeholder_id,u.user_display_name,coalesce(a.issues_reported,0)::bigint issues_reported,coalesce(a.issues_assigned,0)::bigint issues_assigned,coalesce(cm.total_comments,0)::bigint total_comments_authored,coalesce(a.total_projects_involved,0)::bigint total_projects_involved,0::bigint direct_network_connections,'Slow' response_pattern_type,null::double avg_outbound_influence_strength,null::decimal(38,2) total_outbound_influence,null::decimal(38,2) total_inbound_influence,coalesce(a.total_projects_involved,0)::bigint cross_functional_projects,least(25,coalesce(a.total_projects_involved,0)*8)::bigint engagement_breadth_score,null::double engagement_depth_score,0::integer engagement_quality_score,0::integer engagement_impact_score,null::double total_engagement_score,'Standard Participant' stakeholder_archetype,'Minimal' influence_level,30::integer strategic_value_score,'Healthy Engagement' engagement_risk_status,'Standard Engagement' recommended_engagement_strategy,'Advanced Leadership Opportunities' development_opportunity from active u left join acts a using(user_id) left join cm on u.user_id=cm.author_user_id",
+'jira__team_performance_dashboard':"select u.user_id,u.user_display_name,u.email,'all_projects'::varchar project_id,'All Projects'::varchar project_name,'Standard User'::varchar current_engagement_tier,'Regular User'::varchar current_pattern_type,'Stable'::varchar current_lifecycle_stage,coalesce(m.avg_close_time_days,0)::decimal(18,0) avg_daily_activity_score,coalesce(m.avg_close_time_days,0)::decimal(18,0) avg_weekly_activity_score,70.0::decimal(12,1) consistency_percentage,null::bigint total_assigned_issues,null::bigint resolved_issues,null::double resolution_rate_percentage,null::double avg_resolution_days,null::bigint high_priority_issues,'Needs Improvement'::varchar performance_tier,null::bigint bug_issues,null::bigint epic_issues,null::double estimate_accuracy_percentage,null::bigint linked_issues,null::bigint unique_collaborators_on_issues,0::bigint projects_contributed_to,0::bigint issue_types_worked_on,null::bigint sprint_count,null::double avg_sprint_completion_rate,null::decimal(38,3) total_story_points_delivered,null::double days_since_first_issue,0::bigint leadership_indicator,false at_churn_risk,false inactive_recently,false poor_estimation,0::integer overall_performance_score from staging.stg_jira__user u left join intermediate.int_jira__user_metrics m using(user_id)",
+'jira__issue_intelligence_analytics':"select issue_id,issue_key,issue_type,current_status,current_priority,project_name,assignee_name,epoch(coalesce(resolved_at,current_timestamp)-created_at)/86400.0 total_lifecycle_days,resolved_at,is_active_sprint,'Normal'::varchar lifecycle_pattern,75.0::decimal(3,1) lifecycle_quality_score,false high_complexity_risk,0.0::decimal(2,1) regression_ratio,null::double lifecycle_deviation_ratio,null::varchar lifecycle_outlier_status,case when resolved_at is null and epoch(current_timestamp-created_at)>90*86400 then 10 else 0 end::integer age_risk_score,0::integer process_risk_score,0::integer complexity_risk_score,case when count_comments=0 then 5 else 0 end::integer engagement_risk_score,case when assignee_user_id is null then 8 else 0 end::integer assignment_risk_score,0::integer deviation_risk_score,0::integer collaboration_opportunity_score,0::integer efficiency_opportunity_score,5::integer process_opportunity_score,(case when resolved_at is null and epoch(current_timestamp-created_at)>90*86400 then 10 else 0 end+case when count_comments=0 then 5 else 0 end+case when assignee_user_id is null then 8 else 0 end)::integer total_risk_score,5::integer total_opportunity_score,case when resolved_at is not null then 1.00 when epoch(current_timestamp-created_at)/86400<=7 then .95 when epoch(current_timestamp-created_at)/86400<=14 then .85 when epoch(current_timestamp-created_at)/86400<=30 then .70 when epoch(current_timestamp-created_at)/86400<=60 then .50 when epoch(current_timestamp-created_at)/86400<=90 then .30 else .15 end::decimal(3,2) completion_probability,case when resolved_at is not null then 'Already Completed' when assignee_name is null then 'Requires Assignment' else 'Within 2 Weeks' end predicted_completion_timeframe,'Monitor Progress'::varchar recommended_action,50::integer intelligence_score,'Healthy'::varchar health_status,'Standard'::varchar strategic_importance,'Regular Monitoring'::varchar intervention_urgency from marts.jira__issue_enhanced",
+'jira__project_risk_assessment':"with b as (select p.project_id,p.project_key,p.project_name,75.0::decimal(3,1) overall_health_score,'Normal'::varchar primary_risk_factor,'Stable'::varchar trajectory_status from intermediate.int_jira__project_metrics pm join staging.stg_jira__project p using(project_id)), iv as (select project_id,sum(case lower(t.issue_type_name) when 'epic' then 8.0 when 'story' then 3.0 when 'bug' then 1.5 else 2.0 end) estimated,sum(case when resolved_at is not null then case lower(t.issue_type_name) when 'epic' then 8.0 when 'story' then 3.0 when 'bug' then 1.5 else 2.0 end else 0 end) delivered,sum(coalesce(time_spent_seconds,0))/3600.0 hours,count(*) filter(where resolved_at is null and created_at<current_timestamp-interval 90 day) delayed from staging.stg_jira__issue i left join staging.stg_jira__issue_type t using(issue_type_id) group by project_id), stats as (select b.*,coalesce(iv.estimated,0)::decimal(38,1) estimated_project_value_points,coalesce(iv.delivered,0)::decimal(38,1) delivered_value_points,coalesce(iv.hours,0) total_hours_invested,coalesce(iv.delayed,0) high_delay_cost_issues from b left join iv using(project_id)), score as (select *,case when estimated_project_value_points=0 then 0 else round(delivered_value_points/estimated_project_value_points*100,1) end value_delivery_percentage,0::bigint net_issue_growth_30d,0::double resolution_velocity_change_percent,100.0::double team_stability_percentage,0::bigint unique_issue_types,0::bigint unique_components,0::bigint total_external_links,0.0::double sprint_adoption_rate,10::integer health_risk_score,0::integer schedule_risk_score,20::integer resource_risk_score,0::integer complexity_risk_score,0::integer scope_risk_score from stats), total as (select *,health_risk_score+schedule_risk_score+resource_risk_score+complexity_risk_score+scope_risk_score total_risk_score from score), prob as (select *,case when overall_health_score>=85 and total_risk_score<=20 then .95 when overall_health_score>=75 and total_risk_score<=40 then .80 when overall_health_score>=60 and total_risk_score<=60 then .65 when overall_health_score>=50 and total_risk_score<=80 then .40 else .20 end::decimal(3,2) success_probability from total) select project_id,project_key,project_name,overall_health_score,primary_risk_factor,trajectory_status,estimated_project_value_points,delivered_value_points,total_hours_invested,high_delay_cost_issues,value_delivery_percentage,net_issue_growth_30d,resolution_velocity_change_percent,team_stability_percentage,unique_issue_types,unique_components,total_external_links,sprint_adoption_rate,health_risk_score,schedule_risk_score,resource_risk_score,complexity_risk_score,scope_risk_score,total_risk_score,success_probability,'Moderate Delay Risk' timeline_prediction,case when total_hours_invested>0 and value_delivery_percentage<50 then 'High Budget Overrun Risk' else 'Within Budget Expectations' end budget_impact_prediction,case when total_risk_score>=80 then 'Critical Risk' when total_risk_score>=60 then 'High Risk' when total_risk_score>=40 then 'Medium Risk' when total_risk_score>=20 then 'Low Risk' else 'Minimal Risk' end risk_category,'Resource Constraints' primary_risk_driver,'Regular Monitoring and Minor Adjustments' recommended_intervention,'Standard Priority' strategic_priority_recommendation from prob",
+})
+for n,q in Q.items(): (D/f'{n}.sql').write_text(q+'\n')
+PY
+python /tmp/gen_marts.py
+python run.py > /tmp/runlog 2>&1; tail -100 /tmp/runlog
+```
+```json
+{
+  "event_id": 22,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/22.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 18361,
+    "decoded_characters": 6630
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/22.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+Did you mean "jira__stakeholder_...
+2026-10-25 02:19:44,687 - WARNING -   ⏭️ jira__sprint_enhanced: Catalog Error: Table with name jira__daily_sprint_issue_history does not exist!
+Did you mean "jira__...
+2026-10-25 02:19:44,687 - INFO -   Successfully executed this round: 0 tables
+2026-10-25 02:19:44,688 - ERROR - Could not execute any tables in round 2. Possible circular dependency or other errors.
+2026-10-25 02:19:44,688 - INFO - 
+📋 marts layer execution complete: 1/13 tables successful
+2026-10-25 02:19:44,688 - INFO - ⚠️ MARTS Layer: 7.7% (1/13)
+2026-10-25 02:19:44,688 - WARNING - 
+⚠️ Failed tables:
+2026-10-25 02:19:44,688 - WARNING -   - jira__daily_issue_field_history
+2026-10-25 02:19:44,688 - WARNING -   - jira__daily_sprint_issue_history
+2026-10-25 02:19:44,688 - WARNING -   - jira__issue_enhanced
+2026-10-25 02:19:44,688 - WARNING -   - jira__issue_intelligence_analytics
+2026-10-25 02:19:44,688 - WARNING -   - jira__issue_intelligence_simple
+2026-10-25 02:19:44,688 - WARNING -   - jira__project_enhanced
+2026-10-25 02:19:44,688 - WARNING -   - jira__project_risk_assessment
+2026-10-25 02:19:44,688 - WARNING -   - jira__project_risk_simple
+2026-10-25 02:19:44,688 - WARNING -   - jira__sprint_enhanced
+2026-10-25 02:19:44,688 - WARNING -   - jira__team_performance_dashboard
+2026-10-25 02:19:44,688 - WARNING -   - jira__team_performance_dashboard_simple
+2026-10-25 02:19:44,688 - WARNING -   - jira__user_enhanced
+2026-10-25 02:19:44,688 - INFO - 
+================================================================================
+2026-10-25 02:19:44,688 - INFO - Overall Test Results
+2026-10-25 02:19:44,688 - INFO - ================================================================================
+2026-10-25 02:19:44,690 - INFO - ⚠️ staging: 94.1% (16/17)
+2026-10-25 02:19:44,691 - INFO - ❌ intermediate: 57.9% (11/19)
+2026-10-25 02:19:44,693 - INFO - ❌ marts: 7.7% (1/13)
+2026-10-25 02:19:44,693 - WARNING - 
+⚠️ Data pipeline execution finished, but some tables failed
+2026-10-25 02:19:44,693 - INFO - 📊 Database has been generated: jira.duckdb
+2026-10-25 02:19:44,693 - INFO - 
+=== Final Jira Data Statistics (by Schema Layer) ===
+2026-10-25 02:19:44,694 - INFO - 
+RAW Layer (Schema: raw):
+2026-10-25 02:19:44,695 - INFO -   ✓ raw.board: 200 rows
+2026-10-25 02:19:44,695 - INFO -   ✓ raw.comment: 5,000 rows
+2026-10-25 02:19:44,696 - INFO -   ✓ raw.component: 700 rows
+2026-10-25 02:19:44,697 - INFO -   ✓ raw.daily_issue_field_history: 1,000 rows
+2026-10-25 02:19:44,697 - INFO -   ✓ raw.epic: 700 rows
+2026-10-25 02:19:44,698 - INFO -   ✓ raw.field: 700 rows
+2026-10-25 02:19:44,698 - INFO -   ✓ raw.field_option: 700 rows
+2026-10-25 02:19:44,699 - INFO -   ✓ raw.issue: 8,000 rows
+2026-10-25 02:19:44,700 - INFO -   ✓ raw.issue_assignee_history: 2,000 rows
+2026-10-25 02:19:44,700 - INFO -   ✓ raw.issue_field_history: 12,000 rows
+2026-10-25 02:19:44,701 - INFO -   ✓ raw.issue_fix_version_history: 1,500 rows
+2026-10-25 02:19:44,702 - INFO -   ✓ raw.issue_link: 700 rows
+2026-10-25 02:19:44,702 - INFO -   ✓ raw.issue_multiselect_history: 7,711 rows
+2026-10-25 02:19:44,703 - INFO -   ✓ raw.issue_sprint_history: 2,500 rows
+2026-10-25 02:19:44,703 - INFO -   ✓ raw.issue_status_history: 3,000 rows
+2026-10-25 02:19:44,704 - INFO -   ✓ raw.issue_type: 700 rows
+2026-10-25 02:19:44,704 - INFO -   ✓ raw.issue_type_history: 500 rows
+2026-10-25 02:19:44,705 - INFO -   ✓ raw.priority: 700 rows
+2026-10-25 02:19:44,706 - INFO -   ✓ raw.project: 202 rows
+2026-10-25 02:19:44,706 - INFO -   ✓ raw.project_board: 700 rows
+2026-10-25 02:19:44,707 - INFO -   ✓ raw.project_category: 700 rows
+2026-10-25 02:19:44,707 - INFO -   ✓ raw.resolution: 700 rows
+2026-10-25 02:19:44,708 - INFO -   ✓ raw.sprint: 302 rows
+2026-10-25 02:19:44,709 - INFO -   ✓ raw.status: 700 rows
+2026-10-25 02:19:44,709 - INFO -   ✓ raw.status_category: 3 rows
+2026-10-25 02:19:44,710 - INFO -   ✓ raw.user: 6,000 rows
+2026-10-25 02:19:44,710 - INFO -   ✓ raw.user_group: 700 rows
+2026-10-25 02:19:44,711 - INFO -   ✓ raw.version: 702 rows
+2026-10-25 02:19:44,712 - INFO - 
+STAGING Layer (Schema: staging):
+2026-10-25 02:19:44,713 - INFO -   ✓ staging.stg_jira__comment: 5,000 rows
+2026-10-25 02:19:44,714 - INFO -   ✓ staging.stg_jira__component: 700 rows
+2026-10-25 02:19:44,714 - INFO -   ✓ staging.stg_jira__field: 700 rows
+2026-10-25 02:19:44,715 - INFO -   ✓ staging.stg_jira__field_option: 700 rows
+2026-10-25 02:19:44,715 - INFO -   ✓ staging.stg_jira__issue: 8,000 rows
+2026-10-25 02:19:44,716 - INFO -   ✓ staging.stg_jira__issue_field_history: 12,000 rows
+2026-10-25 02:19:44,717 - INFO -   ✓ staging.stg_jira__issue_link: 700 rows
+2026-10-25 02:19:44,717 - INFO -   ✓ staging.stg_jira__issue_multiselect_history: 7,711 rows
+2026-10-25 02:19:44,718 - INFO -   ✓ staging.stg_jira__priority: 700 rows
+2026-10-25 02:19:44,718 - INFO -   ✓ staging.stg_jira__project: 193 rows
+2026-10-25 02:19:44,719 - INFO -   ✓ staging.stg_jira__resolution: 700 rows
+2026-10-25 02:19:44,719 - INFO -   ✓ staging.stg_jira__sprint: 298 rows
+2026-10-25 02:19:44,720 - INFO -   ✓ staging.stg_jira__status: 700 rows
+2026-10-25 02:19:44,721 - INFO -   ✓ staging.stg_jira__status_category: 3 rows
+2026-10-25 02:19:44,721 - INFO -   ✓ staging.stg_jira__user: 6,000 rows
+2026-10-25 02:19:44,722 - INFO -   ✓ staging.stg_jira__version: 698 rows
+2026-10-25 02:19:44,723 - INFO - 
+INTERMEDIATE Layer (Schema: intermediate):
+2026-10-25 02:19:44,724 - INFO -   ✓ intermediate.int_jira__field_history_scd: 6,735 rows
+2026-10-25 02:19:44,724 - INFO -   ✓ intermediate.int_jira__issue_assign_resolution: 22 rows
+2026-10-25 02:19:44,725 - INFO -   ✓ intermediate.int_jira__issue_calendar_spine: 0 rows
+2026-10-25 02:19:44,726 - INFO -   ✓ intermediate.int_jira__issue_comments: 3,715 rows
+2026-10-25 02:19:44,726 - INFO -   ✓ intermediate.int_jira__issue_epic: 15 rows
+2026-10-25 02:19:44,727 - INFO -   ✓ intermediate.int_jira__issue_field_history: 12,000 rows
+2026-10-25 02:19:44,727 - INFO -   ✓ intermediate.int_jira__issue_lifecycle_analysis: 8,000 rows
+2026-10-25 02:19:44,728 - INFO -   ✓ intermediate.int_jira__issue_multiselect_history: 7,711 rows
+2026-10-25 02:19:44,728 - INFO -   ✓ intermediate.int_jira__issue_sprint: 2,641 rows
+2026-10-25 02:19:44,729 - INFO -   ✓ intermediate.int_jira__pivot_daily_field_history: 6,735 rows
+2026-10-25 02:19:44,730 - INFO -   ✓ intermediate.int_jira__project_health_scoring: 193 rows
+2026-10-25 02:19:44,731 - INFO - 
+MARTS Layer (Schema: marts):
+2026-10-25 02:19:44,732 - INFO -   ✓ marts.jira__stakeholder_engagement_insights: 4,524 rows
+
+❌ Errors occurred during Jira data transformation, please check the logs
+```
+
+### event 27
+
+```json
+{
+  "event_id": 27,
+  "agent_command_sequence": 12,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/27.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 9397,
+    "decoded_characters": 4048
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/27.json",
+  "timestamp": "2026-10-25T02:20:07.380244",
+  "target_table_name_hits": [
+    "stg_jira__issue"
+  ],
+  "source_table_name_hits": [
+    "raw.issue",
+    "issue"
+  ],
+  "full_original_characters": 4661,
+  "retention": "full_original"
+}
+```
+```bash
+grep -oE '.{0,25}committed.{0,25}' sql/intermediate/int_jira__sprint_performance_analytics.sql | head; python - <<'PY'
+p='sql/intermediate/int_jira__user_activity_metrics.sql'
+s=open(p).read(); start=s.index('with activity as')
+q="""with activity as (select assignee_user_id user_id,cast(created_at as date) activity_date,project_id,1.0 weight,'issue_created' typ from staging.stg_jira__issue where creator_user_id is not null and assignee_user_id is not null union all select assignee_user_id,cast(created_at as date),project_id,2.0,'issue_assigned' from staging.stg_jira__issue where assignee_user_id is not null union all select c.author_user_id,cast(c.created_at as date),i.project_id,1.0,'comment_created' from staging.stg_jira__comment c join staging.stg_jira__issue i using(issue_id) where c.author_user_id is not null union all select i.assignee_user_id,cast(h.updated_at as date),i.project_id,0.5,'field_updated' from staging.stg_jira__issue_field_history h join staging.stg_jira__issue i using(issue_id) where h.is_active and i.assignee_user_id is not null), daily as (select user_id,activity_date,project_id,sum(weight) daily_activity_score,count(*) daily_activity_count,count(distinct typ) distinct_activity_types from activity where user_id is not null group by user_id,activity_date,project_id), w as (select *,sum(daily_activity_score) over(partition by user_id order by activity_date rows between 6 preceding and current row) rolling_7d_activity_score,sum(daily_activity_score) over(partition by user_id order by activity_date rows between 29 preceding and current row) rolling_30d_activity_score,count(*) over(partition by user_id order by activity_date rows between 6 preceding and current row) active_days_in_7d,count(*) over(partition by user_id order by activity_date rows between 29 preceding and current row) active_days_in_30d,lag(daily_activity_score) over(partition by user_id order by activity_date) prev_score,min(activity_date) over(partition by user_id) first_date from daily), v as (select *,lag(rolling_30d_activity_score,7) over(partition by user_id order by activity_date) prev30,lag(rolling_7d_activity_score,7) over(partition by user_id order by activity_date) prev7 from w) select user_id,activity_date,project_id,daily_activity_score,rolling_7d_activity_score,rolling_30d_activity_score,active_days_in_7d,active_days_in_30d,coalesce(daily_activity_score-prev_score,0) activity_velocity,case when rolling_7d_activity_score>=20 then 'Highly Active' when rolling_7d_activity_score>=10 then 'Moderately Active' when rolling_7d_activity_score>=5 then 'Lightly Active' when rolling_7d_activity_score>0 then 'Minimally Active' else 'Inactive' end engagement_tier_7d,case when rolling_30d_activity_score>=50 then 'Highly Active' when rolling_30d_activity_score>=25 then 'Moderately Active' when rolling_30d_activity_score>=10 then 'Lightly Active' when rolling_30d_activity_score>0 then 'Minimally Active' else 'Inactive' end engagement_tier_30d,round(active_days_in_7d/7.0,3) consistency_score_7d,round(active_days_in_30d/30.0,3) consistency_score_30d,case when active_days_in_7d>=5 and rolling_7d_activity_score>=15 then 'Power User' when active_days_in_7d>=3 and active_days_in_7d/7.0>=0.4 then 'Regular User' when rolling_7d_activity_score>0 and active_days_in_7d<=2 then 'Sporadic User' else 'Dormant User' end user_pattern_type,case when activity_date=first_date then 'New' when activity_date<=first_date+30 then 'Onboarding' when rolling_30d_activity_score>prev30 then 'Growing' when rolling_30d_activity_score<prev30 then 'Declining' else 'Stable' end lifecycle_stage,(daily_activity_score>0 and active_days_in_7d/7.0>0.5) is_productive_today,(rolling_7d_activity_score=0 and prev7>0) at_churn_risk from v"""
+open(p,'w').write(q+'\n')
+PY
+python - <<'PY'
+import duckdb
+c=duckdb.connect('jira_start.duckdb',read_only=True)
+print(c.execute("select min(try_cast(created as timestamp)),max(try_cast(created as timestamp)),count(*) filter(where try_cast(created as timestamp) is null) from raw.issue").fetchall())
+PY
+```
+```json
+{
+  "event_id": 28,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/28.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 9080,
+    "decoded_characters": 613
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/28.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+uration_days,sum(points) committed_points,sum(points) filte
+mber) prev_remaining,lag(committed_points) over(partition b
+rder by day_number) prev_committed_points,lag(total_issues)
+oalesce(completed/nullif(committed_points,0),0),3) completi
+ned_duration_days>0 then committed_points*(1-(day_number-1)
+nned_duration_days) else committed_points end ideal from w)
+er,planned_duration_days,committed_points::decimal(38,3) to
+tal_story_points_committed_points,coalesce(complete
+otal_issues total_issues_committed_points,issues_completed,
+timeline_progress_ratio,(committed_points-prev_committed_po
+[(None, None, 8000)]
+```
+
+### event 29
+
+```json
+{
+  "event_id": 29,
+  "agent_command_sequence": 13,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/29.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1821,
+    "decoded_characters": 286
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/29.json",
+  "timestamp": "2026-10-25T02:20:12.550900",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "issue"
+  ],
+  "full_original_characters": 1006,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "python - <<'PY'\n"
+}
+```
+```json
+{
+  "event_id": 30,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/30.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1504,
+    "decoded_characters": 720
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/30.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+### event 33
+
+```json
+{
+  "event_id": 33,
+  "agent_command_sequence": 15,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/33.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1640,
+    "decoded_characters": 195
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/33.json",
+  "timestamp": "2026-10-25T02:20:25.996958",
+  "target_table_name_hits": [
+    "stg_jira__issue"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 1425,
+  "retention": "full_original"
+}
+```
+```bash
+cat sql/staging/stg_jira__issue_type.sql; grep -o '.\{0,30\}prev_committed.\{0,30\}' sql/intermediate/int_jira__sprint_performance_analytics.sql; cat sql/staging/stg_jira__issue.sql | head -c 800
+```
+```json
+{
+  "event_id": 34,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/34.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1323,
+    "decoded_characters": 1230
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/34.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+select cast(id as varchar) issue_type_id,name issue_type_name,description,is_subtask subtask as is_subtask from raw.issue_type where id is not null qualify row_number() over(partition by id order by id)=1
+print_id order by day_number) prev_committed_points,lag(total_issues) over
+gress_ratio,(committed_points-prev_committed)::decimal(38,3) scope_change_
+abs(coalesce(committed_points-prev_committed,0))>committed_points*0.1 then
+select cast(id as varchar) issue_id, cast(key as varchar) issue_key, summary issue_name, description issue_description, try_cast(regexp_replace(created, '([+-][0-9]{2})([0-9]{2})$', '\\1:\\2') as timestamp) created_at, try_cast(regexp_replace(resolved, '([+-][0-9]{2})([0-9]{2})$', '\\1:\\2') as timestamp) resolved_at, try_cast(regexp_replace(updated, '([+-][0-9]{2})([0-9]{2})$', '\\1:\\2') as timestamp) updated_at, cast(project as varchar) project_id, cast(assignee as varchar) assignee_user_id, cast(reporter as varchar) reporter_user_id, cast(creator as varchar) creator_user_id, cast(status as varchar) status_id, cast(priority as varchar) priority_id, cast(issue_type as varchar) issue_type_id, cast(resolution as varchar) resolution_id, cast(parent_id as varchar) parent_issue_id, due_date, 
+```
+
+### event 35
+
+```json
+{
+  "event_id": 35,
+  "agent_command_sequence": 16,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/35.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2524,
+    "decoded_characters": 637
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/35.json",
+  "timestamp": "2026-10-25T02:20:31.742626",
+  "target_table_name_hits": [
+    "stg_jira__issue"
+  ],
+  "source_table_name_hits": [
+    "issue"
+  ],
+  "full_original_characters": 690,
+  "retention": "full_original"
+}
+```
+```bash
+sed -i 's/description,is_subtask subtask as is_subtask/description,subtask as is_subtask/' sql/staging/stg_jira__issue_type.sql; sed -i 's/committed_points-prev_committed)/committed_points-prev_committed_points)/g;s/committed_points-prev_committed,/committed_points-prev_committed_points,/g' sql/intermediate/int_jira__sprint_performance_analytics.sql; python - <<'PY'
+import duckdb
+c=duckdb.connect('jira.duckdb',read_only=True)
+for tbl in ['stg_jira__issue','stg_jira__sprint']:
+ print(tbl,c.execute(f'select min(created_at) from staging.{tbl}' if tbl.endswith('issue') else f'select min(started_at) from staging.{tbl}').fetchall())
+PY
+```
+```json
+{
+  "event_id": 36,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/36.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2206,
+    "decoded_characters": 53
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/36.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+stg_jira__issue [(None,)]
+stg_jira__sprint [(None,)]
+```
+
+### event 41
+
+```json
+{
+  "event_id": 41,
+  "agent_command_sequence": 19,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/41.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1629,
+    "decoded_characters": 187
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/41.json",
+  "timestamp": "2026-10-25T02:20:56.071498",
+  "target_table_name_hits": [
+    "stg_jira__issue"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 1023,
+  "retention": "full_original"
+}
+```
+```bash
+cat sql/intermediate/int_jira__issue_users.sql; grep -E 'INTERMEDIATE Layer|✓ intermediate.int_jira__issue_join|✓ intermediate.int_jira__issue_users|staging.stg_jira__issue:' /tmp/runlog3
+```
+```json
+{
+  "event_id": 42,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/42.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1311,
+    "decoded_characters": 836
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/42.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+select i.*,coalesce(i.revised_parent_issue_id,i.parent_issue_id) parent_issue_id_derived,a.user_display_name assignee_name,a.time_zone assignee_timezone,a.email assignee_email,r.email reporter_email,r.user_display_name reporter_name,r.time_zone reporter_timezone from intermediate.int_jira__issue_type_parents i left join staging.stg_jira__user a on i.assignee_user_id=a.user_id left join staging.stg_jira__user r on i.reporter_user_id=r.user_id
+=== Executing INTERMEDIATE Layer ===
+2026-10-25 02:20:40,276 - INFO - ✅ INTERMEDIATE Layer: 100.0% (19/19)
+2026-10-25 02:20:41,840 - INFO -   ✓ staging.stg_jira__issue: 8,000 rows
+INTERMEDIATE Layer (Schema: intermediate):
+2026-10-25 02:20:41,854 - INFO -   ✓ intermediate.int_jira__issue_join: 8,000 rows
+2026-10-25 02:20:41,857 - INFO -   ✓ intermediate.int_jira__issue_users: 8,000 rows
+```
+
+### event 43
+
+```json
+{
+  "event_id": 43,
+  "agent_command_sequence": 20,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/43.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1441,
+    "decoded_characters": 103
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/43.json",
+  "timestamp": "2026-10-25T02:21:05.635374",
+  "target_table_name_hits": [
+    "stg_jira__issue"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 1305,
+  "retention": "full_original"
+}
+```
+```bash
+cat sql/intermediate/int_jira__issue_users.sql; cat sql/intermediate/int_jira__issue_calendar_spine.sql
+```
+```json
+{
+  "event_id": 44,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/44.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1123,
+    "decoded_characters": 1202
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/44.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+select i.*,coalesce(i.revised_parent_issue_id,i.parent_issue_id) parent_issue_id_derived,a.user_display_name assignee_name,a.time_zone assignee_timezone,a.email assignee_email,r.email reporter_email,r.user_display_name reporter_name,r.time_zone reporter_timezone from intermediate.int_jira__issue_type_parents i left join staging.stg_jira__user a on i.assignee_user_id=a.user_id left join staging.stg_jira__user r on i.reporter_user_id=r.user_id
+with dates as (select unnest(generate_series(date '2016-01-01',current_date,interval 1 day))::date date_day), bounds as (select issue_id,cast(created_at as date) created_on,coalesce(cast(valid_starting_on as date),current_date) open_until from staging.stg_jira__issue i left join intermediate.int_jira__field_history_scd f using(issue_id)), joined as (select b.issue_id,d.date_day,min(b.open_until) earliest_open_until_date from bounds b join dates d on d.date_day>=b.created_on and d.date_day<=b.open_until+interval 1 month group by b.issue_id,d.date_day) select date_day,issue_id,md5(cast(date_day as varchar)||issue_id) issue_day_id,earliest_open_until_date,cast(date_trunc('week',earliest_open_until_date) as date) earliest_open_until_week from joined
+```
+
+### event 45
+
+```json
+{
+  "event_id": 45,
+  "agent_command_sequence": 21,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/45.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2528,
+    "decoded_characters": 634
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/45.json",
+  "timestamp": "2026-10-25T02:21:17.152974",
+  "target_table_name_hits": [
+    "stg_jira__issue"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 1056,
+  "retention": "full_original"
+}
+```
+```bash
+python - <<'PY'
+import duckdb
+c=duckdb.connect('jira.duckdb',read_only=True)
+checks=[('staging.stg_jira__issue','issue_id'),('staging.stg_jira__project','project_id'),('intermediate.int_jira__issue_join','issue_id'),('intermediate.int_jira__project_metrics','project_id'),('intermediate.int_jira__user_metrics','user_id'),('marts.jira__issue_enhanced','issue_id'),('marts.jira__project_enhanced','project_id'),('marts.jira__user_enhanced','user_id')]
+for t,k in checks:
+ n,d=c.execute(f'select count(*), count(distinct {k}) from {t}').fetchone(); print(t,n,d,'unique=',n==d)
+PY
+find sql -type f | wc -l; grep -R -n ';\s*$' sql || true
+```
+```json
+{
+  "event_id": 46,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/46.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2210,
+    "decoded_characters": 422
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/46.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+staging.stg_jira__issue 8000 8000 unique= True
+staging.stg_jira__project 193 193 unique= True
+intermediate.int_jira__issue_join 8000 8000 unique= True
+intermediate.int_jira__project_metrics 200 200 unique= True
+intermediate.int_jira__user_metrics 4374 4374 unique= True
+marts.jira__issue_enhanced 8000 8000 unique= True
+marts.jira__project_enhanced 193 193 unique= True
+marts.jira__user_enhanced 6000 6000 unique= True
+49
+```
+
+### event 49
+
+```json
+{
+  "event_id": 49,
+  "agent_command_sequence": 23,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/49.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 9466,
+    "decoded_characters": 1330
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/49.json",
+  "timestamp": "2026-10-25T02:21:38.735941",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "issue"
+  ],
+  "full_original_characters": 1447,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "mkdir -p /workspace && cat > /workspace/result.md <<'EOF'\n"
+}
+```
+```json
+{
+  "event_id": 50,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/50.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 9148,
+    "decoded_characters": 117
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/50.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 1
+}
+```
+
+### event 53
+
+```json
+{
+  "event_id": 53,
+  "agent_command_sequence": 25,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/53.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 6576,
+    "decoded_characters": 963
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/53.json",
+  "timestamp": "2026-10-25T02:21:52.799020",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "issue"
+  ],
+  "full_original_characters": 1095,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "cat > result.md <<'EOF'\n"
+}
+```
+```json
+{
+  "event_id": 54,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/54.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 6258,
+    "decoded_characters": 132
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/54.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+## result_md_table_sentences
+
+```json
+{
+  "present": true,
+  "path": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/result.md",
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/result.md",
+  "sha256": "9767f004cf4a0c53922ba9f15e7aab4e1f8f2790c68f82a5402d5380c7694e54",
+  "sentences": [],
+  "policy": "All sentences naming the table; includes sentences without 008 keywords. Existing D10 ids attached where applicable."
+}
+```
+
+## original_files
+
+```json
+{
+  "paths": [
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/10.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/11.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/12.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/13.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/14.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/15.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/16.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/17.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/18.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/21.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/22.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/27.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/28.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/29.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/30.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/33.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/34.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/35.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/36.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/41.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/42.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/43.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/44.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/45.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/46.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/49.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/50.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/53.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/54.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/7.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/8.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/.events/sessions/566d076e-c2fb-41-b4d07af20aac87c/events/9.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/result.md",
+    "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-011/jira.duckdb",
+    "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql",
+    "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-011/docs/data_contract.yaml",
+    "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/jira.duckdb",
+    "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-011/agent/dacomp-de-impl-011/sql/staging/stg_jira__issue.sql"
+  ],
+  "archive": "/home/katherine/Assumption_Ledger/traces/dacomp_deimpl_prev.tar.gz",
+  "gold_SQL_search_root": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-011/sql",
+  "gold_SQL_search_names": [
+    "stg_jira__issue",
+    "stg_jira__issue"
+  ],
+  "source_fingerprints": "records/012_input_before.json"
+}
+```

@@ -1,0 +1,2853 @@
+# impl-012 / stg_marketo__lead
+
+## basic_information
+
+```json
+{
+  "task": "impl-012",
+  "layer": "staging",
+  "table": "stg_marketo__lead",
+  "status": "待标注",
+  "difference_source": {
+    "kind": "original_007_009",
+    "record": "records/007_tolerance_tables.jsonl",
+    "detail_record": "/home/katherine/Assumption_Ledger/records/004_staging_impl-012.json",
+    "candidate_date": null,
+    "selection_reason": "未进入 011，沿用原差异"
+  },
+  "status_record": "records/012_statuses.jsonl",
+  "package_scope": "仅原文和机械统计；未概括轨迹、未推测原因"
+}
+```
+
+## contract_specification
+
+```json
+{
+  "source_path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-012/docs/data_contract.yaml",
+  "source_sha256": "9162d6f365aa651428fe0b03f4854de1e85296668fc5edaf34e599c15b3ac1a4",
+  "parse_mode": "strict",
+  "requested_table": "stg_marketo__lead",
+  "status": "found"
+}
+```
+```json
+{
+  "yaml_path": [
+    "staging_contract",
+    "tables",
+    0
+  ],
+  "start_line": 36,
+  "end_line": 81
+}
+```
+```yaml
+    - name: stg_marketo__lead
+      description: "Cleaned and standardized lead (contact) records from Marketo with basic contact information and timestamps"
+      source_table: "raw.marketo_lead"
+      grain: "One row per unique lead in Marketo"
+      columns:
+        - name: lead_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: created_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: updated_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: email
+          data_type: VARCHAR
+          constraints: [not_null]
+          description: "Email address of the lead"
+          validation_rules:
+            - rule: "email = LOWER(TRIM(email))"
+              description: "Normalize email to lowercase and remove whitespace"
+              on_failure: delete_row
+            - rule: "email ~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'"
+              description: "Email must follow valid email format"
+              on_failure: delete_row
+        - name: first_name
+          data_type: VARCHAR
+          description: "First name of the lead"
+          validation_rules:
+            - rule: "first_name = TRIM(first_name)"
+              description: "Remove leading and trailing whitespace"
+              on_failure: delete_row
+            - rule: "LENGTH(first_name) <= 100"
+              description: "First name cannot exceed 100 characters"
+              on_failure: delete_row
+        - name: last_name
+          data_type: VARCHAR
+          description: "Last name of the lead"
+          validation_rules:
+            - rule: "last_name = TRIM(last_name)"
+              description: "Remove leading and trailing whitespace"
+              on_failure: delete_row
+            - rule: "LENGTH(last_name) <= 100"
+              description: "Last name cannot exceed 100 characters"
+              on_failure: delete_row
+
+```
+
+## agent_final_SQL
+
+```json
+{
+  "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/sql/staging/stg_marketo__lead.sql",
+  "sha256": "514ec47be037bc14a9b91f1cb31839081629db332666e92b1f107bfe960a92ac",
+  "start_line": 1,
+  "end_line": 10
+}
+```
+```sql
+SELECT
+    CAST(id AS VARCHAR) AS lead_id,
+    CAST(created_at AS VARCHAR) AS created_timestamp,
+    CAST(updated_at AS VARCHAR) AS updated_timestamp,
+    LOWER(TRIM(email)) AS email,
+    TRIM(first_name) AS first_name,
+    TRIM(last_name) AS last_name
+FROM raw.marketo_lead
+WHERE id IS NOT NULL AND created_at IS NOT NULL AND updated_at IS NOT NULL AND email IS NOT NULL AND LOWER(TRIM(email)) ~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$' AND (first_name IS NULL OR (first_name = TRIM(first_name) AND LENGTH(first_name) <= 100)) AND (last_name IS NULL OR (last_name = TRIM(last_name) AND LENGTH(last_name) <= 100))
+QUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY updated_at DESC NULLS LAST) = 1
+```
+
+## gold_SQL_仅供定位差异
+
+```json
+{
+  "path": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-012/sql/staging/stg_marketo__lead.sql",
+  "sha256": "fe487faf3893537a3797f41ee2eb47e477778cf7b2ba4f8d28b11ad10882c51b",
+  "start_line": 1,
+  "end_line": 29
+}
+```
+```sql
+-- Staging: Lead data with standardized columns and data quality transformations
+-- Transform raw Marketo data into clean staging table with standardized naming, data types, and quality constraints
+SELECT
+    CAST(id AS VARCHAR) as lead_id,
+    CAST(created_at AS VARCHAR) as created_timestamp,
+    CAST(updated_at AS VARCHAR) as updated_timestamp,
+    CASE
+        WHEN LOWER(TRIM(email)) !~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$' THEN NULL
+        WHEN email IS NULL THEN NULL
+        ELSE LOWER(TRIM(email))
+    END as email,
+    CASE
+        WHEN LENGTH(TRIM(first_name)) > 100 THEN NULL
+        WHEN first_name IS NULL THEN NULL
+        ELSE TRIM(first_name)
+    END as first_name,
+    CASE
+        WHEN LENGTH(TRIM(last_name)) > 100 THEN NULL
+        WHEN last_name IS NULL THEN NULL
+        ELSE TRIM(last_name)
+    END as last_name
+FROM raw.marketo_lead
+WHERE id IS NOT NULL
+    AND created_at IS NOT NULL
+    AND updated_at IS NOT NULL
+    AND LOWER(TRIM(email)) ~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    AND TRIM(email) IS NOT NULL
+    AND LENGTH(TRIM(first_name)) <= 100
+    AND LENGTH(TRIM(last_name)) <= 100
+```
+
+## differences
+
+```json
+{
+  "kind": "original_007_009",
+  "record": "records/007_tolerance_tables.jsonl",
+  "detail_record": "/home/katherine/Assumption_Ledger/records/004_staging_impl-012.json",
+  "prediction_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/marketo.duckdb",
+  "gold_database": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-012/marketo.duckdb",
+  "actual_schema": "staging",
+  "table": "stg_marketo__lead",
+  "candidate_date": null,
+  "comparison_columns": [
+    "created_timestamp",
+    "email",
+    "first_name",
+    "last_name",
+    "lead_id",
+    "updated_timestamp"
+  ],
+  "key_columns": [
+    "lead_id"
+  ],
+  "prediction_rows": 5984,
+  "gold_rows": 5990,
+  "row_delta": -6,
+  "key_statistics": {
+    "pred_distinct_keys": 5984,
+    "gold_distinct_keys": 5990,
+    "pred_duplicate_key_groups": 0,
+    "gold_duplicate_key_groups": 0,
+    "pred_only_keys": 0,
+    "gold_only_keys": 6,
+    "shared_keys": 5984,
+    "shared_nonunique_key_groups": 0
+  },
+  "l0_column_differences": [
+    {
+      "column": "lead_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "created_timestamp",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "updated_timestamp",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "email",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "first_name",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "last_name",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    }
+  ],
+  "l3_column_differences": [
+    {
+      "column": "created_timestamp",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "email",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "first_name",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "last_name",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "lead_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "updated_timestamp",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    }
+  ],
+  "whole_match_level": "仍不匹配",
+  "keyed_match_level": "L0",
+  "selection_reason": "未进入 011，沿用原差异",
+  "value_representation": "Unmodified DuckDB CAST AS VARCHAR; SQL NULL is JSON null. Keys use the unchanged historical L0 normalization.",
+  "new_queries_only_read_existing_results": true,
+  "one_side_key_examples": {
+    "prediction_only": [],
+    "gold_only": [
+      {
+        "key_normalized": {
+          "lead_id": "mar10000228817"
+        },
+        "key_raw_text": {
+          "lead_id": "MAR10000228817"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "lead_id": "mar10000346749"
+        },
+        "key_raw_text": {
+          "lead_id": "MAR10000346749"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "lead_id": "mar10001145454"
+        },
+        "key_raw_text": {
+          "lead_id": "MAR10001145454"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "lead_id": "mar10001419927"
+        },
+        "key_raw_text": {
+          "lead_id": "MAR10001419927"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "lead_id": "mar10001601917"
+        },
+        "key_raw_text": {
+          "lead_id": "MAR10001601917"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "lead_id": "mar10002817295"
+        },
+        "key_raw_text": {
+          "lead_id": "MAR10002817295"
+        },
+        "rows_with_key": 1
+      }
+    ]
+  },
+  "column_details": [
+    {
+      "column": "lead_id",
+      "l0_counts_verbatim": {
+        "column": "lead_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "lead_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "created_timestamp",
+      "l0_counts_verbatim": {
+        "column": "created_timestamp",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "created_timestamp",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "updated_timestamp",
+      "l0_counts_verbatim": {
+        "column": "updated_timestamp",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "updated_timestamp",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "email",
+      "l0_counts_verbatim": {
+        "column": "email",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "email",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "first_name",
+      "l0_counts_verbatim": {
+        "column": "first_name",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "first_name",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "last_name",
+      "l0_counts_verbatim": {
+        "column": "last_name",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "last_name",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    }
+  ]
+}
+```
+
+## agent_constraints_006
+
+```json
+{
+  "source_record": "records/006_contract_impl-012.json",
+  "declarations": {
+    "grain": [
+      {
+        "raw_text": "One row per unique lead in Marketo",
+        "status": "unparsed",
+        "reason": "identifiers_not_declared_as_contract_columns",
+        "columns": [],
+        "unresolved_identifiers": [
+          "unique"
+        ],
+        "sources": [
+          {
+            "yaml_path": [
+              "staging_contract",
+              "tables",
+              0,
+              "grain"
+            ],
+            "start_line": 39,
+            "end_line": 39,
+            "original_excerpt": "      grain: \"One row per unique lead in Marketo\"\n",
+            "decoded_value": "One row per unique lead in Marketo"
+          }
+        ]
+      }
+    ],
+    "primary_key": [],
+    "not_null": [
+      {
+        "columns": [
+          "lead_id"
+        ],
+        "sources": [
+          {
+            "yaml_path": [
+              "staging_contract",
+              "tables",
+              0,
+              "columns",
+              0,
+              "constraints",
+              0
+            ],
+            "start_line": 43,
+            "end_line": 43,
+            "original_excerpt": "          constraints: [not_null, unique]\n",
+            "decoded_value": [
+              "not_null",
+              "unique"
+            ]
+          }
+        ]
+      },
+      {
+        "columns": [
+          "created_timestamp"
+        ],
+        "sources": [
+          {
+            "yaml_path": [
+              "staging_contract",
+              "tables",
+              0,
+              "columns",
+              1,
+              "constraints",
+              0
+            ],
+            "start_line": 46,
+            "end_line": 46,
+            "original_excerpt": "          constraints: [not_null]\n",
+            "decoded_value": [
+              "not_null"
+            ]
+          }
+        ]
+      },
+      {
+        "columns": [
+          "updated_timestamp"
+        ],
+        "sources": [
+          {
+            "yaml_path": [
+              "staging_contract",
+              "tables",
+              0,
+              "columns",
+              2,
+              "constraints",
+              0
+            ],
+            "start_line": 49,
+            "end_line": 49,
+            "original_excerpt": "          constraints: [not_null]\n",
+            "decoded_value": [
+              "not_null"
+            ]
+          }
+        ]
+      },
+      {
+        "columns": [
+          "email"
+        ],
+        "sources": [
+          {
+            "yaml_path": [
+              "staging_contract",
+              "tables",
+              0,
+              "columns",
+              3,
+              "constraints",
+              0
+            ],
+            "start_line": 52,
+            "end_line": 52,
+            "original_excerpt": "          constraints: [not_null]\n",
+            "decoded_value": [
+              "not_null"
+            ]
+          }
+        ]
+      }
+    ],
+    "unique": [
+      {
+        "columns": [
+          "lead_id"
+        ],
+        "sources": [
+          {
+            "yaml_path": [
+              "staging_contract",
+              "tables",
+              0,
+              "columns",
+              0,
+              "constraints",
+              1
+            ],
+            "start_line": 43,
+            "end_line": 43,
+            "original_excerpt": "          constraints: [not_null, unique]\n",
+            "decoded_value": [
+              "not_null",
+              "unique"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "agent": {
+    "table_exists": true,
+    "actual_schema": "staging",
+    "table_type": "BASE TABLE",
+    "same_name_other_schemas": [],
+    "row_count": 5984,
+    "checks": {
+      "grain": [
+        {
+          "columns": [],
+          "status": "grain_unparsed",
+          "violated": null,
+          "reason": "identifiers_not_declared_as_contract_columns"
+        }
+      ],
+      "primary_key": [],
+      "not_null": [
+        {
+          "columns": [
+            "lead_id"
+          ],
+          "status": "checked",
+          "violated": false,
+          "sql_null_rows": 0
+        },
+        {
+          "columns": [
+            "created_timestamp"
+          ],
+          "status": "checked",
+          "violated": false,
+          "sql_null_rows": 0
+        },
+        {
+          "columns": [
+            "updated_timestamp"
+          ],
+          "status": "checked",
+          "violated": false,
+          "sql_null_rows": 0
+        },
+        {
+          "columns": [
+            "email"
+          ],
+          "status": "checked",
+          "violated": false,
+          "sql_null_rows": 0
+        }
+      ],
+      "unique": [
+        {
+          "columns": [
+            "lead_id"
+          ],
+          "status": "checked",
+          "violated": false,
+          "sql": "SELECT count(*),count(*) FILTER(WHERE \"__ledger_group_count\">1),coalesce(sum(\"__ledger_group_count\") FILTER(WHERE \"__ledger_group_count\">1),0),\n                      coalesce(sum(\"__ledger_group_count\"-1) FILTER(WHERE \"__ledger_group_count\">1),0),coalesce(sum(\"__ledger_group_count\") FILTER(WHERE \"lead_id\" IS NULL),0),\n                      count(*) FILTER(WHERE \"__ledger_group_count\">1 AND NOT (\"lead_id\" IS NULL)),coalesce(sum(\"__ledger_group_count\") FILTER(WHERE \"__ledger_group_count\">1 AND NOT (\"lead_id\" IS NULL)),0),\n                      coalesce(sum(\"__ledger_group_count\"-1) FILTER(WHERE \"__ledger_group_count\">1 AND NOT (\"lead_id\" IS NULL)),0),count(*) FILTER(WHERE \"__ledger_group_count\">1 AND (\"lead_id\" IS NULL)),\n                      coalesce(sum(\"__ledger_group_count\") FILTER(WHERE \"__ledger_group_count\">1 AND (\"lead_id\" IS NULL)),0)\n                      FROM (SELECT \"lead_id\",count(*) AS \"__ledger_group_count\" FROM \"staging\".\"stg_marketo__lead\" GROUP BY \"lead_id\") grouped_keys",
+          "sql_key_order": [
+            "lead_id"
+          ],
+          "distinct_key_groups": 5984,
+          "duplicate_key_groups": 0,
+          "rows_in_duplicate_groups": 0,
+          "excess_duplicate_rows": 0,
+          "null_key_rows": 0,
+          "nonnull_duplicate_key_groups": 0,
+          "nonnull_rows_in_duplicate_groups": 0,
+          "nonnull_excess_duplicate_rows": 0,
+          "null_containing_duplicate_key_groups": 0,
+          "rows_in_null_containing_duplicate_groups": 0,
+          "including_nulls_duplicate_key_groups": 0,
+          "including_nulls_rows_in_duplicate_groups": 0
+        }
+      ]
+    },
+    "actual_table": "stg_marketo__lead",
+    "actual_columns": [
+      "lead_id",
+      "created_timestamp",
+      "updated_timestamp",
+      "email",
+      "first_name",
+      "last_name"
+    ],
+    "missing_declared_columns": [],
+    "not_null_count_sql": "SELECT count(*) FILTER(WHERE \"created_timestamp\" IS NULL),count(*) FILTER(WHERE \"email\" IS NULL),count(*) FILTER(WHERE \"lead_id\" IS NULL),count(*) FILTER(WHERE \"updated_timestamp\" IS NULL) FROM \"staging\".\"stg_marketo__lead\"",
+    "categories": {
+      "grain": {
+        "status": "unknown",
+        "violated": null,
+        "declared_checks": 1,
+        "checked_checks": 0,
+        "unknown_checks": 1,
+        "complete": false
+      },
+      "primary_key": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      },
+      "not_null": {
+        "status": "checked_no_violation",
+        "violated": false,
+        "declared_checks": 4,
+        "checked_checks": 4,
+        "unknown_checks": 0,
+        "complete": true
+      },
+      "unique": {
+        "status": "checked_no_violation",
+        "violated": false,
+        "declared_checks": 1,
+        "checked_checks": 1,
+        "unknown_checks": 0,
+        "complete": true
+      }
+    },
+    "any_constraint_violated": null
+  }
+}
+```
+
+## all_markers_and_evidence_008
+
+```json
+{
+  "source_record": "records/008_table_scan.jsonl",
+  "verbatim_record": {
+    "task": "impl-012",
+    "layer": "staging",
+    "table": "stg_marketo__lead",
+    "logical_contract_table": "stg_marketo__lead",
+    "delivery_name_mapping_evidence": [],
+    "inventory_sources": {
+      "retained_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/marketo.duckdb",
+      "present_in_database": true,
+      "agent_final_sql_files": [
+        "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/sql/staging/stg_marketo__lead.sql"
+      ]
+    },
+    "status_007": {
+      "gold_table_exists_in_original_gold": true,
+      "whole_level_007": "仍不匹配",
+      "007_present": true,
+      "004_failed_set_member": true,
+      "005_failed_set_member": false,
+      "005_current_pred_execution": null,
+      "status_sources": [
+        {
+          "record": "records/007_tolerance_tables.jsonl",
+          "scope": "staging",
+          "rule": "whole_match_level",
+          "value": "仍不匹配",
+          "007_prediction_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/marketo.duckdb"
+        }
+      ],
+      "status": "待标注",
+      "comparison_lookup_layer": "staging",
+      "comparison_lookup_table": "stg_marketo__lead",
+      "actual_gold_relation_exists": true
+    },
+    "contract": {
+      "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-012/docs/data_contract.yaml",
+      "blocks": [
+        {
+          "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-012/docs/data_contract.yaml",
+          "start_line": 36,
+          "end_line": 80,
+          "original_text": "    - name: stg_marketo__lead\n      description: \"Cleaned and standardized lead (contact) records from Marketo with basic contact information and timestamps\"\n      source_table: \"raw.marketo_lead\"\n      grain: \"One row per unique lead in Marketo\"\n      columns:\n        - name: lead_id\n          data_type: VARCHAR\n          constraints: [not_null, unique]\n        - name: created_timestamp\n          data_type: VARCHAR\n          constraints: [not_null]\n        - name: updated_timestamp\n          data_type: VARCHAR\n          constraints: [not_null]\n        - name: email\n          data_type: VARCHAR\n          constraints: [not_null]\n          description: \"Email address of the lead\"\n          validation_rules:\n            - rule: \"email = LOWER(TRIM(email))\"\n              description: \"Normalize email to lowercase and remove whitespace\"\n              on_failure: delete_row\n            - rule: \"email ~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}$'\"\n              description: \"Email must follow valid email format\"\n              on_failure: delete_row\n        - name: first_name\n          data_type: VARCHAR\n          description: \"First name of the lead\"\n          validation_rules:\n            - rule: \"first_name = TRIM(first_name)\"\n              description: \"Remove leading and trailing whitespace\"\n              on_failure: delete_row\n            - rule: \"LENGTH(first_name) <= 100\"\n              description: \"First name cannot exceed 100 characters\"\n              on_failure: delete_row\n        - name: last_name\n          data_type: VARCHAR\n          description: \"Last name of the lead\"\n          validation_rules:\n            - rule: \"last_name = TRIM(last_name)\"\n              description: \"Remove leading and trailing whitespace\"\n              on_failure: delete_row\n            - rule: \"LENGTH(last_name) <= 100\"\n              description: \"Last name cannot exceed 100 characters\"\n              on_failure: delete_row\n",
+          "yaml_path": [
+            "staging_contract",
+            "tables",
+            0
+          ]
+        }
+      ]
+    },
+    "output": {
+      "status": "checked",
+      "exists": true,
+      "row_count": 5984,
+      "zero_rows": false,
+      "columns": [
+        {
+          "name": "lead_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 5984,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "created_timestamp",
+          "type": "VARCHAR",
+          "nonnull_rows": 5984,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "updated_timestamp",
+          "type": "VARCHAR",
+          "nonnull_rows": 5984,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "email",
+          "type": "VARCHAR",
+          "nonnull_rows": 5984,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "first_name",
+          "type": "VARCHAR",
+          "nonnull_rows": 5984,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "last_name",
+          "type": "VARCHAR",
+          "nonnull_rows": 5984,
+          "sql_null_rows": 0
+        }
+      ],
+      "all_null_columns": [],
+      "constant_nonnull_columns": [],
+      "equal_column_groups": [],
+      "profile_sql": "SELECT count(*),count(\"lead_id\"),min(CAST(\"lead_id\" AS VARCHAR)),max(CAST(\"lead_id\" AS VARCHAR)),sum(hash(CAST(\"lead_id\" AS VARCHAR))),count(\"created_timestamp\"),min(CAST(\"created_timestamp\" AS VARCHAR)),max(CAST(\"created_timestamp\" AS VARCHAR)),sum(hash(CAST(\"created_timestamp\" AS VARCHAR))),count(\"updated_timestamp\"),min(CAST(\"updated_timestamp\" AS VARCHAR)),max(CAST(\"updated_timestamp\" AS VARCHAR)),sum(hash(CAST(\"updated_timestamp\" AS VARCHAR))),count(\"email\"),min(CAST(\"email\" AS VARCHAR)),max(CAST(\"email\" AS VARCHAR)),sum(hash(CAST(\"email\" AS VARCHAR))),count(\"first_name\"),min(CAST(\"first_name\" AS VARCHAR)),max(CAST(\"first_name\" AS VARCHAR)),sum(hash(CAST(\"first_name\" AS VARCHAR))),count(\"last_name\"),min(CAST(\"last_name\" AS VARCHAR)),max(CAST(\"last_name\" AS VARCHAR)),sum(hash(CAST(\"last_name\" AS VARCHAR))) FROM \"staging\".\"stg_marketo__lead\"",
+      "equal_column_confirmation_queries": [],
+      "equality_policy": "exact CAST AS VARCHAR per row; no trim/case/numeric/date normalization; both NULL ignored; at least one nonnull equal row; one-sided NULL differs",
+      "actual_schema": "staging",
+      "actual_table": "stg_marketo__lead",
+      "relation_type": "BASE TABLE"
+    },
+    "agent_sql": [
+      {
+        "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/sql/staging/stg_marketo__lead.sql",
+        "status": "parsed",
+        "parser": "30.25.0",
+        "sources": [
+          {
+            "name": "raw.marketo_lead",
+            "canonical": "raw.marketo_lead",
+            "locations": [
+              {
+                "line": 8,
+                "end_line": 8
+              }
+            ]
+          }
+        ],
+        "unresolved_source_expressions": [],
+        "row_generator_expressions": [],
+        "outputs": [
+          {
+            "name": "lead_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(id AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/sql/staging/stg_marketo__lead.sql",
+                "line": 2,
+                "end_line": 2,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "lead_id",
+            "retained_output_ordinal": 1
+          },
+          {
+            "name": "created_timestamp",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(created_at AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/sql/staging/stg_marketo__lead.sql",
+                "line": 3,
+                "end_line": 3,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "created_timestamp",
+            "retained_output_ordinal": 2
+          },
+          {
+            "name": "updated_timestamp",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(updated_at AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/sql/staging/stg_marketo__lead.sql",
+                "line": 4,
+                "end_line": 4,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "updated_timestamp",
+            "retained_output_ordinal": 3
+          },
+          {
+            "name": "email",
+            "alternatives": [
+              {
+                "expression_sql": "LOWER(TRIM(email))",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/sql/staging/stg_marketo__lead.sql",
+                "line": 5,
+                "end_line": 5,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "email",
+            "retained_output_ordinal": 4
+          },
+          {
+            "name": "first_name",
+            "alternatives": [
+              {
+                "expression_sql": "TRIM(first_name)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/sql/staging/stg_marketo__lead.sql",
+                "line": 6,
+                "end_line": 6,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "first_name",
+            "retained_output_ordinal": 5
+          },
+          {
+            "name": "last_name",
+            "alternatives": [
+              {
+                "expression_sql": "TRIM(last_name)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/sql/staging/stg_marketo__lead.sql",
+                "line": 7,
+                "end_line": 7,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "last_name",
+            "retained_output_ordinal": 6
+          }
+        ],
+        "null_literal_outputs": [],
+        "constant_literal_outputs": [],
+        "runtime_hits": []
+      }
+    ],
+    "source_comparison": {
+      "contract": {
+        "status": "specified",
+        "references": [
+          {
+            "name": "raw.marketo_lead",
+            "canonical": "raw.marketo_lead",
+            "basis": "source_table",
+            "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-012/docs/data_contract.yaml",
+            "block_start_line": 36
+          },
+          {
+            "name": "raw.marketo_lead",
+            "canonical": "raw.marketo_lead",
+            "basis": "explicit_schema_qualified_reference_in_original_block",
+            "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-012/docs/data_contract.yaml",
+            "line": 38,
+            "line_text": "      source_table: \"raw.marketo_lead\""
+          }
+        ],
+        "canonical_names": [
+          "raw.marketo_lead"
+        ]
+      },
+      "agent_direct_read_sources": [
+        "raw.marketo_lead"
+      ],
+      "scope": "direct physical relation references through reachable local CTE/subqueries; no transitive expansion through other output tables or stored views",
+      "complete": true,
+      "specified_but_not_read": [],
+      "read_but_not_specified": []
+    },
+    "time_dependencies": {
+      "agent_sql": {
+        "available": true,
+        "appears": false,
+        "hits": []
+      },
+      "gold_sql": {
+        "available": true,
+        "appears": false,
+        "hits": [],
+        "paths": [
+          "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-012/sql/staging/stg_marketo__lead.sql"
+        ]
+      },
+      "contract": {
+        "available": true,
+        "appears": false,
+        "hits": []
+      }
+    },
+    "shared_single_source_targets": {
+      "source": "raw.marketo_lead",
+      "targets": [
+        "staging.stg_marketo__lead",
+        "utils.marketo__calendar_spine"
+      ]
+    },
+    "any_result_keyword_excerpt_ids": [
+      "008-006047",
+      "008-006048",
+      "008-006222",
+      "008-006226",
+      "008-006229",
+      "008-006233",
+      "008-006236",
+      "008-006248",
+      "008-006249"
+    ],
+    "trace_flags": {
+      "A1_zero_rows": false,
+      "A2_all_null_column": false,
+      "A3_constant_nonnull_column": false,
+      "A4_equal_columns": false,
+      "A4_equal_columns_different_description_texts": false,
+      "B5_null_literal_output": false,
+      "B6_constant_literal_output": false,
+      "B7_specified_not_read": false,
+      "B7_read_not_specified": false,
+      "B8_shared_single_source": true,
+      "C9_agent_runtime_text": false,
+      "C9_gold_runtime_text": false,
+      "C9_contract_runtime_text": false,
+      "D10_keyword_in_final_report": false,
+      "D10_keyword_in_any_result_field": true
+    }
+  }
+}
+```
+
+## trace_excerpts
+
+```json
+{
+  "archive": "/home/katherine/Assumption_Ledger/traces/dacomp_deimpl_prev.tar.gz",
+  "event_source_root": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent",
+  "actual_read_sources_from_008_B7": [
+    "raw.marketo_lead"
+  ],
+  "name_match_policy": "Case-insensitive complete identifier-name boundaries; source names include qualified form and bare leaf name. No semantic association inferred.",
+  "matched_step_count": 12,
+  "full_original_characters_before_budget": 90645,
+  "budget_triggered": true,
+  "source_only_steps_indexed": 1,
+  "retained_full_original_characters": 85486,
+  "full_target_steps_exceed_60000": true,
+  "budget_policy": "If total command/output text exceeds 60000 characters, keep every target-table step complete and retain only id/location/first line for source-only steps. Do not rewrite or truncate a kept original step."
+}
+```
+
+### event 7
+
+```json
+{
+  "event_id": 7,
+  "agent_command_sequence": 2,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/7.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1703,
+    "decoded_characters": 60
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/7.json",
+  "timestamp": "2026-10-25T02:22:56.058555",
+  "target_table_name_hits": [
+    "stg_marketo__lead"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 9987,
+  "retention": "full_original"
+}
+```
+```bash
+cat config/layer_dependencies.yaml && sed -n '1,240p' run.py
+```
+```json
+{
+  "event_id": 8,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/8.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1388,
+    "decoded_characters": 9927
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/8.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+data_layers:
+  raw:
+    description: "Raw data from source systems"
+    depends_on: []
+    
+  utils:
+    description: "Utility tables and helper functions"
+    depends_on: ["raw"]
+    
+  staging:
+    description: "Cleaned and standardized staging tables"
+    depends_on: ["raw"]
+    
+  intermediate:
+    description: "Business logic transformations and aggregations"
+    depends_on: ["staging", "utils"]
+    
+  marts:
+    description: "Final business-ready dimensional and fact tables"
+    depends_on: ["staging", "intermediate"]
+
+execution_order:
+  - raw
+  - utils
+  - staging  
+  - intermediate
+  - marts#!/usr/bin/env python3
+import os
+import yaml
+import duckdb
+from pathlib import Path
+from typing import List, Optional
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+class MarketoDataPipeline:
+    """Marketo Data Pipeline Orchestrator - Supports a layered schema architecture"""
+    
+    def __init__(self, 
+                 source_db_path: str = "marketo_start.duckdb", 
+                 target_db_path: str = "marketo.duckdb",
+                 config_path: str = "config/layer_dependencies.yaml"):
+        self.source_db_path = source_db_path
+        self.target_db_path = target_db_path
+        self.config_path = config_path
+        self.config = self._load_config()
+        self.sql_dir = Path("sql")
+        
+          
+        self.schema_config = {
+            'raw': 'raw',                       
+            'utils': 'utils',                  
+            'staging': 'staging',               
+            'intermediate': 'intermediate',             
+            'marts': 'marts'                     
+        }
+        
+          
+        self.conn = None
+        
+    def _load_config(self) -> dict:
+        """Load the configuration file"""
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f)
+        except FileNotFoundError:
+            logger.error(f"Configuration file {self.config_path} not found")
+            raise
+        except yaml.YAMLError as e:
+            logger.error(f"Error parsing configuration file: {e}")
+            raise
+    
+    def _initialize_database(self):
+        """Initialize the working database, create the layered schema architecture, and import from the existing database"""
+        logger.info(f"📥 Creating a new layered database: {self.target_db_path}")
+        
+          
+        if not os.path.exists(self.source_db_path):
+            raise FileNotFoundError(f"Source database file not found: {self.source_db_path}")
+        
+        self.conn = duckdb.connect(self.target_db_path)
+        
+          
+        self._create_schemas()
+        
+          
+        self._import_raw_data()
+        
+        logger.info(f"✓ Layered database initialization complete: {self.target_db_path}")
+    
+    def _create_schemas(self):
+        """Create the schemas for the data layers"""
+        logger.info("🏗️ Creating schema-layered architecture")
+        
+        for layer, schema_name in self.schema_config.items():
+            try:
+                self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
+                logger.info(f"  ✓ Created schema: {schema_name}")
+            except Exception as e:
+                logger.error(f"  ✗ Failed to create schema {schema_name}: {e}")
+                raise
+    
+    def _import_raw_data(self):
+        """Import raw data from the source database into the raw schema"""
+        logger.info("📥 Importing raw data to raw schema")
+        
+          
+        try:
+      
+            source_conn = duckdb.connect(self.source_db_path)
+            tables_result = source_conn.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'raw'").fetchall()
+            source_tables = [table[0] for table in tables_result]
+            logger.info(f"Found {len(source_tables)} raw tables")
+            source_conn.close()
+            
+                  
+            self.conn.execute(f"ATTACH '{self.source_db_path}' AS source_db")
+            
+                  
+            for table_name in source_tables:
+                try:
+                    self.conn.execute(f"""
+                        CREATE OR REPLACE TABLE raw.{table_name} AS 
+                        SELECT * FROM source_db.raw.{table_name}
+                    """)
+                    
+                                  
+                    count_result = self.conn.execute(f"SELECT COUNT(*) FROM raw.{table_name}").fetchone()
+                    row_count = count_result[0] if count_result else 0
+                    
+                    logger.info(f"  ✓ raw.{table_name}: {row_count:,} rows")
+                    
+                except Exception as e:
+                    logger.error(f"  ✗ Failed to import table {table_name}: {e}")
+            
+            self.conn.execute("DETACH source_db")
+        
+        except Exception as e:
+            logger.error(f"Failed to import raw data: {e}")
+            raise
+        
+        logger.info("✓ Raw data import complete")
+    
+    def _load_sql_file(self, file_path: Path) -> str:
+        """Load the content of an SQL file"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except FileNotFoundError:
+            logger.error(f"SQL file {file_path} not found")
+            raise
+    
+    def _execute_sql_file(self, file_path: Path, layer_name: str) -> bool:
+        """Execute an SQL file"""
+        try:
+      
+            table_name = file_path.stem
+            
+                  
+            target_schema = self.schema_config[layer_name]
+            full_table_name = f"{target_schema}.{table_name}"
+            
+                  
+            sql_content = self._load_sql_file(file_path)
+
+      
+            create_table_sql = f"CREATE OR REPLACE TABLE {full_table_name} AS ({sql_content})"
+
+            logger.info(f"Executing: {full_table_name}")
+            self.conn.execute(create_table_sql)
+            
+                  
+            count_result = self.conn.execute(f"SELECT COUNT(*) FROM {full_table_name}").fetchone()
+            row_count = count_result[0] if count_result else 0
+            
+            logger.info(f"✓ {full_table_name}: {row_count:,} rows")
+            return True
+            
+        except Exception as e:
+            logger.error(f"✗ {file_path.name}: {e}")
+            return False
+    
+    def _execute_layer(self, layer_name: str) -> bool:
+        """Execute all SQL files for a specified layer"""
+        layer_dir = self.sql_dir / layer_name
+        
+        if not layer_dir.exists():
+            logger.warning(f"Layer directory does not exist: {layer_dir}")
+            return False
+        
+        sql_files = list(layer_dir.glob("*.sql"))
+        
+        if not sql_files:
+            logger.warning(f"No SQL files in {layer_name} layer")
+            return True
+        
+        logger.info(f"\n=== Executing {layer_name.upper()} Layer ===")
+        
+          
+        execution_order = self._get_execution_order(layer_name, sql_files)
+        
+        success_count = 0
+        total_count = len(execution_order)
+        
+        for sql_file in execution_order:
+            if self._execute_sql_file(sql_file, layer_name):
+                success_count += 1
+        
+        logger.info(f"{layer_name.upper()} layer complete: {success_count}/{total_count} tables created successfully")
+        return success_count == total_count
+    
+    def _get_execution_order(self, layer_name: str, sql_files: List[Path]) -> List[Path]:
+        """Get the execution order of SQL files"""
+  
+        if layer_name == 'staging':
+      
+            order_priority = {
+                'stg_marketo__lead.sql': 1,
+                'stg_marketo__campaigns.sql': 2,
+                'stg_marketo__program.sql': 3,
+                'stg_marketo__email_template_history.sql': 4,
+                'stg_marketo__lead_describe.sql': 5,
+                'stg_marketo__activity_send_email.sql': 10,
+                'stg_marketo__activity_click_email.sql': 11,
+                'stg_marketo__activity_open_email.sql': 12,
+                'stg_marketo__activity_email_delivered.sql': 13,
+                'stg_marketo__activity_email_bounced.sql': 14,
+                'stg_marketo__activity_unsubscribe_email.sql': 15,
+                'stg_marketo__activity_change_data_value.sql': 16,
+                'stg_marketo__activity_merge_leads.sql': 17,
+                'stg_marketo__activity_delete_lead.sql': 18,
+            }
+        elif layer_name == 'intermediate':
+      
+            order_priority = {
+                'int_marketo__lead.sql': 1,
+                'marketo__email_sends_deduped.sql': 2,
+                'marketo__clicks__by_sent_email.sql': 3,
+                'marketo__opens__by_sent_email.sql': 4,
+                'marketo__deliveries__by_sent_email.sql': 5,
+                'marketo__bounces__by_sent_email.sql': 6,
+                'marketo__unsubscribes__by_sent_email.sql': 7,
+                'marketo__change_data_details.sql': 8,
+                'marketo__change_data_pivot.sql': 9,
+                'marketo__change_data_scd.sql': 10,
+                'marketo__lead_calendar_spine.sql': 11,
+            }
+        elif layer_name == 'marts':
+      
+            order_priority = {
+                'marketo__email_sends.sql': 1,
+                'marketo__leads.sql': 2,
+                'marketo__campaigns.sql': 3,
+                'marketo__programs.sql': 4,
+                'marketo__email_templates.sql': 5,
+                'marketo__lead_history.sql': 6,
+                'marketo__email_stats__by_campaign.sql': 7,
+                'marketo__email_stats__by_lead.sql': 8,
+                'marketo__email_stats__by_program.sql': 9,
+                'marketo__email_stats__by_email_template.sql': 10,
+```
+
+### event 9
+
+```json
+{
+  "event_id": 9,
+  "agent_command_sequence": 3,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/9.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1665,
+    "decoded_characters": 22
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/9.json",
+  "timestamp": "2026-10-25T02:22:56.086676",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "marketo_lead"
+  ],
+  "full_original_characters": 5159,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "cat marketo_start.yaml"
+}
+```
+```json
+{
+  "event_id": 10,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/10.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1351,
+    "decoded_characters": 5137
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/10.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+### event 15
+
+```json
+{
+  "event_id": 15,
+  "agent_command_sequence": 6,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/15.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2053,
+    "decoded_characters": 86
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/15.json",
+  "timestamp": "2026-10-25T02:23:02.154880",
+  "target_table_name_hits": [
+    "stg_marketo__lead"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 2126,
+  "retention": "full_original"
+}
+```
+```bash
+find docs -type f -maxdepth 2 -print && grep -n '^    - name:' docs/data_contract.yaml
+```
+```json
+{
+  "event_id": 16,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/16.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1739,
+    "decoded_characters": 2040
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/16.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+find: warning: you have specified the global option -maxdepth after the argument -type, but global options are not positional, i.e., -maxdepth affects tests specified before it as well as those specified after it.  Please specify global options before other arguments.
+docs/data_contract.yaml
+36:    - name: stg_marketo__lead
+82:    - name: stg_marketo__campaigns
+210:    - name: stg_marketo__program
+257:    - name: stg_marketo__email_template_history
+316:    - name: stg_marketo__activity_send_email
+346:    - name: stg_marketo__activity_open_email
+386:    - name: stg_marketo__activity_click_email
+428:    - name: stg_marketo__activity_email_delivered
+460:    - name: stg_marketo__activity_email_bounced
+492:    - name: stg_marketo__activity_unsubscribe_email
+522:    - name: stg_marketo__activity_change_data_value
+560:    - name: stg_marketo__activity_merge_leads
+587:    - name: stg_marketo__activity_delete_lead
+611:    - name: stg_marketo__lead_describe
+651:    - name: int_marketo__lead
+700:    - name: marketo__email_sends_deduped
+759:    - name: marketo__opens__by_sent_email
+781:    - name: marketo__clicks__by_sent_email
+798:    - name: marketo__deliveries__by_sent_email
+815:    - name: marketo__bounces__by_sent_email
+832:    - name: marketo__unsubscribes__by_sent_email
+849:    - name: marketo__change_data_details
+924:    - name: marketo__change_data_pivot
+999:    - name: marketo__change_data_scd
+1036:    - name: marketo__lead_calendar_spine
+1061:    - name: marketo__email_sends
+1170:    - name: marketo__leads
+1268:    - name: marketo__campaigns
+1390:    - name: marketo__email_funnel_dashboard
+1457:    - name: marketo__lead_intelligence_simple
+1580:    - name: marketo__operational_health_simple
+1700:    - name: marketo__email_stats__by_campaign
+1737:    - name: marketo__email_stats__by_email_template
+1780:    - name: marketo__email_stats__by_lead
+1823:    - name: marketo__email_stats__by_program
+1866:    - name: marketo__email_templates
+1983:    - name: marketo__lead_history
+2022:    - name: marketo__programs
+```
+
+### event 23
+
+```json
+{
+  "event_id": 23,
+  "agent_command_sequence": 10,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/23.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 24287,
+    "decoded_characters": 11384
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/23.json",
+  "timestamp": "2026-10-25T02:24:00.256338",
+  "target_table_name_hits": [
+    "stg_marketo__lead"
+  ],
+  "source_table_name_hits": [
+    "raw.marketo_lead",
+    "marketo_lead"
+  ],
+  "full_original_characters": 14554,
+  "retention": "full_original"
+}
+```
+```bash
+cat > /tmp/gen.py <<'PY'
+from pathlib import Path
+root=Path('sql')
+# staging: (file, raw table, projected cols, filters)
+models={
+'stg_marketo__lead':('marketo_lead',[('lead_id','id','VARCHAR'),('created_timestamp','created_at','VARCHAR'),('updated_timestamp','updated_at','VARCHAR'),('email','email','VARCHAR'),('first_name','first_name','VARCHAR'),('last_name','last_name','VARCHAR')]),
+'stg_marketo__campaigns':('marketo_campaign',[(a,b,t) for a,b,t in [('campaign_id','id','VARCHAR'),('campaign_name','name','VARCHAR'),('program_id','program_id','VARCHAR'),('campaign_type','type','VARCHAR'),('is_active','active','BOOLEAN'),('created_timestamp','created_at','VARCHAR'),('updated_timestamp','updated_at','VARCHAR'),('description','description','VARCHAR'),('workspace_name','workspace_name','VARCHAR'),('computed_url','computed_url','VARCHAR'),('flow_id','flow_id','VARCHAR'),('folder_id','folder_id','VARCHAR'),('folder_type','folder_type','VARCHAR'),('is_communication_limit_enabled','is_communication_limit_enabled','BOOLEAN'),('is_requestable','is_requestable','BOOLEAN'),('is_system','is_system','BOOLEAN'),('max_members','max_members','BIGINT'),('qualification_rule_type','qualification_rule_type','VARCHAR'),('qualification_rule_interval','qualification_rule_interval','BIGINT'),('qualification_rule_unit','qualification_rule_unit','VARCHAR'),('recurrence_start_at','recurrence_start_at','VARCHAR'),('recurrence_end_at','recurrence_end_at','VARCHAR'),('recurrence_interval_type','recurrence_interval_type','VARCHAR'),('recurrence_interval','recurrence_interval','BIGINT'),('recurrence_weekday_only','recurrence_weekday_only','BOOLEAN'),('recurrence_day_of_month','recurrence_day_of_month','BIGINT'),('recurrence_day_of_week','recurrence_day_of_week','BIGINT'),('recurrence_week_of_month','recurrence_week_of_month','BIGINT'),('smart_list_id','smart_list_id','VARCHAR'),('status','status','VARCHAR')]),'campaign'),
+'stg_marketo__program':('marketo_program',[(a,b,t) for a,b,t in [('program_id','id','VARCHAR'),('program_name','name','VARCHAR'),('program_type','type','VARCHAR'),('channel','channel','VARCHAR'),('program_status','status','VARCHAR'),('created_timestamp','created_at','VARCHAR'),('updated_timestamp','updated_at','VARCHAR'),('description','description','VARCHAR'),('url','url','VARCHAR'),('workspace_name','workspace','VARCHAR'),('sfdc_id','sfdc_id','VARCHAR'),('sfdc_name','sfdc_name','VARCHAR'),('start_date','start_date','DATE'),('end_date','end_date','DATE')]]),
+'stg_marketo__email_template_history':('marketo_email_template_history',[(a,b,t) for a,b,t in [('email_template_id','id','VARCHAR'),('email_template_name','name','VARCHAR'),('version','version','DOUBLE'),('created_timestamp','created_at','VARCHAR'),('updated_timestamp','updated_at','VARCHAR'),('description','description','VARCHAR'),('folder_id','folder_id','VARCHAR'),('folder_type','folder_type','VARCHAR'),('from_name','from_name','VARCHAR'),('program_id','program_id','VARCHAR'),('publish_to_msi','publish_to_msi','BOOLEAN'),('reply_email','reply_email','VARCHAR'),('email_template_status','status','VARCHAR'),('template','template','VARCHAR'),('text_only','text_only','BOOLEAN'),('url','url','VARCHAR'),('web_view','web_view','BOOLEAN'),('workspace','workspace','VARCHAR'),('operational','operational','BOOLEAN'),('subject','subject','VARCHAR'),('from_email','from_email','VARCHAR')]])}
+activity=[
+('send_email','activity_send_email',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('email_template_id','email_template_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('activity_type_id','activity_type_id','VARCHAR'),('campaign_run_id','campaign_run_id','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR'),('email_send_id','id','VARCHAR')]),
+('open_email','activity_open_email',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('email_template_id','email_template_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('open_device','device','VARCHAR'),('is_mobile_device','is_mobile_device','BOOLEAN'),('open_platform','platform','VARCHAR'),('open_user_agent','user_agent','VARCHAR'),('activity_type_id','activity_type_id','VARCHAR'),('campaign_run_id','campaign_run_id','VARCHAR'),('step_id','step_id','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR'),('email_send_id','id','VARCHAR')]),
+('click_email','activity_click_email',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('email_template_id','email_template_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('click_link_url','link','VARCHAR'),('click_device','device','VARCHAR'),('is_mobile_device','is_mobile_device','BOOLEAN'),('click_platform','platform','VARCHAR'),('click_user_agent','user_agent','VARCHAR'),('activity_type_id','activity_type_id','VARCHAR'),('campaign_run_id','campaign_run_id','VARCHAR'),('step_id','step_id','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR'),('email_send_id','id','VARCHAR')]),
+('email_delivered','activity_email_delivered',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('email_template_id','email_template_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('activity_type_id','activity_type_id','VARCHAR'),('campaign_run_id','campaign_run_id','VARCHAR'),('step_id','step_id','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR'),('email_send_id','id','VARCHAR')]),
+('email_bounced','activity_email_bounced',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('email_template_id','email_template_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('activity_type_id','activity_type_id','VARCHAR'),('campaign_run_id','campaign_run_id','VARCHAR'),('step_id','step_id','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR'),('email_send_id','id','VARCHAR')]),
+('unsubscribe_email','activity_unsubscribe_email',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('email_template_id','email_template_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('activity_type_id','activity_type_id','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR'),('campaign_run_id','campaign_run_id','VARCHAR'),('email_send_id','id','VARCHAR')]),
+('change_data_value','activity_change_data_value',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('activity_type_id','activity_type_id','VARCHAR'),('api_method_name','api_method_name','DOUBLE'),('campaign_id','campaign_id','VARCHAR'),('modifying_user','modifying_user','DOUBLE'),('new_value','new_value','VARCHAR'),('old_value','old_value','VARCHAR'),('field_name','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','BIGINT'),('reason','reason','VARCHAR'),('request_id','request_id','VARCHAR'),('source','source','VARCHAR')]),
+('merge_leads','activity_merge_leads',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('activity_type_id','activity_type_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('merged_lead_ids','merge_ids','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR')]),
+('delete_lead','activity_delete_lead',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('activity_type_id','activity_type_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR')])]
+for key,(table,cols,*extra) in models.items():
+ select=[]
+ for out,src,typ in cols:
+  expr=f'CAST({src} AS {typ})'
+  if typ=='VARCHAR': expr=f'CAST({src} AS VARCHAR)'
+  if key=='stg_marketo__lead' and out=='email': expr='LOWER(TRIM(email))'
+  if key=='stg_marketo__lead' and out in ('first_name','last_name'): expr=f'TRIM({src})'
+  if key=='stg_marketo__campaigns' and out=='campaign_name': expr='TRIM(name)'
+  if typ=='DATE': expr=f'TRY_CAST({src} AS DATE)'
+  select.append(f'    {expr} AS {out}')
+ where=''
+ if key=='stg_marketo__lead': where="\nWHERE id IS NOT NULL AND created_at IS NOT NULL AND updated_at IS NOT NULL AND email IS NOT NULL AND LOWER(TRIM(email)) ~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$' AND first_name = TRIM(first_name) AND LENGTH(first_name) <= 100 AND last_name = TRIM(last_name) AND LENGTH(last_name) <= 100\nQUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY updated_at DESC NULLS LAST) = 1"
+ if key=='stg_marketo__campaigns': where="\nWHERE id IS NOT NULL AND name IS NOT NULL AND TRIM(name) <> '' AND LENGTH(TRIM(name)) <= 255 AND type IS NOT NULL AND created_at IS NOT NULL AND updated_at IS NOT NULL\nQUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY updated_at DESC NULLS LAST) = 1"
+ sql=f"SELECT\n{',\n'.join(select)}\nFROM raw.{table}{where}"
+ (root/'staging'/f'{key}.sql').write_text(sql)
+for name,table,cols in activity:
+ select=[]
+ for out,src,typ in cols:
+  expr=f'CAST({src} AS {typ})'
+  if typ=='TIMESTAMP': expr=f"TRY_STRPTIME({src}, '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP"
+  select.append(f'    {expr} AS {out}')
+ sql=f"SELECT\n{',\n'.join(select)}\nFROM raw.marketo_{table}\nWHERE id IS NOT NULL AND lead_id IS NOT NULL AND activity_date IS NOT NULL\nQUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY activity_date) = 1"
+ (root/'staging'/f'stg_marketo__activity_{name}.sql').write_text(sql)
+# describe
+(root/'staging/stg_marketo__lead_describe.sql').write_text("""SELECT CAST(id AS BIGINT) AS lead_describe_id, CAST(data_type AS VARCHAR) AS data_type, CAST(display_name AS VARCHAR) AS display_name, CAST(length AS BIGINT) AS field_max_length, CAST(restname AS VARCHAR) AS rest_name, CAST(restread_only AS BOOLEAN) AS is_rest_readonly, CAST(soapname AS VARCHAR) AS soap_name, CAST(soapread_only AS BOOLEAN) AS is_soap_readonly, CAST(restname AS VARCHAR) AS rest_name_xf FROM raw.marketo_lead_describe WHERE id IS NOT NULL AND data_type IS NOT NULL AND display_name IS NOT NULL QUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY id) = 1""")
+# utility calendar through current day, data coverage created onwards
+(root/'utils/marketo__calendar_spine.sql').write_text("""WITH date_bounds AS ( SELECT COALESCE(MIN(TRY_CAST(created_at AS DATE)), CURRENT_DATE) AS min_date, CURRENT_DATE AS max_date FROM raw.marketo_lead ) SELECT CAST(generate_series AS DATE) AS date_day FROM date_bounds, GENERATE_SERIES(min_date, max_date, INTERVAL 1 DAY) AS calendar(generate_series)""")
+PY
+python /tmp/gen.py
+```
+```json
+{
+  "event_id": 24,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/24.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 23971,
+    "decoded_characters": 3170
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/24.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 1
+}
+```
+```text
+  File "/tmp/gen.py", line 6
+    'stg_marketo__campaigns':('marketo_campaign',[(a,b,t) for a,b,t in [('campaign_id','id','VARCHAR'),('campaign_name','name','VARCHAR'),('program_id','program_id','VARCHAR'),('campaign_type','type','VARCHAR'),('is_active','active','BOOLEAN'),('created_timestamp','created_at','VARCHAR'),('updated_timestamp','updated_at','VARCHAR'),('description','description','VARCHAR'),('workspace_name','workspace_name','VARCHAR'),('computed_url','computed_url','VARCHAR'),('flow_id','flow_id','VARCHAR'),('folder_id','folder_id','VARCHAR'),('folder_type','folder_type','VARCHAR'),('is_communication_limit_enabled','is_communication_limit_enabled','BOOLEAN'),('is_requestable','is_requestable','BOOLEAN'),('is_system','is_system','BOOLEAN'),('max_members','max_members','BIGINT'),('qualification_rule_type','qualification_rule_type','VARCHAR'),('qualification_rule_interval','qualification_rule_interval','BIGINT'),('qualification_rule_unit','qualification_rule_unit','VARCHAR'),('recurrence_start_at','recurrence_start_at','VARCHAR'),('recurrence_end_at','recurrence_end_at','VARCHAR'),('recurrence_interval_type','recurrence_interval_type','VARCHAR'),('recurrence_interval','recurrence_interval','BIGINT'),('recurrence_weekday_only','recurrence_weekday_only','BOOLEAN'),('recurrence_day_of_month','recurrence_day_of_month','BIGINT'),('recurrence_day_of_week','recurrence_day_of_week','BIGINT'),('recurrence_week_of_month','recurrence_week_of_month','BIGINT'),('smart_list_id','smart_list_id','VARCHAR'),('status','status','VARCHAR')]),'campaign'),
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    ^
+SyntaxError: closing parenthesis ')' does not match opening parenthesis '['
+```
+
+### event 29
+
+```json
+{
+  "event_id": 29,
+  "agent_command_sequence": 13,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/29.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1284,
+    "decoded_characters": 26
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/29.json",
+  "timestamp": "2026-10-25T02:24:15.963800",
+  "target_table_name_hits": [
+    "stg_marketo__lead"
+  ],
+  "source_table_name_hits": [
+    "marketo_lead"
+  ],
+  "full_original_characters": 3786,
+  "retention": "full_original"
+}
+```
+```bash
+sed -n '3,10p' /tmp/gen.py
+```
+```json
+{
+  "event_id": 30,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/30.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 968,
+    "decoded_characters": 3760
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/30.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+# staging: (file, raw table, projected cols, filters)
+models={
+'stg_marketo__lead':('marketo_lead',[('lead_id','id','VARCHAR'),('created_timestamp','created_at','VARCHAR'),('updated_timestamp','updated_at','VARCHAR'),('email','email','VARCHAR'),('first_name','first_name','VARCHAR'),('last_name','last_name','VARCHAR')]),
+'stg_marketo__campaigns':('marketo_campaign',[('campaign_id','id','VARCHAR'),('campaign_name','name','VARCHAR'),('program_id','program_id','VARCHAR'),('campaign_type','type','VARCHAR'),('is_active','active','BOOLEAN'),('created_timestamp','created_at','VARCHAR'),('updated_timestamp','updated_at','VARCHAR'),('description','description','VARCHAR'),('workspace_name','workspace_name','VARCHAR'),('computed_url','computed_url','VARCHAR'),('flow_id','flow_id','VARCHAR'),('folder_id','folder_id','VARCHAR'),('folder_type','folder_type','VARCHAR'),('is_communication_limit_enabled','is_communication_limit_enabled','BOOLEAN'),('is_requestable','is_requestable','BOOLEAN'),('is_system','is_system','BOOLEAN'),('max_members','max_members','BIGINT'),('qualification_rule_type','qualification_rule_type','VARCHAR'),('qualification_rule_interval','qualification_rule_interval','BIGINT'),('qualification_rule_unit','qualification_rule_unit','VARCHAR'),('recurrence_start_at','recurrence_start_at','VARCHAR'),('recurrence_end_at','recurrence_end_at','VARCHAR'),('recurrence_interval_type','recurrence_interval_type','VARCHAR'),('recurrence_interval','recurrence_interval','BIGINT'),('recurrence_weekday_only','recurrence_weekday_only','BOOLEAN'),('recurrence_day_of_month','recurrence_day_of_month','BIGINT'),('recurrence_day_of_week','recurrence_day_of_week','BIGINT'),('recurrence_week_of_month','recurrence_week_of_month','BIGINT'),('smart_list_id','smart_list_id','VARCHAR'),('status','status','VARCHAR')]),
+'stg_marketo__program':('marketo_program',[('program_id','id','VARCHAR'),('program_name','name','VARCHAR'),('program_type','type','VARCHAR'),('channel','channel','VARCHAR'),('program_status','status','VARCHAR'),('created_timestamp','created_at','VARCHAR'),('updated_timestamp','updated_at','VARCHAR'),('description','description','VARCHAR'),('url','url','VARCHAR'),('workspace_name','workspace','VARCHAR'),('sfdc_id','sfdc_id','VARCHAR'),('sfdc_name','sfdc_name','VARCHAR'),('start_date','start_date','DATE'),('end_date','end_date','DATE')]]),
+'stg_marketo__email_template_history':('marketo_email_template_history',[('email_template_id','id','VARCHAR'),('email_template_name','name','VARCHAR'),('version','version','DOUBLE'),('created_timestamp','created_at','VARCHAR'),('updated_timestamp','updated_at','VARCHAR'),('description','description','VARCHAR'),('folder_id','folder_id','VARCHAR'),('folder_type','folder_type','VARCHAR'),('from_name','from_name','VARCHAR'),('program_id','program_id','VARCHAR'),('publish_to_msi','publish_to_msi','BOOLEAN'),('reply_email','reply_email','VARCHAR'),('email_template_status','status','VARCHAR'),('template','template','VARCHAR'),('text_only','text_only','BOOLEAN'),('url','url','VARCHAR'),('web_view','web_view','BOOLEAN'),('workspace','workspace','VARCHAR'),('operational','operational','BOOLEAN'),('subject','subject','VARCHAR'),('from_email','from_email','VARCHAR')]])}
+activity=[
+('send_email','activity_send_email',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('email_template_id','email_template_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('activity_type_id','activity_type_id','VARCHAR'),('campaign_run_id','campaign_run_id','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR'),('email_send_id','id','VARCHAR')]),
+```
+
+### event 33
+
+```json
+{
+  "event_id": 33,
+  "agent_command_sequence": 15,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/33.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 32975,
+    "decoded_characters": 15641
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/33.json",
+  "timestamp": "2026-10-25T02:24:56.217223",
+  "target_table_name_hits": [
+    "stg_marketo__lead"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 15641,
+  "retention": "full_original"
+}
+```
+```bash
+cat > /tmp/models.py <<'PY'
+from pathlib import Path
+I=Path('sql/intermediate'); M=Path('sql/marts')
+def w(dir,n,s): (dir/f'{n}.sql').write_text(s.strip())
+w(I,'int_marketo__lead',"""WITH deleted_leads AS (SELECT DISTINCT lead_id FROM staging.stg_marketo__activity_delete_lead), unique_merges AS (SELECT lead_id, STRING_AGG(DISTINCT merged_lead_ids, ', ') AS merged_into_lead_id FROM staging.stg_marketo__activity_merge_leads GROUP BY lead_id) SELECT l.lead_id,l.email,l.first_name,l.last_name,l.created_timestamp,l.updated_timestamp,(d.lead_id IS NOT NULL) AS is_deleted,m.merged_into_lead_id,(m.merged_into_lead_id IS NOT NULL) AS is_merged FROM staging.stg_marketo__lead l LEFT JOIN deleted_leads d USING (lead_id) LEFT JOIN unique_merges m USING (lead_id)""")
+w(I,'marketo__email_sends_deduped',"""WITH ranked_sends AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY email_send_id ORDER BY activity_timestamp ASC) AS activity_rank FROM staging.stg_marketo__activity_send_email) SELECT activity_timestamp,activity_type_id,campaign_id,campaign_run_id,email_template_id,activity_id,lead_id,primary_attribute_value,primary_attribute_value_id,email_send_id,activity_rank FROM ranked_sends WHERE activity_rank = 1""")
+for mn,src,count,col in [('opens','open_email','count_opens','count_unique_opens'),('clicks','click_email','count_clicks',None),('deliveries','email_delivered','count_deliveries',None),('bounces','email_bounced','count_bounces',None),('unsubscribes','unsubscribe_email','count_unsubscribes',None)]:
+ suffix=f'__by_sent_email'
+ name='marketo__'+mn+suffix
+ extra=', COUNT(DISTINCT lead_id) AS count_unique_opens' if mn=='opens' else ''
+ if mn=='opens': cols='email_send_id, COUNT(*) AS count_opens, COUNT(DISTINCT lead_id) AS count_unique_opens'
+ else: cols=f'email_send_id, COUNT(*) AS {count}'
+ w(I,name,f"SELECT {cols} FROM staging.stg_marketo__activity_{src} GROUP BY email_send_id")
+w(I,'marketo__change_data_details',"""WITH event_fields AS (SELECT c.lead_id, CAST(c.activity_timestamp AS DATE) AS date_day, LOWER(d.rest_name_xf) AS field_name FROM staging.stg_marketo__activity_change_data_value c LEFT JOIN staging.stg_marketo__lead_describe d ON c.primary_attribute_value_id = d.lead_describe_id WHERE CAST(c.activity_timestamp AS DATE) < CURRENT_DATE) SELECT lead_id,date_day,BOOL_OR(field_name='email') AS email_c,BOOL_OR(field_name='firstname') AS first_name_c,BOOL_OR(field_name='lastname') AS last_name_c,BOOL_OR(field_name='company') AS company_c,BOOL_OR(field_name='title') AS title_c,BOOL_OR(field_name='phone') AS phone_c,BOOL_OR(field_name='industry') AS industry_c,BOOL_OR(field_name='country') AS country_c,BOOL_OR(field_name='state') AS state_c,BOOL_OR(field_name='city') AS city_c,BOOL_OR(field_name='leadsource') AS lead_source_c,BOOL_OR(field_name='leadstatus') AS lead_status_c,BOOL_OR(field_name='rating') AS rating_c,BOOL_OR(field_name='leadscore') AS lead_score_c,BOOL_OR(field_name='unsubscribed') AS unsubscribed_c,BOOL_OR(field_name='donotcall') AS do_not_call_c,BOOL_OR(field_name='emailinvalid') AS email_invalid_c,MD5(COALESCE(lead_id,'') || '_' || COALESCE(CAST(date_day AS VARCHAR),'')) AS lead_day_id FROM event_fields GROUP BY lead_id,date_day""")
+attrs=['email','firstname','lastname','company','title','phone','industry','country','state','city','leadsource','leadstatus','rating','leadscore','unsubscribed','donotcall','emailinvalid']
+cols={'email':'email_c','firstname':'first_name_c','lastname':'last_name_c','company':'company_c','title':'title_c','phone':'phone_c','industry':'industry_c','country':'country_c','state':'state_c','city':'city_c','leadsource':'lead_source_c','leadstatus':'lead_status_c','rating':'rating_c','leadscore':'lead_score_c','unsubscribed':'unsubscribed_c','donotcall':'do_not_call_c','emailinvalid':'email_invalid_c'}
+piv=',\n'.join(f"    MAX(old_value) FILTER (WHERE LOWER(primary_attribute_column) = '{a}') AS {cols[a]}" for a in attrs)
+w(I,'marketo__change_data_pivot',f"""WITH joined_events AS (SELECT c.lead_id,CAST(c.activity_timestamp AS DATE) AS date_day,c.activity_id,c.old_value,d.rest_name_xf AS primary_attribute_column,c.primary_attribute_value_id,c.activity_timestamp FROM staging.stg_marketo__activity_change_data_value c LEFT JOIN staging.stg_marketo__lead_describe d ON c.primary_attribute_value_id=d.lead_describe_id WHERE CAST(c.activity_timestamp AS DATE)<CURRENT_DATE), ranked_events AS (SELECT *,ROW_NUMBER() OVER (PARTITION BY lead_id,date_day,primary_attribute_value_id ORDER BY activity_timestamp ASC,activity_id DESC) AS event_rank FROM joined_events), selected_events AS (SELECT * FROM ranked_events WHERE event_rank=1), pivoted AS (SELECT lead_id,date_day,{piv} FROM selected_events GROUP BY lead_id,date_day) SELECT *,MD5(COALESCE(lead_id,'') || '_' || COALESCE(CAST(date_day AS VARCHAR),'')) AS lead_day_id FROM pivoted""")
+# SCD groups use running sum on break condition in descending chronological order; carry latest value via first_value within group.
+w(I,'marketo__change_data_scd',"""WITH source_rows AS (SELECT CURRENT_DATE AS valid_to,lead_id,email AS email_c,first_name AS first_name_c,last_name AS last_name_c,NULL::VARCHAR AS company_c,NULL::VARCHAR AS lead_status_c FROM intermediate.int_marketo__lead UNION ALL SELECT date_day,lead_id,email_c,first_name_c,last_name_c,company_c,lead_status_c FROM intermediate.marketo__change_data_pivot), flagged AS (SELECT s.*,COALESCE(d.email_c,FALSE) AS email_changed,COALESCE(d.first_name_c,FALSE) AS first_name_changed,COALESCE(d.last_name_c,FALSE) AS last_name_changed FROM source_rows s LEFT JOIN intermediate.marketo__change_data_details d ON s.lead_id=d.lead_id AND s.valid_to=d.date_day), groups AS (SELECT *,SUM(CASE WHEN email_c IS NULL AND NOT email_changed THEN 0 ELSE 1 END) OVER (PARTITION BY lead_id ORDER BY valid_to DESC ROWS UNBOUNDED PRECEDING) AS email_grp,SUM(CASE WHEN first_name_c IS NULL AND NOT first_name_changed THEN 0 ELSE 1 END) OVER (PARTITION BY lead_id ORDER BY valid_to DESC ROWS UNBOUNDED PRECEDING) AS first_grp,SUM(CASE WHEN last_name_c IS NULL AND NOT last_name_changed THEN 0 ELSE 1 END) OVER (PARTITION BY lead_id ORDER BY valid_to DESC ROWS UNBOUNDED PRECEDING) AS last_grp FROM flagged), filled AS (SELECT *,FIRST_VALUE(email_c IGNORE NULLS) OVER (PARTITION BY lead_id,email_grp ORDER BY valid_to DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS filled_email,FIRST_VALUE(first_name_c IGNORE NULLS) OVER (PARTITION BY lead_id,first_grp ORDER BY valid_to DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS filled_first,FIRST_VALUE(last_name_c IGNORE NULLS) OVER (PARTITION BY lead_id,last_grp ORDER BY valid_to DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS filled_last FROM groups) SELECT valid_to,lead_id,filled_email AS email_c,filled_first AS first_name_c,filled_last AS last_name_c,company_c,lead_status_c,MD5(COALESCE(lead_id,'') || '_' || COALESCE(CAST(valid_to AS VARCHAR),'')) AS lead_day_id FROM filled""")
+w(I,'marketo__lead_calendar_spine',"""SELECT c.date_day,l.lead_id,MD5(COALESCE(CAST(c.date_day AS VARCHAR),'') || '_' || COALESCE(l.lead_id,'')) AS lead_day_id FROM utils.marketo__calendar_spine c JOIN intermediate.int_marketo__lead l ON c.date_day>=TRY_CAST(SUBSTR(l.created_timestamp,1,10) AS DATE) WHERE l.created_timestamp IS NOT NULL""")
+# Marts email sends
+w(M,'marketo__email_sends',"""WITH base AS (SELECT * FROM intermediate.marketo__email_sends_deduped), joined AS (SELECT b.*,COALESCE(o.count_opens,0)::BIGINT AS count_opens,COALESCE(bo.count_bounces,0)::BIGINT AS count_bounces,COALESCE(c.count_clicks,0)::BIGINT AS count_clicks,COALESCE(d.count_deliveries,0)::BIGINT AS count_deliveries,COALESCE(u.count_unsubscribes,0)::BIGINT AS count_unsubscribes FROM base b LEFT JOIN intermediate.marketo__opens__by_sent_email o USING(email_send_id) LEFT JOIN intermediate.marketo__bounces__by_sent_email bo USING(email_send_id) LEFT JOIN intermediate.marketo__clicks__by_sent_email c USING(email_send_id) LEFT JOIN intermediate.marketo__deliveries__by_sent_email d USING(email_send_id) LEFT JOIN intermediate.marketo__unsubscribes__by_sent_email u USING(email_send_id)) SELECT j.*,count_opens>0 AS was_opened,count_bounces>0 AS was_bounced,count_clicks>0 AS was_clicked,count_deliveries>0 AS was_delivered,count_unsubscribes>0 AS was_unsubscribed,c.campaign_type,c.program_id,t.operational AS is_operational FROM joined j LEFT JOIN staging.stg_marketo__campaigns c USING(campaign_id) LEFT JOIN staging.stg_marketo__email_template_history t USING(email_template_id)""")
+# markets common stats
+stats="""SELECT campaign_id,COUNT(*)::BIGINT AS count_sends,SUM(count_opens) AS count_opens,SUM(count_bounces) AS count_bounces,SUM(count_clicks) AS count_clicks,SUM(count_deliveries) AS count_deliveries,SUM(count_unsubscribes) AS count_unsubscribes,COUNT(DISTINCT email_send_id) FILTER(WHERE was_opened) AS count_unique_opens,COUNT(DISTINCT email_send_id) FILTER(WHERE was_clicked) AS count_unique_clicks FROM marts.marketo__email_sends"""
+w(M,'marketo__leads',"""WITH merges AS (SELECT lead_id,STRING_AGG(DISTINCT merged_lead_ids, ', ') AS merged_into_lead_id FROM staging.stg_marketo__activity_merge_leads GROUP BY lead_id), deleted AS (SELECT DISTINCT lead_id FROM staging.stg_marketo__activity_delete_lead), engagement AS (SELECT lead_id,COUNT(*)::BIGINT AS count_sends,SUM(count_opens) AS count_opens,SUM(count_bounces) AS count_bounces,SUM(count_clicks) AS count_clicks,SUM(count_deliveries) AS count_deliveries,SUM(count_unsubscribes) AS count_unsubscribes,COUNT(DISTINCT email_send_id) FILTER(WHERE was_opened) AS count_unique_opens,COUNT(DISTINCT email_send_id) FILTER(WHERE was_clicked) AS count_unique_clicks FROM marts.marketo__email_sends GROUP BY lead_id) SELECT l.*,d.lead_id IS NOT NULL AS is_deleted,m.merged_into_lead_id,m.merged_into_lead_id IS NOT NULL AS is_merged,COALESCE(e.count_sends,0)::BIGINT AS count_sends,COALESCE(e.count_opens,0) AS count_opens,COALESCE(e.count_bounces,0) AS count_bounces,COALESCE(e.count_clicks,0) AS count_clicks,COALESCE(e.count_deliveries,0) AS count_deliveries,COALESCE(e.count_unsubscribes,0) AS count_unsubscribes,COALESCE(e.count_unique_opens,0)::BIGINT AS count_unique_opens,COALESCE(e.count_unique_clicks,0)::BIGINT AS count_unique_clicks FROM staging.stg_marketo__lead l LEFT JOIN deleted d USING(lead_id) LEFT JOIN merges m USING(lead_id) LEFT JOIN engagement e USING(lead_id)""")
+w(M,'marketo__campaigns',f"""WITH stats AS ({stats} GROUP BY campaign_id) SELECT c.*,COALESCE(s.count_sends,0)::BIGINT AS count_sends,COALESCE(s.count_opens,0) AS count_opens,COALESCE(s.count_bounces,0) AS count_bounces,COALESCE(s.count_clicks,0) AS count_clicks,COALESCE(s.count_deliveries,0) AS count_deliveries,COALESCE(s.count_unsubscribes,0) AS count_unsubscribes,COALESCE(s.count_unique_opens,0)::BIGINT AS count_unique_opens,COALESCE(s.count_unique_clicks,0)::BIGINT AS count_unique_clicks FROM staging.stg_marketo__campaigns c LEFT JOIN stats s USING(campaign_id)""")
+w(M,'marketo__programs',f"""WITH stats AS ({stats.replace('campaign_id','program_id').replace('FROM marts.marketo__email_sends','FROM marts.marketo__email_sends WHERE program_id IS NOT NULL')} GROUP BY program_id) SELECT p.*,COALESCE(s.count_sends,0)::BIGINT AS count_sends,COALESCE(s.count_opens,0) AS count_opens,COALESCE(s.count_bounces,0) AS count_bounces,COALESCE(s.count_clicks,0) AS count_clicks,COALESCE(s.count_deliveries,0) AS count_deliveries,COALESCE(s.count_unsubscribes,0) AS count_unsubscribes,COALESCE(s.count_unique_opens,0)::BIGINT AS count_unique_opens,COALESCE(s.count_unique_clicks,0)::BIGINT AS count_unique_clicks FROM staging.stg_marketo__program p LEFT JOIN stats s USING(program_id)""")
+for by,key in [('campaign','campaign_id'),('email_template','email_template_id'),('lead','lead_id'),('program','program_id')]:
+ filt=' WHERE '+key+' IS NOT NULL' if by!='lead' else ' WHERE lead_id IS NOT NULL'
+ w(M,f'marketo__email_stats__by_{by}',f"""SELECT {key},COUNT(*)::BIGINT AS count_sends,SUM(count_opens) AS count_opens,SUM(count_bounces) AS count_bounces,SUM(count_clicks) AS count_clicks,SUM(count_deliveries) AS count_deliveries,SUM(count_unsubscribes) AS count_unsubscribes,COUNT(DISTINCT email_send_id) FILTER(WHERE was_opened) AS count_unique_opens,COUNT(DISTINCT email_send_id) FILTER(WHERE was_clicked) AS count_unique_clicks FROM marts.marketo__email_sends{filt} GROUP BY {key}""")
+w(M,'marketo__email_templates',"""WITH stats AS (SELECT email_template_id,COUNT(*)::BIGINT AS count_sends,COALESCE(SUM(count_opens),0) AS count_opens,COALESCE(SUM(count_bounces),0) AS count_bounces,COALESCE(SUM(count_clicks),0) AS count_clicks,COALESCE(SUM(count_deliveries),0) AS count_deliveries,COALESCE(SUM(count_unsubscribes),0) AS count_unsubscribes,COUNT(DISTINCT email_send_id) FILTER(WHERE was_opened) AS count_unique_opens,COUNT(DISTINCT email_send_id) FILTER(WHERE was_clicked) AS count_unique_clicks FROM marts.marketo__email_sends WHERE email_template_id IS NOT NULL GROUP BY email_template_id) SELECT t.created_timestamp,t.description,t.folder_id,t.folder_type,t.from_email,t.from_name,t.email_template_id,t.email_template_name,t.operational,t.program_id,t.publish_to_msi,t.reply_email,t.email_template_status,t.subject,t.template,t.text_only,t.updated_timestamp,t.url,t.version,t.web_view,t.workspace,t.is_most_recent_version,COALESCE(s.count_sends,0)::BIGINT AS count_sends,COALESCE(s.count_opens,0) AS count_opens,COALESCE(s.count_bounces,0) AS count_bounces,COALESCE(s.count_clicks,0) AS count_clicks,COALESCE(s.count_deliveries,0) AS count_deliveries,COALESCE(s.count_unsubscribes,0) AS count_unsubscribes,COALESCE(s.count_unique_opens,0)::BIGINT AS count_unique_opens,COALESCE(s.count_unique_clicks,0)::BIGINT AS count_unique_clicks FROM staging.stg_marketo__email_template_history t LEFT JOIN stats s USING(email_template_id) WHERE t.is_most_recent_version""")
+w(M,'marketo__lead_history',"""WITH spine AS (SELECT * FROM intermediate.marketo__lead_calendar_spine WHERE date_day<=CURRENT_DATE), changes AS (SELECT *,TRUE AS has_change FROM intermediate.marketo__change_data_scd), joined AS (SELECT s.date_day,s.lead_id,c.email_c,c.first_name_c,c.last_name_c,c.company_c,c.lead_status_c,COALESCE(c.has_change,FALSE) AS has_change FROM spine s LEFT JOIN changes c ON s.lead_id=c.lead_id AND s.date_day=c.valid_to), partitions AS (SELECT *,SUM(CASE WHEN has_change THEN 1 ELSE 0 END) OVER(PARTITION BY lead_id ORDER BY date_day DESC ROWS UNBOUNDED PRECEDING) AS change_partition FROM joined), filled AS (SELECT *,FIRST_VALUE(email_c) OVER(PARTITION BY lead_id,change_partition ORDER BY date_day DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS hist_email,FIRST_VALUE(first_name_c) OVER(PARTITION BY lead_id,change_partition ORDER BY date_day DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS hist_first,FIRST_VALUE(last_name_c) OVER(PARTITION BY lead_id,change_partition ORDER BY date_day DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS hist_last,FIRST_VALUE(company_c) OVER(PARTITION BY lead_id,change_partition ORDER BY date_day DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS hist_company,FIRST_VALUE(lead_status_c) OVER(PARTITION BY lead_id,change_partition ORDER BY date_day DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS hist_status FROM partitions) SELECT date_day,lead_id,hist_email AS email_c,hist_first AS first_name_c,hist_last AS last_name_c,hist_company AS company_c,hist_status AS lead_status_c,MD5(COALESCE(CAST(date_day AS VARCHAR),'') || '_' || COALESCE(lead_id,'')) AS lead_history_id FROM filled""")
+PY
+python /tmp/models.py
+```
+```json
+{
+  "event_id": 34,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/34.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 32658,
+    "decoded_characters": 0
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/34.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+
+```
+
+### event 39
+
+```json
+{
+  "event_id": 39,
+  "agent_command_sequence": 18,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/39.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1728,
+    "decoded_characters": 226
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/39.json",
+  "timestamp": "2026-10-25T02:25:43.364734",
+  "target_table_name_hits": [
+    "stg_marketo__lead"
+  ],
+  "source_table_name_hits": [
+    "raw.marketo_lead",
+    "marketo_lead"
+  ],
+  "full_original_characters": 10874,
+  "retention": "full_original"
+}
+```
+```bash
+python - <<'PY'
+import duckdb
+c=duckdb.connect()
+for fmt in ['%Y-%m-%d %H:%M:%S.%f %z','%Y-%m-%d %H:%M:%S %z']:
+ print(fmt,c.execute("select try_strptime('2024-03-11 11:00:59.000 +0800', ?)",[fmt]).fetchall())
+PY
+python run.py
+```
+```json
+{
+  "event_id": 40,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/40.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1411,
+    "decoded_characters": 10648
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/40.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+%Y-%m-%d %H:%M:%S.%f %z [(datetime.datetime(2024, 3, 11, 11, 0, 59, tzinfo=<DstTzInfo 'Asia/Singapore' +08+8:00:00 STD>),)]
+%Y-%m-%d %H:%M:%S %z [(None,)]
+2026-10-25 02:25:44,340 - INFO - 🚀 Starting Marketo data pipeline execution
+2026-10-25 02:25:44,340 - INFO - Source database: marketo_start.duckdb
+2026-10-25 02:25:44,340 - INFO - Target database: marketo.duckdb
+2026-10-25 02:25:44,340 - INFO - Target database does not exist, starting initialization...
+2026-10-25 02:25:44,340 - INFO - 📥 Creating a new layered database: marketo.duckdb
+2026-10-25 02:25:44,355 - INFO - 🏗️ Creating schema-layered architecture
+2026-10-25 02:25:44,359 - INFO -   ✓ Created schema: raw
+2026-10-25 02:25:44,363 - INFO -   ✓ Created schema: utils
+2026-10-25 02:25:44,367 - INFO -   ✓ Created schema: staging
+2026-10-25 02:25:44,370 - INFO -   ✓ Created schema: intermediate
+2026-10-25 02:25:44,373 - INFO -   ✓ Created schema: marts
+2026-10-25 02:25:44,373 - INFO - 📥 Importing raw data to raw schema
+2026-10-25 02:25:44,391 - INFO - Found 14 raw tables
+2026-10-25 02:25:44,439 - INFO -   ✓ raw.marketo_activity_change_data_value: 20,000 rows
+2026-10-25 02:25:44,465 - INFO -   ✓ raw.marketo_activity_click_email: 8,000 rows
+2026-10-25 02:25:44,472 - INFO -   ✓ raw.marketo_activity_delete_lead: 500 rows
+2026-10-25 02:25:44,482 - INFO -   ✓ raw.marketo_activity_email_bounced: 2,000 rows
+2026-10-25 02:25:44,510 - INFO -   ✓ raw.marketo_activity_email_delivered: 14,000 rows
+2026-10-25 02:25:44,517 - INFO -   ✓ raw.marketo_activity_merge_leads: 800 rows
+2026-10-25 02:25:44,547 - INFO -   ✓ raw.marketo_activity_open_email: 12,000 rows
+2026-10-25 02:25:44,902 - INFO -   ✓ raw.marketo_activity_send_email: 15,000 rows
+2026-10-25 02:25:44,914 - INFO -   ✓ raw.marketo_activity_unsubscribe_email: 1,500 rows
+2026-10-25 02:25:44,941 - INFO -   ✓ raw.marketo_campaign: 5,000 rows
+2026-10-25 02:25:44,972 - INFO -   ✓ raw.marketo_email_template_history: 5,000 rows
+2026-10-25 02:25:44,983 - INFO -   ✓ raw.marketo_lead: 6,000 rows
+2026-10-25 02:25:44,989 - INFO -   ✓ raw.marketo_lead_describe: 800 rows
+2026-10-25 02:25:45,003 - INFO -   ✓ raw.marketo_program: 4,000 rows
+2026-10-25 02:25:45,003 - INFO - ✓ Raw data import complete
+2026-10-25 02:25:45,003 - INFO - ✓ Layered database initialization complete: marketo.duckdb
+2026-10-25 02:25:45,003 - INFO - 🧼 Cleaning up previously generated schemas and tables...
+2026-10-25 02:25:45,007 - INFO - ✓ Dropped schema: utils
+2026-10-25 02:25:45,011 - INFO - ✓ Dropped schema: staging
+2026-10-25 02:25:45,015 - INFO - ✓ Dropped schema: intermediate
+2026-10-25 02:25:45,019 - INFO - ✓ Dropped schema: marts
+2026-10-25 02:25:45,019 - INFO - Cleanup complete
+2026-10-25 02:25:45,019 - INFO - 🏗️ Creating schema-layered architecture
+2026-10-25 02:25:45,020 - INFO -   ✓ Created schema: raw
+2026-10-25 02:25:45,023 - INFO -   ✓ Created schema: utils
+2026-10-25 02:25:45,026 - INFO -   ✓ Created schema: staging
+2026-10-25 02:25:45,029 - INFO -   ✓ Created schema: intermediate
+2026-10-25 02:25:45,032 - INFO -   ✓ Created schema: marts
+2026-10-25 02:25:45,032 - INFO - 
+=== Executing UTILS Layer ===
+2026-10-25 02:25:45,032 - INFO - Executing: utils.marketo__calendar_spine
+2026-10-25 02:25:45,063 - INFO - ✓ utils.marketo__calendar_spine: 2,855 rows
+2026-10-25 02:25:45,063 - INFO - UTILS layer complete: 1/1 tables created successfully
+2026-10-25 02:25:45,063 - INFO - 
+=== Executing STAGING Layer ===
+2026-10-25 02:25:45,063 - INFO - Executing: staging.stg_marketo__lead
+2026-10-25 02:25:45,086 - INFO - ✓ staging.stg_marketo__lead: 5,984 rows
+2026-10-25 02:25:45,086 - INFO - Executing: staging.stg_marketo__campaigns
+2026-10-25 02:25:45,124 - INFO - ✓ staging.stg_marketo__campaigns: 4,996 rows
+2026-10-25 02:25:45,125 - INFO - Executing: staging.stg_marketo__program
+2026-10-25 02:25:45,138 - INFO - ✓ staging.stg_marketo__program: 4,000 rows
+2026-10-25 02:25:45,138 - INFO - Executing: staging.stg_marketo__email_template_history
+2026-10-25 02:25:45,158 - INFO - ✓ staging.stg_marketo__email_template_history: 5,000 rows
+2026-10-25 02:25:45,158 - INFO - Executing: staging.stg_marketo__lead_describe
+2026-10-25 02:25:45,166 - INFO - ✓ staging.stg_marketo__lead_describe: 800 rows
+2026-10-25 02:25:45,166 - INFO - Executing: staging.stg_marketo__activity_send_email
+2026-10-25 02:25:45,212 - INFO - ✓ staging.stg_marketo__activity_send_email: 15,000 rows
+2026-10-25 02:25:45,212 - INFO - Executing: staging.stg_marketo__activity_click_email
+2026-10-25 02:25:45,691 - INFO - ✓ staging.stg_marketo__activity_click_email: 8,000 rows
+2026-10-25 02:25:45,691 - INFO - Executing: staging.stg_marketo__activity_open_email
+2026-10-25 02:25:45,734 - INFO - ✓ staging.stg_marketo__activity_open_email: 12,000 rows
+2026-10-25 02:25:45,734 - INFO - Executing: staging.stg_marketo__activity_email_delivered
+2026-10-25 02:25:45,779 - INFO - ✓ staging.stg_marketo__activity_email_delivered: 14,000 rows
+2026-10-25 02:25:45,779 - INFO - Executing: staging.stg_marketo__activity_email_bounced
+2026-10-25 02:25:45,793 - INFO - ✓ staging.stg_marketo__activity_email_bounced: 2,000 rows
+2026-10-25 02:25:45,793 - INFO - Executing: staging.stg_marketo__activity_unsubscribe_email
+2026-10-25 02:25:45,804 - INFO - ✓ staging.stg_marketo__activity_unsubscribe_email: 1,500 rows
+2026-10-25 02:25:45,804 - INFO - Executing: staging.stg_marketo__activity_change_data_value
+2026-10-25 02:25:45,880 - INFO - ✓ staging.stg_marketo__activity_change_data_value: 20,000 rows
+2026-10-25 02:25:45,880 - INFO - Executing: staging.stg_marketo__activity_merge_leads
+2026-10-25 02:25:45,890 - INFO - ✓ staging.stg_marketo__activity_merge_leads: 800 rows
+2026-10-25 02:25:45,890 - INFO - Executing: staging.stg_marketo__activity_delete_lead
+2026-10-25 02:25:45,898 - INFO - ✓ staging.stg_marketo__activity_delete_lead: 500 rows
+2026-10-25 02:25:45,898 - INFO - STAGING layer complete: 14/14 tables created successfully
+2026-10-25 02:25:45,898 - INFO - 
+=== Executing INTERMEDIATE Layer ===
+2026-10-25 02:25:45,898 - INFO - Executing: intermediate.int_marketo__lead
+2026-10-25 02:25:45,919 - INFO - ✓ intermediate.int_marketo__lead: 5,984 rows
+2026-10-25 02:25:45,919 - INFO - Executing: intermediate.marketo__email_sends_deduped
+2026-10-25 02:25:45,955 - INFO - ✓ intermediate.marketo__email_sends_deduped: 15,000 rows
+2026-10-25 02:25:45,955 - INFO - Executing: intermediate.marketo__clicks__by_sent_email
+2026-10-25 02:25:45,966 - INFO - ✓ intermediate.marketo__clicks__by_sent_email: 8,000 rows
+2026-10-25 02:25:45,966 - INFO - Executing: intermediate.marketo__opens__by_sent_email
+2026-10-25 02:25:45,979 - INFO - ✓ intermediate.marketo__opens__by_sent_email: 12,000 rows
+2026-10-25 02:25:45,980 - INFO - Executing: intermediate.marketo__deliveries__by_sent_email
+2026-10-25 02:25:45,991 - INFO - ✓ intermediate.marketo__deliveries__by_sent_email: 14,000 rows
+2026-10-25 02:25:45,991 - INFO - Executing: intermediate.marketo__bounces__by_sent_email
+2026-10-25 02:25:46,000 - INFO - ✓ intermediate.marketo__bounces__by_sent_email: 2,000 rows
+2026-10-25 02:25:46,000 - INFO - Executing: intermediate.marketo__unsubscribes__by_sent_email
+2026-10-25 02:25:46,007 - INFO - ✓ intermediate.marketo__unsubscribes__by_sent_email: 1,500 rows
+2026-10-25 02:25:46,007 - INFO - Executing: intermediate.marketo__change_data_details
+2026-10-25 02:25:46,038 - INFO - ✓ intermediate.marketo__change_data_details: 19,896 rows
+2026-10-25 02:25:46,038 - INFO - Executing: intermediate.marketo__change_data_pivot
+2026-10-25 02:25:46,452 - INFO - ✓ intermediate.marketo__change_data_pivot: 19,896 rows
+2026-10-25 02:25:46,453 - INFO - Executing: intermediate.marketo__change_data_scd
+2026-10-25 02:25:46,506 - INFO - ✓ intermediate.marketo__change_data_scd: 25,880 rows
+2026-10-25 02:25:46,507 - INFO - Executing: intermediate.marketo__lead_calendar_spine
+2026-10-25 02:25:54,673 - INFO - ✓ intermediate.marketo__lead_calendar_spine: 11,113,284 rows
+2026-10-25 02:25:54,673 - INFO - INTERMEDIATE layer complete: 11/11 tables created successfully
+2026-10-25 02:25:54,674 - INFO - 
+=== Executing MARTS Layer ===
+2026-10-25 02:25:54,674 - INFO - Executing: marts.marketo__email_sends
+2026-10-25 02:25:54,822 - INFO - ✓ marts.marketo__email_sends: 15,000 rows
+2026-10-25 02:25:54,823 - INFO - Executing: marts.marketo__leads
+2026-10-25 02:25:54,923 - INFO - ✓ marts.marketo__leads: 5,984 rows
+2026-10-25 02:25:54,923 - INFO - Executing: marts.marketo__campaigns
+2026-10-25 02:25:55,052 - INFO - ✓ marts.marketo__campaigns: 4,996 rows
+2026-10-25 02:25:55,053 - INFO - Executing: marts.marketo__programs
+2026-10-25 02:25:55,203 - INFO - ✓ marts.marketo__programs: 4,000 rows
+2026-10-25 02:25:55,203 - INFO - Executing: marts.marketo__email_templates
+2026-10-25 02:25:55,251 - ERROR - ✗ marketo__email_templates.sql: Binder Error: Table "t" does not have a column named "is_most_recent_version"
+
+Candidate bindings: : "version"
+
+LINE 1: ...history t LEFT JOIN stats s USING(email_template_id) WHERE t.is_most_recent_version)
+                                                                      ^
+2026-10-25 02:25:55,251 - INFO - Executing: marts.marketo__lead_history
+2026-10-25 02:26:02,436 - INFO - ✓ marts.marketo__lead_history: 11,113,284 rows
+2026-10-25 02:26:02,437 - INFO - Executing: marts.marketo__email_stats__by_campaign
+2026-10-25 02:26:02,474 - INFO - ✓ marts.marketo__email_stats__by_campaign: 4,762 rows
+2026-10-25 02:26:02,474 - INFO - Executing: marts.marketo__email_stats__by_lead
+2026-10-25 02:26:02,493 - INFO - ✓ marts.marketo__email_stats__by_lead: 5,525 rows
+2026-10-25 02:26:02,493 - INFO - Executing: marts.marketo__email_stats__by_program
+2026-10-25 02:26:02,506 - INFO - ✓ marts.marketo__email_stats__by_program: 2,792 rows
+2026-10-25 02:26:02,506 - INFO - Executing: marts.marketo__email_stats__by_email_template
+2026-10-25 02:26:02,522 - INFO - ✓ marts.marketo__email_stats__by_email_template: 4,739 rows
+2026-10-25 02:26:02,522 - INFO - Executing: marts.marketo__email_funnel_dashboard
+2026-10-25 02:26:02,834 - INFO - ✓ marts.marketo__email_funnel_dashboard: 29,579 rows
+2026-10-25 02:26:02,834 - INFO - Executing: marts.marketo__lead_intelligence_simple
+2026-10-25 02:26:02,873 - INFO - ✓ marts.marketo__lead_intelligence_simple: 4,819 rows
+2026-10-25 02:26:02,873 - INFO - Executing: marts.marketo__operational_health_simple
+2026-10-25 02:26:02,895 - INFO - ✓ marts.marketo__operational_health_simple: 1 rows
+2026-10-25 02:26:02,895 - INFO - MARTS layer complete: 12/13 tables created successfully
+2026-10-25 02:26:02,895 - ERROR - 
+❌ Errors occurred during data pipeline execution
+
+❌ Errors occurred during data transformation, please check the logs
+```
+
+### event 41
+
+```json
+{
+  "event_id": 41,
+  "agent_command_sequence": 19,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/41.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 3436,
+    "decoded_characters": 1054
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/41.json",
+  "timestamp": "2026-10-25T02:26:17.710843",
+  "target_table_name_hits": [
+    "stg_marketo__lead"
+  ],
+  "source_table_name_hits": [
+    "raw.marketo_lead",
+    "marketo_lead"
+  ],
+  "full_original_characters": 14784,
+  "retention": "full_original"
+}
+```
+```bash
+python - <<'PY'
+p='sql/marts/marketo__email_templates.sql'
+s=open(p).read()
+s=s.replace("WITH stats AS (", "WITH template_versions AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY email_template_id ORDER BY version DESC, updated_timestamp DESC) AS version_rank FROM staging.stg_marketo__email_template_history), stats AS (")
+s=s.replace("FROM staging.stg_marketo__email_template_history t LEFT JOIN stats s USING(email_template_id) WHERE t.is_most_recent_version", "FROM template_versions t LEFT JOIN stats s USING(email_template_id) WHERE t.version_rank = 1")
+s=s.replace("t.is_most_recent_version,", "TRUE AS is_most_recent_version,")
+open(p,'w').write(s)
+# Improve date extraction in program source CAST currently try cast, in generated select parse date prefix for timezone-bearing dates
+p='sql/staging/stg_marketo__program.sql';s=open(p).read().replace('TRY_CAST(start_date AS DATE)', 'TRY_CAST(SUBSTR(start_date, 1, 10) AS DATE)').replace('TRY_CAST(end_date AS DATE)', 'TRY_CAST(SUBSTR(end_date, 1, 10) AS DATE)');open(p,'w').write(s)
+PY
+python run.py
+```
+```json
+{
+  "event_id": 42,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/42.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 3119,
+    "decoded_characters": 13730
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/42.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+2026-10-25 02:26:17,843 - INFO - 🚀 Starting Marketo data pipeline execution
+2026-10-25 02:26:17,843 - INFO - Source database: marketo_start.duckdb
+2026-10-25 02:26:17,843 - INFO - Target database: marketo.duckdb
+2026-10-25 02:26:17,843 - INFO - Existing target database found, using it directly...
+2026-10-25 02:26:17,864 - INFO - 🧼 Cleaning up previously generated schemas and tables...
+2026-10-25 02:26:17,870 - INFO - ✓ Dropped schema: utils
+2026-10-25 02:26:17,875 - INFO - ✓ Dropped schema: staging
+2026-10-25 02:26:17,883 - INFO - ✓ Dropped schema: intermediate
+2026-10-25 02:26:17,894 - INFO - ✓ Dropped schema: marts
+2026-10-25 02:26:17,894 - INFO - Cleanup complete
+2026-10-25 02:26:17,894 - INFO - 🏗️ Creating schema-layered architecture
+2026-10-25 02:26:17,895 - INFO -   ✓ Created schema: raw
+2026-10-25 02:26:17,898 - INFO -   ✓ Created schema: utils
+2026-10-25 02:26:17,902 - INFO -   ✓ Created schema: staging
+2026-10-25 02:26:17,905 - INFO -   ✓ Created schema: intermediate
+2026-10-25 02:26:17,908 - INFO -   ✓ Created schema: marts
+2026-10-25 02:26:17,908 - INFO - 
+=== Executing UTILS Layer ===
+2026-10-25 02:26:17,908 - INFO - Executing: utils.marketo__calendar_spine
+2026-10-25 02:26:17,917 - INFO - ✓ utils.marketo__calendar_spine: 2,855 rows
+2026-10-25 02:26:17,918 - INFO - UTILS layer complete: 1/1 tables created successfully
+2026-10-25 02:26:17,918 - INFO - 
+=== Executing STAGING Layer ===
+2026-10-25 02:26:17,918 - INFO - Executing: staging.stg_marketo__lead
+2026-10-25 02:26:17,941 - INFO - ✓ staging.stg_marketo__lead: 5,984 rows
+2026-10-25 02:26:17,942 - INFO - Executing: staging.stg_marketo__campaigns
+2026-10-25 02:26:17,978 - INFO - ✓ staging.stg_marketo__campaigns: 4,996 rows
+2026-10-25 02:26:17,978 - INFO - Executing: staging.stg_marketo__program
+2026-10-25 02:26:17,995 - INFO - ✓ staging.stg_marketo__program: 4,000 rows
+2026-10-25 02:26:17,995 - INFO - Executing: staging.stg_marketo__email_template_history
+2026-10-25 02:26:18,016 - INFO - ✓ staging.stg_marketo__email_template_history: 5,000 rows
+2026-10-25 02:26:18,016 - INFO - Executing: staging.stg_marketo__lead_describe
+2026-10-25 02:26:18,023 - INFO - ✓ staging.stg_marketo__lead_describe: 800 rows
+2026-10-25 02:26:18,023 - INFO - Executing: staging.stg_marketo__activity_send_email
+2026-10-25 02:26:18,061 - INFO - ✓ staging.stg_marketo__activity_send_email: 15,000 rows
+2026-10-25 02:26:18,062 - INFO - Executing: staging.stg_marketo__activity_click_email
+2026-10-25 02:26:18,097 - INFO - ✓ staging.stg_marketo__activity_click_email: 8,000 rows
+2026-10-25 02:26:18,097 - INFO - Executing: staging.stg_marketo__activity_open_email
+2026-10-25 02:26:18,141 - INFO - ✓ staging.stg_marketo__activity_open_email: 12,000 rows
+2026-10-25 02:26:18,141 - INFO - Executing: staging.stg_marketo__activity_email_delivered
+2026-10-25 02:26:18,560 - INFO - ✓ staging.stg_marketo__activity_email_delivered: 14,000 rows
+2026-10-25 02:26:18,560 - INFO - Executing: staging.stg_marketo__activity_email_bounced
+2026-10-25 02:26:18,575 - INFO - ✓ staging.stg_marketo__activity_email_bounced: 2,000 rows
+2026-10-25 02:26:18,575 - INFO - Executing: staging.stg_marketo__activity_unsubscribe_email
+2026-10-25 02:26:18,586 - INFO - ✓ staging.stg_marketo__activity_unsubscribe_email: 1,500 rows
+2026-10-25 02:26:18,587 - INFO - Executing: staging.stg_marketo__activity_change_data_value
+2026-10-25 02:26:18,641 - INFO - ✓ staging.stg_marketo__activity_change_data_value: 20,000 rows
+2026-10-25 02:26:18,641 - INFO - Executing: staging.stg_marketo__activity_merge_leads
+2026-10-25 02:26:18,650 - INFO - ✓ staging.stg_marketo__activity_merge_leads: 800 rows
+2026-10-25 02:26:18,650 - INFO - Executing: staging.stg_marketo__activity_delete_lead
+2026-10-25 02:26:18,658 - INFO - ✓ staging.stg_marketo__activity_delete_lead: 500 rows
+2026-10-25 02:26:18,658 - INFO - STAGING layer complete: 14/14 tables created successfully
+2026-10-25 02:26:18,659 - INFO - 
+=== Executing INTERMEDIATE Layer ===
+2026-10-25 02:26:18,659 - INFO - Executing: intermediate.int_marketo__lead
+2026-10-25 02:26:18,690 - INFO - ✓ intermediate.int_marketo__lead: 5,984 rows
+2026-10-25 02:26:18,690 - INFO - Executing: intermediate.marketo__email_sends_deduped
+2026-10-25 02:26:18,722 - INFO - ✓ intermediate.marketo__email_sends_deduped: 15,000 rows
+2026-10-25 02:26:18,722 - INFO - Executing: intermediate.marketo__clicks__by_sent_email
+2026-10-25 02:26:18,732 - INFO - ✓ intermediate.marketo__clicks__by_sent_email: 8,000 rows
+2026-10-25 02:26:18,732 - INFO - Executing: intermediate.marketo__opens__by_sent_email
+2026-10-25 02:26:18,746 - INFO - ✓ intermediate.marketo__opens__by_sent_email: 12,000 rows
+2026-10-25 02:26:18,746 - INFO - Executing: intermediate.marketo__deliveries__by_sent_email
+2026-10-25 02:26:18,756 - INFO - ✓ intermediate.marketo__deliveries__by_sent_email: 14,000 rows
+2026-10-25 02:26:18,756 - INFO - Executing: intermediate.marketo__bounces__by_sent_email
+2026-10-25 02:26:18,764 - INFO - ✓ intermediate.marketo__bounces__by_sent_email: 2,000 rows
+2026-10-25 02:26:18,764 - INFO - Executing: intermediate.marketo__unsubscribes__by_sent_email
+2026-10-25 02:26:18,771 - INFO - ✓ intermediate.marketo__unsubscribes__by_sent_email: 1,500 rows
+2026-10-25 02:26:18,771 - INFO - Executing: intermediate.marketo__change_data_details
+2026-10-25 02:26:18,797 - INFO - ✓ intermediate.marketo__change_data_details: 19,896 rows
+2026-10-25 02:26:18,798 - INFO - Executing: intermediate.marketo__change_data_pivot
+2026-10-25 02:26:18,848 - INFO - ✓ intermediate.marketo__change_data_pivot: 19,896 rows
+2026-10-25 02:26:18,848 - INFO - Executing: intermediate.marketo__change_data_scd
+2026-10-25 02:26:18,902 - INFO - ✓ intermediate.marketo__change_data_scd: 25,880 rows
+2026-10-25 02:26:18,902 - INFO - Executing: intermediate.marketo__lead_calendar_spine
+2026-10-25 02:26:26,508 - INFO - ✓ intermediate.marketo__lead_calendar_spine: 11,113,284 rows
+2026-10-25 02:26:26,508 - INFO - INTERMEDIATE layer complete: 11/11 tables created successfully
+2026-10-25 02:26:26,508 - INFO - 
+=== Executing MARTS Layer ===
+2026-10-25 02:26:26,508 - INFO - Executing: marts.marketo__email_sends
+2026-10-25 02:26:26,901 - INFO - ✓ marts.marketo__email_sends: 15,000 rows
+2026-10-25 02:26:26,901 - INFO - Executing: marts.marketo__leads
+2026-10-25 02:26:26,931 - INFO - ✓ marts.marketo__leads: 5,984 rows
+2026-10-25 02:26:26,931 - INFO - Executing: marts.marketo__campaigns
+2026-10-25 02:26:26,968 - INFO - ✓ marts.marketo__campaigns: 4,996 rows
+2026-10-25 02:26:26,968 - INFO - Executing: marts.marketo__programs
+2026-10-25 02:26:26,990 - INFO - ✓ marts.marketo__programs: 4,000 rows
+2026-10-25 02:26:26,990 - INFO - Executing: marts.marketo__email_templates
+2026-10-25 02:26:27,027 - INFO - ✓ marts.marketo__email_templates: 5,000 rows
+2026-10-25 02:26:27,027 - INFO - Executing: marts.marketo__lead_history
+2026-10-25 02:26:33,686 - INFO - ✓ marts.marketo__lead_history: 11,113,284 rows
+2026-10-25 02:26:33,686 - INFO - Executing: marts.marketo__email_stats__by_campaign
+2026-10-25 02:26:33,706 - INFO - ✓ marts.marketo__email_stats__by_campaign: 4,762 rows
+2026-10-25 02:26:33,706 - INFO - Executing: marts.marketo__email_stats__by_lead
+2026-10-25 02:26:33,721 - INFO - ✓ marts.marketo__email_stats__by_lead: 5,525 rows
+2026-10-25 02:26:33,721 - INFO - Executing: marts.marketo__email_stats__by_program
+2026-10-25 02:26:33,737 - INFO - ✓ marts.marketo__email_stats__by_program: 2,792 rows
+2026-10-25 02:26:33,737 - INFO - Executing: marts.marketo__email_stats__by_email_template
+2026-10-25 02:26:33,752 - INFO - ✓ marts.marketo__email_stats__by_email_template: 4,739 rows
+2026-10-25 02:26:33,752 - INFO - Executing: marts.marketo__email_funnel_dashboard
+2026-10-25 02:26:34,036 - INFO - ✓ marts.marketo__email_funnel_dashboard: 29,579 rows
+2026-10-25 02:26:34,036 - INFO - Executing: marts.marketo__lead_intelligence_simple
+2026-10-25 02:26:34,072 - INFO - ✓ marts.marketo__lead_intelligence_simple: 4,819 rows
+2026-10-25 02:26:34,072 - INFO - Executing: marts.marketo__operational_health_simple
+2026-10-25 02:26:34,092 - INFO - ✓ marts.marketo__operational_health_simple: 1 rows
+2026-10-25 02:26:34,092 - INFO - MARTS layer complete: 13/13 tables created successfully
+2026-10-25 02:26:34,092 - INFO - 
+🎉 Marketo data pipeline execution complete!
+2026-10-25 02:26:34,092 - INFO - ✨ A complete data warehouse has been generated: marketo.duckdb
+2026-10-25 02:26:34,092 - INFO - 
+=== Final Data Statistics (by Schema Layer) ===
+2026-10-25 02:26:34,095 - INFO - 
+RAW Layer (Schema: raw):
+2026-10-25 02:26:34,096 - INFO -   ✓ raw.marketo_activity_change_data_value: 20,000 rows
+2026-10-25 02:26:34,096 - INFO -   ✓ raw.marketo_activity_click_email: 8,000 rows
+2026-10-25 02:26:34,097 - INFO -   ✓ raw.marketo_activity_delete_lead: 500 rows
+2026-10-25 02:26:34,097 - INFO -   ✓ raw.marketo_activity_email_bounced: 2,000 rows
+2026-10-25 02:26:34,098 - INFO -   ✓ raw.marketo_activity_email_delivered: 14,000 rows
+2026-10-25 02:26:34,098 - INFO -   ✓ raw.marketo_activity_merge_leads: 800 rows
+2026-10-25 02:26:34,099 - INFO -   ✓ raw.marketo_activity_open_email: 12,000 rows
+2026-10-25 02:26:34,099 - INFO -   ✓ raw.marketo_activity_send_email: 15,000 rows
+2026-10-25 02:26:34,100 - INFO -   ✓ raw.marketo_activity_unsubscribe_email: 1,500 rows
+2026-10-25 02:26:34,100 - INFO -   ✓ raw.marketo_campaign: 5,000 rows
+2026-10-25 02:26:34,101 - INFO -   ✓ raw.marketo_email_template_history: 5,000 rows
+2026-10-25 02:26:34,101 - INFO -   ✓ raw.marketo_lead: 6,000 rows
+2026-10-25 02:26:34,102 - INFO -   ✓ raw.marketo_lead_describe: 800 rows
+2026-10-25 02:26:34,102 - INFO -   ✓ raw.marketo_program: 4,000 rows
+2026-10-25 02:26:34,104 - INFO - 
+UTILS Layer (Schema: utils):
+2026-10-25 02:26:34,104 - INFO -   ✓ utils.marketo__calendar_spine: 2,855 rows
+2026-10-25 02:26:34,106 - INFO - 
+STAGING Layer (Schema: staging):
+2026-10-25 02:26:34,107 - INFO -   ✓ staging.stg_marketo__activity_change_data_value: 20,000 rows
+2026-10-25 02:26:34,107 - INFO -   ✓ staging.stg_marketo__activity_click_email: 8,000 rows
+2026-10-25 02:26:34,108 - INFO -   ✓ staging.stg_marketo__activity_delete_lead: 500 rows
+2026-10-25 02:26:34,109 - INFO -   ✓ staging.stg_marketo__activity_email_bounced: 2,000 rows
+2026-10-25 02:26:34,110 - INFO -   ✓ staging.stg_marketo__activity_email_delivered: 14,000 rows
+2026-10-25 02:26:34,110 - INFO -   ✓ staging.stg_marketo__activity_merge_leads: 800 rows
+2026-10-25 02:26:34,111 - INFO -   ✓ staging.stg_marketo__activity_open_email: 12,000 rows
+2026-10-25 02:26:34,111 - INFO -   ✓ staging.stg_marketo__activity_send_email: 15,000 rows
+2026-10-25 02:26:34,112 - INFO -   ✓ staging.stg_marketo__activity_unsubscribe_email: 1,500 rows
+2026-10-25 02:26:34,113 - INFO -   ✓ staging.stg_marketo__campaigns: 4,996 rows
+2026-10-25 02:26:34,113 - INFO -   ✓ staging.stg_marketo__email_template_history: 5,000 rows
+2026-10-25 02:26:34,114 - INFO -   ✓ staging.stg_marketo__lead: 5,984 rows
+2026-10-25 02:26:34,115 - INFO -   ✓ staging.stg_marketo__lead_describe: 800 rows
+2026-10-25 02:26:34,115 - INFO -   ✓ staging.stg_marketo__program: 4,000 rows
+2026-10-25 02:26:34,117 - INFO - 
+INTERMEDIATE Layer (Schema: intermediate):
+2026-10-25 02:26:34,118 - INFO -   ✓ intermediate.int_marketo__lead: 5,984 rows
+2026-10-25 02:26:34,119 - INFO -   ✓ intermediate.marketo__bounces__by_sent_email: 2,000 rows
+2026-10-25 02:26:34,119 - INFO -   ✓ intermediate.marketo__change_data_details: 19,896 rows
+2026-10-25 02:26:34,120 - INFO -   ✓ intermediate.marketo__change_data_pivot: 19,896 rows
+2026-10-25 02:26:34,120 - INFO -   ✓ intermediate.marketo__change_data_scd: 25,880 rows
+2026-10-25 02:26:34,121 - INFO -   ✓ intermediate.marketo__clicks__by_sent_email: 8,000 rows
+2026-10-25 02:26:34,122 - INFO -   ✓ intermediate.marketo__deliveries__by_sent_email: 14,000 rows
+2026-10-25 02:26:34,122 - INFO -   ✓ intermediate.marketo__email_sends_deduped: 15,000 rows
+2026-10-25 02:26:34,124 - INFO -   ✓ intermediate.marketo__lead_calendar_spine: 11,113,284 rows
+2026-10-25 02:26:34,124 - INFO -   ✓ intermediate.marketo__opens__by_sent_email: 12,000 rows
+2026-10-25 02:26:34,125 - INFO -   ✓ intermediate.marketo__unsubscribes__by_sent_email: 1,500 rows
+2026-10-25 02:26:34,127 - INFO - 
+MARTS Layer (Schema: marts):
+2026-10-25 02:26:34,127 - INFO -   ✓ marts.marketo__campaigns: 4,996 rows
+2026-10-25 02:26:34,128 - INFO -   ✓ marts.marketo__email_funnel_dashboard: 29,579 rows
+2026-10-25 02:26:34,129 - INFO -   ✓ marts.marketo__email_sends: 15,000 rows
+2026-10-25 02:26:34,129 - INFO -   ✓ marts.marketo__email_stats__by_campaign: 4,762 rows
+2026-10-25 02:26:34,130 - INFO -   ✓ marts.marketo__email_stats__by_email_template: 4,739 rows
+2026-10-25 02:26:34,130 - INFO -   ✓ marts.marketo__email_stats__by_lead: 5,525 rows
+2026-10-25 02:26:34,131 - INFO -   ✓ marts.marketo__email_stats__by_program: 2,792 rows
+2026-10-25 02:26:34,132 - INFO -   ✓ marts.marketo__email_templates: 5,000 rows
+2026-10-25 02:26:34,133 - INFO -   ✓ marts.marketo__lead_history: 11,113,284 rows
+2026-10-25 02:26:34,134 - INFO -   ✓ marts.marketo__lead_intelligence_simple: 4,819 rows
+2026-10-25 02:26:34,134 - INFO -   ✓ marts.marketo__leads: 5,984 rows
+2026-10-25 02:26:34,135 - INFO -   ✓ marts.marketo__operational_health_simple: 1 rows
+2026-10-25 02:26:34,135 - INFO -   ✓ marts.marketo__programs: 4,000 rows
+
+✅ Marketo data transformation completed successfully!
+📋 Transformation Results:
+  📥 Source Database: marketo_start.duckdb (raw tables only)
+  📤 Target Database: marketo.duckdb (full layered architecture)
+
+🏗️ Data Architecture:
+  📊 Raw Layer - Original Marketo data
+  📊 Staging Layer - Standardized raw data
+  🔄 Intermediate Layer - Business logic processing
+  🎯 Marts Layer - Analysis-ready data
+```
+
+### event 43
+
+```json
+{
+  "event_id": 43,
+  "agent_command_sequence": 20,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/43.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 4997,
+    "decoded_characters": 1828
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/43.json",
+  "timestamp": "2026-10-25T02:26:56.755823",
+  "target_table_name_hits": [
+    "stg_marketo__lead"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 4218,
+  "retention": "full_original"
+}
+```
+```bash
+python - <<'PY'
+p='sql/staging/stg_marketo__email_template_history.sql';s=open(p).read();s=s.replace("CAST(operational AS BOOLEAN) AS operational,", "CAST(operational AS BOOLEAN) AS operational, (version = MAX(version) OVER (PARTITION BY id)) AS is_most_recent_version,");s=s.replace('CAST(from_email AS VARCHAR) AS from_email','CASE WHEN from_email IS NULL OR from_email ~ \'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}$\' THEN CAST(from_email AS VARCHAR) ELSE NULL END AS from_email');open(p,'w').write(s)
+p='sql/staging/stg_marketo__campaigns.sql';s=open(p).read().replace('CAST(program_id AS VARCHAR) AS program_id','CASE WHEN program_id IS NULL OR program_id ~ \'^MAR[0-9]+$\' THEN CAST(program_id AS VARCHAR) ELSE NULL END AS program_id').replace('CAST(active AS BOOLEAN) AS is_active','COALESCE(CAST(active AS BOOLEAN), FALSE) AS is_active');open(p,'w').write(s)
+p='sql/staging/stg_marketo__lead.sql';s=open(p).read().replace('AND first_name = TRIM(first_name) AND LENGTH(first_name) <= 100 AND last_name = TRIM(last_name) AND LENGTH(last_name) <= 100','AND (first_name IS NULL OR (first_name = TRIM(first_name) AND LENGTH(first_name) <= 100)) AND (last_name IS NULL OR (last_name = TRIM(last_name) AND LENGTH(last_name) <= 100))');open(p,'w').write(s)
+p='sql/marts/marketo__operational_health_simple.sql';s=open(p).read().replace('AVG(CASE WHEN was_delivered THEN 100.0 ELSE 0.0 END) AS open_rate','AVG(CASE WHEN was_opened THEN 100.0 ELSE 0.0 END) AS open_rate');open(p,'w').write(s)
+PY
+python - <<'PY'
+from pathlib import Path
+for p in Path('sql').rglob('*.sql'):
+ s=p.read_text()
+ if s.rstrip().endswith(';'): print('semicolon',p)
+ if 'ref(' in s: print('dbt ref',p)
+print('sql files',len(list(Path('sql').rglob('*.sql'))))
+PY
+python run.py >/tmp/run-final.log 2>&1; rc=$?; tail -35 /tmp/run-final.log; exit $rc
+```
+```json
+{
+  "event_id": 44,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/44.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 4680,
+    "decoded_characters": 2390
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/44.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+sql files 39
+2026-10-25 02:27:15,369 - INFO -   ✓ intermediate.marketo__change_data_details: 19,896 rows
+2026-10-25 02:27:15,369 - INFO -   ✓ intermediate.marketo__change_data_pivot: 19,896 rows
+2026-10-25 02:27:15,370 - INFO -   ✓ intermediate.marketo__change_data_scd: 25,880 rows
+2026-10-25 02:27:15,371 - INFO -   ✓ intermediate.marketo__clicks__by_sent_email: 8,000 rows
+2026-10-25 02:27:15,371 - INFO -   ✓ intermediate.marketo__deliveries__by_sent_email: 14,000 rows
+2026-10-25 02:27:15,372 - INFO -   ✓ intermediate.marketo__email_sends_deduped: 15,000 rows
+2026-10-25 02:27:15,373 - INFO -   ✓ intermediate.marketo__lead_calendar_spine: 11,113,284 rows
+2026-10-25 02:27:15,374 - INFO -   ✓ intermediate.marketo__opens__by_sent_email: 12,000 rows
+2026-10-25 02:27:15,375 - INFO -   ✓ intermediate.marketo__unsubscribes__by_sent_email: 1,500 rows
+2026-10-25 02:27:15,377 - INFO - 
+MARTS Layer (Schema: marts):
+2026-10-25 02:27:15,378 - INFO -   ✓ marts.marketo__campaigns: 4,996 rows
+2026-10-25 02:27:15,379 - INFO -   ✓ marts.marketo__email_funnel_dashboard: 29,579 rows
+2026-10-25 02:27:15,379 - INFO -   ✓ marts.marketo__email_sends: 15,000 rows
+2026-10-25 02:27:15,380 - INFO -   ✓ marts.marketo__email_stats__by_campaign: 4,762 rows
+2026-10-25 02:27:15,380 - INFO -   ✓ marts.marketo__email_stats__by_email_template: 4,739 rows
+2026-10-25 02:27:15,381 - INFO -   ✓ marts.marketo__email_stats__by_lead: 5,525 rows
+2026-10-25 02:27:15,382 - INFO -   ✓ marts.marketo__email_stats__by_program: 2,789 rows
+2026-10-25 02:27:15,382 - INFO -   ✓ marts.marketo__email_templates: 5,000 rows
+2026-10-25 02:27:15,384 - INFO -   ✓ marts.marketo__lead_history: 11,113,284 rows
+2026-10-25 02:27:15,384 - INFO -   ✓ marts.marketo__lead_intelligence_simple: 4,819 rows
+2026-10-25 02:27:15,385 - INFO -   ✓ marts.marketo__leads: 5,984 rows
+2026-10-25 02:27:15,386 - INFO -   ✓ marts.marketo__operational_health_simple: 1 rows
+2026-10-25 02:27:15,386 - INFO -   ✓ marts.marketo__programs: 4,000 rows
+
+✅ Marketo data transformation completed successfully!
+📋 Transformation Results:
+  📥 Source Database: marketo_start.duckdb (raw tables only)
+  📤 Target Database: marketo.duckdb (full layered architecture)
+
+🏗️ Data Architecture:
+  📊 Raw Layer - Original Marketo data
+  📊 Staging Layer - Standardized raw data
+  🔄 Intermediate Layer - Business logic processing
+  🎯 Marts Layer - Analysis-ready data
+```
+
+### event 45
+
+```json
+{
+  "event_id": 45,
+  "agent_command_sequence": 21,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/45.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 3948,
+    "decoded_characters": 1302
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/45.json",
+  "timestamp": "2026-10-25T02:27:34.568809",
+  "target_table_name_hits": [
+    "stg_marketo__lead"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 3456,
+  "retention": "full_original"
+}
+```
+```bash
+python - <<'PY'
+import duckdb
+c=duckdb.connect('marketo.duckdb',read_only=True)
+checks={
+'lead staged null/duplicates':"select count(*) filter(where lead_id is null),count(*)-count(distinct lead_id) from staging.stg_marketo__lead",
+'send dedup key nulls':"select count(*) filter(where email_send_id is null),count(*)-count(distinct email_send_id) from intermediate.marketo__email_sends_deduped",
+'campaign staging duplicate IDs':"select count(*)-count(distinct campaign_id) from staging.stg_marketo__campaigns",
+'campaign mart count_sends totals':"select sum(count_sends) from marts.marketo__campaigns",
+'template recent duplicate':"select count(*)-count(distinct email_template_id) from marts.marketo__email_templates",
+'email engagement flags null':"select count(*) from marts.marketo__email_sends where was_opened is null or was_clicked is null or was_delivered is null",
+'email sends activity timestamps null':"select count(*) from marts.marketo__email_sends where activity_timestamp is null"
+}
+for n,q in checks.items(): print(n,c.execute(q).fetchall())
+print('schemas/table counts:', c.execute("select table_schema,count(*) from information_schema.tables where table_schema in ('staging','intermediate','marts','utils') group by 1 order by 1").fetchall())
+PY
+find sql -type f -name '*.sql' | sort
+```
+```json
+{
+  "event_id": 46,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/46.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 3631,
+    "decoded_characters": 2154
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/46.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+lead staged null/duplicates [(0, 0)]
+send dedup key nulls [(0, 0)]
+campaign staging duplicate IDs [(0,)]
+campaign mart count_sends totals [(14985,)]
+template recent duplicate [(0,)]
+email engagement flags null [(0,)]
+email sends activity timestamps null [(0,)]
+schemas/table counts: [('intermediate', 11), ('marts', 13), ('staging', 14), ('utils', 1)]
+sql/intermediate/int_marketo__lead.sql
+sql/intermediate/marketo__bounces__by_sent_email.sql
+sql/intermediate/marketo__change_data_details.sql
+sql/intermediate/marketo__change_data_pivot.sql
+sql/intermediate/marketo__change_data_scd.sql
+sql/intermediate/marketo__clicks__by_sent_email.sql
+sql/intermediate/marketo__deliveries__by_sent_email.sql
+sql/intermediate/marketo__email_sends_deduped.sql
+sql/intermediate/marketo__lead_calendar_spine.sql
+sql/intermediate/marketo__opens__by_sent_email.sql
+sql/intermediate/marketo__unsubscribes__by_sent_email.sql
+sql/marts/marketo__campaigns.sql
+sql/marts/marketo__email_funnel_dashboard.sql
+sql/marts/marketo__email_sends.sql
+sql/marts/marketo__email_stats__by_campaign.sql
+sql/marts/marketo__email_stats__by_email_template.sql
+sql/marts/marketo__email_stats__by_lead.sql
+sql/marts/marketo__email_stats__by_program.sql
+sql/marts/marketo__email_templates.sql
+sql/marts/marketo__lead_history.sql
+sql/marts/marketo__lead_intelligence_simple.sql
+sql/marts/marketo__leads.sql
+sql/marts/marketo__operational_health_simple.sql
+sql/marts/marketo__programs.sql
+sql/staging/stg_marketo__activity_change_data_value.sql
+sql/staging/stg_marketo__activity_click_email.sql
+sql/staging/stg_marketo__activity_delete_lead.sql
+sql/staging/stg_marketo__activity_email_bounced.sql
+sql/staging/stg_marketo__activity_email_delivered.sql
+sql/staging/stg_marketo__activity_merge_leads.sql
+sql/staging/stg_marketo__activity_open_email.sql
+sql/staging/stg_marketo__activity_send_email.sql
+sql/staging/stg_marketo__activity_unsubscribe_email.sql
+sql/staging/stg_marketo__campaigns.sql
+sql/staging/stg_marketo__email_template_history.sql
+sql/staging/stg_marketo__lead.sql
+sql/staging/stg_marketo__lead_describe.sql
+sql/staging/stg_marketo__program.sql
+sql/utils/marketo__calendar_spine.sql
+```
+
+### event 47
+
+```json
+{
+  "event_id": 47,
+  "agent_command_sequence": 22,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/47.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 13354,
+    "decoded_characters": 2102
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/47.json",
+  "timestamp": "2026-10-25T02:28:01.976885",
+  "target_table_name_hits": [
+    "stg_marketo__lead"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 2219,
+  "retention": "full_original"
+}
+```
+```bash
+mkdir -p /workspace && cat > /workspace/result.md <<'EOF'
+【回复用户】
+
+## 已完成
+
+已根据 `docs/data_contract.yaml` 和 `config/layer_dependencies.yaml` 实现 Marketo SQL 数据流水线，SQL 位于 `sql/staging/`、`sql/intermediate/`、`sql/marts/`，并实现了依赖配置所需的 `sql/utils/marketo__calendar_spine.sql`。所有模型均使用 DuckDB SQL、直接以 `schema.table` 引用上游表，没有 dbt `ref()`，且文件末尾没有分号。
+
+实现内容包括：
+- 14 个 staging 模型：字段映射与类型转换、邮箱清理及校验、必要记录筛除、唯一 ID 去重、活动时间解析等。
+- 11 个 intermediate 模型：lead 合并/删除标识、邮件活动去重与计数、变更明细/透视/SCD、lead 日历骨架。
+- 13 个 marts 模型：邮件发送事实、lead/campaign/program/template 维度与统计、邮件漏斗、lead intelligence、运营健康快照及 lead history。
+- Calendar spine 工具模型，供日历和历史模型依赖。
+
+## 验证结果
+
+已执行 `python run.py`，最终成功完成全部层级：utils 1/1、staging 14/14、intermediate 11/11、marts 13/13，并生成 `marketo.duckdb`。
+
+额外质量检查结果：
+- `staging.stg_marketo__lead`：5,984 行；lead_id 空值 0、重复 0。
+- `intermediate.marketo__email_sends_deduped`：15,000 行；email_send_id 空值 0、重复 0（源数据的 send ID 均非空）。
+- `staging.stg_marketo__campaigns`：campaign_id 重复 0。
+- `marts.marketo__email_templates`：email_template_id 重复 0。
+- 邮件事实的关键 engagement flags 和 activity_timestamp 空值均为 0。
+- pipeline 实际生成表数量：staging 14、intermediate 11、marts 13、utils 1。
+
+## 清理与假设说明
+
+- 对 contract 中未明确给出源字段对应关系的字段，采用原始 schema 中同义字段映射，例如 `id` → `activity_id`、`merge_ids` → `merged_lead_ids`、`restname` → `rest_name_xf`。
+- 原始活动数据没有独立的 `email_send_id` 字段，故将发送活动的 `id` 映射为 `email_send_id`；其他活动也按其原始活动 ID 输出此列。这样符合目标结构，但源系统没有提供可确认的跨活动发送 ID 关系，活动统计仅能基于该映射键连接，不能保证完整还原同一发送的跨事件关联。
+- 原始 email template history 没有 `is_most_recent_version` 字段，按每个模板的最大 `version` 推导最近版本；版本相同再按更新时间排序，并生成该布尔字段。若源数据的“最近版本”业务规则不是最大版本号，这一结果需按实际定义调整。
+- 去除缺少关键 ID/时间/必需属性的记录，并对重复主键保留更新时间较新的记录（活动重复则保留较早记录）。因此 staging 会丢弃无效或重复输入；该处理维护契约声明的唯一粒度，但被剔除的源记录无法进入下游分析。
+- `int_marketo__lead` 按其明示逻辑保留 staging 的全部行；mart email template 元数据则限于推导出的最新版本。契约内部分测试（如 `int_marketo__lead` 的 unique 测试）与明确写出的重复保留逻辑存在张力，实现遵循模型业务逻辑并在 staging 实施已声明的唯一主键处理。
+- 日历 spine 到当前日期，按 contract 的 created date 下界扩展；因此 lead history 约 1,111 万行，符合逐 lead/日的 grain，但占用明显高于活动事实模型的存储空间。
+
+首次运行发现 email template 源字段缺少 `is_most_recent_version` 而报 Binder Error；已根据原始 schema 改为最大版本推导，并再次完整运行通过。EOF
+cat /workspace/result.md
+```
+```json
+{
+  "event_id": 48,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/48.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 13037,
+    "decoded_characters": 117
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/48.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 1
+}
+```
+```text
+bash: line 36: warning: here-document at line 1 delimited by end-of-file (wanted `EOF')
+mkdir: Read-only file system
+```
+
+### event 53
+
+```json
+{
+  "event_id": 53,
+  "agent_command_sequence": 25,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/53.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 12106,
+    "decoded_characters": 1941
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/53.json",
+  "timestamp": "2026-10-25T02:28:31.053215",
+  "target_table_name_hits": [
+    "stg_marketo__lead"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 3841,
+  "retention": "full_original"
+}
+```
+```bash
+cat > result.md <<'EOF'
+【回复用户】
+
+## 已完成
+
+已根据 `docs/data_contract.yaml` 和 `config/layer_dependencies.yaml` 实现 Marketo SQL 数据流水线，SQL 位于 `sql/staging/`、`sql/intermediate/`、`sql/marts/`，并实现依赖配置所需的 `sql/utils/marketo__calendar_spine.sql`。所有模型均使用 DuckDB SQL，直接以 `schema.table` 引用上游表，没有 dbt `ref()`，文件末尾没有分号。
+
+实现涵盖：
+- 14 个 staging 模型：源字段映射与类型转换、邮箱清理/验证、必要记录筛除及主键重复处理。
+- 11 个 intermediate 模型：lead 合并/删除标识、邮件活动去重与计数、变更明细/透视/SCD、lead 日历骨架。
+- 13 个 marts 模型：邮件发送事实、lead/campaign/program/template 维度与统计、邮件漏斗、lead intelligence、运营健康快照及 lead history。
+- Calendar spine 工具模型。
+
+## 验证结果
+
+已完整运行 `python run.py` 并成功生成 `marketo.duckdb`。执行成功数量：utils 1/1、staging 14/14、intermediate 11/11、marts 13/13。
+
+关键校验：
+- `staging.stg_marketo__lead`：5,984 行；lead_id 空值 0、重复 0。
+- `intermediate.marketo__email_sends_deduped`：15,000 行；email_send_id 空值 0、重复 0（源数据的 send ID 均非空）。
+- `staging.stg_marketo__campaigns`：campaign_id 重复 0。
+- `marts.marketo__email_templates`：email_template_id 重复 0。
+- 邮件事实中的 engagement flags 和 activity_timestamp 空值均为 0。
+- 最终表数：staging 14、intermediate 11、marts 13、utils 1。
+
+## 假设与数据质量处理说明
+
+- 对 YAML 未明确的源字段对应，采用原始 schema 的同义字段映射，如 `id` → `activity_id`、`merge_ids` → `merged_lead_ids`、`restname` → `rest_name_xf`。
+- 原始活动表没有独立 `email_send_id`，发送表使用 `id` 映射；其他活动表也按原始活动 ID 输出 `email_send_id`。源数据未提供可确认的跨活动发送键，因此打开、点击、投递等跨事件连接存在来源标识的局限，计数仍按 contract 在各活动自身分组。
+- 原始 email template history 没有 `is_most_recent_version`，按每模板最大 `version` 推导最新版本，同版本按更新时间排序。若上游业务定义的“最新”规则不同，需按该规则调整。
+- 依据 staging 契约去除缺少关键 ID/时间/必需属性的行，并对重复主键保留更新时间较新的记录（活动重复时保留较早记录）。这保全了声明的唯一粒度，但剔除记录不会进入后续分析。
+- `int_marketo__lead` 依照其业务逻辑保留全部 staging 行；contract 中其 unique 测试与“保留重复”的 grain 描述有冲突。本次按保留全部的逻辑实现，staging 对自身明确唯一的 lead_id 契约进行去重。
+- 日历延伸至当前日期，并按 lead created date 起算。逐 lead/日生成约 1,111 万行，遵守日粒度要求，但会比活动事实表占用更多空间。
+
+首次运行中，源 template history 未包含 YAML 假定的 `is_most_recent_version` 列，触发 Binder Error。已以最大版本逻辑代替后再次运行，完整 pipeline 成功。当前环境 `/workspace` 路径不可写，因此报告保存在项目目录 `result.md`。
+EOF
+cat result.md
+```
+```json
+{
+  "event_id": 54,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/54.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 11788,
+    "decoded_characters": 1900
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/54.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+【回复用户】
+
+## 已完成
+
+已根据 `docs/data_contract.yaml` 和 `config/layer_dependencies.yaml` 实现 Marketo SQL 数据流水线，SQL 位于 `sql/staging/`、`sql/intermediate/`、`sql/marts/`，并实现依赖配置所需的 `sql/utils/marketo__calendar_spine.sql`。所有模型均使用 DuckDB SQL，直接以 `schema.table` 引用上游表，没有 dbt `ref()`，文件末尾没有分号。
+
+实现涵盖：
+- 14 个 staging 模型：源字段映射与类型转换、邮箱清理/验证、必要记录筛除及主键重复处理。
+- 11 个 intermediate 模型：lead 合并/删除标识、邮件活动去重与计数、变更明细/透视/SCD、lead 日历骨架。
+- 13 个 marts 模型：邮件发送事实、lead/campaign/program/template 维度与统计、邮件漏斗、lead intelligence、运营健康快照及 lead history。
+- Calendar spine 工具模型。
+
+## 验证结果
+
+已完整运行 `python run.py` 并成功生成 `marketo.duckdb`。执行成功数量：utils 1/1、staging 14/14、intermediate 11/11、marts 13/13。
+
+关键校验：
+- `staging.stg_marketo__lead`：5,984 行；lead_id 空值 0、重复 0。
+- `intermediate.marketo__email_sends_deduped`：15,000 行；email_send_id 空值 0、重复 0（源数据的 send ID 均非空）。
+- `staging.stg_marketo__campaigns`：campaign_id 重复 0。
+- `marts.marketo__email_templates`：email_template_id 重复 0。
+- 邮件事实中的 engagement flags 和 activity_timestamp 空值均为 0。
+- 最终表数：staging 14、intermediate 11、marts 13、utils 1。
+
+## 假设与数据质量处理说明
+
+- 对 YAML 未明确的源字段对应，采用原始 schema 的同义字段映射，如 `id` → `activity_id`、`merge_ids` → `merged_lead_ids`、`restname` → `rest_name_xf`。
+- 原始活动表没有独立 `email_send_id`，发送表使用 `id` 映射；其他活动表也按原始活动 ID 输出 `email_send_id`。源数据未提供可确认的跨活动发送键，因此打开、点击、投递等跨事件连接存在来源标识的局限，计数仍按 contract 在各活动自身分组。
+- 原始 email template history 没有 `is_most_recent_version`，按每模板最大 `version` 推导最新版本，同版本按更新时间排序。若上游业务定义的“最新”规则不同，需按该规则调整。
+- 依据 staging 契约去除缺少关键 ID/时间/必需属性的行，并对重复主键保留更新时间较新的记录（活动重复时保留较早记录）。这保全了声明的唯一粒度，但剔除记录不会进入后续分析。
+- `int_marketo__lead` 依照其业务逻辑保留全部 staging 行；contract 中其 unique 测试与“保留重复”的 grain 描述有冲突。本次按保留全部的逻辑实现，staging 对自身明确唯一的 lead_id 契约进行去重。
+- 日历延伸至当前日期，并按 lead created date 起算。逐 lead/日生成约 1,111 万行，遵守日粒度要求，但会比活动事实表占用更多空间。
+
+首次运行中，源 template history 未包含 YAML 假定的 `is_most_recent_version` 列，触发 Binder Error。已以最大版本逻辑代替后再次运行，完整 pipeline 成功。当前环境 `/workspace` 路径不可写，因此报告保存在项目目录 `result.md`。
+```
+
+## result_md_table_sentences
+
+```json
+{
+  "present": true,
+  "path": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/result.md",
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/result.md",
+  "sha256": "6e4f034d8e36359156cb109ec9074e8384b919aed9ab2ea25cc9ec4045878420",
+  "sentences": [
+    {
+      "original_text": "- `staging.stg_marketo__lead`：5,984 行；lead_id 空值 0、重复 0。",
+      "path": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/result.md",
+      "start_offset": 658,
+      "end_offset": 714,
+      "start_line": 18,
+      "end_line": 18,
+      "matching_008_D10_excerpt_ids": []
+    }
+  ],
+  "policy": "All sentences naming the table; includes sentences without 008 keywords. Existing D10 ids attached where applicable."
+}
+```
+
+## original_files
+
+```json
+{
+  "paths": [
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/10.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/15.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/16.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/23.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/24.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/29.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/30.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/33.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/34.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/39.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/40.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/41.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/42.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/43.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/44.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/45.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/46.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/47.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/48.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/53.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/54.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/7.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/8.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/.events/sessions/f972c6ee-d3e4-46-3f01a7d60602dbd/events/9.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/result.md",
+    "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-012/marketo.duckdb",
+    "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-012/sql/staging/stg_marketo__lead.sql",
+    "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-012/docs/data_contract.yaml",
+    "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/marketo.duckdb",
+    "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/sql/staging/stg_marketo__lead.sql"
+  ],
+  "archive": "/home/katherine/Assumption_Ledger/traces/dacomp_deimpl_prev.tar.gz",
+  "gold_SQL_search_root": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-012/sql",
+  "gold_SQL_search_names": [
+    "stg_marketo__lead",
+    "stg_marketo__lead"
+  ],
+  "source_fingerprints": "records/012_input_before.json"
+}
+```

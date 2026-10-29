@@ -1,0 +1,6999 @@
+# impl-030 / stg_zuora__invoice
+
+## basic_information
+
+```json
+{
+  "task": "impl-030",
+  "layer": "staging",
+  "table": "stg_zuora__invoice",
+  "status": "待标注",
+  "difference_source": {
+    "kind": "original_007_009",
+    "record": "records/007_tolerance_tables.jsonl",
+    "detail_record": "/home/katherine/Assumption_Ledger/records/004_staging_impl-030.json",
+    "candidate_date": null,
+    "selection_reason": "011 执行失败"
+  },
+  "status_record": "records/012_statuses.jsonl",
+  "package_scope": "仅原文和机械统计；未概括轨迹、未推测原因"
+}
+```
+
+## contract_specification
+
+```json
+{
+  "source_path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+  "source_sha256": "8ca49a890a5337574d9e2e3c2c28708ed9e45ff0066442fe3377766cc226c577",
+  "parse_mode": "strict",
+  "requested_table": "stg_zuora__invoice",
+  "status": "found"
+}
+```
+```json
+{
+  "yaml_path": [
+    "staging_contract",
+    "tables",
+    2
+  ],
+  "start_line": 169,
+  "end_line": 281
+}
+```
+```yaml
+    - name: stg_zuora__invoice
+      description: "Cleaned invoices with safe casting and temporal validity checks; latest snapshot indicator provided."
+      source_table: raw.zuora_invoice_data
+      columns:
+        - name: invoice_id
+          data_type: VARCHAR
+          source_expression: "id"
+        - name: account_id
+          data_type: VARCHAR
+        - name: adjustment_amount
+          data_type: DOUBLE
+        - name: amount
+          data_type: DOUBLE
+          source_expression: "case when nullif(amount,'') is null then null else cast(amount as DOUBLE) end"
+        - name: amount_home_currency
+          data_type: DOUBLE
+          source_expression: "case when nullif(amount_home_currency,'') is null then null else cast(amount_home_currency as DOUBLE) end"
+        - name: amount_without_tax
+          data_type: BIGINT
+        - name: amount_without_tax_home_currency
+          data_type: BIGINT
+        - name: auto_pay
+          data_type: BOOLEAN
+        - name: balance
+          data_type: DOUBLE
+        - name: bill_to_contact_id
+          data_type: VARCHAR
+        - name: comments
+          data_type: VARCHAR
+        - name: created_by_id
+          data_type: VARCHAR
+        - name: created_date
+          data_type: TIMESTAMP
+          source_expression: "case when try_cast(created_date as TIMESTAMP) is null then null when try_cast(created_date as TIMESTAMP) > current_timestamp then null when try_cast(created_date as TIMESTAMP) < timestamp '2000-01-01 00:00:00' then null else cast(created_date as TIMESTAMP) end"
+        - name: credit_balance_adjustment_amount
+          data_type: DOUBLE
+        - name: credit_memo_amount
+          data_type: DOUBLE
+        - name: default_payment_method_id
+          data_type: VARCHAR
+        - name: due_date
+          data_type: DATE
+          source_expression: "try_cast(due_date as DATE)"
+        - name: exchange_rate
+          data_type: DOUBLE
+        - name: exchange_rate_date
+          data_type: DATE
+        - name: home_currency
+          data_type: VARCHAR
+        - name: includes_one_time
+          data_type: BOOLEAN
+        - name: includes_recurring
+          data_type: BOOLEAN
+        - name: includes_usage
+          data_type: BOOLEAN
+        - name: invoice_date
+          data_type: DATE
+          source_expression: "try_cast(invoice_date as DATE)"
+        - name: invoice_number
+          data_type: VARCHAR
+        - name: last_email_sent_date
+          data_type: TIMESTAMP
+          source_expression: "case when nullif(last_email_sent_date,'') is null then null else cast(last_email_sent_date as TIMESTAMP) end"
+        - name: parent_account_id
+          data_type: VARCHAR
+        - name: payment_amount
+          data_type: DOUBLE
+          source_expression: "case when nullif(payment_amount,'') is null then null else cast(payment_amount as DOUBLE) end"
+        - name: payment_term
+          data_type: VARCHAR
+        - name: posted_by
+          data_type: VARCHAR
+        - name: posted_date
+          data_type: TIMESTAMP
+          source_expression: "cast(posted_date as TIMESTAMP)"
+        - name: refund_amount
+          data_type: DOUBLE
+          source_expression: "case when nullif(refund_amount,'') is null then null else cast(refund_amount as DOUBLE) end"
+        - name: sold_to_contact_id
+          data_type: VARCHAR
+        - name: source
+          data_type: VARCHAR
+        - name: source_id
+          data_type: VARCHAR
+        - name: source_type
+          data_type: VARCHAR
+        - name: status
+          data_type: VARCHAR
+        - name: target_date
+          data_type: DATE
+        - name: tax_amount
+          data_type: DOUBLE
+          source_expression: "case when nullif(tax_amount,'') is null then null else cast(tax_amount as DOUBLE) end"
+        - name: tax_status
+          data_type: VARCHAR
+        - name: transaction_currency
+          data_type: VARCHAR
+        - name: transferred_to_accounting
+          data_type: VARCHAR
+        - name: updated_by_id
+          data_type: VARCHAR
+        - name: updated_date
+          data_type: TIMESTAMP
+          source_expression: "cast(updated_date as TIMESTAMP)"
+        - name: is_most_recent_record
+          data_type: BOOLEAN
+          source_expression: "row_number() over (partition by id order by try_cast(updated_date as TIMESTAMP) desc) = 1"
+      row_filters:
+        - rule: "_fivetran_deleted IS NULL OR _fivetran_deleted = false"
+          on_failure: delete_row
+        - rule: "try_cast(created_date as TIMESTAMP) is null OR (try_cast(created_date as TIMESTAMP) <= current_timestamp AND try_cast(created_date as TIMESTAMP) >= timestamp '2000-01-01 00:00:00')"
+          on_failure: delete_row
+
+```
+
+## agent_final_SQL
+
+```json
+{
+  "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+  "sha256": "f744ee511d6f055c0b9df59ee9e3b9830a0629ac6212cfa3c341b77e49f23767",
+  "start_line": 1,
+  "end_line": 51
+}
+```
+```sql
+WITH source_rows AS (
+    SELECT *
+    FROM raw.zuora_invoice_data
+    WHERE coalesce(lower(cast(_fivetran_deleted AS varchar)), 'false') NOT IN ('true', '1', 't') AND try_cast(created_date AS timestamp) IS NOT NULL AND try_cast(created_date AS timestamp) <= current_timestamp AND try_cast(created_date AS timestamp) >= timestamp '2000-01-01 00:00:00')
+SELECT
+        id AS invoice_id,
+        try_cast("id" AS VARCHAR) AS account_id,
+        try_cast("adjustment_amount" AS DOUBLE) AS adjustment_amount,
+        try_cast(nullif(amount, '') AS DOUBLE) AS amount,
+        try_cast(nullif(amount_home_currency, '') AS DOUBLE) AS amount_home_currency,
+        try_cast("amount_without_tax" AS BIGINT) AS amount_without_tax,
+        try_cast("amount_without_tax_home_currency" AS BIGINT) AS amount_without_tax_home_currency,
+        try_cast("auto_pay" AS BOOLEAN) AS auto_pay,
+        try_cast("balance" AS DOUBLE) AS balance,
+        try_cast("bill_to_contact_id" AS VARCHAR) AS bill_to_contact_id,
+        try_cast("comments" AS VARCHAR) AS comments,
+        try_cast("created_by_id" AS VARCHAR) AS created_by_id,
+        case when try_cast(created_date as TIMESTAMP) is null then null when try_cast(created_date as TIMESTAMP) > current_timestamp then null when try_cast(created_date as TIMESTAMP) < timestamp '2000-01-01 00:00:00' then null else cast(created_date as TIMESTAMP) end AS created_date,
+        try_cast("credit_balance_adjustment_amount" AS DOUBLE) AS credit_balance_adjustment_amount,
+        try_cast("credit_memo_amount" AS DOUBLE) AS credit_memo_amount,
+        try_cast("default_payment_method_id" AS VARCHAR) AS default_payment_method_id,
+        try_cast(due_date as DATE) AS due_date,
+        try_cast("exchange_rate" AS DOUBLE) AS exchange_rate,
+        try_cast("exchange_rate_date" AS DATE) AS exchange_rate_date,
+        try_cast("home_currency" AS VARCHAR) AS home_currency,
+        try_cast("includes_one_time" AS BOOLEAN) AS includes_one_time,
+        try_cast("includes_recurring" AS BOOLEAN) AS includes_recurring,
+        try_cast("includes_usage" AS BOOLEAN) AS includes_usage,
+        try_cast(invoice_date as DATE) AS invoice_date,
+        try_cast("invoice_number" AS VARCHAR) AS invoice_number,
+        case when nullif(last_email_sent_date,'') is null then null else try_cast(last_email_sent_date as TIMESTAMP) end AS last_email_sent_date,
+        try_cast("parent_account_id" AS VARCHAR) AS parent_account_id,
+        try_cast(nullif(payment_amount, '') AS DOUBLE) AS payment_amount,
+        try_cast("payment_term" AS VARCHAR) AS payment_term,
+        try_cast("posted_by" AS VARCHAR) AS posted_by,
+        try_cast(posted_date as TIMESTAMP) AS posted_date,
+        try_cast(nullif(refund_amount, '') AS DOUBLE) AS refund_amount,
+        try_cast("sold_to_contact_id" AS VARCHAR) AS sold_to_contact_id,
+        try_cast("source" AS VARCHAR) AS source,
+        try_cast("source_id" AS VARCHAR) AS source_id,
+        try_cast("source_type" AS VARCHAR) AS source_type,
+        try_cast("status" AS VARCHAR) AS status,
+        try_cast("target_date" AS DATE) AS target_date,
+        try_cast(nullif(tax_amount, '') AS DOUBLE) AS tax_amount,
+        try_cast("tax_status" AS VARCHAR) AS tax_status,
+        try_cast("transaction_currency" AS VARCHAR) AS transaction_currency,
+        try_cast("transferred_to_accounting" AS VARCHAR) AS transferred_to_accounting,
+        try_cast("updated_by_id" AS VARCHAR) AS updated_by_id,
+        try_cast(updated_date as TIMESTAMP) AS updated_date,
+        row_number() over (partition by id order by try_cast(updated_date as TIMESTAMP) desc) = 1 AS is_most_recent_record
+FROM source_rows
+```
+
+## gold_SQL_仅供定位差异
+
+```json
+{
+  "path": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+  "sha256": "68a16e3ce59d85071f4597a2d5ed8a9bac6a3b04bcbc3463b52fc6e7e8d5662a",
+  "start_line": 1,
+  "end_line": 63
+}
+```
+```sql
+with base as (
+    select * from raw.zuora_invoice_data where _fivetran_deleted is null or _fivetran_deleted = false
+),
+final as (
+    select
+        id as invoice_id,
+        account_id,
+        adjustment_amount,
+        case when nullif(amount,'') is null then null else cast(amount as DOUBLE) end as amount,
+        case when nullif(amount_home_currency,'') is null then null else cast(amount_home_currency as DOUBLE) end as amount_home_currency,
+        amount_without_tax,
+        amount_without_tax_home_currency,
+        auto_pay,
+        balance,
+        bill_to_contact_id,
+        comments,
+        created_by_id,
+        -- created_date cleaning: drop future or pre-2000 dates; null if unparsable
+        case
+            when try_cast(created_date as TIMESTAMP) is null then null
+            when try_cast(created_date as TIMESTAMP) > current_timestamp then null
+            when try_cast(created_date as TIMESTAMP) < timestamp '2000-01-01 00:00:00' then null
+            else cast(created_date as TIMESTAMP)
+        end as created_date,
+        credit_balance_adjustment_amount,
+        credit_memo_amount,
+        default_payment_method_id,
+        try_cast(due_date as DATE) as due_date,
+        exchange_rate,
+        exchange_rate_date,
+        home_currency,
+        includes_one_time,
+        includes_recurring,
+        includes_usage,
+        try_cast(invoice_date as DATE) as invoice_date,
+        invoice_number,
+        case when nullif(last_email_sent_date,'') is null then null else cast(last_email_sent_date as TIMESTAMP) end as last_email_sent_date,
+        parent_account_id,
+        case when nullif(payment_amount,'') is null then null else cast(payment_amount as DOUBLE) end as payment_amount,
+        payment_term,
+        posted_by,
+        cast(posted_date as TIMESTAMP) as posted_date,
+        case when nullif(refund_amount,'') is null then null else cast(refund_amount as DOUBLE) end as refund_amount,
+        sold_to_contact_id,
+        source,
+        source_id,
+        source_type,
+        status,
+        target_date,
+        case when nullif(tax_amount,'') is null then null else cast(tax_amount as DOUBLE) end as tax_amount,
+        tax_status,
+        transaction_currency,
+        transferred_to_accounting,
+        updated_by_id,
+        cast(updated_date as TIMESTAMP) as updated_date,
+        row_number() over (partition by id order by try_cast(updated_date as TIMESTAMP) desc) = 1 as is_most_recent_record
+    from base
+    where (
+        try_cast(created_date as TIMESTAMP) is null
+        or (try_cast(created_date as TIMESTAMP) <= current_timestamp and try_cast(created_date as TIMESTAMP) >= timestamp '2000-01-01 00:00:00')
+    )
+)
+select * from final
+```
+
+## differences
+
+```json
+{
+  "kind": "original_007_009",
+  "record": "records/007_tolerance_tables.jsonl",
+  "detail_record": "/home/katherine/Assumption_Ledger/records/004_staging_impl-030.json",
+  "prediction_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/zuora.duckdb",
+  "gold_database": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-030/zuora.duckdb",
+  "actual_schema": "staging",
+  "table": "stg_zuora__invoice",
+  "candidate_date": null,
+  "comparison_columns": [
+    "account_id",
+    "adjustment_amount",
+    "amount",
+    "amount_home_currency",
+    "amount_without_tax",
+    "amount_without_tax_home_currency",
+    "auto_pay",
+    "balance",
+    "bill_to_contact_id",
+    "comments",
+    "created_by_id",
+    "credit_balance_adjustment_amount",
+    "credit_memo_amount",
+    "default_payment_method_id",
+    "due_date",
+    "exchange_rate",
+    "exchange_rate_date",
+    "home_currency",
+    "includes_one_time",
+    "includes_recurring",
+    "includes_usage",
+    "invoice_date",
+    "invoice_id",
+    "invoice_number",
+    "is_most_recent_record",
+    "last_email_sent_date",
+    "parent_account_id",
+    "payment_amount",
+    "payment_term",
+    "posted_by",
+    "posted_date",
+    "refund_amount",
+    "sold_to_contact_id",
+    "source",
+    "source_id",
+    "source_type",
+    "status",
+    "target_date",
+    "tax_amount",
+    "tax_status",
+    "transaction_currency",
+    "transferred_to_accounting",
+    "updated_by_id",
+    "updated_date"
+  ],
+  "key_columns": [
+    "invoice_id"
+  ],
+  "prediction_rows": 1041,
+  "gold_rows": 1045,
+  "row_delta": -4,
+  "key_statistics": {
+    "pred_distinct_keys": 1041,
+    "gold_distinct_keys": 1045,
+    "pred_duplicate_key_groups": 0,
+    "gold_duplicate_key_groups": 0,
+    "pred_only_keys": 1,
+    "gold_only_keys": 5,
+    "shared_keys": 1040,
+    "shared_nonunique_key_groups": 0
+  },
+  "l0_column_differences": [
+    {
+      "column": "invoice_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "account_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1040,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1040,
+      "pred_unmatched_value_occurrences": 1040,
+      "gold_unmatched_value_occurrences": 1040,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "adjustment_amount",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1040,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1040,
+      "pred_unmatched_value_occurrences": 1040,
+      "gold_unmatched_value_occurrences": 1040,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "amount",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "amount_home_currency",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "amount_without_tax",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1035,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1035,
+      "pred_unmatched_value_occurrences": 1035,
+      "gold_unmatched_value_occurrences": 1035,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "amount_without_tax_home_currency",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1035,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1035,
+      "pred_unmatched_value_occurrences": 1035,
+      "gold_unmatched_value_occurrences": 1035,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "auto_pay",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "balance",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 5,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 5,
+      "pred_unmatched_value_occurrences": 5,
+      "gold_unmatched_value_occurrences": 5,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "bill_to_contact_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "comments",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "created_by_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "credit_balance_adjustment_amount",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1040,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1040,
+      "pred_unmatched_value_occurrences": 1040,
+      "gold_unmatched_value_occurrences": 1040,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "credit_memo_amount",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1040,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1040,
+      "pred_unmatched_value_occurrences": 1040,
+      "gold_unmatched_value_occurrences": 1040,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "default_payment_method_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "due_date",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "exchange_rate",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1040,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1040,
+      "pred_unmatched_value_occurrences": 1040,
+      "gold_unmatched_value_occurrences": 1040,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "exchange_rate_date",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1035,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1035,
+      "pred_unmatched_value_occurrences": 1035,
+      "gold_unmatched_value_occurrences": 1035,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "home_currency",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "includes_one_time",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "includes_recurring",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "includes_usage",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "invoice_date",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "invoice_number",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "last_email_sent_date",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "parent_account_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "payment_amount",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "payment_term",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "posted_by",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "posted_date",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "refund_amount",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "sold_to_contact_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "source",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "source_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "source_type",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "status",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "target_date",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1035,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1035,
+      "pred_unmatched_value_occurrences": 1035,
+      "gold_unmatched_value_occurrences": 1035,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "tax_amount",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "tax_status",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "transaction_currency",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "transferred_to_accounting",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "updated_by_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "updated_date",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "is_most_recent_record",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    }
+  ],
+  "l3_column_differences": [
+    {
+      "column": "account_id",
+      "one_to_one_mismatch_rows": 1040,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1040,
+      "pred_unmatched_value_occurrences": 1040,
+      "gold_unmatched_value_occurrences": 1040,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "adjustment_amount",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "amount",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "amount_home_currency",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "amount_without_tax",
+      "one_to_one_mismatch_rows": 1025,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1025,
+      "pred_unmatched_value_occurrences": 1025,
+      "gold_unmatched_value_occurrences": 1025,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "amount_without_tax_home_currency",
+      "one_to_one_mismatch_rows": 1025,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1025,
+      "pred_unmatched_value_occurrences": 1025,
+      "gold_unmatched_value_occurrences": 1025,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "auto_pay",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "balance",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "bill_to_contact_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "comments",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "created_by_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "credit_balance_adjustment_amount",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "credit_memo_amount",
+      "one_to_one_mismatch_rows": 1,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1,
+      "pred_unmatched_value_occurrences": 1,
+      "gold_unmatched_value_occurrences": 1,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "default_payment_method_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "due_date",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "exchange_rate",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "exchange_rate_date",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "home_currency",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "includes_one_time",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "includes_recurring",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "includes_usage",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "invoice_date",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "invoice_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "invoice_number",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "is_most_recent_record",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "last_email_sent_date",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "parent_account_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "payment_amount",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "payment_term",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "posted_by",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "posted_date",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "refund_amount",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "sold_to_contact_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "source",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "source_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "source_type",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "status",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "target_date",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "tax_amount",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "tax_status",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "transaction_currency",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "transferred_to_accounting",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "updated_by_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "updated_date",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    }
+  ],
+  "whole_match_level": "仍不匹配",
+  "keyed_match_level": "仍不匹配",
+  "selection_reason": "011 执行失败",
+  "value_representation": "Unmodified DuckDB CAST AS VARCHAR; SQL NULL is JSON null. Keys use the unchanged historical L0 normalization.",
+  "new_queries_only_read_existing_results": true,
+  "one_side_key_examples": {
+    "prediction_only": [
+      {
+        "key_normalized": {
+          "invoice_id": "e3e622646ad0467c8fe59fa5a0eb948f"
+        },
+        "key_raw_text": {
+          "invoice_id": "e3e622646ad0467c8fe59fa5a0eb948f"
+        },
+        "rows_with_key": 1
+      }
+    ],
+    "gold_only": [
+      {
+        "key_normalized": {
+          "invoice_id": "0e885295807246a4a4fe8fb4034c3eac"
+        },
+        "key_raw_text": {
+          "invoice_id": "0e885295807246a4a4fe8fb4034c3eac"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "invoice_id": "26523b130a6e44b5a4b5658f5693702a"
+        },
+        "key_raw_text": {
+          "invoice_id": "26523b130a6e44b5a4b5658f5693702a"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "invoice_id": "9945e69fcc5946a6812a4edc970436c6"
+        },
+        "key_raw_text": {
+          "invoice_id": "9945e69fcc5946a6812a4edc970436c6"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "invoice_id": "c894b6cc90fc4900a165303cbbb5b603"
+        },
+        "key_raw_text": {
+          "invoice_id": "c894b6cc90fc4900a165303cbbb5b603"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "invoice_id": "f67d285d4189460eb13898fcf6d84461"
+        },
+        "key_raw_text": {
+          "invoice_id": "f67d285d4189460eb13898fcf6d84461"
+        },
+        "rows_with_key": 1
+      }
+    ]
+  },
+  "column_details": [
+    {
+      "column": "invoice_id",
+      "l0_counts_verbatim": {
+        "column": "invoice_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "invoice_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "account_id",
+      "l0_counts_verbatim": {
+        "column": "account_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1040,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1040,
+        "pred_unmatched_value_occurrences": 1040,
+        "gold_unmatched_value_occurrences": 1040,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "account_id",
+        "one_to_one_mismatch_rows": 1040,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1040,
+        "pred_unmatched_value_occurrences": 1040,
+        "gold_unmatched_value_occurrences": 1040,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "002e4dc0409a43c39b0f60d9f3136cd2",
+          "gold_value": "82c6b93c3a5e43f5b43f5fdfa98b0e6f"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0057d078616543f698c13fdee76564bc",
+          "gold_value": "8a7c04707d734b3ca05683dbbc0e6086"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0080fdabb83141ee9736f2727258b8b9",
+          "gold_value": "87fe61afcd1749778d8a5316acb60524"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "00faf938b1d247a18ec4df6f06c80eca",
+          "gold_value": "45da944542f64901a9b56ad60e52eaea"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "010379165217424eb1ea04321d6906a3",
+          "gold_value": "fb164cd727c649ee923029f1b6f39785"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1040,
+        "pred_unmatched_value_occurrences": 1040,
+        "gold_unmatched_value_occurrences": 1040
+      },
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "adjustment_amount",
+      "l0_counts_verbatim": {
+        "column": "adjustment_amount",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1040,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1040,
+        "pred_unmatched_value_occurrences": 1040,
+        "gold_unmatched_value_occurrences": 1040,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "adjustment_amount",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1040,
+        "pred_unmatched_value_occurrences": 1040,
+        "gold_unmatched_value_occurrences": 1040
+      },
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "amount",
+      "l0_counts_verbatim": {
+        "column": "amount",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "amount",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "DOUBLE"
+    },
+    {
+      "column": "amount_home_currency",
+      "l0_counts_verbatim": {
+        "column": "amount_home_currency",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "amount_home_currency",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "DOUBLE"
+    },
+    {
+      "column": "amount_without_tax",
+      "l0_counts_verbatim": {
+        "column": "amount_without_tax",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1035,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1035,
+        "pred_unmatched_value_occurrences": 1035,
+        "gold_unmatched_value_occurrences": 1035,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "amount_without_tax",
+        "one_to_one_mismatch_rows": 1025,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1025,
+        "pred_unmatched_value_occurrences": 1025,
+        "gold_unmatched_value_occurrences": 1025,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "3084",
+          "gold_value": "3084.4564"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "17850",
+          "gold_value": "17849.8584"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "17368",
+          "gold_value": "17368.376399999997"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "37915",
+          "gold_value": "37915.0216"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "42531",
+          "gold_value": "42531.37"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1035,
+        "pred_unmatched_value_occurrences": 1035,
+        "gold_unmatched_value_occurrences": 1035
+      },
+      "agent_actual_type": "BIGINT",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "amount_without_tax_home_currency",
+      "l0_counts_verbatim": {
+        "column": "amount_without_tax_home_currency",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1035,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1035,
+        "pred_unmatched_value_occurrences": 1035,
+        "gold_unmatched_value_occurrences": 1035,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "amount_without_tax_home_currency",
+        "one_to_one_mismatch_rows": 1025,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1025,
+        "pred_unmatched_value_occurrences": 1025,
+        "gold_unmatched_value_occurrences": 1025,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "3084",
+          "gold_value": "3084.4564"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "17850",
+          "gold_value": "17849.8584"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "17368",
+          "gold_value": "17368.376399999997"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "37915",
+          "gold_value": "37915.0216"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "42531",
+          "gold_value": "42531.37"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1035,
+        "pred_unmatched_value_occurrences": 1035,
+        "gold_unmatched_value_occurrences": 1035
+      },
+      "agent_actual_type": "BIGINT",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "auto_pay",
+      "l0_counts_verbatim": {
+        "column": "auto_pay",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "auto_pay",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "BOOLEAN",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "balance",
+      "l0_counts_verbatim": {
+        "column": "balance",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 5,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 5,
+        "pred_unmatched_value_occurrences": 5,
+        "gold_unmatched_value_occurrences": 5,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "balance",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "invoice_id": "dff38ac0465fa8828673ba7d616b6ea1"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "dff38ac0465fa8828673ba7d616b6ea1"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "dff38ac0465fa8828673ba7d616b6ea1"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "dff38ac0a531a01100012160a3061ef6"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "dff38ac0a531a01100012160a3061ef6"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "dff38ac0a531a01100012160a3061ef6"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "dff38ac0dfa53a25cf026658c1631e92"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "dff38ac0dfa53a25cf026658c1631e92"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "dff38ac0dfa53a25cf026658c1631e92"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "dff38ac0ea5bbc65bce34ebdb935e174"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "dff38ac0ea5bbc65bce34ebdb935e174"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "dff38ac0ea5bbc65bce34ebdb935e174"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "dff38ac0f3f8366b90ae206d1d20ab4e"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "dff38ac0f3f8366b90ae206d1d20ab4e"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "dff38ac0f3f8366b90ae206d1d20ab4e"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 5,
+        "pred_unmatched_value_occurrences": 5,
+        "gold_unmatched_value_occurrences": 5
+      },
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "bill_to_contact_id",
+      "l0_counts_verbatim": {
+        "column": "bill_to_contact_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "bill_to_contact_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "comments",
+      "l0_counts_verbatim": {
+        "column": "comments",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "comments",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "created_by_id",
+      "l0_counts_verbatim": {
+        "column": "created_by_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "created_by_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "credit_balance_adjustment_amount",
+      "l0_counts_verbatim": {
+        "column": "credit_balance_adjustment_amount",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1040,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1040,
+        "pred_unmatched_value_occurrences": 1040,
+        "gold_unmatched_value_occurrences": 1040,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "credit_balance_adjustment_amount",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1040,
+        "pred_unmatched_value_occurrences": 1040,
+        "gold_unmatched_value_occurrences": 1040
+      },
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "credit_memo_amount",
+      "l0_counts_verbatim": {
+        "column": "credit_memo_amount",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1040,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1040,
+        "pred_unmatched_value_occurrences": 1040,
+        "gold_unmatched_value_occurrences": 1040,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "credit_memo_amount",
+        "one_to_one_mismatch_rows": 1,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1,
+        "pred_unmatched_value_occurrences": 1,
+        "gold_unmatched_value_occurrences": 1,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "0.0",
+          "gold_value": "0"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1040,
+        "pred_unmatched_value_occurrences": 1040,
+        "gold_unmatched_value_occurrences": 1040
+      },
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "default_payment_method_id",
+      "l0_counts_verbatim": {
+        "column": "default_payment_method_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "default_payment_method_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "due_date",
+      "l0_counts_verbatim": {
+        "column": "due_date",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "due_date",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "DATE",
+      "gold_actual_type": "DATE"
+    },
+    {
+      "column": "exchange_rate",
+      "l0_counts_verbatim": {
+        "column": "exchange_rate",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1040,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1040,
+        "pred_unmatched_value_occurrences": 1040,
+        "gold_unmatched_value_occurrences": 1040,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "exchange_rate",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "1.0",
+          "gold_value": "1"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "1.0",
+          "gold_value": "1"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "1.0",
+          "gold_value": "1"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "1.0",
+          "gold_value": "1"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "1.0",
+          "gold_value": "1"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1040,
+        "pred_unmatched_value_occurrences": 1040,
+        "gold_unmatched_value_occurrences": 1040
+      },
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "exchange_rate_date",
+      "l0_counts_verbatim": {
+        "column": "exchange_rate_date",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1035,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1035,
+        "pred_unmatched_value_occurrences": 1035,
+        "gold_unmatched_value_occurrences": 1035,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "exchange_rate_date",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "2019-02-10",
+          "gold_value": "2019-02-10 22:25:42.000000"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "2022-04-18",
+          "gold_value": "2022-04-18 18:57:53.000000"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "2022-08-20",
+          "gold_value": "2022-08-20 07:48:15.000000"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "2019-11-18",
+          "gold_value": "2019-11-18 09:49:03.000000"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "2020-10-19",
+          "gold_value": "2020-10-19 06:31:57.000000"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1035,
+        "pred_unmatched_value_occurrences": 1035,
+        "gold_unmatched_value_occurrences": 1035
+      },
+      "agent_actual_type": "DATE",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "home_currency",
+      "l0_counts_verbatim": {
+        "column": "home_currency",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "home_currency",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "includes_one_time",
+      "l0_counts_verbatim": {
+        "column": "includes_one_time",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "includes_one_time",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "BOOLEAN",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "includes_recurring",
+      "l0_counts_verbatim": {
+        "column": "includes_recurring",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "includes_recurring",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "BOOLEAN",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "includes_usage",
+      "l0_counts_verbatim": {
+        "column": "includes_usage",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "includes_usage",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "BOOLEAN",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "invoice_date",
+      "l0_counts_verbatim": {
+        "column": "invoice_date",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "invoice_date",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "DATE",
+      "gold_actual_type": "DATE"
+    },
+    {
+      "column": "invoice_number",
+      "l0_counts_verbatim": {
+        "column": "invoice_number",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "invoice_number",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "last_email_sent_date",
+      "l0_counts_verbatim": {
+        "column": "last_email_sent_date",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "last_email_sent_date",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "TIMESTAMP",
+      "gold_actual_type": "TIMESTAMP"
+    },
+    {
+      "column": "parent_account_id",
+      "l0_counts_verbatim": {
+        "column": "parent_account_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "parent_account_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "payment_amount",
+      "l0_counts_verbatim": {
+        "column": "payment_amount",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "payment_amount",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "DOUBLE"
+    },
+    {
+      "column": "payment_term",
+      "l0_counts_verbatim": {
+        "column": "payment_term",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "payment_term",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "posted_by",
+      "l0_counts_verbatim": {
+        "column": "posted_by",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "posted_by",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "posted_date",
+      "l0_counts_verbatim": {
+        "column": "posted_date",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "posted_date",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "TIMESTAMP",
+      "gold_actual_type": "TIMESTAMP"
+    },
+    {
+      "column": "refund_amount",
+      "l0_counts_verbatim": {
+        "column": "refund_amount",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "refund_amount",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "DOUBLE"
+    },
+    {
+      "column": "sold_to_contact_id",
+      "l0_counts_verbatim": {
+        "column": "sold_to_contact_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "sold_to_contact_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "source",
+      "l0_counts_verbatim": {
+        "column": "source",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "source",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "source_id",
+      "l0_counts_verbatim": {
+        "column": "source_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "source_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "source_type",
+      "l0_counts_verbatim": {
+        "column": "source_type",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "source_type",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "status",
+      "l0_counts_verbatim": {
+        "column": "status",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "status",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "target_date",
+      "l0_counts_verbatim": {
+        "column": "target_date",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1035,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1035,
+        "pred_unmatched_value_occurrences": 1035,
+        "gold_unmatched_value_occurrences": 1035,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "target_date",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "002e4dc0409a43c39b0f60d9f3136cd2"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "2019-03-04",
+          "gold_value": "2019-03-04 03:19:51.000000"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0057d078616543f698c13fdee76564bc"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "2020-12-03",
+          "gold_value": "2020-12-03 23:08:56.000000"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "0080fdabb83141ee9736f2727258b8b9"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "2023-07-26",
+          "gold_value": "2023-07-26 16:01:57.000000"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "00faf938b1d247a18ec4df6f06c80eca"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "2018-04-02",
+          "gold_value": "2018-04-02 01:56:23.000000"
+        },
+        {
+          "key_normalized": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "gold_key_raw_text": {
+            "invoice_id": "010379165217424eb1ea04321d6906a3"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": "2022-12-10",
+          "gold_value": "2022-12-10 13:29:00.000000"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1035,
+        "pred_unmatched_value_occurrences": 1035,
+        "gold_unmatched_value_occurrences": 1035
+      },
+      "agent_actual_type": "DATE",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "tax_amount",
+      "l0_counts_verbatim": {
+        "column": "tax_amount",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "tax_amount",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "DOUBLE"
+    },
+    {
+      "column": "tax_status",
+      "l0_counts_verbatim": {
+        "column": "tax_status",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "tax_status",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "transaction_currency",
+      "l0_counts_verbatim": {
+        "column": "transaction_currency",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "transaction_currency",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "transferred_to_accounting",
+      "l0_counts_verbatim": {
+        "column": "transferred_to_accounting",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "transferred_to_accounting",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "updated_by_id",
+      "l0_counts_verbatim": {
+        "column": "updated_by_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "updated_by_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "updated_date",
+      "l0_counts_verbatim": {
+        "column": "updated_date",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "updated_date",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "TIMESTAMP",
+      "gold_actual_type": "TIMESTAMP"
+    },
+    {
+      "column": "is_most_recent_record",
+      "l0_counts_verbatim": {
+        "column": "is_most_recent_record",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "is_most_recent_record",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "BOOLEAN",
+      "gold_actual_type": "BOOLEAN"
+    }
+  ]
+}
+```
+
+## agent_constraints_006
+
+```json
+{
+  "source_record": "records/006_contract_impl-030.json",
+  "declarations": {
+    "grain": [],
+    "primary_key": [],
+    "not_null": [],
+    "unique": []
+  },
+  "agent": {
+    "table_exists": true,
+    "actual_schema": "staging",
+    "table_type": "BASE TABLE",
+    "same_name_other_schemas": [],
+    "row_count": 1041,
+    "checks": {
+      "grain": [],
+      "primary_key": [],
+      "not_null": [],
+      "unique": []
+    },
+    "actual_table": "stg_zuora__invoice",
+    "actual_columns": [
+      "invoice_id",
+      "account_id",
+      "adjustment_amount",
+      "amount",
+      "amount_home_currency",
+      "amount_without_tax",
+      "amount_without_tax_home_currency",
+      "auto_pay",
+      "balance",
+      "bill_to_contact_id",
+      "comments",
+      "created_by_id",
+      "created_date",
+      "credit_balance_adjustment_amount",
+      "credit_memo_amount",
+      "default_payment_method_id",
+      "due_date",
+      "exchange_rate",
+      "exchange_rate_date",
+      "home_currency",
+      "includes_one_time",
+      "includes_recurring",
+      "includes_usage",
+      "invoice_date",
+      "invoice_number",
+      "last_email_sent_date",
+      "parent_account_id",
+      "payment_amount",
+      "payment_term",
+      "posted_by",
+      "posted_date",
+      "refund_amount",
+      "sold_to_contact_id",
+      "source",
+      "source_id",
+      "source_type",
+      "status",
+      "target_date",
+      "tax_amount",
+      "tax_status",
+      "transaction_currency",
+      "transferred_to_accounting",
+      "updated_by_id",
+      "updated_date",
+      "is_most_recent_record"
+    ],
+    "missing_declared_columns": [],
+    "categories": {
+      "grain": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      },
+      "primary_key": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      },
+      "not_null": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      },
+      "unique": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      }
+    },
+    "any_constraint_violated": null
+  }
+}
+```
+
+## all_markers_and_evidence_008
+
+```json
+{
+  "source_record": "records/008_table_scan.jsonl",
+  "verbatim_record": {
+    "task": "impl-030",
+    "layer": "staging",
+    "table": "stg_zuora__invoice",
+    "logical_contract_table": "stg_zuora__invoice",
+    "delivery_name_mapping_evidence": [],
+    "inventory_sources": {
+      "retained_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/zuora.duckdb",
+      "present_in_database": true,
+      "agent_final_sql_files": [
+        "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql"
+      ]
+    },
+    "status_007": {
+      "gold_table_exists_in_original_gold": true,
+      "whole_level_007": "仍不匹配",
+      "007_present": true,
+      "004_failed_set_member": true,
+      "005_failed_set_member": false,
+      "005_current_pred_execution": null,
+      "status_sources": [
+        {
+          "record": "records/007_tolerance_tables.jsonl",
+          "scope": "staging",
+          "rule": "whole_match_level",
+          "value": "仍不匹配",
+          "007_prediction_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/zuora.duckdb"
+        }
+      ],
+      "status": "待标注",
+      "comparison_lookup_layer": "staging",
+      "comparison_lookup_table": "stg_zuora__invoice",
+      "actual_gold_relation_exists": true
+    },
+    "contract": {
+      "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+      "blocks": [
+        {
+          "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+          "start_line": 169,
+          "end_line": 280,
+          "original_text": "    - name: stg_zuora__invoice\n      description: \"Cleaned invoices with safe casting and temporal validity checks; latest snapshot indicator provided.\"\n      source_table: raw.zuora_invoice_data\n      columns:\n        - name: invoice_id\n          data_type: VARCHAR\n          source_expression: \"id\"\n        - name: account_id\n          data_type: VARCHAR\n        - name: adjustment_amount\n          data_type: DOUBLE\n        - name: amount\n          data_type: DOUBLE\n          source_expression: \"case when nullif(amount,'') is null then null else cast(amount as DOUBLE) end\"\n        - name: amount_home_currency\n          data_type: DOUBLE\n          source_expression: \"case when nullif(amount_home_currency,'') is null then null else cast(amount_home_currency as DOUBLE) end\"\n        - name: amount_without_tax\n          data_type: BIGINT\n        - name: amount_without_tax_home_currency\n          data_type: BIGINT\n        - name: auto_pay\n          data_type: BOOLEAN\n        - name: balance\n          data_type: DOUBLE\n        - name: bill_to_contact_id\n          data_type: VARCHAR\n        - name: comments\n          data_type: VARCHAR\n        - name: created_by_id\n          data_type: VARCHAR\n        - name: created_date\n          data_type: TIMESTAMP\n          source_expression: \"case when try_cast(created_date as TIMESTAMP) is null then null when try_cast(created_date as TIMESTAMP) > current_timestamp then null when try_cast(created_date as TIMESTAMP) < timestamp '2000-01-01 00:00:00' then null else cast(created_date as TIMESTAMP) end\"\n        - name: credit_balance_adjustment_amount\n          data_type: DOUBLE\n        - name: credit_memo_amount\n          data_type: DOUBLE\n        - name: default_payment_method_id\n          data_type: VARCHAR\n        - name: due_date\n          data_type: DATE\n          source_expression: \"try_cast(due_date as DATE)\"\n        - name: exchange_rate\n          data_type: DOUBLE\n        - name: exchange_rate_date\n          data_type: DATE\n        - name: home_currency\n          data_type: VARCHAR\n        - name: includes_one_time\n          data_type: BOOLEAN\n        - name: includes_recurring\n          data_type: BOOLEAN\n        - name: includes_usage\n          data_type: BOOLEAN\n        - name: invoice_date\n          data_type: DATE\n          source_expression: \"try_cast(invoice_date as DATE)\"\n        - name: invoice_number\n          data_type: VARCHAR\n        - name: last_email_sent_date\n          data_type: TIMESTAMP\n          source_expression: \"case when nullif(last_email_sent_date,'') is null then null else cast(last_email_sent_date as TIMESTAMP) end\"\n        - name: parent_account_id\n          data_type: VARCHAR\n        - name: payment_amount\n          data_type: DOUBLE\n          source_expression: \"case when nullif(payment_amount,'') is null then null else cast(payment_amount as DOUBLE) end\"\n        - name: payment_term\n          data_type: VARCHAR\n        - name: posted_by\n          data_type: VARCHAR\n        - name: posted_date\n          data_type: TIMESTAMP\n          source_expression: \"cast(posted_date as TIMESTAMP)\"\n        - name: refund_amount\n          data_type: DOUBLE\n          source_expression: \"case when nullif(refund_amount,'') is null then null else cast(refund_amount as DOUBLE) end\"\n        - name: sold_to_contact_id\n          data_type: VARCHAR\n        - name: source\n          data_type: VARCHAR\n        - name: source_id\n          data_type: VARCHAR\n        - name: source_type\n          data_type: VARCHAR\n        - name: status\n          data_type: VARCHAR\n        - name: target_date\n          data_type: DATE\n        - name: tax_amount\n          data_type: DOUBLE\n          source_expression: \"case when nullif(tax_amount,'') is null then null else cast(tax_amount as DOUBLE) end\"\n        - name: tax_status\n          data_type: VARCHAR\n        - name: transaction_currency\n          data_type: VARCHAR\n        - name: transferred_to_accounting\n          data_type: VARCHAR\n        - name: updated_by_id\n          data_type: VARCHAR\n        - name: updated_date\n          data_type: TIMESTAMP\n          source_expression: \"cast(updated_date as TIMESTAMP)\"\n        - name: is_most_recent_record\n          data_type: BOOLEAN\n          source_expression: \"row_number() over (partition by id order by try_cast(updated_date as TIMESTAMP) desc) = 1\"\n      row_filters:\n        - rule: \"_fivetran_deleted IS NULL OR _fivetran_deleted = false\"\n          on_failure: delete_row\n        - rule: \"try_cast(created_date as TIMESTAMP) is null OR (try_cast(created_date as TIMESTAMP) <= current_timestamp AND try_cast(created_date as TIMESTAMP) >= timestamp '2000-01-01 00:00:00')\"\n          on_failure: delete_row\n",
+          "yaml_path": [
+            "staging_contract",
+            "tables",
+            2
+          ]
+        }
+      ]
+    },
+    "output": {
+      "status": "checked",
+      "exists": true,
+      "row_count": 1041,
+      "zero_rows": false,
+      "columns": [
+        {
+          "name": "invoice_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "account_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "adjustment_amount",
+          "type": "DOUBLE",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "amount",
+          "type": "DOUBLE",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "amount_home_currency",
+          "type": "DOUBLE",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "amount_without_tax",
+          "type": "BIGINT",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "amount_without_tax_home_currency",
+          "type": "BIGINT",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "auto_pay",
+          "type": "BOOLEAN",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "balance",
+          "type": "DOUBLE",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "bill_to_contact_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "comments",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "created_by_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "credit_balance_adjustment_amount",
+          "type": "DOUBLE",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "credit_memo_amount",
+          "type": "DOUBLE",
+          "nonnull_rows": 1040,
+          "sql_null_rows": 1
+        },
+        {
+          "name": "default_payment_method_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "due_date",
+          "type": "DATE",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "exchange_rate",
+          "type": "DOUBLE",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "exchange_rate_date",
+          "type": "DATE",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "home_currency",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "includes_one_time",
+          "type": "BOOLEAN",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "includes_recurring",
+          "type": "BOOLEAN",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "includes_usage",
+          "type": "BOOLEAN",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "invoice_date",
+          "type": "DATE",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "invoice_number",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "last_email_sent_date",
+          "type": "TIMESTAMP",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1041
+        },
+        {
+          "name": "parent_account_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "payment_amount",
+          "type": "DOUBLE",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "payment_term",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "posted_by",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "posted_date",
+          "type": "TIMESTAMP",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "refund_amount",
+          "type": "DOUBLE",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "sold_to_contact_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "source",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "source_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "source_type",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "status",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "target_date",
+          "type": "DATE",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "tax_amount",
+          "type": "DOUBLE",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "tax_status",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "transaction_currency",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "transferred_to_accounting",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "updated_by_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "updated_date",
+          "type": "TIMESTAMP",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "is_most_recent_record",
+          "type": "BOOLEAN",
+          "nonnull_rows": 1041,
+          "sql_null_rows": 0
+        }
+      ],
+      "all_null_columns": [
+        {
+          "column": "last_email_sent_date",
+          "table_rows": 1041
+        }
+      ],
+      "constant_nonnull_columns": [
+        {
+          "column": "adjustment_amount",
+          "type": "DOUBLE",
+          "value": "0.0",
+          "value_representation": "DuckDB CAST AS VARCHAR, exact, no normalization",
+          "table_rows": 1041,
+          "contract": {
+            "status": "found",
+            "definitions": [
+              {
+                "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                "start_line": 178,
+                "end_line": 179,
+                "original_text": "        - name: adjustment_amount\n          data_type: DOUBLE\n",
+                "name": "adjustment_amount",
+                "description": null,
+                "specification": {
+                  "name": "adjustment_amount",
+                  "data_type": "DOUBLE"
+                }
+              }
+            ],
+            "meaning_description_status": "契约未描述含义"
+          }
+        },
+        {
+          "column": "comments",
+          "type": "VARCHAR",
+          "value": "",
+          "value_representation": "DuckDB CAST AS VARCHAR, exact, no normalization",
+          "table_rows": 1041,
+          "contract": {
+            "status": "found",
+            "definitions": [
+              {
+                "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                "start_line": 196,
+                "end_line": 197,
+                "original_text": "        - name: comments\n          data_type: VARCHAR\n",
+                "name": "comments",
+                "description": null,
+                "specification": {
+                  "name": "comments",
+                  "data_type": "VARCHAR"
+                }
+              }
+            ],
+            "meaning_description_status": "契约未描述含义"
+          }
+        },
+        {
+          "column": "credit_balance_adjustment_amount",
+          "type": "DOUBLE",
+          "value": "0.0",
+          "value_representation": "DuckDB CAST AS VARCHAR, exact, no normalization",
+          "table_rows": 1041,
+          "contract": {
+            "status": "found",
+            "definitions": [
+              {
+                "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                "start_line": 203,
+                "end_line": 204,
+                "original_text": "        - name: credit_balance_adjustment_amount\n          data_type: DOUBLE\n",
+                "name": "credit_balance_adjustment_amount",
+                "description": null,
+                "specification": {
+                  "name": "credit_balance_adjustment_amount",
+                  "data_type": "DOUBLE"
+                }
+              }
+            ],
+            "meaning_description_status": "契约未描述含义"
+          }
+        },
+        {
+          "column": "exchange_rate",
+          "type": "DOUBLE",
+          "value": "1.0",
+          "value_representation": "DuckDB CAST AS VARCHAR, exact, no normalization",
+          "table_rows": 1041,
+          "contract": {
+            "status": "found",
+            "definitions": [
+              {
+                "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                "start_line": 212,
+                "end_line": 213,
+                "original_text": "        - name: exchange_rate\n          data_type: DOUBLE\n",
+                "name": "exchange_rate",
+                "description": null,
+                "specification": {
+                  "name": "exchange_rate",
+                  "data_type": "DOUBLE"
+                }
+              }
+            ],
+            "meaning_description_status": "契约未描述含义"
+          }
+        },
+        {
+          "column": "home_currency",
+          "type": "VARCHAR",
+          "value": "USD",
+          "value_representation": "DuckDB CAST AS VARCHAR, exact, no normalization",
+          "table_rows": 1041,
+          "contract": {
+            "status": "found",
+            "definitions": [
+              {
+                "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                "start_line": 216,
+                "end_line": 217,
+                "original_text": "        - name: home_currency\n          data_type: VARCHAR\n",
+                "name": "home_currency",
+                "description": null,
+                "specification": {
+                  "name": "home_currency",
+                  "data_type": "VARCHAR"
+                }
+              }
+            ],
+            "meaning_description_status": "契约未描述含义"
+          }
+        },
+        {
+          "column": "parent_account_id",
+          "type": "VARCHAR",
+          "value": "",
+          "value_representation": "DuckDB CAST AS VARCHAR, exact, no normalization",
+          "table_rows": 1041,
+          "contract": {
+            "status": "found",
+            "definitions": [
+              {
+                "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                "start_line": 232,
+                "end_line": 233,
+                "original_text": "        - name: parent_account_id\n          data_type: VARCHAR\n",
+                "name": "parent_account_id",
+                "description": null,
+                "specification": {
+                  "name": "parent_account_id",
+                  "data_type": "VARCHAR"
+                }
+              }
+            ],
+            "meaning_description_status": "契约未描述含义"
+          }
+        },
+        {
+          "column": "refund_amount",
+          "type": "DOUBLE",
+          "value": "0.0",
+          "value_representation": "DuckDB CAST AS VARCHAR, exact, no normalization",
+          "table_rows": 1041,
+          "contract": {
+            "status": "found",
+            "definitions": [
+              {
+                "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                "start_line": 244,
+                "end_line": 246,
+                "original_text": "        - name: refund_amount\n          data_type: DOUBLE\n          source_expression: \"case when nullif(refund_amount,'') is null then null else cast(refund_amount as DOUBLE) end\"\n",
+                "name": "refund_amount",
+                "description": null,
+                "specification": {
+                  "name": "refund_amount",
+                  "data_type": "DOUBLE",
+                  "source_expression": "case when nullif(refund_amount,'') is null then null else cast(refund_amount as DOUBLE) end"
+                }
+              }
+            ],
+            "meaning_description_status": "契约未描述含义"
+          }
+        },
+        {
+          "column": "source_type",
+          "type": "VARCHAR",
+          "value": "Subscription",
+          "value_representation": "DuckDB CAST AS VARCHAR, exact, no normalization",
+          "table_rows": 1041,
+          "contract": {
+            "status": "found",
+            "definitions": [
+              {
+                "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                "start_line": 253,
+                "end_line": 254,
+                "original_text": "        - name: source_type\n          data_type: VARCHAR\n",
+                "name": "source_type",
+                "description": null,
+                "specification": {
+                  "name": "source_type",
+                  "data_type": "VARCHAR"
+                }
+              }
+            ],
+            "meaning_description_status": "契约未描述含义"
+          }
+        },
+        {
+          "column": "tax_status",
+          "type": "VARCHAR",
+          "value": "",
+          "value_representation": "DuckDB CAST AS VARCHAR, exact, no normalization",
+          "table_rows": 1041,
+          "contract": {
+            "status": "found",
+            "definitions": [
+              {
+                "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                "start_line": 262,
+                "end_line": 263,
+                "original_text": "        - name: tax_status\n          data_type: VARCHAR\n",
+                "name": "tax_status",
+                "description": null,
+                "specification": {
+                  "name": "tax_status",
+                  "data_type": "VARCHAR"
+                }
+              }
+            ],
+            "meaning_description_status": "契约未描述含义"
+          }
+        },
+        {
+          "column": "transaction_currency",
+          "type": "VARCHAR",
+          "value": "USD",
+          "value_representation": "DuckDB CAST AS VARCHAR, exact, no normalization",
+          "table_rows": 1041,
+          "contract": {
+            "status": "found",
+            "definitions": [
+              {
+                "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                "start_line": 264,
+                "end_line": 265,
+                "original_text": "        - name: transaction_currency\n          data_type: VARCHAR\n",
+                "name": "transaction_currency",
+                "description": null,
+                "specification": {
+                  "name": "transaction_currency",
+                  "data_type": "VARCHAR"
+                }
+              }
+            ],
+            "meaning_description_status": "契约未描述含义"
+          }
+        },
+        {
+          "column": "transferred_to_accounting",
+          "type": "VARCHAR",
+          "value": "",
+          "value_representation": "DuckDB CAST AS VARCHAR, exact, no normalization",
+          "table_rows": 1041,
+          "contract": {
+            "status": "found",
+            "definitions": [
+              {
+                "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                "start_line": 266,
+                "end_line": 267,
+                "original_text": "        - name: transferred_to_accounting\n          data_type: VARCHAR\n",
+                "name": "transferred_to_accounting",
+                "description": null,
+                "specification": {
+                  "name": "transferred_to_accounting",
+                  "data_type": "VARCHAR"
+                }
+              }
+            ],
+            "meaning_description_status": "契约未描述含义"
+          }
+        },
+        {
+          "column": "is_most_recent_record",
+          "type": "BOOLEAN",
+          "value": "true",
+          "value_representation": "DuckDB CAST AS VARCHAR, exact, no normalization",
+          "table_rows": 1041,
+          "contract": {
+            "status": "found",
+            "definitions": [
+              {
+                "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                "start_line": 273,
+                "end_line": 275,
+                "original_text": "        - name: is_most_recent_record\n          data_type: BOOLEAN\n          source_expression: \"row_number() over (partition by id order by try_cast(updated_date as TIMESTAMP) desc) = 1\"\n",
+                "name": "is_most_recent_record",
+                "description": null,
+                "specification": {
+                  "name": "is_most_recent_record",
+                  "data_type": "BOOLEAN",
+                  "source_expression": "row_number() over (partition by id order by try_cast(updated_date as TIMESTAMP) desc) = 1"
+                }
+              }
+            ],
+            "meaning_description_status": "契约未描述含义"
+          }
+        }
+      ],
+      "equal_column_groups": [
+        {
+          "columns": [
+            "invoice_id",
+            "account_id"
+          ],
+          "table_rows": 1041,
+          "nonnull_equal_rows": 1041,
+          "both_null_rows_ignored": 0,
+          "mismatch_rows": 0,
+          "column_contracts": {
+            "invoice_id": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 173,
+                  "end_line": 175,
+                  "original_text": "        - name: invoice_id\n          data_type: VARCHAR\n          source_expression: \"id\"\n",
+                  "name": "invoice_id",
+                  "description": null,
+                  "specification": {
+                    "name": "invoice_id",
+                    "data_type": "VARCHAR",
+                    "source_expression": "id"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            },
+            "account_id": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 176,
+                  "end_line": 177,
+                  "original_text": "        - name: account_id\n          data_type: VARCHAR\n",
+                  "name": "account_id",
+                  "description": null,
+                  "specification": {
+                    "name": "account_id",
+                    "data_type": "VARCHAR"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            }
+          },
+          "description_pairs": [
+            {
+              "left": "invoice_id",
+              "right": "account_id",
+              "both_have_explicit_descriptions": false,
+              "description_texts_differ": false,
+              "semantic_equivalence_evaluated": false
+            }
+          ],
+          "has_pair_with_different_explicit_description": false,
+          "meaning_status": "契约未描述含义差别"
+        },
+        {
+          "columns": [
+            "adjustment_amount",
+            "credit_balance_adjustment_amount",
+            "refund_amount"
+          ],
+          "table_rows": 1041,
+          "nonnull_equal_rows": 1041,
+          "both_null_rows_ignored": 0,
+          "mismatch_rows": 0,
+          "column_contracts": {
+            "adjustment_amount": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 178,
+                  "end_line": 179,
+                  "original_text": "        - name: adjustment_amount\n          data_type: DOUBLE\n",
+                  "name": "adjustment_amount",
+                  "description": null,
+                  "specification": {
+                    "name": "adjustment_amount",
+                    "data_type": "DOUBLE"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            },
+            "credit_balance_adjustment_amount": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 203,
+                  "end_line": 204,
+                  "original_text": "        - name: credit_balance_adjustment_amount\n          data_type: DOUBLE\n",
+                  "name": "credit_balance_adjustment_amount",
+                  "description": null,
+                  "specification": {
+                    "name": "credit_balance_adjustment_amount",
+                    "data_type": "DOUBLE"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            },
+            "refund_amount": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 244,
+                  "end_line": 246,
+                  "original_text": "        - name: refund_amount\n          data_type: DOUBLE\n          source_expression: \"case when nullif(refund_amount,'') is null then null else cast(refund_amount as DOUBLE) end\"\n",
+                  "name": "refund_amount",
+                  "description": null,
+                  "specification": {
+                    "name": "refund_amount",
+                    "data_type": "DOUBLE",
+                    "source_expression": "case when nullif(refund_amount,'') is null then null else cast(refund_amount as DOUBLE) end"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            }
+          },
+          "description_pairs": [
+            {
+              "left": "adjustment_amount",
+              "right": "credit_balance_adjustment_amount",
+              "both_have_explicit_descriptions": false,
+              "description_texts_differ": false,
+              "semantic_equivalence_evaluated": false
+            },
+            {
+              "left": "adjustment_amount",
+              "right": "refund_amount",
+              "both_have_explicit_descriptions": false,
+              "description_texts_differ": false,
+              "semantic_equivalence_evaluated": false
+            },
+            {
+              "left": "credit_balance_adjustment_amount",
+              "right": "refund_amount",
+              "both_have_explicit_descriptions": false,
+              "description_texts_differ": false,
+              "semantic_equivalence_evaluated": false
+            }
+          ],
+          "has_pair_with_different_explicit_description": false,
+          "meaning_status": "契约未描述含义差别"
+        },
+        {
+          "columns": [
+            "amount",
+            "amount_home_currency"
+          ],
+          "table_rows": 1041,
+          "nonnull_equal_rows": 1041,
+          "both_null_rows_ignored": 0,
+          "mismatch_rows": 0,
+          "column_contracts": {
+            "amount": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 180,
+                  "end_line": 182,
+                  "original_text": "        - name: amount\n          data_type: DOUBLE\n          source_expression: \"case when nullif(amount,'') is null then null else cast(amount as DOUBLE) end\"\n",
+                  "name": "amount",
+                  "description": null,
+                  "specification": {
+                    "name": "amount",
+                    "data_type": "DOUBLE",
+                    "source_expression": "case when nullif(amount,'') is null then null else cast(amount as DOUBLE) end"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            },
+            "amount_home_currency": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 183,
+                  "end_line": 185,
+                  "original_text": "        - name: amount_home_currency\n          data_type: DOUBLE\n          source_expression: \"case when nullif(amount_home_currency,'') is null then null else cast(amount_home_currency as DOUBLE) end\"\n",
+                  "name": "amount_home_currency",
+                  "description": null,
+                  "specification": {
+                    "name": "amount_home_currency",
+                    "data_type": "DOUBLE",
+                    "source_expression": "case when nullif(amount_home_currency,'') is null then null else cast(amount_home_currency as DOUBLE) end"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            }
+          },
+          "description_pairs": [
+            {
+              "left": "amount",
+              "right": "amount_home_currency",
+              "both_have_explicit_descriptions": false,
+              "description_texts_differ": false,
+              "semantic_equivalence_evaluated": false
+            }
+          ],
+          "has_pair_with_different_explicit_description": false,
+          "meaning_status": "契约未描述含义差别"
+        },
+        {
+          "columns": [
+            "amount_without_tax",
+            "amount_without_tax_home_currency"
+          ],
+          "table_rows": 1041,
+          "nonnull_equal_rows": 1041,
+          "both_null_rows_ignored": 0,
+          "mismatch_rows": 0,
+          "column_contracts": {
+            "amount_without_tax": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 186,
+                  "end_line": 187,
+                  "original_text": "        - name: amount_without_tax\n          data_type: BIGINT\n",
+                  "name": "amount_without_tax",
+                  "description": null,
+                  "specification": {
+                    "name": "amount_without_tax",
+                    "data_type": "BIGINT"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            },
+            "amount_without_tax_home_currency": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 188,
+                  "end_line": 189,
+                  "original_text": "        - name: amount_without_tax_home_currency\n          data_type: BIGINT\n",
+                  "name": "amount_without_tax_home_currency",
+                  "description": null,
+                  "specification": {
+                    "name": "amount_without_tax_home_currency",
+                    "data_type": "BIGINT"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            }
+          },
+          "description_pairs": [
+            {
+              "left": "amount_without_tax",
+              "right": "amount_without_tax_home_currency",
+              "both_have_explicit_descriptions": false,
+              "description_texts_differ": false,
+              "semantic_equivalence_evaluated": false
+            }
+          ],
+          "has_pair_with_different_explicit_description": false,
+          "meaning_status": "契约未描述含义差别"
+        },
+        {
+          "columns": [
+            "bill_to_contact_id",
+            "sold_to_contact_id"
+          ],
+          "table_rows": 1041,
+          "nonnull_equal_rows": 1041,
+          "both_null_rows_ignored": 0,
+          "mismatch_rows": 0,
+          "column_contracts": {
+            "bill_to_contact_id": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 194,
+                  "end_line": 195,
+                  "original_text": "        - name: bill_to_contact_id\n          data_type: VARCHAR\n",
+                  "name": "bill_to_contact_id",
+                  "description": null,
+                  "specification": {
+                    "name": "bill_to_contact_id",
+                    "data_type": "VARCHAR"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            },
+            "sold_to_contact_id": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 247,
+                  "end_line": 248,
+                  "original_text": "        - name: sold_to_contact_id\n          data_type: VARCHAR\n",
+                  "name": "sold_to_contact_id",
+                  "description": null,
+                  "specification": {
+                    "name": "sold_to_contact_id",
+                    "data_type": "VARCHAR"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            }
+          },
+          "description_pairs": [
+            {
+              "left": "bill_to_contact_id",
+              "right": "sold_to_contact_id",
+              "both_have_explicit_descriptions": false,
+              "description_texts_differ": false,
+              "semantic_equivalence_evaluated": false
+            }
+          ],
+          "has_pair_with_different_explicit_description": false,
+          "meaning_status": "契约未描述含义差别"
+        },
+        {
+          "columns": [
+            "comments",
+            "parent_account_id",
+            "tax_status",
+            "transferred_to_accounting"
+          ],
+          "table_rows": 1041,
+          "nonnull_equal_rows": 1041,
+          "both_null_rows_ignored": 0,
+          "mismatch_rows": 0,
+          "column_contracts": {
+            "comments": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 196,
+                  "end_line": 197,
+                  "original_text": "        - name: comments\n          data_type: VARCHAR\n",
+                  "name": "comments",
+                  "description": null,
+                  "specification": {
+                    "name": "comments",
+                    "data_type": "VARCHAR"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            },
+            "parent_account_id": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 232,
+                  "end_line": 233,
+                  "original_text": "        - name: parent_account_id\n          data_type: VARCHAR\n",
+                  "name": "parent_account_id",
+                  "description": null,
+                  "specification": {
+                    "name": "parent_account_id",
+                    "data_type": "VARCHAR"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            },
+            "tax_status": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 262,
+                  "end_line": 263,
+                  "original_text": "        - name: tax_status\n          data_type: VARCHAR\n",
+                  "name": "tax_status",
+                  "description": null,
+                  "specification": {
+                    "name": "tax_status",
+                    "data_type": "VARCHAR"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            },
+            "transferred_to_accounting": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 266,
+                  "end_line": 267,
+                  "original_text": "        - name: transferred_to_accounting\n          data_type: VARCHAR\n",
+                  "name": "transferred_to_accounting",
+                  "description": null,
+                  "specification": {
+                    "name": "transferred_to_accounting",
+                    "data_type": "VARCHAR"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            }
+          },
+          "description_pairs": [
+            {
+              "left": "comments",
+              "right": "parent_account_id",
+              "both_have_explicit_descriptions": false,
+              "description_texts_differ": false,
+              "semantic_equivalence_evaluated": false
+            },
+            {
+              "left": "comments",
+              "right": "tax_status",
+              "both_have_explicit_descriptions": false,
+              "description_texts_differ": false,
+              "semantic_equivalence_evaluated": false
+            },
+            {
+              "left": "comments",
+              "right": "transferred_to_accounting",
+              "both_have_explicit_descriptions": false,
+              "description_texts_differ": false,
+              "semantic_equivalence_evaluated": false
+            },
+            {
+              "left": "parent_account_id",
+              "right": "tax_status",
+              "both_have_explicit_descriptions": false,
+              "description_texts_differ": false,
+              "semantic_equivalence_evaluated": false
+            },
+            {
+              "left": "parent_account_id",
+              "right": "transferred_to_accounting",
+              "both_have_explicit_descriptions": false,
+              "description_texts_differ": false,
+              "semantic_equivalence_evaluated": false
+            },
+            {
+              "left": "tax_status",
+              "right": "transferred_to_accounting",
+              "both_have_explicit_descriptions": false,
+              "description_texts_differ": false,
+              "semantic_equivalence_evaluated": false
+            }
+          ],
+          "has_pair_with_different_explicit_description": false,
+          "meaning_status": "契约未描述含义差别"
+        },
+        {
+          "columns": [
+            "home_currency",
+            "transaction_currency"
+          ],
+          "table_rows": 1041,
+          "nonnull_equal_rows": 1041,
+          "both_null_rows_ignored": 0,
+          "mismatch_rows": 0,
+          "column_contracts": {
+            "home_currency": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 216,
+                  "end_line": 217,
+                  "original_text": "        - name: home_currency\n          data_type: VARCHAR\n",
+                  "name": "home_currency",
+                  "description": null,
+                  "specification": {
+                    "name": "home_currency",
+                    "data_type": "VARCHAR"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            },
+            "transaction_currency": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+                  "start_line": 264,
+                  "end_line": 265,
+                  "original_text": "        - name: transaction_currency\n          data_type: VARCHAR\n",
+                  "name": "transaction_currency",
+                  "description": null,
+                  "specification": {
+                    "name": "transaction_currency",
+                    "data_type": "VARCHAR"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            }
+          },
+          "description_pairs": [
+            {
+              "left": "home_currency",
+              "right": "transaction_currency",
+              "both_have_explicit_descriptions": false,
+              "description_texts_differ": false,
+              "semantic_equivalence_evaluated": false
+            }
+          ],
+          "has_pair_with_different_explicit_description": false,
+          "meaning_status": "契约未描述含义差别"
+        }
+      ],
+      "profile_sql": "SELECT count(*),count(\"invoice_id\"),min(CAST(\"invoice_id\" AS VARCHAR)),max(CAST(\"invoice_id\" AS VARCHAR)),sum(hash(CAST(\"invoice_id\" AS VARCHAR))),count(\"account_id\"),min(CAST(\"account_id\" AS VARCHAR)),max(CAST(\"account_id\" AS VARCHAR)),sum(hash(CAST(\"account_id\" AS VARCHAR))),count(\"adjustment_amount\"),min(CAST(\"adjustment_amount\" AS VARCHAR)),max(CAST(\"adjustment_amount\" AS VARCHAR)),sum(hash(CAST(\"adjustment_amount\" AS VARCHAR))),count(\"amount\"),min(CAST(\"amount\" AS VARCHAR)),max(CAST(\"amount\" AS VARCHAR)),sum(hash(CAST(\"amount\" AS VARCHAR))),count(\"amount_home_currency\"),min(CAST(\"amount_home_currency\" AS VARCHAR)),max(CAST(\"amount_home_currency\" AS VARCHAR)),sum(hash(CAST(\"amount_home_currency\" AS VARCHAR))),count(\"amount_without_tax\"),min(CAST(\"amount_without_tax\" AS VARCHAR)),max(CAST(\"amount_without_tax\" AS VARCHAR)),sum(hash(CAST(\"amount_without_tax\" AS VARCHAR))),count(\"amount_without_tax_home_currency\"),min(CAST(\"amount_without_tax_home_currency\" AS VARCHAR)),max(CAST(\"amount_without_tax_home_currency\" AS VARCHAR)),sum(hash(CAST(\"amount_without_tax_home_currency\" AS VARCHAR))),count(\"auto_pay\"),min(CAST(\"auto_pay\" AS VARCHAR)),max(CAST(\"auto_pay\" AS VARCHAR)),sum(hash(CAST(\"auto_pay\" AS VARCHAR))),count(\"balance\"),min(CAST(\"balance\" AS VARCHAR)),max(CAST(\"balance\" AS VARCHAR)),sum(hash(CAST(\"balance\" AS VARCHAR))),count(\"bill_to_contact_id\"),min(CAST(\"bill_to_contact_id\" AS VARCHAR)),max(CAST(\"bill_to_contact_id\" AS VARCHAR)),sum(hash(CAST(\"bill_to_contact_id\" AS VARCHAR))),count(\"comments\"),min(CAST(\"comments\" AS VARCHAR)),max(CAST(\"comments\" AS VARCHAR)),sum(hash(CAST(\"comments\" AS VARCHAR))),count(\"created_by_id\"),min(CAST(\"created_by_id\" AS VARCHAR)),max(CAST(\"created_by_id\" AS VARCHAR)),sum(hash(CAST(\"created_by_id\" AS VARCHAR))),count(\"created_date\"),min(CAST(\"created_date\" AS VARCHAR)),max(CAST(\"created_date\" AS VARCHAR)),sum(hash(CAST(\"created_date\" AS VARCHAR))),count(\"credit_balance_adjustment_amount\"),min(CAST(\"credit_balance_adjustment_amount\" AS VARCHAR)),max(CAST(\"credit_balance_adjustment_amount\" AS VARCHAR)),sum(hash(CAST(\"credit_balance_adjustment_amount\" AS VARCHAR))),count(\"credit_memo_amount\"),min(CAST(\"credit_memo_amount\" AS VARCHAR)),max(CAST(\"credit_memo_amount\" AS VARCHAR)),sum(hash(CAST(\"credit_memo_amount\" AS VARCHAR))),count(\"default_payment_method_id\"),min(CAST(\"default_payment_method_id\" AS VARCHAR)),max(CAST(\"default_payment_method_id\" AS VARCHAR)),sum(hash(CAST(\"default_payment_method_id\" AS VARCHAR))),count(\"due_date\"),min(CAST(\"due_date\" AS VARCHAR)),max(CAST(\"due_date\" AS VARCHAR)),sum(hash(CAST(\"due_date\" AS VARCHAR))),count(\"exchange_rate\"),min(CAST(\"exchange_rate\" AS VARCHAR)),max(CAST(\"exchange_rate\" AS VARCHAR)),sum(hash(CAST(\"exchange_rate\" AS VARCHAR))),count(\"exchange_rate_date\"),min(CAST(\"exchange_rate_date\" AS VARCHAR)),max(CAST(\"exchange_rate_date\" AS VARCHAR)),sum(hash(CAST(\"exchange_rate_date\" AS VARCHAR))),count(\"home_currency\"),min(CAST(\"home_currency\" AS VARCHAR)),max(CAST(\"home_currency\" AS VARCHAR)),sum(hash(CAST(\"home_currency\" AS VARCHAR))),count(\"includes_one_time\"),min(CAST(\"includes_one_time\" AS VARCHAR)),max(CAST(\"includes_one_time\" AS VARCHAR)),sum(hash(CAST(\"includes_one_time\" AS VARCHAR))),count(\"includes_recurring\"),min(CAST(\"includes_recurring\" AS VARCHAR)),max(CAST(\"includes_recurring\" AS VARCHAR)),sum(hash(CAST(\"includes_recurring\" AS VARCHAR))),count(\"includes_usage\"),min(CAST(\"includes_usage\" AS VARCHAR)),max(CAST(\"includes_usage\" AS VARCHAR)),sum(hash(CAST(\"includes_usage\" AS VARCHAR))),count(\"invoice_date\"),min(CAST(\"invoice_date\" AS VARCHAR)),max(CAST(\"invoice_date\" AS VARCHAR)),sum(hash(CAST(\"invoice_date\" AS VARCHAR))),count(\"invoice_number\"),min(CAST(\"invoice_number\" AS VARCHAR)),max(CAST(\"invoice_number\" AS VARCHAR)),sum(hash(CAST(\"invoice_number\" AS VARCHAR))),count(\"last_email_sent_date\"),min(CAST(\"last_email_sent_date\" AS VARCHAR)),max(CAST(\"last_email_sent_date\" AS VARCHAR)),sum(hash(CAST(\"last_email_sent_date\" AS VARCHAR))),count(\"parent_account_id\"),min(CAST(\"parent_account_id\" AS VARCHAR)),max(CAST(\"parent_account_id\" AS VARCHAR)),sum(hash(CAST(\"parent_account_id\" AS VARCHAR))),count(\"payment_amount\"),min(CAST(\"payment_amount\" AS VARCHAR)),max(CAST(\"payment_amount\" AS VARCHAR)),sum(hash(CAST(\"payment_amount\" AS VARCHAR))),count(\"payment_term\"),min(CAST(\"payment_term\" AS VARCHAR)),max(CAST(\"payment_term\" AS VARCHAR)),sum(hash(CAST(\"payment_term\" AS VARCHAR))),count(\"posted_by\"),min(CAST(\"posted_by\" AS VARCHAR)),max(CAST(\"posted_by\" AS VARCHAR)),sum(hash(CAST(\"posted_by\" AS VARCHAR))),count(\"posted_date\"),min(CAST(\"posted_date\" AS VARCHAR)),max(CAST(\"posted_date\" AS VARCHAR)),sum(hash(CAST(\"posted_date\" AS VARCHAR))),count(\"refund_amount\"),min(CAST(\"refund_amount\" AS VARCHAR)),max(CAST(\"refund_amount\" AS VARCHAR)),sum(hash(CAST(\"refund_amount\" AS VARCHAR))),count(\"sold_to_contact_id\"),min(CAST(\"sold_to_contact_id\" AS VARCHAR)),max(CAST(\"sold_to_contact_id\" AS VARCHAR)),sum(hash(CAST(\"sold_to_contact_id\" AS VARCHAR))),count(\"source\"),min(CAST(\"source\" AS VARCHAR)),max(CAST(\"source\" AS VARCHAR)),sum(hash(CAST(\"source\" AS VARCHAR))),count(\"source_id\"),min(CAST(\"source_id\" AS VARCHAR)),max(CAST(\"source_id\" AS VARCHAR)),sum(hash(CAST(\"source_id\" AS VARCHAR))),count(\"source_type\"),min(CAST(\"source_type\" AS VARCHAR)),max(CAST(\"source_type\" AS VARCHAR)),sum(hash(CAST(\"source_type\" AS VARCHAR))),count(\"status\"),min(CAST(\"status\" AS VARCHAR)),max(CAST(\"status\" AS VARCHAR)),sum(hash(CAST(\"status\" AS VARCHAR))),count(\"target_date\"),min(CAST(\"target_date\" AS VARCHAR)),max(CAST(\"target_date\" AS VARCHAR)),sum(hash(CAST(\"target_date\" AS VARCHAR))),count(\"tax_amount\"),min(CAST(\"tax_amount\" AS VARCHAR)),max(CAST(\"tax_amount\" AS VARCHAR)),sum(hash(CAST(\"tax_amount\" AS VARCHAR))),count(\"tax_status\"),min(CAST(\"tax_status\" AS VARCHAR)),max(CAST(\"tax_status\" AS VARCHAR)),sum(hash(CAST(\"tax_status\" AS VARCHAR))),count(\"transaction_currency\"),min(CAST(\"transaction_currency\" AS VARCHAR)),max(CAST(\"transaction_currency\" AS VARCHAR)),sum(hash(CAST(\"transaction_currency\" AS VARCHAR))),count(\"transferred_to_accounting\"),min(CAST(\"transferred_to_accounting\" AS VARCHAR)),max(CAST(\"transferred_to_accounting\" AS VARCHAR)),sum(hash(CAST(\"transferred_to_accounting\" AS VARCHAR))),count(\"updated_by_id\"),min(CAST(\"updated_by_id\" AS VARCHAR)),max(CAST(\"updated_by_id\" AS VARCHAR)),sum(hash(CAST(\"updated_by_id\" AS VARCHAR))),count(\"updated_date\"),min(CAST(\"updated_date\" AS VARCHAR)),max(CAST(\"updated_date\" AS VARCHAR)),sum(hash(CAST(\"updated_date\" AS VARCHAR))),count(\"is_most_recent_record\"),min(CAST(\"is_most_recent_record\" AS VARCHAR)),max(CAST(\"is_most_recent_record\" AS VARCHAR)),sum(hash(CAST(\"is_most_recent_record\" AS VARCHAR))) FROM \"staging\".\"stg_zuora__invoice\"",
+      "equal_column_confirmation_queries": [
+        {
+          "left": "invoice_id",
+          "right": "account_id",
+          "sql": "SELECT count(*) FILTER(WHERE CAST(\"invoice_id\" AS VARCHAR) IS DISTINCT FROM CAST(\"account_id\" AS VARCHAR)),count(*) FILTER(WHERE \"invoice_id\" IS NOT NULL AND \"account_id\" IS NOT NULL AND CAST(\"invoice_id\" AS VARCHAR)=CAST(\"account_id\" AS VARCHAR)) FROM \"staging\".\"stg_zuora__invoice\"",
+          "mismatch_rows": 0,
+          "nonnull_equal_rows": 1041
+        },
+        {
+          "left": "adjustment_amount",
+          "right": "credit_balance_adjustment_amount",
+          "sql": "SELECT count(*) FILTER(WHERE CAST(\"adjustment_amount\" AS VARCHAR) IS DISTINCT FROM CAST(\"credit_balance_adjustment_amount\" AS VARCHAR)),count(*) FILTER(WHERE \"adjustment_amount\" IS NOT NULL AND \"credit_balance_adjustment_amount\" IS NOT NULL AND CAST(\"adjustment_amount\" AS VARCHAR)=CAST(\"credit_balance_adjustment_amount\" AS VARCHAR)) FROM \"staging\".\"stg_zuora__invoice\"",
+          "mismatch_rows": 0,
+          "nonnull_equal_rows": 1041
+        },
+        {
+          "left": "adjustment_amount",
+          "right": "refund_amount",
+          "sql": "SELECT count(*) FILTER(WHERE CAST(\"adjustment_amount\" AS VARCHAR) IS DISTINCT FROM CAST(\"refund_amount\" AS VARCHAR)),count(*) FILTER(WHERE \"adjustment_amount\" IS NOT NULL AND \"refund_amount\" IS NOT NULL AND CAST(\"adjustment_amount\" AS VARCHAR)=CAST(\"refund_amount\" AS VARCHAR)) FROM \"staging\".\"stg_zuora__invoice\"",
+          "mismatch_rows": 0,
+          "nonnull_equal_rows": 1041
+        },
+        {
+          "left": "amount",
+          "right": "amount_home_currency",
+          "sql": "SELECT count(*) FILTER(WHERE CAST(\"amount\" AS VARCHAR) IS DISTINCT FROM CAST(\"amount_home_currency\" AS VARCHAR)),count(*) FILTER(WHERE \"amount\" IS NOT NULL AND \"amount_home_currency\" IS NOT NULL AND CAST(\"amount\" AS VARCHAR)=CAST(\"amount_home_currency\" AS VARCHAR)) FROM \"staging\".\"stg_zuora__invoice\"",
+          "mismatch_rows": 0,
+          "nonnull_equal_rows": 1041
+        },
+        {
+          "left": "amount_without_tax",
+          "right": "amount_without_tax_home_currency",
+          "sql": "SELECT count(*) FILTER(WHERE CAST(\"amount_without_tax\" AS VARCHAR) IS DISTINCT FROM CAST(\"amount_without_tax_home_currency\" AS VARCHAR)),count(*) FILTER(WHERE \"amount_without_tax\" IS NOT NULL AND \"amount_without_tax_home_currency\" IS NOT NULL AND CAST(\"amount_without_tax\" AS VARCHAR)=CAST(\"amount_without_tax_home_currency\" AS VARCHAR)) FROM \"staging\".\"stg_zuora__invoice\"",
+          "mismatch_rows": 0,
+          "nonnull_equal_rows": 1041
+        },
+        {
+          "left": "bill_to_contact_id",
+          "right": "sold_to_contact_id",
+          "sql": "SELECT count(*) FILTER(WHERE CAST(\"bill_to_contact_id\" AS VARCHAR) IS DISTINCT FROM CAST(\"sold_to_contact_id\" AS VARCHAR)),count(*) FILTER(WHERE \"bill_to_contact_id\" IS NOT NULL AND \"sold_to_contact_id\" IS NOT NULL AND CAST(\"bill_to_contact_id\" AS VARCHAR)=CAST(\"sold_to_contact_id\" AS VARCHAR)) FROM \"staging\".\"stg_zuora__invoice\"",
+          "mismatch_rows": 0,
+          "nonnull_equal_rows": 1041
+        },
+        {
+          "left": "comments",
+          "right": "parent_account_id",
+          "sql": "SELECT count(*) FILTER(WHERE CAST(\"comments\" AS VARCHAR) IS DISTINCT FROM CAST(\"parent_account_id\" AS VARCHAR)),count(*) FILTER(WHERE \"comments\" IS NOT NULL AND \"parent_account_id\" IS NOT NULL AND CAST(\"comments\" AS VARCHAR)=CAST(\"parent_account_id\" AS VARCHAR)) FROM \"staging\".\"stg_zuora__invoice\"",
+          "mismatch_rows": 0,
+          "nonnull_equal_rows": 1041
+        },
+        {
+          "left": "comments",
+          "right": "tax_status",
+          "sql": "SELECT count(*) FILTER(WHERE CAST(\"comments\" AS VARCHAR) IS DISTINCT FROM CAST(\"tax_status\" AS VARCHAR)),count(*) FILTER(WHERE \"comments\" IS NOT NULL AND \"tax_status\" IS NOT NULL AND CAST(\"comments\" AS VARCHAR)=CAST(\"tax_status\" AS VARCHAR)) FROM \"staging\".\"stg_zuora__invoice\"",
+          "mismatch_rows": 0,
+          "nonnull_equal_rows": 1041
+        },
+        {
+          "left": "comments",
+          "right": "transferred_to_accounting",
+          "sql": "SELECT count(*) FILTER(WHERE CAST(\"comments\" AS VARCHAR) IS DISTINCT FROM CAST(\"transferred_to_accounting\" AS VARCHAR)),count(*) FILTER(WHERE \"comments\" IS NOT NULL AND \"transferred_to_accounting\" IS NOT NULL AND CAST(\"comments\" AS VARCHAR)=CAST(\"transferred_to_accounting\" AS VARCHAR)) FROM \"staging\".\"stg_zuora__invoice\"",
+          "mismatch_rows": 0,
+          "nonnull_equal_rows": 1041
+        },
+        {
+          "left": "home_currency",
+          "right": "transaction_currency",
+          "sql": "SELECT count(*) FILTER(WHERE CAST(\"home_currency\" AS VARCHAR) IS DISTINCT FROM CAST(\"transaction_currency\" AS VARCHAR)),count(*) FILTER(WHERE \"home_currency\" IS NOT NULL AND \"transaction_currency\" IS NOT NULL AND CAST(\"home_currency\" AS VARCHAR)=CAST(\"transaction_currency\" AS VARCHAR)) FROM \"staging\".\"stg_zuora__invoice\"",
+          "mismatch_rows": 0,
+          "nonnull_equal_rows": 1041
+        }
+      ],
+      "equality_policy": "exact CAST AS VARCHAR per row; no trim/case/numeric/date normalization; both NULL ignored; at least one nonnull equal row; one-sided NULL differs",
+      "actual_schema": "staging",
+      "actual_table": "stg_zuora__invoice",
+      "relation_type": "BASE TABLE"
+    },
+    "agent_sql": [
+      {
+        "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+        "status": "parsed",
+        "parser": "30.25.0",
+        "sources": [
+          {
+            "name": "raw.zuora_invoice_data",
+            "canonical": "raw.zuora_invoice_data",
+            "locations": [
+              {
+                "line": 3,
+                "end_line": 3
+              }
+            ]
+          }
+        ],
+        "unresolved_source_expressions": [],
+        "row_generator_expressions": [],
+        "outputs": [
+          {
+            "name": "invoice_id",
+            "alternatives": [
+              {
+                "expression_sql": "id",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 6,
+                "end_line": 6,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "invoice_id",
+            "retained_output_ordinal": 1
+          },
+          {
+            "name": "account_id",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"id\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 7,
+                "end_line": 7,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "account_id",
+            "retained_output_ordinal": 2
+          },
+          {
+            "name": "adjustment_amount",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"adjustment_amount\" AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 8,
+                "end_line": 8,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "adjustment_amount",
+            "retained_output_ordinal": 3
+          },
+          {
+            "name": "amount",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(NULLIF(amount, '') AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 9,
+                "end_line": 9,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "amount",
+            "retained_output_ordinal": 4
+          },
+          {
+            "name": "amount_home_currency",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(NULLIF(amount_home_currency, '') AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 10,
+                "end_line": 10,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "amount_home_currency",
+            "retained_output_ordinal": 5
+          },
+          {
+            "name": "amount_without_tax",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"amount_without_tax\" AS BIGINT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 11,
+                "end_line": 11,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "amount_without_tax",
+            "retained_output_ordinal": 6
+          },
+          {
+            "name": "amount_without_tax_home_currency",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"amount_without_tax_home_currency\" AS BIGINT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 12,
+                "end_line": 12,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "amount_without_tax_home_currency",
+            "retained_output_ordinal": 7
+          },
+          {
+            "name": "auto_pay",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"auto_pay\" AS BOOLEAN)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 13,
+                "end_line": 13,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "auto_pay",
+            "retained_output_ordinal": 8
+          },
+          {
+            "name": "balance",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"balance\" AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 14,
+                "end_line": 14,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "balance",
+            "retained_output_ordinal": 9
+          },
+          {
+            "name": "bill_to_contact_id",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"bill_to_contact_id\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 15,
+                "end_line": 15,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "bill_to_contact_id",
+            "retained_output_ordinal": 10
+          },
+          {
+            "name": "comments",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"comments\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 16,
+                "end_line": 16,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "comments",
+            "retained_output_ordinal": 11
+          },
+          {
+            "name": "created_by_id",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"created_by_id\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 17,
+                "end_line": 17,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "created_by_id",
+            "retained_output_ordinal": 12
+          },
+          {
+            "name": "created_date",
+            "alternatives": [
+              {
+                "expression_sql": "CASE WHEN TRY_CAST(created_date AS TIMESTAMP) IS NULL THEN NULL WHEN TRY_CAST(created_date AS TIMESTAMP) > CURRENT_TIMESTAMP THEN NULL WHEN TRY_CAST(created_date AS TIMESTAMP) < CAST('2000-01-01 00:00:00' AS TIMESTAMP) THEN NULL ELSE CAST(created_date AS TIMESTAMP) END",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 18,
+                "end_line": 18,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "created_date",
+            "retained_output_ordinal": 13
+          },
+          {
+            "name": "credit_balance_adjustment_amount",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"credit_balance_adjustment_amount\" AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 19,
+                "end_line": 19,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "credit_balance_adjustment_amount",
+            "retained_output_ordinal": 14
+          },
+          {
+            "name": "credit_memo_amount",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"credit_memo_amount\" AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 20,
+                "end_line": 20,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "credit_memo_amount",
+            "retained_output_ordinal": 15
+          },
+          {
+            "name": "default_payment_method_id",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"default_payment_method_id\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 21,
+                "end_line": 21,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "default_payment_method_id",
+            "retained_output_ordinal": 16
+          },
+          {
+            "name": "due_date",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(due_date AS DATE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 22,
+                "end_line": 22,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "due_date",
+            "retained_output_ordinal": 17
+          },
+          {
+            "name": "exchange_rate",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"exchange_rate\" AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 23,
+                "end_line": 23,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "exchange_rate",
+            "retained_output_ordinal": 18
+          },
+          {
+            "name": "exchange_rate_date",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"exchange_rate_date\" AS DATE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 24,
+                "end_line": 24,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "exchange_rate_date",
+            "retained_output_ordinal": 19
+          },
+          {
+            "name": "home_currency",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"home_currency\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 25,
+                "end_line": 25,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "home_currency",
+            "retained_output_ordinal": 20
+          },
+          {
+            "name": "includes_one_time",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"includes_one_time\" AS BOOLEAN)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 26,
+                "end_line": 26,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "includes_one_time",
+            "retained_output_ordinal": 21
+          },
+          {
+            "name": "includes_recurring",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"includes_recurring\" AS BOOLEAN)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 27,
+                "end_line": 27,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "includes_recurring",
+            "retained_output_ordinal": 22
+          },
+          {
+            "name": "includes_usage",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"includes_usage\" AS BOOLEAN)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 28,
+                "end_line": 28,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "includes_usage",
+            "retained_output_ordinal": 23
+          },
+          {
+            "name": "invoice_date",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(invoice_date AS DATE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 29,
+                "end_line": 29,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "invoice_date",
+            "retained_output_ordinal": 24
+          },
+          {
+            "name": "invoice_number",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"invoice_number\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 30,
+                "end_line": 30,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "invoice_number",
+            "retained_output_ordinal": 25
+          },
+          {
+            "name": "last_email_sent_date",
+            "alternatives": [
+              {
+                "expression_sql": "CASE WHEN NULLIF(last_email_sent_date, '') IS NULL THEN NULL ELSE TRY_CAST(last_email_sent_date AS TIMESTAMP) END",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 31,
+                "end_line": 31,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "last_email_sent_date",
+            "retained_output_ordinal": 26
+          },
+          {
+            "name": "parent_account_id",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"parent_account_id\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 32,
+                "end_line": 32,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "parent_account_id",
+            "retained_output_ordinal": 27
+          },
+          {
+            "name": "payment_amount",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(NULLIF(payment_amount, '') AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 33,
+                "end_line": 33,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "payment_amount",
+            "retained_output_ordinal": 28
+          },
+          {
+            "name": "payment_term",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"payment_term\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 34,
+                "end_line": 34,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "payment_term",
+            "retained_output_ordinal": 29
+          },
+          {
+            "name": "posted_by",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"posted_by\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 35,
+                "end_line": 35,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "posted_by",
+            "retained_output_ordinal": 30
+          },
+          {
+            "name": "posted_date",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(posted_date AS TIMESTAMP)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 36,
+                "end_line": 36,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "posted_date",
+            "retained_output_ordinal": 31
+          },
+          {
+            "name": "refund_amount",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(NULLIF(refund_amount, '') AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 37,
+                "end_line": 37,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "refund_amount",
+            "retained_output_ordinal": 32
+          },
+          {
+            "name": "sold_to_contact_id",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"sold_to_contact_id\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 38,
+                "end_line": 38,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "sold_to_contact_id",
+            "retained_output_ordinal": 33
+          },
+          {
+            "name": "source",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"source\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 39,
+                "end_line": 39,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "source",
+            "retained_output_ordinal": 34
+          },
+          {
+            "name": "source_id",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"source_id\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 40,
+                "end_line": 40,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "source_id",
+            "retained_output_ordinal": 35
+          },
+          {
+            "name": "source_type",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"source_type\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 41,
+                "end_line": 41,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "source_type",
+            "retained_output_ordinal": 36
+          },
+          {
+            "name": "status",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"status\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 42,
+                "end_line": 42,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "status",
+            "retained_output_ordinal": 37
+          },
+          {
+            "name": "target_date",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"target_date\" AS DATE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 43,
+                "end_line": 43,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "target_date",
+            "retained_output_ordinal": 38
+          },
+          {
+            "name": "tax_amount",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(NULLIF(tax_amount, '') AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 44,
+                "end_line": 44,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "tax_amount",
+            "retained_output_ordinal": 39
+          },
+          {
+            "name": "tax_status",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"tax_status\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 45,
+                "end_line": 45,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "tax_status",
+            "retained_output_ordinal": 40
+          },
+          {
+            "name": "transaction_currency",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"transaction_currency\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 46,
+                "end_line": 46,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "transaction_currency",
+            "retained_output_ordinal": 41
+          },
+          {
+            "name": "transferred_to_accounting",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"transferred_to_accounting\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 47,
+                "end_line": 47,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "transferred_to_accounting",
+            "retained_output_ordinal": 42
+          },
+          {
+            "name": "updated_by_id",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"updated_by_id\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 48,
+                "end_line": 48,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "updated_by_id",
+            "retained_output_ordinal": 43
+          },
+          {
+            "name": "updated_date",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(updated_date AS TIMESTAMP)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 49,
+                "end_line": 49,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "updated_date",
+            "retained_output_ordinal": 44
+          },
+          {
+            "name": "is_most_recent_record",
+            "alternatives": [
+              {
+                "expression_sql": "ROW_NUMBER() OVER (PARTITION BY id ORDER BY TRY_CAST(updated_date AS TIMESTAMP) DESC) = 1",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+                "line": 50,
+                "end_line": 50,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "is_most_recent_record",
+            "retained_output_ordinal": 45
+          }
+        ],
+        "null_literal_outputs": [],
+        "constant_literal_outputs": [],
+        "runtime_hits": [
+          {
+            "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+            "line": 4,
+            "column": 193,
+            "matched_text": "current_timestamp",
+            "line_text": "    WHERE coalesce(lower(cast(_fivetran_deleted AS varchar)), 'false') NOT IN ('true', '1', 't') AND try_cast(created_date AS timestamp) IS NOT NULL AND try_cast(created_date AS timestamp) <= current_timestamp AND try_cast(created_date AS timestamp) >= timestamp '2000-01-01 00:00:00')",
+            "context": "code"
+          },
+          {
+            "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+            "line": 18,
+            "column": 116,
+            "matched_text": "current_timestamp",
+            "line_text": "        case when try_cast(created_date as TIMESTAMP) is null then null when try_cast(created_date as TIMESTAMP) > current_timestamp then null when try_cast(created_date as TIMESTAMP) < timestamp '2000-01-01 00:00:00' then null else cast(created_date as TIMESTAMP) end AS created_date,",
+            "context": "code"
+          }
+        ]
+      }
+    ],
+    "source_comparison": {
+      "contract": {
+        "status": "specified",
+        "references": [
+          {
+            "name": "raw.zuora_invoice_data",
+            "canonical": "raw.zuora_invoice_data",
+            "basis": "source_table",
+            "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+            "block_start_line": 169
+          },
+          {
+            "name": "raw.zuora_invoice_data",
+            "canonical": "raw.zuora_invoice_data",
+            "basis": "explicit_schema_qualified_reference_in_original_block",
+            "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+            "line": 171,
+            "line_text": "      source_table: raw.zuora_invoice_data"
+          }
+        ],
+        "canonical_names": [
+          "raw.zuora_invoice_data"
+        ]
+      },
+      "agent_direct_read_sources": [
+        "raw.zuora_invoice_data"
+      ],
+      "scope": "direct physical relation references through reachable local CTE/subqueries; no transitive expansion through other output tables or stored views",
+      "complete": true,
+      "specified_but_not_read": [],
+      "read_but_not_specified": []
+    },
+    "time_dependencies": {
+      "agent_sql": {
+        "available": true,
+        "appears": true,
+        "hits": [
+          {
+            "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+            "line": 4,
+            "column": 193,
+            "matched_text": "current_timestamp",
+            "line_text": "    WHERE coalesce(lower(cast(_fivetran_deleted AS varchar)), 'false') NOT IN ('true', '1', 't') AND try_cast(created_date AS timestamp) IS NOT NULL AND try_cast(created_date AS timestamp) <= current_timestamp AND try_cast(created_date AS timestamp) >= timestamp '2000-01-01 00:00:00')",
+            "context": "code"
+          },
+          {
+            "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+            "line": 18,
+            "column": 116,
+            "matched_text": "current_timestamp",
+            "line_text": "        case when try_cast(created_date as TIMESTAMP) is null then null when try_cast(created_date as TIMESTAMP) > current_timestamp then null when try_cast(created_date as TIMESTAMP) < timestamp '2000-01-01 00:00:00' then null else cast(created_date as TIMESTAMP) end AS created_date,",
+            "context": "code"
+          }
+        ]
+      },
+      "gold_sql": {
+        "available": true,
+        "appears": true,
+        "hits": [
+          {
+            "path": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+            "line": 21,
+            "column": 56,
+            "matched_text": "current_timestamp",
+            "line_text": "            when try_cast(created_date as TIMESTAMP) > current_timestamp then null",
+            "context": "code"
+          },
+          {
+            "path": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+            "line": 60,
+            "column": 52,
+            "matched_text": "current_timestamp",
+            "line_text": "        or (try_cast(created_date as TIMESTAMP) <= current_timestamp and try_cast(created_date as TIMESTAMP) >= timestamp '2000-01-01 00:00:00')",
+            "context": "code"
+          }
+        ],
+        "paths": [
+          "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql"
+        ]
+      },
+      "contract": {
+        "available": true,
+        "appears": true,
+        "hits": [
+          {
+            "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+            "line": 202,
+            "column": 138,
+            "matched_text": "current_timestamp",
+            "line_text": "          source_expression: \"case when try_cast(created_date as TIMESTAMP) is null then null when try_cast(created_date as TIMESTAMP) > current_timestamp then null when try_cast(created_date as TIMESTAMP) < timestamp '2000-01-01 00:00:00' then null else cast(created_date as TIMESTAMP) end\"",
+            "context": "contract_text"
+          },
+          {
+            "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+            "line": 279,
+            "column": 105,
+            "matched_text": "current_timestamp",
+            "line_text": "        - rule: \"try_cast(created_date as TIMESTAMP) is null OR (try_cast(created_date as TIMESTAMP) <= current_timestamp AND try_cast(created_date as TIMESTAMP) >= timestamp '2000-01-01 00:00:00')\"",
+            "context": "contract_text"
+          }
+        ]
+      }
+    },
+    "any_result_keyword_excerpt_ids": [
+      "008-013917"
+    ],
+    "trace_flags": {
+      "A1_zero_rows": false,
+      "A2_all_null_column": true,
+      "A3_constant_nonnull_column": true,
+      "A4_equal_columns": true,
+      "A4_equal_columns_different_description_texts": false,
+      "B5_null_literal_output": false,
+      "B6_constant_literal_output": false,
+      "B7_specified_not_read": false,
+      "B7_read_not_specified": false,
+      "B8_shared_single_source": false,
+      "C9_agent_runtime_text": true,
+      "C9_gold_runtime_text": true,
+      "C9_contract_runtime_text": true,
+      "D10_keyword_in_final_report": false,
+      "D10_keyword_in_any_result_field": true
+    }
+  }
+}
+```
+
+## trace_excerpts
+
+```json
+{
+  "archive": "/home/katherine/Assumption_Ledger/traces/dacomp_deimpl_prev.tar.gz",
+  "event_source_root": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent",
+  "actual_read_sources_from_008_B7": [
+    "raw.zuora_invoice_data"
+  ],
+  "name_match_policy": "Case-insensitive complete identifier-name boundaries; source names include qualified form and bare leaf name. No semantic association inferred.",
+  "matched_step_count": 13,
+  "full_original_characters_before_budget": 98989,
+  "budget_triggered": true,
+  "source_only_steps_indexed": 3,
+  "retained_full_original_characters": 41362,
+  "full_target_steps_exceed_60000": false,
+  "budget_policy": "If total command/output text exceeds 60000 characters, keep every target-table step complete and retain only id/location/first line for source-only steps. Do not rewrite or truncate a kept original step."
+}
+```
+
+### event 7
+
+```json
+{
+  "event_id": 7,
+  "agent_command_sequence": 2,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/7.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1672,
+    "decoded_characters": 119
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/7.json",
+  "timestamp": "2026-10-25T06:01:27.617833",
+  "target_table_name_hits": [
+    "stg_zuora__invoice"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 3757,
+  "retention": "full_original"
+}
+```
+```bash
+find sql -type f -maxdepth 3 -print -exec sh -c 'echo --- $1; wc -l "$1"' _ {} \; && cat config/layer_dependencies.yaml
+```
+```json
+{
+  "event_id": 8,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/8.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1357,
+    "decoded_characters": 3638
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/8.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+find: warning: you have specified the global option -maxdepth after the argument -type, but global options are not positional, i.e., -maxdepth affects tests specified before it as well as those specified after it.  Please specify global options before other arguments.
+layers:
+  staging:
+    description: "Zuora raw standardization and cleaning"
+    tables:
+      - stg_zuora__account
+      - stg_zuora__contact
+      - stg_zuora__invoice
+      - stg_zuora__invoice_item
+      - stg_zuora__subscription
+      - stg_zuora__payment
+      - stg_zuora__payment_method
+      - stg_zuora__invoice_payment
+      - stg_zuora__rate_plan
+      - stg_zuora__rate_plan_charge
+      - stg_zuora__product
+      - stg_zuora__product_rate_plan
+      - stg_zuora__amendment
+      - stg_zuora__order
+      - stg_zuora__refund
+      - stg_zuora__refund_invoice_payment
+      - stg_zuora__taxation_item
+      - stg_zuora__credit_balance_adjustment
+
+  intermediate:
+    description: "Business logic and data integration"
+    dependencies: ["staging"]
+    tables:
+      - int_zuora__invoice_base
+      - int_zuora__billing_enriched
+      - int_zuora__transaction_date_spine
+      - int_zuora__mrr_date_spine
+      - int_zuora__contact_current
+      - int_zuora__product_current
+      - int_zuora__product_rate_plan_current
+      - int_zuora__rate_plan_current
+      - int_zuora__rate_plan_charge_current
+      - int_zuora__subscription_current
+      - int_zuora__amendment_current
+      - int_zuora__payment_current
+      - int_zuora__payment_method_current
+      - int_zuora__invoice_item_base
+      - int_zuora__transactions_grouped
+      - int_zuora__account_current
+      - int_zuora__invoice_payment_current
+      - int_zuora__account_rolling_totals
+      - int_zuora__account_partitions
+      - int_zuora__account_running_totals
+      - int_zuora__account_enriched
+
+  marts:
+    description: "Analysis-ready business entities"
+    dependencies: ["intermediate"]
+    tables:
+      - zuora__billing_history
+      - zuora__line_item_history
+      - zuora__account_overview
+      - zuora__account_daily_overview
+      - zuora__subscription_overview
+      - zuora__monthly_recurring_revenue
+      - zuora__line_item_enhanced
+
+execution_order:
+  staging:
+    - stg_zuora__account
+    - stg_zuora__contact
+    - stg_zuora__invoice
+    - stg_zuora__invoice_item
+    - stg_zuora__subscription
+    - stg_zuora__payment
+    - stg_zuora__payment_method
+    - stg_zuora__invoice_payment
+    - stg_zuora__rate_plan
+    - stg_zuora__rate_plan_charge
+    - stg_zuora__product
+    - stg_zuora__product_rate_plan
+    - stg_zuora__amendment
+    - stg_zuora__order
+    - stg_zuora__refund
+    - stg_zuora__refund_invoice_payment
+    - stg_zuora__taxation_item
+    - stg_zuora__credit_balance_adjustment
+  intermediate:
+    - int_zuora__account_current
+    - int_zuora__contact_current
+    - int_zuora__product_current
+    - int_zuora__product_rate_plan_current
+    - int_zuora__rate_plan_current
+    - int_zuora__rate_plan_charge_current
+    - int_zuora__subscription_current
+    - int_zuora__amendment_current
+    - int_zuora__payment_current
+    - int_zuora__payment_method_current
+    - int_zuora__invoice_payment_current
+    - int_zuora__invoice_base
+    - int_zuora__invoice_item_base
+    - int_zuora__billing_enriched
+    - int_zuora__transactions_grouped
+    - int_zuora__transaction_date_spine
+    - int_zuora__mrr_date_spine
+  marts:
+    - zuora__billing_history
+    - zuora__account_overview
+    - zuora__account_daily_overview
+    - zuora__subscription_overview
+    - zuora__monthly_recurring_revenue
+    - zuora__line_item_history
+    - zuora__line_item_enhanced
+```
+
+### event 9
+
+```json
+{
+  "event_id": 9,
+  "agent_command_sequence": 3,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/9.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1608,
+    "decoded_characters": 58
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/9.json",
+  "timestamp": "2026-10-25T06:01:27.648517",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "zuora_invoice_data"
+  ],
+  "full_original_characters": 12725,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "sed -n '1,240p' run.py && sed -n '1,240p' zuora_start.yaml"
+}
+```
+```json
+{
+  "event_id": 10,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/10.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1294,
+    "decoded_characters": 12667
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/10.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+### event 13
+
+```json
+{
+  "event_id": 13,
+  "agent_command_sequence": 5,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/13.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2038,
+    "decoded_characters": 371
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/13.json",
+  "timestamp": "2026-10-25T06:01:39.580156",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "zuora_invoice_data"
+  ],
+  "full_original_characters": 39783,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "python3 - <<'PY'\n"
+}
+```
+```json
+{
+  "event_id": 14,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/14.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1723,
+    "decoded_characters": 39412
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/14.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+### event 15
+
+```json
+{
+  "event_id": 15,
+  "agent_command_sequence": 6,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/15.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1912,
+    "decoded_characters": 330
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/15.json",
+  "timestamp": "2026-10-25T06:01:54.948508",
+  "target_table_name_hits": [
+    "stg_zuora__invoice"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 1603,
+  "retention": "full_original"
+}
+```
+```bash
+python3 - <<'PY'
+import yaml
+x=yaml.safe_load(open('docs/data_contract.yaml'))
+print(len(x['staging_contract']['tables']), [t['name'] for t in x['staging_contract']['tables']])
+print('inter', [m['name'] for m in x['modeling_spec']['intermediate_models']])
+print('marts', [m['name'] for m in x['modeling_spec']['marts_models']])
+PY
+```
+```json
+{
+  "event_id": 16,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/16.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1596,
+    "decoded_characters": 1273
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/16.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+18 ['stg_zuora__account', 'stg_zuora__contact', 'stg_zuora__invoice', 'stg_zuora__invoice_item', 'stg_zuora__invoice_payment', 'stg_zuora__payment', 'stg_zuora__payment_method', 'stg_zuora__product', 'stg_zuora__product_rate_plan', 'stg_zuora__rate_plan', 'stg_zuora__rate_plan_charge', 'stg_zuora__subscription', 'stg_zuora__taxation_item', 'stg_zuora__order', 'stg_zuora__credit_balance_adjustment', 'stg_zuora__refund', 'stg_zuora__refund_invoice_payment', 'stg_zuora__amendment']
+inter ['int_zuora__account_current', 'int_zuora__contact_current', 'int_zuora__invoice_base', 'int_zuora__invoice_item_base', 'int_zuora__billing_enriched', 'int_zuora__transactions_grouped', 'int_zuora__transaction_date_spine', 'int_zuora__payment_current', 'int_zuora__payment_method_current', 'int_zuora__amendment_current', 'int_zuora__product_current', 'int_zuora__product_rate_plan_current', 'int_zuora__rate_plan_current', 'int_zuora__rate_plan_charge_current', 'int_zuora__subscription_current', 'int_zuora__invoice_payment_current', 'int_zuora__mrr_date_spine']
+marts ['zuora__account_overview', 'zuora__billing_history', 'zuora__line_item_enhanced', 'zuora__line_item_history', 'zuora__monthly_recurring_revenue', 'zuora__subscription_overview', 'zuora__account_daily_overview']
+```
+
+### event 17
+
+```json
+{
+  "event_id": 17,
+  "agent_command_sequence": 7,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/17.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2404,
+    "decoded_characters": 562
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/17.json",
+  "timestamp": "2026-10-25T06:02:06.092458",
+  "target_table_name_hits": [
+    "stg_zuora__invoice"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 3771,
+  "retention": "full_original"
+}
+```
+```bash
+python3 - <<'PY'
+import duckdb,yaml
+c=duckdb.connect('zuora_start.duckdb',read_only=True)
+y=yaml.safe_load(open('docs/data_contract.yaml'))
+for t in y['staging_contract']['tables']:
+ raw=t['source_table'].split('.')[1]
+ cols=[r[1] for r in c.execute(f"pragma table_info('raw.{raw}')").fetchall()]
+ missing=[]
+ for x in t['columns']:
+  e=x.get('source_expression')
+  if e is None and x['name'] not in cols and x['name'] not in ['is_most_recent_record','is_most_recent_account_contact']:
+   missing.append(x['name'])
+ print(t['name'], 'missing direct', missing)
+PY
+```
+```json
+{
+  "event_id": 18,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/18.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2088,
+    "decoded_characters": 3209
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/18.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+stg_zuora__account missing direct ['account_id', 'account_number', 'auto_pay', 'balance', 'batch', 'bill_cycle_day', 'bill_to_contact_id', 'created_by_id', 'created_date', 'credit_balance', 'crm_id', 'currency', 'default_payment_method_id', 'last_invoice_date', 'mrr', 'name', 'notes', 'parent_account_id', 'payment_term', 'sold_to_contact_id', 'status', 'tax_exempt_effective_date', 'tax_exempt_expiration_date', 'tax_exempt_status', 'total_debit_memo_balance', 'total_invoice_balance', 'updated_by_id', 'updated_date', 'vatid']
+stg_zuora__contact missing direct ['account_id', 'address_1', 'address_2', 'city', 'country', 'created_by_id', 'description', 'first_name', 'last_name', 'postal_code', 'state', 'updated_by_id', 'work_phone']
+stg_zuora__invoice missing direct ['account_id', 'adjustment_amount', 'amount_without_tax', 'amount_without_tax_home_currency', 'auto_pay', 'balance', 'bill_to_contact_id', 'comments', 'created_by_id', 'credit_balance_adjustment_amount', 'credit_memo_amount', 'default_payment_method_id', 'exchange_rate', 'exchange_rate_date', 'home_currency', 'includes_one_time', 'includes_recurring', 'includes_usage', 'invoice_number', 'parent_account_id', 'payment_term', 'posted_by', 'sold_to_contact_id', 'source', 'source_id', 'source_type', 'status', 'target_date', 'tax_status', 'transaction_currency', 'transferred_to_accounting', 'updated_by_id']
+stg_zuora__invoice_item missing direct []
+stg_zuora__invoice_payment missing direct ['invoice_payment_id']
+stg_zuora__payment missing direct []
+stg_zuora__payment_method missing direct []
+stg_zuora__product missing direct []
+stg_zuora__product_rate_plan missing direct []
+stg_zuora__rate_plan missing direct ['rate_plan_id']
+stg_zuora__rate_plan_charge missing direct []
+stg_zuora__subscription missing direct []
+stg_zuora__taxation_item missing direct ['account_id', 'account_receivable_accounting_code_id', 'accounting_code', 'amendment_id', 'balance', 'bill_to_contact_id', 'created_by_id', 'credit_amount', 'exchange_rate', 'exempt_amount', 'exempt_amount_home_currency', 'home_currency', 'invoice_id', 'invoice_item_id', 'journal_entry_id', 'name', 'payment_amount', 'product_id', 'product_rate_plan_charge_id', 'product_rate_plan_id', 'rate_plan_charge_id', 'rate_plan_id', 'sales_tax_payable_accounting_code_id', 'sold_to_contact_id', 'subscription_id', 'tax_amount', 'tax_description', 'tax_mode', 'tax_rate', 'tax_rate_type', 'transaction_currency', 'updated_by_id']
+stg_zuora__order missing direct ['order_id']
+stg_zuora__credit_balance_adjustment missing direct ['credit_balance_adjustment_id']
+stg_zuora__refund missing direct []
+stg_zuora__refund_invoice_payment missing direct ['refund_invoice_payment_id']
+stg_zuora__amendment missing direct ['auto_renew', 'booking_date', 'code', 'contract_effective_date', 'created_by_id', 'current_term', 'current_term_period_type', 'customer_acceptance_date', 'description', 'effective_date', 'name', 'new_rate_plan_id', 'removed_rate_plan_id', 'renewal_setting', 'renewal_term', 'renewal_term_period_type', 'resume_date', 'service_activation_date', 'specific_update_date', 'status', 'subscription_id', 'suspend_date', 'term_start_date', 'term_type', 'type', 'updated_by_id']
+```
+
+### event 19
+
+```json
+{
+  "event_id": 19,
+  "agent_command_sequence": 8,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/19.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 6919,
+    "decoded_characters": 2723
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/19.json",
+  "timestamp": "2026-10-25T06:02:24.472123",
+  "target_table_name_hits": [
+    "stg_zuora__invoice"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 2882,
+  "retention": "full_original"
+}
+```
+```bash
+mkdir -p sql/staging sql/intermediate sql/marts && cat > /tmp/gen_stage.py <<'PY'
+import yaml,re
+from pathlib import Path
+spec=yaml.safe_load(open('docs/data_contract.yaml'))['staging_contract']
+for t in spec['tables']:
+    name=t['name']; src=t['source_table']
+    expressions=[]
+    for col in t['columns']:
+        n=col['name']; typ=col['data_type']; expr=col.get('source_expression')
+        if expr:
+            # Source expressions in contract for windows/emails/phone are retained; use try casts for risky temporal/numeric expressions.
+            if n in ('is_most_recent_record','is_most_recent_account_contact'):
+                e=expr
+            elif n in ('work_email',):
+                e='CASE WHEN work_email IS NULL OR regexp_matches(lower(trim(work_email)), \'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$\') THEN lower(trim(work_email)) ELSE NULL END'
+            elif n in ('amount','amount_home_currency','payment_amount','refund_amount','tax_amount','tax_amount_home_currency'):
+                e=f"try_cast(nullif({n}, '') AS {typ})"
+            elif 'try_cast(' in expr.lower():
+                # Keep intended expression but ensure safe casting.
+                e=expr
+            elif 'cast(' in expr.lower():
+                e=expr.replace('cast(', 'try_cast(')
+            else: e=expr
+        elif n in ('is_most_recent_record',):
+            key= next((c['name'] for c in t['columns'] if c['name'].endswith('_id') and c['name'] != 'account_id'), 'id')
+            # IDs are generally aliased from raw id.
+            e='row_number() over (partition by id order by try_cast(updated_date as timestamp) desc NULLS LAST) = 1'
+        else:
+            srcname=n
+            e=f'try_cast("{srcname}" AS {typ})'
+        expressions.append(f'        {e} AS {n}')
+    filters=[]
+    # Every table with deletion metadata honors deletion, independently of inconsistent raw bool representation.
+    filters.append("coalesce(lower(cast(_fivetran_deleted AS varchar)), 'false') NOT IN ('true', '1', 't')")
+    if name=='stg_zuora__account':
+        filters += ["status IS NOT NULL", "lower(status) IN ('active', 'draft', 'cancelled')"]
+    if name=='stg_zuora__invoice':
+        filters.append("try_cast(created_date AS timestamp) IS NOT NULL AND try_cast(created_date AS timestamp) <= current_timestamp AND try_cast(created_date AS timestamp) >= timestamp '2000-01-01 00:00:00'")
+    sql=f"""WITH source_rows AS (
+    SELECT *
+    FROM {src}
+    WHERE {' AND '.join(filters)}
+)
+SELECT
+{',\n'.join(expressions)}
+FROM source_rows""
+    # generated recent flags require windows to be outside source CTE but work fine.
+    Path(f'sql/staging/{name}.sql').write_text(sql+'\n')
+PY
+python3 /tmp/gen_stage.py
+```
+```json
+{
+  "event_id": 20,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/20.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 6603,
+    "decoded_characters": 159
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/20.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 1
+}
+```
+```text
+  File "/tmp/gen_stage.py", line 38
+    sql=f"""WITH source_rows AS (
+        ^
+SyntaxError: unterminated triple-quoted f-string literal (detected at line 47)
+```
+
+### event 23
+
+```json
+{
+  "event_id": 23,
+  "agent_command_sequence": 10,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/23.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1298,
+    "decoded_characters": 33
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/23.json",
+  "timestamp": "2026-10-25T06:02:49.306055",
+  "target_table_name_hits": [
+    "stg_zuora__invoice"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 809,
+  "retention": "full_original"
+}
+```
+```bash
+sed -n '33,50p' /tmp/gen_stage.py
+```
+```json
+{
+  "event_id": 24,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/24.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 982,
+    "decoded_characters": 776
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/24.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+    filters.append("coalesce(lower(cast(_fivetran_deleted AS varchar)), 'false') NOT IN ('true', '1', 't')")
+    if name=='stg_zuora__account':
+        filters += ["status IS NOT NULL", "lower(status) IN ('active', 'draft', 'cancelled')"]
+    if name=='stg_zuora__invoice':
+        filters.append("try_cast(created_date AS timestamp) IS NOT NULL AND try_cast(created_date AS timestamp) <= current_timestamp AND try_cast(created_date AS timestamp) >= timestamp '2000-01-01 00:00:00'")
+    sql=f"""WITH source_rows AS (
+    SELECT *
+    FROM {src}
+    WHERE {' AND '.join(filters)}
+)
+SELECT
+{',\n'.join(expressions)}
+FROM source_rows""
+    # generated recent flags require windows to be outside source CTE but work fine.
+    Path(f'sql/staging/{name}.sql').write_text(sql+'\n')
+```
+
+### event 27
+
+```json
+{
+  "event_id": 27,
+  "agent_command_sequence": 12,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/27.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 3367,
+    "decoded_characters": 1016
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/27.json",
+  "timestamp": "2026-10-25T06:03:04.192555",
+  "target_table_name_hits": [
+    "stg_zuora__invoice"
+  ],
+  "source_table_name_hits": [
+    "raw.zuora_invoice_data",
+    "zuora_invoice_data"
+  ],
+  "full_original_characters": 4922,
+  "retention": "full_original"
+}
+```
+```bash
+python3 - <<'PY'
+import duckdb,glob
+c=duckdb.connect(':memory:'); c.execute('ATTACH \'zuora_start.duckdb\' AS src_db')
+# import raw alias relevant exact as run logic
+for tbl, in c.execute("select table_name from information_schema.tables where table_catalog='src_db' and table_schema='raw'").fetchall():
+ inf=c.execute(f"pragma table_info('src_db.raw.{tbl}')").fetchall()
+ if len(inf)==1:
+  header=inf[0][1]; cols=[x.strip() for x in header.split(',') if x.strip()]; q='"'+header.replace('"','""')+'"'; split=f"string_split({q}, ',')"; ss=', '.join(f'trim(list_extract({split},{i})) AS {x}' for i,x in enumerate(cols,1)); c.execute(f'create table raw_{tbl} as select {ss} from src_db.raw.{tbl}')
+ else:c.execute(f'create table raw_{tbl} as select * from src_db.raw.{tbl}')
+# attach schema objects and run all staging
+c.execute('create schema staging')
+for p in glob.glob('sql/staging/*.sql'):
+ try:c.execute(f"create table staging.{p.split('/')[-1][:-4]} as ({open(p).read()})")
+ except Exception as e: print(p,e)
+PY
+```
+```json
+{
+  "event_id": 28,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/28.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 3051,
+    "decoded_characters": 3906
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/28.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+sql/staging/stg_zuora__product.sql Catalog Error: Table with name "raw.zuora_product_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_product_data
+                 ^
+sql/staging/stg_zuora__product_rate_plan.sql Catalog Error: Table with name "raw.zuora_product_rate_plan_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_product_rate_plan_data
+                 ^
+sql/staging/stg_zuora__payment.sql Catalog Error: Table with name "raw.zuora_payment_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_payment_data
+                 ^
+sql/staging/stg_zuora__refund_invoice_payment.sql Catalog Error: Table with name "raw.zuora_refund_invoice_payment_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_refund_invoice_payment_data
+                 ^
+sql/staging/stg_zuora__taxation_item.sql Catalog Error: Table with name "raw.zuora_taxation_item_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_taxation_item_data
+                 ^
+sql/staging/stg_zuora__invoice_payment.sql Catalog Error: Table with name "raw.zuora_invoice_payment_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_invoice_payment_data
+                 ^
+sql/staging/stg_zuora__account.sql Catalog Error: Table with name "raw.zuora_account_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_account_data
+                 ^
+sql/staging/stg_zuora__credit_balance_adjustment.sql Catalog Error: Table with name "raw.zuora_credit_balance_adjustment_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_credit_balance_adjustment_data
+                 ^
+sql/staging/stg_zuora__subscription.sql Catalog Error: Table with name "raw.zuora_subscription_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_subscription_data
+                 ^
+sql/staging/stg_zuora__rate_plan_charge.sql Catalog Error: Table with name "raw.zuora_rate_plan_charge_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_rate_plan_charge_data
+                 ^
+sql/staging/stg_zuora__payment_method.sql Catalog Error: Table with name "raw.zuora_payment_method_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_payment_method_data
+                 ^
+sql/staging/stg_zuora__amendment.sql Catalog Error: Table with name "raw.zuora_amendment_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_amendment_data
+                 ^
+sql/staging/stg_zuora__invoice.sql Catalog Error: Table with name "raw.zuora_invoice_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_invoice_data
+                 ^
+sql/staging/stg_zuora__invoice_item.sql Catalog Error: Table with name "raw.zuora_invoice_item_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_invoice_item_data
+                 ^
+sql/staging/stg_zuora__refund.sql Catalog Error: Table with name "raw.zuora_refund_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_refund_data
+                 ^
+sql/staging/stg_zuora__rate_plan.sql Catalog Error: Table with name "raw.zuora_rate_plan_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_rate_plan_data
+                 ^
+sql/staging/stg_zuora__order.sql Catalog Error: Table with name "raw.zuora_order_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_order_data
+                 ^
+sql/staging/stg_zuora__contact.sql Catalog Error: Table with name "raw.zuora_contact_data" does not exist because schema "raw" does not exist.
+
+LINE 3:     FROM raw.zuora_contact_data
+                 ^
+```
+
+### event 29
+
+```json
+{
+  "event_id": 29,
+  "agent_command_sequence": 13,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/29.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 19971,
+    "decoded_characters": 9082
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/29.json",
+  "timestamp": "2026-10-25T06:03:28.395208",
+  "target_table_name_hits": [
+    "stg_zuora__invoice"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 9082,
+  "retention": "full_original"
+}
+```
+```bash
+cat > /tmp/build_models.py <<'PY'
+from pathlib import Path
+P=Path('sql/intermediate')
+pass_models={
+'int_zuora__account_current':('stg_zuora__account','is_most_recent_record = TRUE'),
+'int_zuora__contact_current':('stg_zuora__contact','is_most_recent_record = TRUE AND is_most_recent_account_contact = TRUE'),
+'int_zuora__payment_current':('stg_zuora__payment','is_most_recent_record = TRUE'),
+'int_zuora__payment_method_current':('stg_zuora__payment_method','is_most_recent_record = TRUE'),
+'int_zuora__amendment_current':('stg_zuora__amendment','is_most_recent_record = TRUE'),
+'int_zuora__product_current':('stg_zuora__product','is_most_recent_record = TRUE'),
+'int_zuora__product_rate_plan_current':('stg_zuora__product_rate_plan','is_most_recent_record = TRUE'),
+'int_zuora__rate_plan_current':('stg_zuora__rate_plan','is_most_recent_record = TRUE'),
+'int_zuora__rate_plan_charge_current':('stg_zuora__rate_plan_charge','is_most_recent_record = TRUE'),
+'int_zuora__subscription_current':('stg_zuora__subscription','is_most_recent_record = TRUE'),
+'int_zuora__invoice_payment_current':('stg_zuora__invoice_payment','is_most_recent_record = TRUE'),
+}
+for name,(src,where) in pass_models.items():
+ (P/f'{name}.sql').write_text(f'SELECT *\nFROM staging.{src}\nWHERE {where}\n')
+(P/'int_zuora__invoice_base.sql').write_text('''SELECT
+    invoice_id,
+    account_id,
+    created_date AS created_at,
+    invoice_number,
+    invoice_date,
+    amount AS invoice_amount,
+    amount_home_currency AS invoice_amount_home_currency,
+    payment_amount AS invoice_amount_paid,
+    amount - payment_amount AS invoice_amount_unpaid,
+    tax_amount,
+    refund_amount,
+    transaction_currency,
+    home_currency,
+    CAST(exchange_rate_date AS VARCHAR) AS exchange_rate_date,
+    due_date,
+    status,
+    source_type AS purchase_type,
+    CASE
+        WHEN due_date IS NOT NULL
+         AND current_date > due_date
+         AND amount IS NOT NULL
+         AND payment_amount IS NOT NULL
+         AND amount <> payment_amount
+        THEN balance
+        ELSE 0.0
+    END AS total_amount_past_due
+FROM staging.stg_zuora__invoice
+WHERE is_most_recent_record = TRUE
+''')
+(P/'int_zuora__invoice_item_base.sql').write_text('''SELECT
+    ii.*,
+    CAST(charge_date AS DATE) AS charge_day,
+    CASE WHEN charge_date IS NULL THEN NULL ELSE CAST(date_trunc('week', charge_date) AS DATE) END AS charge_week,
+    CASE WHEN charge_date IS NULL THEN NULL ELSE CAST(date_trunc('month', charge_date) AS DATE) END AS charge_month,
+    CASE WHEN processing_type = '1' THEN try_cast(charge_amount_home_currency AS DOUBLE) ELSE 0.0 END AS discount_amount_home_currency,
+    CASE WHEN processing_type = '1' THEN try_cast(charge_amount AS DOUBLE) ELSE 0.0 END AS discount_amount,
+    service_start_date AS service_start_day,
+    CASE WHEN service_start_date IS NULL THEN NULL ELSE CAST(date_trunc('week', service_start_date) AS DATE) END AS service_start_week,
+    CASE WHEN service_start_date IS NULL THEN NULL ELSE CAST(date_trunc('month', service_start_date) AS DATE) END AS service_start_month
+FROM staging.stg_zuora__invoice_item AS ii
+WHERE is_most_recent_record = TRUE
+''')
+(P/'int_zuora__billing_enriched.sql').write_text('''WITH item_aggregates AS (
+    SELECT
+        invoice_id,
+        count(DISTINCT invoice_item_id) AS invoice_items,
+        count(DISTINCT product_id) AS products,
+        count(DISTINCT subscription_id) AS subscriptions,
+        sum(CASE WHEN processing_type = '1' THEN try_cast(charge_amount AS DOUBLE) ELSE 0 END) AS discount_charges,
+        sum(CASE WHEN processing_type = '1' THEN try_cast(charge_amount_home_currency AS DOUBLE) ELSE 0 END) AS discount_charges_home_currency,
+        sum(try_cast(quantity AS DOUBLE)) AS units,
+        min(charge_date) AS first_charge_date,
+        max(charge_date) AS most_recent_charge_date,
+        min(service_start_date) AS invoice_service_start_date,
+        max(service_end_date) AS invoice_service_end_date
+    FROM staging.stg_zuora__invoice_item
+    WHERE is_most_recent_record = TRUE
+    GROUP BY invoice_id
+),
+tax_aggregates AS (
+    SELECT invoice_id, sum(tax_amount_home_currency) AS tax_amount_home_currency
+    FROM staging.stg_zuora__taxation_item
+    WHERE is_most_recent_record = TRUE
+    GROUP BY invoice_id
+),
+payment_joined AS (
+    SELECT ip.invoice_id, ip.payment_id, ip.payment_method_id,
+           try_cast(p.amount_home_currency AS DOUBLE) AS amount_home_currency,
+           p.effective_date
+    FROM staging.stg_zuora__invoice_payment AS ip
+    JOIN staging.stg_zuora__payment AS p ON ip.payment_id = p.payment_id
+    WHERE ip.is_most_recent_record = TRUE AND p.is_most_recent_record = TRUE
+),
+payment_aggregates AS (
+    SELECT invoice_id, count(DISTINCT payment_id) AS payments,
+           sum(coalesce(amount_home_currency, 0.0)) AS invoice_amount_paid_home_currency,
+           min(effective_date) AS first_payment_date,
+           max(effective_date) AS most_recent_payment_date,
+           count(DISTINCT payment_method_id) AS payment_methods
+    FROM payment_joined GROUP BY invoice_id
+),
+credit_aggregates AS (
+    SELECT invoice_id,
+           count(DISTINCT credit_balance_adjustment_id) AS credit_balance_adjustments,
+           sum(try_cast(amount_home_currency AS DOUBLE)) AS credit_balance_adjustment_amount_home_currency,
+           min(adjustment_date) AS first_credit_balance_adjustment_date,
+           max(adjustment_date) AS most_recent_credit_balance_adjustment_date
+    FROM staging.stg_zuora__credit_balance_adjustment
+    WHERE is_most_recent_record = TRUE
+    GROUP BY invoice_id
+)
+SELECT i.invoice_id, i.invoice_items, i.products, i.subscriptions,
+       i.discount_charges, i.discount_charges_home_currency, i.units,
+       i.first_charge_date, i.most_recent_charge_date,
+       i.invoice_service_start_date, i.invoice_service_end_date,
+       t.tax_amount_home_currency,
+       p.payments, p.invoice_amount_paid_home_currency,
+       p.first_payment_date, p.most_recent_payment_date, p.payment_methods,
+       c.credit_balance_adjustments, c.credit_balance_adjustment_amount_home_currency,
+       c.first_credit_balance_adjustment_date, c.most_recent_credit_balance_adjustment_date
+FROM item_aggregates i
+LEFT JOIN tax_aggregates t USING (invoice_id)
+LEFT JOIN payment_aggregates p USING (invoice_id)
+LEFT JOIN credit_aggregates c USING (invoice_id)
+''')
+(P/'int_zuora__transactions_grouped.sql').write_text('''WITH item_counts AS (
+    SELECT invoice_id, count(DISTINCT invoice_item_id) AS invoice_item_count
+    FROM staging.stg_zuora__invoice_item
+    WHERE is_most_recent_record = TRUE
+    GROUP BY invoice_id
+),
+invoice_rows AS (
+    SELECT i.invoice_id, i.account_id, i.invoice_date,
+           coalesce(ic.invoice_item_count, 0) AS invoice_item_count,
+           i.amount, i.payment_amount, i.refund_amount
+    FROM staging.stg_zuora__invoice i
+    LEFT JOIN item_counts ic USING (invoice_id)
+    WHERE i.is_most_recent_record = TRUE
+)
+SELECT account_id, CAST(invoice_date AS DATE) AS date_day,
+       CAST(date_trunc('week', invoice_date) AS DATE) AS date_week,
+       CAST(date_trunc('month', invoice_date) AS DATE) AS date_month,
+       CAST(date_trunc('year', invoice_date) AS DATE) AS date_year,
+       count(DISTINCT invoice_id) AS daily_invoices,
+       sum(invoice_item_count) AS daily_invoice_items,
+       sum(amount) AS daily_invoice_amount,
+       sum(payment_amount) AS daily_invoice_amount_paid,
+       sum(amount - payment_amount) AS daily_invoice_amount_unpaid,
+       sum(refund_amount) AS daily_refunds
+FROM invoice_rows
+WHERE invoice_date IS NOT NULL
+GROUP BY account_id, date_day, date_week, date_month, date_year
+''')
+(P/'int_zuora__transaction_date_spine.sql').write_text('''WITH bounds AS (
+    SELECT min(CAST(invoice_date AS DATE)) AS min_date, max(CAST(invoice_date AS DATE)) AS max_date
+    FROM staging.stg_zuora__invoice
+    WHERE is_most_recent_record = TRUE
+),
+days AS (
+    SELECT unnest(generate_series(min_date, max_date, INTERVAL '1 day'))::DATE AS date_day
+    FROM bounds
+    WHERE min_date IS NOT NULL AND max_date IS NOT NULL
+)
+SELECT date_day,
+       CAST(date_trunc('week', date_day) AS DATE) AS date_week,
+       CAST(date_trunc('month', date_day) AS DATE) AS date_month,
+       CAST(date_trunc('year', date_day) AS DATE) AS date_year,
+       row_number() OVER (ORDER BY date_day) AS date_index
+FROM days
+''')
+(P/'int_zuora__mrr_date_spine.sql').write_text('''WITH bounds AS (
+    SELECT min(service_start_date) AS min_date, max(service_start_date) AS max_date
+    FROM staging.stg_zuora__invoice_item
+    WHERE is_most_recent_record = TRUE
+),
+days AS (
+    SELECT unnest(generate_series(min_date, max_date, INTERVAL '1 day'))::DATE AS date_day
+    FROM bounds
+    WHERE min_date IS NOT NULL AND max_date IS NOT NULL
+)
+SELECT date_day,
+       CAST(date_trunc('week', date_day) AS DATE) AS date_week,
+       CAST(date_trunc('month', date_day) AS DATE) AS date_month,
+       CAST(date_trunc('year', date_day) AS DATE) AS date_year,
+       row_number() OVER (ORDER BY date_day) AS date_index
+FROM days
+''')
+PY
+python3 /tmp/build_models.py
+```
+```json
+{
+  "event_id": 30,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/30.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 19655,
+    "decoded_characters": 0
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/30.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+
+```
+
+### event 31
+
+```json
+{
+  "event_id": 31,
+  "agent_command_sequence": 14,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/31.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1364,
+    "decoded_characters": 56
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/31.json",
+  "timestamp": "2026-10-25T06:03:37.004856",
+  "target_table_name_hits": [
+    "stg_zuora__invoice"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 8538,
+  "retention": "full_original"
+}
+```
+```bash
+python3 run.py > /tmp/runlog 2>&1; tail -100 /tmp/runlog
+```
+```json
+{
+  "event_id": 32,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/32.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1048,
+    "decoded_characters": 8482
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/32.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+2026-10-25 06:03:37,689 - INFO -   raw.zuora_rate_plan_data: 5 rows (from src_db)
+2026-10-25 06:03:37,695 - INFO -   raw.zuora_refund_data: 5 rows (from src_db)
+2026-10-25 06:03:37,699 - INFO -   raw.zuora_refund_invoice_payment_data: 3 rows (from src_db)
+2026-10-25 06:03:37,719 - INFO -   raw.zuora_subscription_data: 1503 rows (from src_db)
+2026-10-25 06:03:37,742 - INFO -   raw.zuora_taxation_item_data: 1005 rows (from src_db)
+2026-10-25 06:03:37,743 - INFO - Executing staging.stg_zuora__account
+2026-10-25 06:03:37,751 - ERROR -   ✗ stg_zuora__account: Binder Error: Column "account_id" referenced that exists in the SELECT clause - but this column cannot be referenced before it is defined
+2026-10-25 06:03:37,751 - INFO - Executing staging.stg_zuora__contact
+2026-10-25 06:03:37,787 - INFO -   ✓ staging.stg_zuora__contact: 3741 rows
+2026-10-25 06:03:37,787 - INFO - Executing staging.stg_zuora__invoice
+2026-10-25 06:03:37,818 - INFO -   ✓ staging.stg_zuora__invoice: 1041 rows
+2026-10-25 06:03:37,818 - INFO - Executing staging.stg_zuora__invoice_item
+2026-10-25 06:03:38,517 - INFO -   ✓ staging.stg_zuora__invoice_item: 1495 rows
+2026-10-25 06:03:38,518 - INFO - Executing staging.stg_zuora__subscription
+2026-10-25 06:03:38,541 - INFO -   ✓ staging.stg_zuora__subscription: 732 rows
+2026-10-25 06:03:38,542 - INFO - Executing staging.stg_zuora__payment
+2026-10-25 06:03:38,561 - INFO -   ✓ staging.stg_zuora__payment: 722 rows
+2026-10-25 06:03:38,561 - INFO - Executing staging.stg_zuora__payment_method
+2026-10-25 06:03:38,579 - INFO -   ✓ staging.stg_zuora__payment_method: 1037 rows
+2026-10-25 06:03:38,579 - INFO - Executing staging.stg_zuora__invoice_payment
+2026-10-25 06:03:38,580 - ERROR -   ✗ stg_zuora__invoice_payment: Binder Error: Column "invoice_payment_id" referenced that exists in the SELECT clause - but this column cannot be referenced before it is defined
+2026-10-25 06:03:38,580 - INFO - Executing staging.stg_zuora__rate_plan
+2026-10-25 06:03:38,581 - ERROR -   ✗ stg_zuora__rate_plan: Binder Error: Column "rate_plan_id" referenced that exists in the SELECT clause - but this column cannot be referenced before it is defined
+2026-10-25 06:03:38,581 - INFO - Executing staging.stg_zuora__rate_plan_charge
+2026-10-25 06:03:38,598 - INFO -   ✓ staging.stg_zuora__rate_plan_charge: 4 rows
+2026-10-25 06:03:38,598 - INFO - Executing staging.stg_zuora__product
+2026-10-25 06:03:38,609 - INFO -   ✓ staging.stg_zuora__product: 164 rows
+2026-10-25 06:03:38,610 - INFO - Executing staging.stg_zuora__product_rate_plan
+2026-10-25 06:03:38,622 - INFO -   ✓ staging.stg_zuora__product_rate_plan: 505 rows
+2026-10-25 06:03:38,622 - INFO - Executing staging.stg_zuora__amendment
+2026-10-25 06:03:38,639 - INFO -   ✓ staging.stg_zuora__amendment: 267 rows
+2026-10-25 06:03:38,640 - INFO - Executing staging.stg_zuora__order
+2026-10-25 06:03:38,640 - ERROR -   ✗ stg_zuora__order: Binder Error: Column "order_id" referenced that exists in the SELECT clause - but this column cannot be referenced before it is defined
+2026-10-25 06:03:38,640 - INFO - Executing staging.stg_zuora__refund
+2026-10-25 06:03:38,650 - INFO -   ✓ staging.stg_zuora__refund: 3 rows
+2026-10-25 06:03:38,650 - INFO - Executing staging.stg_zuora__refund_invoice_payment
+2026-10-25 06:03:38,650 - ERROR -   ✗ stg_zuora__refund_invoice_payment: Binder Error: Column "refund_invoice_payment_id" referenced that exists in the SELECT clause - but this column cannot be referenced before it is defined
+2026-10-25 06:03:38,650 - INFO - Executing staging.stg_zuora__taxation_item
+2026-10-25 06:03:38,670 - INFO -   ✓ staging.stg_zuora__taxation_item: 534 rows
+2026-10-25 06:03:38,670 - INFO - Executing staging.stg_zuora__credit_balance_adjustment
+2026-10-25 06:03:38,671 - ERROR -   ✗ stg_zuora__credit_balance_adjustment: Binder Error: Column "credit_balance_adjustment_id" referenced that exists in the SELECT clause - but this column cannot be referenced before it is defined
+2026-10-25 06:03:38,671 - INFO - Executing intermediate.int_zuora__account_current
+2026-10-25 06:03:38,672 - ERROR -   ✗ int_zuora__account_current: Catalog Error: Table with name stg_zuora__account does not exist!
+Did you mean "stg_zuora__contact"?
+
+LINE 2: FROM staging.stg_zuora__account
+             ^
+2026-10-25 06:03:38,672 - INFO - Executing intermediate.int_zuora__contact_current
+2026-10-25 06:03:38,685 - INFO -   ✓ intermediate.int_zuora__contact_current: 3008 rows
+2026-10-25 06:03:38,685 - INFO - Executing intermediate.int_zuora__product_current
+2026-10-25 06:03:38,691 - INFO -   ✓ intermediate.int_zuora__product_current: 164 rows
+2026-10-25 06:03:38,691 - INFO - Executing intermediate.int_zuora__product_rate_plan_current
+2026-10-25 06:03:38,696 - INFO -   ✓ intermediate.int_zuora__product_rate_plan_current: 505 rows
+2026-10-25 06:03:38,697 - INFO - Executing intermediate.int_zuora__rate_plan_current
+2026-10-25 06:03:38,697 - ERROR -   ✗ int_zuora__rate_plan_current: Catalog Error: Table with name stg_zuora__rate_plan does not exist!
+Did you mean "stg_zuora__rate_plan_charge"?
+
+LINE 2: FROM staging.stg_zuora__rate_plan
+             ^
+2026-10-25 06:03:38,697 - INFO - Executing intermediate.int_zuora__rate_plan_charge_current
+2026-10-25 06:03:38,704 - INFO -   ✓ intermediate.int_zuora__rate_plan_charge_current: 4 rows
+2026-10-25 06:03:38,704 - INFO - Executing intermediate.int_zuora__subscription_current
+2026-10-25 06:03:38,715 - INFO -   ✓ intermediate.int_zuora__subscription_current: 732 rows
+2026-10-25 06:03:38,715 - INFO - Executing intermediate.int_zuora__amendment_current
+2026-10-25 06:03:38,723 - INFO -   ✓ intermediate.int_zuora__amendment_current: 267 rows
+2026-10-25 06:03:38,723 - INFO - Executing intermediate.int_zuora__payment_current
+2026-10-25 06:03:38,731 - INFO -   ✓ intermediate.int_zuora__payment_current: 722 rows
+2026-10-25 06:03:38,731 - INFO - Executing intermediate.int_zuora__payment_method_current
+2026-10-25 06:03:38,739 - INFO -   ✓ intermediate.int_zuora__payment_method_current: 1037 rows
+2026-10-25 06:03:38,739 - INFO - Executing intermediate.int_zuora__invoice_payment_current
+2026-10-25 06:03:38,740 - ERROR -   ✗ int_zuora__invoice_payment_current: Catalog Error: Table with name stg_zuora__invoice_payment does not exist!
+Did you mean "stg_zuora__invoice_item"?
+
+LINE 2: FROM staging.stg_zuora__invoice_payment
+             ^
+2026-10-25 06:03:38,740 - INFO - Executing intermediate.int_zuora__invoice_base
+2026-10-25 06:03:38,747 - INFO -   ✓ intermediate.int_zuora__invoice_base: 1041 rows
+2026-10-25 06:03:38,747 - INFO - Executing intermediate.int_zuora__invoice_item_base
+2026-10-25 06:03:38,761 - INFO -   ✓ intermediate.int_zuora__invoice_item_base: 1495 rows
+2026-10-25 06:03:38,761 - INFO - Executing intermediate.int_zuora__billing_enriched
+2026-10-25 06:03:38,762 - ERROR -   ✗ int_zuora__billing_enriched: Catalog Error: Table with name stg_zuora__invoice_payment does not exist!
+Did you mean "stg_zuora__invoice_item"?
+
+LINE 28:     FROM staging.stg_zuora__invoice_payment AS ip
+                  ^
+2026-10-25 06:03:38,763 - INFO - Executing intermediate.int_zuora__transactions_grouped
+2026-10-25 06:03:38,779 - INFO -   ✓ intermediate.int_zuora__transactions_grouped: 1041 rows
+2026-10-25 06:03:38,779 - INFO - Executing intermediate.int_zuora__transaction_date_spine
+2026-10-25 06:03:38,786 - INFO -   ✓ intermediate.int_zuora__transaction_date_spine: 3239 rows
+2026-10-25 06:03:38,787 - INFO - Executing intermediate.int_zuora__mrr_date_spine
+2026-10-25 06:03:38,792 - INFO -   ✓ intermediate.int_zuora__mrr_date_spine: 732 rows
+2026-10-25 06:03:38,793 - WARNING - Skipping zuora__billing_history: missing sql/marts/zuora__billing_history.sql
+2026-10-25 06:03:38,793 - WARNING - Skipping zuora__account_overview: missing sql/marts/zuora__account_overview.sql
+2026-10-25 06:03:38,793 - WARNING - Skipping zuora__account_daily_overview: missing sql/marts/zuora__account_daily_overview.sql
+2026-10-25 06:03:38,793 - WARNING - Skipping zuora__subscription_overview: missing sql/marts/zuora__subscription_overview.sql
+2026-10-25 06:03:38,793 - WARNING - Skipping zuora__monthly_recurring_revenue: missing sql/marts/zuora__monthly_recurring_revenue.sql
+2026-10-25 06:03:38,793 - WARNING - Skipping zuora__line_item_history: missing sql/marts/zuora__line_item_history.sql
+2026-10-25 06:03:38,793 - WARNING - Skipping zuora__line_item_enhanced: missing sql/marts/zuora__line_item_enhanced.sql
+
+❌ Execution failed, please check the logs
+```
+
+### event 39
+
+```json
+{
+  "event_id": 39,
+  "agent_command_sequence": 18,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/39.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1892,
+    "decoded_characters": 316
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/39.json",
+  "timestamp": "2026-10-25T06:04:02.979794",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "zuora_invoice_data"
+  ],
+  "full_original_characters": 5119,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "python3 - <<'PY'\n"
+}
+```
+```json
+{
+  "event_id": 40,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/40.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1576,
+    "decoded_characters": 4803
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/40.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+### event 43
+
+```json
+{
+  "event_id": 43,
+  "agent_command_sequence": 20,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/43.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1298,
+    "decoded_characters": 32
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/43.json",
+  "timestamp": "2026-10-25T06:04:12.290226",
+  "target_table_name_hits": [
+    "stg_zuora__invoice"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 2296,
+  "retention": "full_original"
+}
+```
+```bash
+sed -n '8,38p' /tmp/gen_stage.py
+```
+```json
+{
+  "event_id": 44,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/44.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 980,
+    "decoded_characters": 2264
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/44.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+        n=col['name']; typ=col['data_type']; expr=col.get('source_expression')
+        if expr:
+            # Source expressions in contract for windows/emails/phone are retained; use try casts for risky temporal/numeric expressions.
+            if n in ('is_most_recent_record','is_most_recent_account_contact'):
+                e=expr
+            elif n in ('work_email',):
+                e='CASE WHEN work_email IS NULL OR regexp_matches(lower(trim(work_email)), \'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$\') THEN lower(trim(work_email)) ELSE NULL END'
+            elif n in ('amount','amount_home_currency','payment_amount','refund_amount','tax_amount','tax_amount_home_currency'):
+                e=f"try_cast(nullif({n}, '') AS {typ})"
+            elif 'try_cast(' in expr.lower():
+                # Keep intended expression but ensure safe casting.
+                e=expr
+            elif 'cast(' in expr.lower():
+                e=expr.replace('cast(', 'try_cast(')
+            else: e=expr
+        elif n in ('is_most_recent_record',):
+            key= next((c['name'] for c in t['columns'] if c['name'].endswith('_id') and c['name'] != 'account_id'), 'id')
+            # IDs are generally aliased from raw id.
+            e='row_number() over (partition by id order by try_cast(updated_date as timestamp) desc NULLS LAST) = 1'
+        else:
+            srcname=n
+            e=f'try_cast("{srcname}" AS {typ})'
+        expressions.append(f'        {e} AS {n}')
+    filters=[]
+    # Every table with deletion metadata honors deletion, independently of inconsistent raw bool representation.
+    filters.append("coalesce(lower(cast(_fivetran_deleted AS varchar)), 'false') NOT IN ('true', '1', 't')")
+    if name=='stg_zuora__account':
+        filters += ["status IS NOT NULL", "lower(status) IN ('active', 'draft', 'cancelled')"]
+    if name=='stg_zuora__invoice':
+        filters.append("try_cast(created_date AS timestamp) IS NOT NULL AND try_cast(created_date AS timestamp) <= current_timestamp AND try_cast(created_date AS timestamp) >= timestamp '2000-01-01 00:00:00'")
+    sql = "WITH source_rows AS (\n    SELECT *\n    FROM " + src + "\n    WHERE " + ' AND '.join(filters) + ")\nSELECT\n" + ',\n'.join(expressions) + "\nFROM source_rows"
+```
+
+### event 51
+
+```json
+{
+  "event_id": 51,
+  "agent_command_sequence": 24,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/51.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1491,
+    "decoded_characters": 114
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/51.json",
+  "timestamp": "2026-10-25T06:04:47.258287",
+  "target_table_name_hits": [
+    "stg_zuora__invoice"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 3702,
+  "retention": "full_original"
+}
+```
+```bash
+python3 run.py > /tmp/runlog 2>&1; grep -E 'ERROR|WARNING:|✓|Execution failed|successfully' /tmp/runlog | tail -80
+```
+```json
+{
+  "event_id": 52,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/52.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1173,
+    "decoded_characters": 3588
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/52.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+2026-10-25 06:04:47,856 - INFO -   ✓ staging.stg_zuora__account: 3791 rows
+2026-10-25 06:04:47,885 - INFO -   ✓ staging.stg_zuora__contact: 3741 rows
+2026-10-25 06:04:48,743 - INFO -   ✓ staging.stg_zuora__invoice: 1041 rows
+2026-10-25 06:04:48,850 - INFO -   ✓ staging.stg_zuora__invoice_item: 1495 rows
+2026-10-25 06:04:48,954 - INFO -   ✓ staging.stg_zuora__subscription: 732 rows
+2026-10-25 06:04:49,032 - INFO -   ✓ staging.stg_zuora__payment: 722 rows
+2026-10-25 06:04:49,108 - INFO -   ✓ staging.stg_zuora__payment_method: 1037 rows
+2026-10-25 06:04:49,179 - INFO -   ✓ staging.stg_zuora__invoice_payment: 6 rows
+2026-10-25 06:04:49,256 - INFO -   ✓ staging.stg_zuora__rate_plan: 5 rows
+2026-10-25 06:04:49,345 - INFO -   ✓ staging.stg_zuora__rate_plan_charge: 4 rows
+2026-10-25 06:04:49,424 - INFO -   ✓ staging.stg_zuora__product: 164 rows
+2026-10-25 06:04:49,513 - INFO -   ✓ staging.stg_zuora__product_rate_plan: 505 rows
+2026-10-25 06:04:49,599 - INFO -   ✓ staging.stg_zuora__amendment: 267 rows
+2026-10-25 06:04:49,670 - INFO -   ✓ staging.stg_zuora__order: 5 rows
+2026-10-25 06:04:49,716 - INFO -   ✓ staging.stg_zuora__refund: 3 rows
+2026-10-25 06:04:49,785 - INFO -   ✓ staging.stg_zuora__refund_invoice_payment: 3 rows
+2026-10-25 06:04:49,900 - INFO -   ✓ staging.stg_zuora__taxation_item: 534 rows
+2026-10-25 06:04:49,988 - INFO -   ✓ staging.stg_zuora__credit_balance_adjustment: 6 rows
+2026-10-25 06:04:50,090 - INFO -   ✓ intermediate.int_zuora__account_current: 3791 rows
+2026-10-25 06:04:50,160 - INFO -   ✓ intermediate.int_zuora__contact_current: 3008 rows
+2026-10-25 06:04:50,221 - INFO -   ✓ intermediate.int_zuora__product_current: 164 rows
+2026-10-25 06:04:50,280 - INFO -   ✓ intermediate.int_zuora__product_rate_plan_current: 505 rows
+2026-10-25 06:04:50,340 - INFO -   ✓ intermediate.int_zuora__rate_plan_current: 5 rows
+2026-10-25 06:04:50,402 - INFO -   ✓ intermediate.int_zuora__rate_plan_charge_current: 4 rows
+2026-10-25 06:04:50,486 - INFO -   ✓ intermediate.int_zuora__subscription_current: 732 rows
+2026-10-25 06:04:50,558 - INFO -   ✓ intermediate.int_zuora__amendment_current: 267 rows
+2026-10-25 06:04:50,638 - INFO -   ✓ intermediate.int_zuora__payment_current: 722 rows
+2026-10-25 06:04:50,698 - INFO -   ✓ intermediate.int_zuora__payment_method_current: 1037 rows
+2026-10-25 06:04:50,716 - INFO -   ✓ intermediate.int_zuora__invoice_payment_current: 5 rows
+2026-10-25 06:04:50,724 - INFO -   ✓ intermediate.int_zuora__invoice_base: 1041 rows
+2026-10-25 06:04:50,738 - INFO -   ✓ intermediate.int_zuora__invoice_item_base: 1495 rows
+2026-10-25 06:04:50,758 - INFO -   ✓ intermediate.int_zuora__billing_enriched: 1495 rows
+2026-10-25 06:04:50,774 - INFO -   ✓ intermediate.int_zuora__transactions_grouped: 1041 rows
+2026-10-25 06:04:50,782 - INFO -   ✓ intermediate.int_zuora__transaction_date_spine: 3239 rows
+2026-10-25 06:04:50,788 - INFO -   ✓ intermediate.int_zuora__mrr_date_spine: 732 rows
+2026-10-25 06:04:50,798 - INFO -   ✓ marts.zuora__billing_history: 1041 rows
+2026-10-25 06:04:50,818 - INFO -   ✓ marts.zuora__account_overview: 3791 rows
+2026-10-25 06:04:50,832 - INFO -   ✓ marts.zuora__account_daily_overview: 1041 rows
+2026-10-25 06:04:50,844 - INFO -   ✓ marts.zuora__subscription_overview: 732 rows
+2026-10-25 06:04:50,855 - INFO -   ✓ marts.zuora__monthly_recurring_revenue: 5 rows
+2026-10-25 06:04:50,878 - INFO -   ✓ marts.zuora__line_item_history: 1495 rows
+2026-10-25 06:04:50,885 - ERROR -   ✗ zuora__line_item_enhanced: Conversion Error: Could not convert string '2' to BOOL
+❌ Execution failed, please check the logs
+```
+
+## result_md_table_sentences
+
+```json
+{
+  "present": true,
+  "path": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/result.md",
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/result.md",
+  "sha256": "28a0bd6db2dcb17e902c0c2975b6a355249297cb159d14f06fc4b2ebfcd4c22b",
+  "sentences": [],
+  "policy": "All sentences naming the table; includes sentences without 008 keywords. Existing D10 ids attached where applicable."
+}
+```
+
+## original_files
+
+```json
+{
+  "paths": [
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/10.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/13.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/14.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/15.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/16.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/17.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/18.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/19.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/20.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/23.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/24.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/27.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/28.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/29.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/30.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/31.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/32.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/39.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/40.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/43.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/44.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/51.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/52.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/7.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/8.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/.events/sessions/f8c97c43-02e0-4b-4f9e73ebc5e1791/events/9.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/result.md",
+    "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+    "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-030/zuora.duckdb",
+    "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-030/docs/data_contract.yaml",
+    "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/sql/staging/stg_zuora__invoice.sql",
+    "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/zuora.duckdb"
+  ],
+  "archive": "/home/katherine/Assumption_Ledger/traces/dacomp_deimpl_prev.tar.gz",
+  "gold_SQL_search_root": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-030/sql",
+  "gold_SQL_search_names": [
+    "stg_zuora__invoice",
+    "stg_zuora__invoice"
+  ],
+  "source_fingerprints": "records/012_input_before.json"
+}
+```

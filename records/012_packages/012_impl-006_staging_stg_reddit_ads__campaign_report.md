@@ -1,0 +1,5457 @@
+# impl-006 / stg_reddit_ads__campaign_report
+
+## basic_information
+
+```json
+{
+  "task": "impl-006",
+  "layer": "staging",
+  "table": "stg_reddit_ads__campaign_report",
+  "status": "待标注",
+  "difference_source": {
+    "kind": "date_aligned_011",
+    "record": "records/011_table_alignment.jsonl",
+    "detail_record": "records/011_alignment_impl-006.json",
+    "candidate_date": "2025-10-12",
+    "selection_reason": "011 执行与比较成功，使用该表已验证日期；优先 010 同题候选 / 共同兼容日，再按日期升序"
+  },
+  "status_record": "records/012_statuses.jsonl",
+  "package_scope": "仅原文和机械统计；未概括轨迹、未推测原因"
+}
+```
+
+## contract_specification
+
+```json
+{
+  "source_path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-006/docs/data_contract.yaml",
+  "source_sha256": "fe80055f9d2c7c6799385cce0e0d788bd4a513f8998eb3b2897937e8c2bf90c4",
+  "parse_mode": "strict",
+  "requested_table": "stg_reddit_ads__campaign_report",
+  "status": "found"
+}
+```
+```json
+{
+  "yaml_path": [
+    "staging_contract",
+    "tables",
+    22
+  ],
+  "start_line": 1092,
+  "end_line": 1148
+}
+```
+```yaml
+    - name: "stg_reddit_ads__campaign_report"
+      description: "Staging table for Reddit Ads  Campaign Report"
+      columns:
+        - name: "platform"
+          data_type: VARCHAR
+        - name: "campaign_id"
+          data_type: VARCHAR
+        - name: "date_day"
+          data_type: DATE
+        - name: "account_id"
+          data_type: VARCHAR
+        - name: "impressions"
+          data_type: INTEGER
+        - name: "clicks"
+          data_type: INTEGER
+        - name: "spend"
+          data_type: DECIMAL(18,2)
+        - name: "video_views"
+          data_type: INTEGER
+        - name: "video_view_rate"
+          data_type: DECIMAL(8,4)
+        - name: "upvotes"
+          data_type: INTEGER
+        - name: "downvotes"
+          data_type: INTEGER
+        - name: "comments"
+          data_type: INTEGER
+        - name: "shares"
+          data_type: INTEGER
+        - name: "saves"
+          data_type: INTEGER
+        - name: "post_visits"
+          data_type: INTEGER
+        - name: "profile_visits"
+          data_type: INTEGER
+        - name: "community_joins"
+          data_type: INTEGER
+        - name: "conversions"
+          data_type: INTEGER
+        - name: "conversion_value"
+          data_type: DECIMAL(18,2)
+        - name: "click_through_rate"
+          data_type: DOUBLE
+        - name: "cost_per_click"
+          data_type: DOUBLE
+        - name: "cost_per_thousand_impressions"
+          data_type: DOUBLE
+        - name: "cost_per_video_view"
+          data_type: DOUBLE
+        - name: "cost_per_conversion"
+          data_type: DOUBLE
+        - name: "total_engagements"
+          data_type: INTEGER
+        - name: "engagement_rate"
+          data_type: DOUBLE
+        - name: "_dbt_loaded_at"
+          data_type: TIMESTAMP WITH TIME ZONE
+```
+
+## agent_final_SQL
+
+```json
+{
+  "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+  "sha256": "5f29b62488b3998f55c87dc9ebcefa3057672fed9544e110f91ffc29094c7cd2",
+  "start_line": 1,
+  "end_line": 35
+}
+```
+```sql
+WITH source_rows AS (
+    SELECT * FROM raw.reddit_ads_campaign_report_data
+),
+cleaned AS (
+    SELECT
+        'REDDIT_ADS' AS platform,
+        CAST(TRY_CAST("campaign_id" AS VARCHAR) AS VARCHAR) AS campaign_id,
+        CAST(TRY_CAST(date AS DATE) AS DATE) AS date_day,
+        TRY_CAST("account_id" AS VARCHAR) AS account_id,
+        CAST(TRY_CAST("impressions" AS BIGINT) AS INTEGER) AS impressions,
+        CAST(TRY_CAST("clicks" AS BIGINT) AS INTEGER) AS clicks,
+        CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS spend,
+        CAST(NULL::INTEGER AS INTEGER) AS video_views,
+        CAST(NULL::DECIMAL(8,4) AS DECIMAL(8,4)) AS video_view_rate,
+        CAST(NULL::INTEGER AS INTEGER) AS upvotes,
+        CAST(NULL::INTEGER AS INTEGER) AS downvotes,
+        CAST(NULL::INTEGER AS INTEGER) AS comments,
+        CAST(NULL::INTEGER AS INTEGER) AS shares,
+        CAST(NULL::INTEGER AS INTEGER) AS saves,
+        CAST(NULL::INTEGER AS INTEGER) AS post_visits,
+        CAST(NULL::INTEGER AS INTEGER) AS profile_visits,
+        CAST(NULL::INTEGER AS INTEGER) AS community_joins,
+        CAST(NULL::INTEGER AS INTEGER) AS conversions,
+        CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS conversion_value,
+        TRY_CAST("ctr" AS DOUBLE) AS click_through_rate,
+        TRY_CAST("cpc" AS DOUBLE) AS cost_per_click,
+        TRY_CAST("ecpm" AS DOUBLE) AS cost_per_thousand_impressions,
+        CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_video_view,
+        CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_conversion,
+        CAST(NULL::INTEGER AS INTEGER) AS total_engagements,
+        CAST(NULL::DOUBLE AS DOUBLE) AS engagement_rate,
+        CURRENT_TIMESTAMP AS _dbt_loaded_at
+    FROM source_rows
+)
+SELECT * FROM cleaned
+```
+
+## gold_SQL_仅供定位差异
+
+```json
+{
+  "path": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+  "sha256": "9225c02d25f83666be8da2b9240a040768f78877f2106942b5c5e32cf9305161",
+  "start_line": 1,
+  "end_line": 77
+}
+```
+```sql
+-- Reddit Ads Campaign Report Staging Model
+-- Standardizes raw Reddit Ads campaign-level data for downstream consumption
+-- Removes Fivetran-specific logic and converts to DuckDB-compatible SQL
+
+SELECT 
+    -- Platform Identifier
+    'reddit_ads' AS platform,
+    
+    -- Primary Keys
+    CAST(campaign_id AS VARCHAR) AS campaign_id,
+    CAST(date AS DATE) AS date_day,
+    
+    -- Campaign Attributes
+    CAST(account_id AS VARCHAR) AS account_id,
+    
+    -- Performance Metrics
+    CAST(impressions AS INTEGER) AS impressions,
+    CAST(clicks AS INTEGER) AS clicks,
+    CAST(spend AS DECIMAL(18,2)) AS spend,
+    
+    -- Reddit-specific Metrics (using available columns)
+    CAST(COALESCE(video_started, '0') AS INTEGER) AS video_views,
+    CAST(0 AS DECIMAL(8,4)) AS video_view_rate,
+    CAST(COALESCE(comment_upvotes, '0') AS INTEGER) AS upvotes,
+    CAST(COALESCE(comment_downvotes, '0') AS INTEGER) AS downvotes,
+    CAST(COALESCE(viewer_comments, '0') AS INTEGER) AS comments,
+    CAST(0 AS INTEGER) AS shares,
+    CAST(0 AS INTEGER) AS saves,
+    CAST(0 AS INTEGER) AS post_visits,
+    CAST(0 AS INTEGER) AS profile_visits,
+    CAST(0 AS INTEGER) AS community_joins,
+    
+    -- Conversion Metrics (using available columns)
+    CAST(0 AS INTEGER) AS conversions,
+    CAST(0 AS DECIMAL(18,2)) AS conversion_value,
+    
+    -- Calculated Metrics
+    CASE 
+        WHEN impressions > 0 THEN ROUND((CAST(clicks AS DECIMAL) / CAST(impressions AS DECIMAL)) * 100, 4)
+        ELSE 0 
+    END AS click_through_rate,
+    
+    CASE 
+        WHEN clicks > 0 THEN ROUND(spend / clicks, 2)
+        ELSE 0 
+    END AS cost_per_click,
+    
+    CASE 
+        WHEN impressions > 0 THEN ROUND((spend / impressions) * 1000, 2)
+        ELSE 0 
+    END AS cost_per_thousand_impressions,
+    
+    CASE 
+        WHEN CAST(COALESCE(video_started, '0') AS INTEGER) > 0 THEN ROUND(spend / CAST(COALESCE(video_started, '0') AS INTEGER), 2)
+        ELSE 0 
+    END AS cost_per_video_view,
+    
+    CASE 
+        WHEN 0 > 0 THEN ROUND(spend / 0, 2)
+        ELSE 0 
+    END AS cost_per_conversion,
+    
+    -- Engagement Metrics
+    (CAST(COALESCE(comment_upvotes, '0') AS INTEGER) + CAST(COALESCE(comment_downvotes, '0') AS INTEGER) + CAST(COALESCE(viewer_comments, '0') AS INTEGER) + 0) AS total_engagements,
+    
+    CASE 
+        WHEN impressions > 0 THEN ROUND((CAST((CAST(COALESCE(comment_upvotes, '0') AS INTEGER) + CAST(COALESCE(comment_downvotes, '0') AS INTEGER) + CAST(COALESCE(viewer_comments, '0') AS INTEGER) + 0) AS DECIMAL) / CAST(impressions AS DECIMAL)) * 100, 4)
+        ELSE 0 
+    END AS engagement_rate,
+    
+    -- Data Quality
+    CURRENT_TIMESTAMP AS _dbt_loaded_at
+
+FROM raw.reddit_ads_campaign_report_data
+
+WHERE date IS NOT NULL
+    AND campaign_id IS NOT NULL
+```
+
+## differences
+
+```json
+{
+  "kind": "date_aligned_011",
+  "record": "records/011_table_alignment.jsonl",
+  "detail_record": "records/011_alignment_impl-006.json",
+  "prediction_database": "/home/katherine/Assumption_Ledger/data/011_agent_alignment/impl-006_attempt_01/stg_reddit_ads__campaign_report_2025-10-12.duckdb",
+  "gold_database": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-006/ad_reporting.duckdb",
+  "actual_schema": "staging",
+  "table": "stg_reddit_ads__campaign_report",
+  "candidate_date": "2025-10-12",
+  "comparison_columns": [
+    "account_id",
+    "campaign_id",
+    "click_through_rate",
+    "clicks",
+    "comments",
+    "community_joins",
+    "conversion_value",
+    "conversions",
+    "cost_per_click",
+    "cost_per_conversion",
+    "cost_per_thousand_impressions",
+    "cost_per_video_view",
+    "date_day",
+    "downvotes",
+    "engagement_rate",
+    "impressions",
+    "platform",
+    "post_visits",
+    "profile_visits",
+    "saves",
+    "shares",
+    "spend",
+    "total_engagements",
+    "upvotes",
+    "video_view_rate",
+    "video_views"
+  ],
+  "key_columns": [
+    "campaign_id"
+  ],
+  "prediction_rows": 1200,
+  "gold_rows": 1200,
+  "row_delta": 0,
+  "key_statistics": {
+    "pred_distinct_keys": 1200,
+    "gold_distinct_keys": 1200,
+    "pred_duplicate_key_groups": 0,
+    "gold_duplicate_key_groups": 0,
+    "pred_only_keys": 0,
+    "gold_only_keys": 0,
+    "shared_keys": 1200,
+    "shared_nonunique_key_groups": 0
+  },
+  "l0_column_differences": [
+    {
+      "column": "campaign_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "account_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "click_through_rate",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "clicks",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "comments",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "community_joins",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "conversion_value",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "conversions",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "cost_per_click",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "cost_per_conversion",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "cost_per_thousand_impressions",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "cost_per_video_view",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "date_day",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "downvotes",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "engagement_rate",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "impressions",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "platform",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "post_visits",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "profile_visits",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "saves",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "shares",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "spend",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "total_engagements",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "upvotes",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "video_view_rate",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "video_views",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "count_semantics": "exact_one_to_one_rows"
+    }
+  ],
+  "l3_column_differences": [
+    {
+      "column": "account_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "campaign_id",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "click_through_rate",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "clicks",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "comments",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "community_joins",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "conversion_value",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "conversions",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "cost_per_click",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "cost_per_conversion",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "cost_per_thousand_impressions",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "cost_per_video_view",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "date_day",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "downvotes",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "engagement_rate",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "impressions",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "platform",
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "marginal_multisets_equal": true,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "post_visits",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "profile_visits",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "saves",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "shares",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "spend",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "total_engagements",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "upvotes",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "video_view_rate",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "video_views",
+      "one_to_one_mismatch_rows": 1200,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 1200,
+      "pred_unmatched_value_occurrences": 1200,
+      "gold_unmatched_value_occurrences": 1200,
+      "marginal_multisets_equal": false,
+      "count_semantics": "exact_one_to_one_rows"
+    }
+  ],
+  "whole_match_level": "仍不匹配",
+  "keyed_match_level": "仍不匹配",
+  "selection_reason": "011 执行与比较成功，使用该表已验证日期；优先 010 同题候选 / 共同兼容日，再按日期升序",
+  "value_representation": "Unmodified DuckDB CAST AS VARCHAR; SQL NULL is JSON null. Keys use the unchanged historical L0 normalization.",
+  "new_queries_only_read_existing_results": true,
+  "one_side_key_examples": {
+    "prediction_only": [],
+    "gold_only": []
+  },
+  "column_details": [
+    {
+      "column": "campaign_id",
+      "l0_counts_verbatim": {
+        "column": "campaign_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "campaign_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "account_id",
+      "l0_counts_verbatim": {
+        "column": "account_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "account_id",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "click_through_rate",
+      "l0_counts_verbatim": {
+        "column": "click_through_rate",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "click_through_rate",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "8.2245"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "32.7179"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "54.9811"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "6.9574"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "52.2346"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "DOUBLE"
+    },
+    {
+      "column": "clicks",
+      "l0_counts_verbatim": {
+        "column": "clicks",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "clicks",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "INTEGER",
+      "gold_actual_type": "INTEGER"
+    },
+    {
+      "column": "comments",
+      "l0_counts_verbatim": {
+        "column": "comments",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "comments",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "46"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "20"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "51"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "94"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "78"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "INTEGER",
+      "gold_actual_type": "INTEGER"
+    },
+    {
+      "column": "community_joins",
+      "l0_counts_verbatim": {
+        "column": "community_joins",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "community_joins",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "INTEGER",
+      "gold_actual_type": "INTEGER"
+    },
+    {
+      "column": "conversion_value",
+      "l0_counts_verbatim": {
+        "column": "conversion_value",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "conversion_value",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.00"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.00"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.00"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.00"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.00"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "DECIMAL(18,2)",
+      "gold_actual_type": "DECIMAL(18,2)"
+    },
+    {
+      "column": "conversions",
+      "l0_counts_verbatim": {
+        "column": "conversions",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "conversions",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "INTEGER",
+      "gold_actual_type": "INTEGER"
+    },
+    {
+      "column": "cost_per_click",
+      "l0_counts_verbatim": {
+        "column": "cost_per_click",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "cost_per_click",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.79"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.38"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.85"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "14.59"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.68"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "DOUBLE"
+    },
+    {
+      "column": "cost_per_conversion",
+      "l0_counts_verbatim": {
+        "column": "cost_per_conversion",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "cost_per_conversion",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.0"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "DOUBLE"
+    },
+    {
+      "column": "cost_per_thousand_impressions",
+      "l0_counts_verbatim": {
+        "column": "cost_per_thousand_impressions",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "cost_per_thousand_impressions",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "65.19"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "125.88"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "469.74"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "1015.39"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "357.56"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "DOUBLE"
+    },
+    {
+      "column": "cost_per_video_view",
+      "l0_counts_verbatim": {
+        "column": "cost_per_video_view",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "cost_per_video_view",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "5.24"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "1.36"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "7.76"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "108.65"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "4.65"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "DOUBLE"
+    },
+    {
+      "column": "date_day",
+      "l0_counts_verbatim": {
+        "column": "date_day",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "date_day",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "DATE",
+      "gold_actual_type": "DATE"
+    },
+    {
+      "column": "downvotes",
+      "l0_counts_verbatim": {
+        "column": "downvotes",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "downvotes",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "46"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "16"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "99"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "9"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "97"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "INTEGER",
+      "gold_actual_type": "INTEGER"
+    },
+    {
+      "column": "engagement_rate",
+      "l0_counts_verbatim": {
+        "column": "engagement_rate",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "engagement_rate",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "2.0408"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "10.2564"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "22.0681"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "13.9148"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "32.6816"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "DOUBLE",
+      "gold_actual_type": "DOUBLE"
+    },
+    {
+      "column": "impressions",
+      "l0_counts_verbatim": {
+        "column": "impressions",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "impressions",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "INTEGER",
+      "gold_actual_type": "INTEGER"
+    },
+    {
+      "column": "platform",
+      "l0_counts_verbatim": {
+        "column": "platform",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "platform",
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "marginal_multisets_equal": true,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "post_visits",
+      "l0_counts_verbatim": {
+        "column": "post_visits",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "post_visits",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "INTEGER",
+      "gold_actual_type": "INTEGER"
+    },
+    {
+      "column": "profile_visits",
+      "l0_counts_verbatim": {
+        "column": "profile_visits",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "profile_visits",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "INTEGER",
+      "gold_actual_type": "INTEGER"
+    },
+    {
+      "column": "saves",
+      "l0_counts_verbatim": {
+        "column": "saves",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "saves",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "INTEGER",
+      "gold_actual_type": "INTEGER"
+    },
+    {
+      "column": "shares",
+      "l0_counts_verbatim": {
+        "column": "shares",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "shares",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "INTEGER",
+      "gold_actual_type": "INTEGER"
+    },
+    {
+      "column": "spend",
+      "l0_counts_verbatim": {
+        "column": "spend",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "spend",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "319.45"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "122.73"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "372.50"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "977.82"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "256.01"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "DECIMAL(18,2)",
+      "gold_actual_type": "DECIMAL(18,2)"
+    },
+    {
+      "column": "total_engagements",
+      "l0_counts_verbatim": {
+        "column": "total_engagements",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "total_engagements",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "100"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "100"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "175"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "134"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "234"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "INTEGER",
+      "gold_actual_type": "INTEGER"
+    },
+    {
+      "column": "upvotes",
+      "l0_counts_verbatim": {
+        "column": "upvotes",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "upvotes",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "8"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "64"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "25"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "31"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "59"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "INTEGER",
+      "gold_actual_type": "INTEGER"
+    },
+    {
+      "column": "video_view_rate",
+      "l0_counts_verbatim": {
+        "column": "video_view_rate",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "video_view_rate",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.0000"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.0000"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.0000"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.0000"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "0.0000"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "DECIMAL(8,4)",
+      "gold_actual_type": "DECIMAL(8,4)"
+    },
+    {
+      "column": "video_views",
+      "l0_counts_verbatim": {
+        "column": "video_views",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": {
+        "column": "video_views",
+        "one_to_one_mismatch_rows": 1200,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200,
+        "marginal_multisets_equal": false,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "sample_level": "L0",
+      "sample_key_groups": [
+        {
+          "key_normalized": {
+            "campaign_id": "red01006011373"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006011373"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "61"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01006979411"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01006979411"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "90"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01044530376"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01044530376"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "48"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01050705499"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01050705499"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "9"
+        },
+        {
+          "key_normalized": {
+            "campaign_id": "red01064661396"
+          },
+          "agent_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "gold_key_raw_text": {
+            "campaign_id": "RED01064661396"
+          },
+          "agent_rows_with_key": 1,
+          "gold_rows_with_key": 1,
+          "kind": "one_to_one",
+          "agent_value": null,
+          "gold_value": "55"
+        }
+      ],
+      "sample_counts_recheck": {
+        "mismatch_rows_or_minimum_pairs": 1200,
+        "pred_unmatched_value_occurrences": 1200,
+        "gold_unmatched_value_occurrences": 1200
+      },
+      "agent_actual_type": "INTEGER",
+      "gold_actual_type": "INTEGER"
+    }
+  ]
+}
+```
+
+## agent_constraints_006
+
+```json
+{
+  "source_record": "records/006_contract_impl-006.json",
+  "declarations": {
+    "grain": [],
+    "primary_key": [],
+    "not_null": [],
+    "unique": []
+  },
+  "agent": {
+    "table_exists": true,
+    "actual_schema": "staging",
+    "table_type": "BASE TABLE",
+    "same_name_other_schemas": [],
+    "row_count": 1200,
+    "checks": {
+      "grain": [],
+      "primary_key": [],
+      "not_null": [],
+      "unique": []
+    },
+    "actual_table": "stg_reddit_ads__campaign_report",
+    "actual_columns": [
+      "platform",
+      "campaign_id",
+      "date_day",
+      "account_id",
+      "impressions",
+      "clicks",
+      "spend",
+      "video_views",
+      "video_view_rate",
+      "upvotes",
+      "downvotes",
+      "comments",
+      "shares",
+      "saves",
+      "post_visits",
+      "profile_visits",
+      "community_joins",
+      "conversions",
+      "conversion_value",
+      "click_through_rate",
+      "cost_per_click",
+      "cost_per_thousand_impressions",
+      "cost_per_video_view",
+      "cost_per_conversion",
+      "total_engagements",
+      "engagement_rate",
+      "_dbt_loaded_at"
+    ],
+    "missing_declared_columns": [],
+    "categories": {
+      "grain": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      },
+      "primary_key": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      },
+      "not_null": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      },
+      "unique": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      }
+    },
+    "any_constraint_violated": null
+  }
+}
+```
+
+## all_markers_and_evidence_008
+
+```json
+{
+  "source_record": "records/008_table_scan.jsonl",
+  "verbatim_record": {
+    "task": "impl-006",
+    "layer": "staging",
+    "table": "stg_reddit_ads__campaign_report",
+    "logical_contract_table": "stg_reddit_ads__campaign_report",
+    "delivery_name_mapping_evidence": [],
+    "inventory_sources": {
+      "retained_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/ad_reporting.duckdb",
+      "present_in_database": true,
+      "agent_final_sql_files": [
+        "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql"
+      ]
+    },
+    "status_007": {
+      "gold_table_exists_in_original_gold": true,
+      "whole_level_007": "仍不匹配",
+      "007_present": true,
+      "004_failed_set_member": true,
+      "005_failed_set_member": false,
+      "005_current_pred_execution": null,
+      "status_sources": [
+        {
+          "record": "records/007_tolerance_tables.jsonl",
+          "scope": "staging",
+          "rule": "whole_match_level",
+          "value": "仍不匹配",
+          "007_prediction_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/ad_reporting.duckdb"
+        }
+      ],
+      "status": "待标注",
+      "comparison_lookup_layer": "staging",
+      "comparison_lookup_table": "stg_reddit_ads__campaign_report",
+      "actual_gold_relation_exists": true
+    },
+    "contract": {
+      "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-006/docs/data_contract.yaml",
+      "blocks": [
+        {
+          "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-006/docs/data_contract.yaml",
+          "start_line": 1092,
+          "end_line": 1148,
+          "original_text": "    - name: \"stg_reddit_ads__campaign_report\"\n      description: \"Staging table for Reddit Ads  Campaign Report\"\n      columns:\n        - name: \"platform\"\n          data_type: VARCHAR\n        - name: \"campaign_id\"\n          data_type: VARCHAR\n        - name: \"date_day\"\n          data_type: DATE\n        - name: \"account_id\"\n          data_type: VARCHAR\n        - name: \"impressions\"\n          data_type: INTEGER\n        - name: \"clicks\"\n          data_type: INTEGER\n        - name: \"spend\"\n          data_type: DECIMAL(18,2)\n        - name: \"video_views\"\n          data_type: INTEGER\n        - name: \"video_view_rate\"\n          data_type: DECIMAL(8,4)\n        - name: \"upvotes\"\n          data_type: INTEGER\n        - name: \"downvotes\"\n          data_type: INTEGER\n        - name: \"comments\"\n          data_type: INTEGER\n        - name: \"shares\"\n          data_type: INTEGER\n        - name: \"saves\"\n          data_type: INTEGER\n        - name: \"post_visits\"\n          data_type: INTEGER\n        - name: \"profile_visits\"\n          data_type: INTEGER\n        - name: \"community_joins\"\n          data_type: INTEGER\n        - name: \"conversions\"\n          data_type: INTEGER\n        - name: \"conversion_value\"\n          data_type: DECIMAL(18,2)\n        - name: \"click_through_rate\"\n          data_type: DOUBLE\n        - name: \"cost_per_click\"\n          data_type: DOUBLE\n        - name: \"cost_per_thousand_impressions\"\n          data_type: DOUBLE\n        - name: \"cost_per_video_view\"\n          data_type: DOUBLE\n        - name: \"cost_per_conversion\"\n          data_type: DOUBLE\n        - name: \"total_engagements\"\n          data_type: INTEGER\n        - name: \"engagement_rate\"\n          data_type: DOUBLE\n        - name: \"_dbt_loaded_at\"\n          data_type: TIMESTAMP WITH TIME ZONE\n",
+          "yaml_path": [
+            "staging_contract",
+            "tables",
+            22
+          ]
+        }
+      ]
+    },
+    "output": {
+      "status": "checked",
+      "exists": true,
+      "row_count": 1200,
+      "zero_rows": false,
+      "columns": [
+        {
+          "name": "platform",
+          "type": "VARCHAR",
+          "nonnull_rows": 1200,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "campaign_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 1200,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "date_day",
+          "type": "DATE",
+          "nonnull_rows": 1200,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "account_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 1200,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "impressions",
+          "type": "INTEGER",
+          "nonnull_rows": 1200,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "clicks",
+          "type": "INTEGER",
+          "nonnull_rows": 1200,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "spend",
+          "type": "DECIMAL(18,2)",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "video_views",
+          "type": "INTEGER",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "video_view_rate",
+          "type": "DECIMAL(8,4)",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "upvotes",
+          "type": "INTEGER",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "downvotes",
+          "type": "INTEGER",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "comments",
+          "type": "INTEGER",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "shares",
+          "type": "INTEGER",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "saves",
+          "type": "INTEGER",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "post_visits",
+          "type": "INTEGER",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "profile_visits",
+          "type": "INTEGER",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "community_joins",
+          "type": "INTEGER",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "conversions",
+          "type": "INTEGER",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "conversion_value",
+          "type": "DECIMAL(18,2)",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "click_through_rate",
+          "type": "DOUBLE",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "cost_per_click",
+          "type": "DOUBLE",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "cost_per_thousand_impressions",
+          "type": "DOUBLE",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "cost_per_video_view",
+          "type": "DOUBLE",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "cost_per_conversion",
+          "type": "DOUBLE",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "total_engagements",
+          "type": "INTEGER",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "engagement_rate",
+          "type": "DOUBLE",
+          "nonnull_rows": 0,
+          "sql_null_rows": 1200
+        },
+        {
+          "name": "_dbt_loaded_at",
+          "type": "TIMESTAMP WITH TIME ZONE",
+          "nonnull_rows": 1200,
+          "sql_null_rows": 0
+        }
+      ],
+      "all_null_columns": [
+        {
+          "column": "spend",
+          "table_rows": 1200
+        },
+        {
+          "column": "video_views",
+          "table_rows": 1200
+        },
+        {
+          "column": "video_view_rate",
+          "table_rows": 1200
+        },
+        {
+          "column": "upvotes",
+          "table_rows": 1200
+        },
+        {
+          "column": "downvotes",
+          "table_rows": 1200
+        },
+        {
+          "column": "comments",
+          "table_rows": 1200
+        },
+        {
+          "column": "shares",
+          "table_rows": 1200
+        },
+        {
+          "column": "saves",
+          "table_rows": 1200
+        },
+        {
+          "column": "post_visits",
+          "table_rows": 1200
+        },
+        {
+          "column": "profile_visits",
+          "table_rows": 1200
+        },
+        {
+          "column": "community_joins",
+          "table_rows": 1200
+        },
+        {
+          "column": "conversions",
+          "table_rows": 1200
+        },
+        {
+          "column": "conversion_value",
+          "table_rows": 1200
+        },
+        {
+          "column": "click_through_rate",
+          "table_rows": 1200
+        },
+        {
+          "column": "cost_per_click",
+          "table_rows": 1200
+        },
+        {
+          "column": "cost_per_thousand_impressions",
+          "table_rows": 1200
+        },
+        {
+          "column": "cost_per_video_view",
+          "table_rows": 1200
+        },
+        {
+          "column": "cost_per_conversion",
+          "table_rows": 1200
+        },
+        {
+          "column": "total_engagements",
+          "table_rows": 1200
+        },
+        {
+          "column": "engagement_rate",
+          "table_rows": 1200
+        }
+      ],
+      "constant_nonnull_columns": [
+        {
+          "column": "platform",
+          "type": "VARCHAR",
+          "value": "REDDIT_ADS",
+          "value_representation": "DuckDB CAST AS VARCHAR, exact, no normalization",
+          "table_rows": 1200,
+          "contract": {
+            "status": "found",
+            "definitions": [
+              {
+                "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-006/docs/data_contract.yaml",
+                "start_line": 1095,
+                "end_line": 1096,
+                "original_text": "        - name: \"platform\"\n          data_type: VARCHAR\n",
+                "name": "platform",
+                "description": null,
+                "specification": {
+                  "name": "platform",
+                  "data_type": "VARCHAR"
+                }
+              }
+            ],
+            "meaning_description_status": "契约未描述含义"
+          }
+        },
+        {
+          "column": "_dbt_loaded_at",
+          "type": "TIMESTAMP WITH TIME ZONE",
+          "value": "2026-10-25 01:52:29.325052+08",
+          "value_representation": "DuckDB CAST AS VARCHAR, exact, no normalization",
+          "table_rows": 1200,
+          "contract": {
+            "status": "found",
+            "definitions": [
+              {
+                "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-006/docs/data_contract.yaml",
+                "start_line": 1147,
+                "end_line": 1148,
+                "original_text": "        - name: \"_dbt_loaded_at\"\n          data_type: TIMESTAMP WITH TIME ZONE\n",
+                "name": "_dbt_loaded_at",
+                "description": null,
+                "specification": {
+                  "name": "_dbt_loaded_at",
+                  "data_type": "TIMESTAMP WITH TIME ZONE"
+                }
+              }
+            ],
+            "meaning_description_status": "契约未描述含义"
+          }
+        }
+      ],
+      "equal_column_groups": [],
+      "profile_sql": "SELECT count(*),count(\"platform\"),min(CAST(\"platform\" AS VARCHAR)),max(CAST(\"platform\" AS VARCHAR)),sum(hash(CAST(\"platform\" AS VARCHAR))),count(\"campaign_id\"),min(CAST(\"campaign_id\" AS VARCHAR)),max(CAST(\"campaign_id\" AS VARCHAR)),sum(hash(CAST(\"campaign_id\" AS VARCHAR))),count(\"date_day\"),min(CAST(\"date_day\" AS VARCHAR)),max(CAST(\"date_day\" AS VARCHAR)),sum(hash(CAST(\"date_day\" AS VARCHAR))),count(\"account_id\"),min(CAST(\"account_id\" AS VARCHAR)),max(CAST(\"account_id\" AS VARCHAR)),sum(hash(CAST(\"account_id\" AS VARCHAR))),count(\"impressions\"),min(CAST(\"impressions\" AS VARCHAR)),max(CAST(\"impressions\" AS VARCHAR)),sum(hash(CAST(\"impressions\" AS VARCHAR))),count(\"clicks\"),min(CAST(\"clicks\" AS VARCHAR)),max(CAST(\"clicks\" AS VARCHAR)),sum(hash(CAST(\"clicks\" AS VARCHAR))),count(\"spend\"),min(CAST(\"spend\" AS VARCHAR)),max(CAST(\"spend\" AS VARCHAR)),sum(hash(CAST(\"spend\" AS VARCHAR))),count(\"video_views\"),min(CAST(\"video_views\" AS VARCHAR)),max(CAST(\"video_views\" AS VARCHAR)),sum(hash(CAST(\"video_views\" AS VARCHAR))),count(\"video_view_rate\"),min(CAST(\"video_view_rate\" AS VARCHAR)),max(CAST(\"video_view_rate\" AS VARCHAR)),sum(hash(CAST(\"video_view_rate\" AS VARCHAR))),count(\"upvotes\"),min(CAST(\"upvotes\" AS VARCHAR)),max(CAST(\"upvotes\" AS VARCHAR)),sum(hash(CAST(\"upvotes\" AS VARCHAR))),count(\"downvotes\"),min(CAST(\"downvotes\" AS VARCHAR)),max(CAST(\"downvotes\" AS VARCHAR)),sum(hash(CAST(\"downvotes\" AS VARCHAR))),count(\"comments\"),min(CAST(\"comments\" AS VARCHAR)),max(CAST(\"comments\" AS VARCHAR)),sum(hash(CAST(\"comments\" AS VARCHAR))),count(\"shares\"),min(CAST(\"shares\" AS VARCHAR)),max(CAST(\"shares\" AS VARCHAR)),sum(hash(CAST(\"shares\" AS VARCHAR))),count(\"saves\"),min(CAST(\"saves\" AS VARCHAR)),max(CAST(\"saves\" AS VARCHAR)),sum(hash(CAST(\"saves\" AS VARCHAR))),count(\"post_visits\"),min(CAST(\"post_visits\" AS VARCHAR)),max(CAST(\"post_visits\" AS VARCHAR)),sum(hash(CAST(\"post_visits\" AS VARCHAR))),count(\"profile_visits\"),min(CAST(\"profile_visits\" AS VARCHAR)),max(CAST(\"profile_visits\" AS VARCHAR)),sum(hash(CAST(\"profile_visits\" AS VARCHAR))),count(\"community_joins\"),min(CAST(\"community_joins\" AS VARCHAR)),max(CAST(\"community_joins\" AS VARCHAR)),sum(hash(CAST(\"community_joins\" AS VARCHAR))),count(\"conversions\"),min(CAST(\"conversions\" AS VARCHAR)),max(CAST(\"conversions\" AS VARCHAR)),sum(hash(CAST(\"conversions\" AS VARCHAR))),count(\"conversion_value\"),min(CAST(\"conversion_value\" AS VARCHAR)),max(CAST(\"conversion_value\" AS VARCHAR)),sum(hash(CAST(\"conversion_value\" AS VARCHAR))),count(\"click_through_rate\"),min(CAST(\"click_through_rate\" AS VARCHAR)),max(CAST(\"click_through_rate\" AS VARCHAR)),sum(hash(CAST(\"click_through_rate\" AS VARCHAR))),count(\"cost_per_click\"),min(CAST(\"cost_per_click\" AS VARCHAR)),max(CAST(\"cost_per_click\" AS VARCHAR)),sum(hash(CAST(\"cost_per_click\" AS VARCHAR))),count(\"cost_per_thousand_impressions\"),min(CAST(\"cost_per_thousand_impressions\" AS VARCHAR)),max(CAST(\"cost_per_thousand_impressions\" AS VARCHAR)),sum(hash(CAST(\"cost_per_thousand_impressions\" AS VARCHAR))),count(\"cost_per_video_view\"),min(CAST(\"cost_per_video_view\" AS VARCHAR)),max(CAST(\"cost_per_video_view\" AS VARCHAR)),sum(hash(CAST(\"cost_per_video_view\" AS VARCHAR))),count(\"cost_per_conversion\"),min(CAST(\"cost_per_conversion\" AS VARCHAR)),max(CAST(\"cost_per_conversion\" AS VARCHAR)),sum(hash(CAST(\"cost_per_conversion\" AS VARCHAR))),count(\"total_engagements\"),min(CAST(\"total_engagements\" AS VARCHAR)),max(CAST(\"total_engagements\" AS VARCHAR)),sum(hash(CAST(\"total_engagements\" AS VARCHAR))),count(\"engagement_rate\"),min(CAST(\"engagement_rate\" AS VARCHAR)),max(CAST(\"engagement_rate\" AS VARCHAR)),sum(hash(CAST(\"engagement_rate\" AS VARCHAR))),count(\"_dbt_loaded_at\"),min(CAST(\"_dbt_loaded_at\" AS VARCHAR)),max(CAST(\"_dbt_loaded_at\" AS VARCHAR)),sum(hash(CAST(\"_dbt_loaded_at\" AS VARCHAR))) FROM \"staging\".\"stg_reddit_ads__campaign_report\"",
+      "equal_column_confirmation_queries": [],
+      "equality_policy": "exact CAST AS VARCHAR per row; no trim/case/numeric/date normalization; both NULL ignored; at least one nonnull equal row; one-sided NULL differs",
+      "actual_schema": "staging",
+      "actual_table": "stg_reddit_ads__campaign_report",
+      "relation_type": "BASE TABLE"
+    },
+    "agent_sql": [
+      {
+        "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+        "status": "parsed",
+        "parser": "30.25.0",
+        "sources": [
+          {
+            "name": "raw.reddit_ads_campaign_report_data",
+            "canonical": "raw.reddit_ads_campaign_report_data",
+            "locations": [
+              {
+                "line": 2,
+                "end_line": 2
+              }
+            ]
+          }
+        ],
+        "unresolved_source_expressions": [],
+        "row_generator_expressions": [],
+        "outputs": [
+          {
+            "name": "platform",
+            "alternatives": [
+              {
+                "expression_sql": "'REDDIT_ADS'",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 6,
+                "end_line": 6,
+                "kind": "nonnull_literal",
+                "casts": [],
+                "literal_sql": "'REDDIT_ADS'",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "platform",
+            "retained_output_ordinal": 1
+          },
+          {
+            "name": "campaign_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(TRY_CAST(\"campaign_id\" AS TEXT) AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 7,
+                "end_line": 7,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "campaign_id",
+            "retained_output_ordinal": 2
+          },
+          {
+            "name": "date_day",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(TRY_CAST(date AS DATE) AS DATE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 8,
+                "end_line": 8,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "date_day",
+            "retained_output_ordinal": 3
+          },
+          {
+            "name": "account_id",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"account_id\" AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 9,
+                "end_line": 9,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "account_id",
+            "retained_output_ordinal": 4
+          },
+          {
+            "name": "impressions",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(TRY_CAST(\"impressions\" AS BIGINT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 10,
+                "end_line": 10,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "impressions",
+            "retained_output_ordinal": 5
+          },
+          {
+            "name": "clicks",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(TRY_CAST(\"clicks\" AS BIGINT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 11,
+                "end_line": 11,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "clicks",
+            "retained_output_ordinal": 6
+          },
+          {
+            "name": "spend",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS DECIMAL(18, 2)) AS DECIMAL(18, 2))",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 12,
+                "end_line": 12,
+                "kind": "null_literal",
+                "casts": [
+                  "DECIMAL(18, 2)",
+                  "DECIMAL(18, 2)"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "spend",
+            "retained_output_ordinal": 7
+          },
+          {
+            "name": "video_views",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 13,
+                "end_line": 13,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "video_views",
+            "retained_output_ordinal": 8
+          },
+          {
+            "name": "video_view_rate",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS DECIMAL(8, 4)) AS DECIMAL(8, 4))",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 14,
+                "end_line": 14,
+                "kind": "null_literal",
+                "casts": [
+                  "DECIMAL(8, 4)",
+                  "DECIMAL(8, 4)"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "video_view_rate",
+            "retained_output_ordinal": 9
+          },
+          {
+            "name": "upvotes",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 15,
+                "end_line": 15,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "upvotes",
+            "retained_output_ordinal": 10
+          },
+          {
+            "name": "downvotes",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 16,
+                "end_line": 16,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "downvotes",
+            "retained_output_ordinal": 11
+          },
+          {
+            "name": "comments",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 17,
+                "end_line": 17,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "comments",
+            "retained_output_ordinal": 12
+          },
+          {
+            "name": "shares",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 18,
+                "end_line": 18,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "shares",
+            "retained_output_ordinal": 13
+          },
+          {
+            "name": "saves",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 19,
+                "end_line": 19,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "saves",
+            "retained_output_ordinal": 14
+          },
+          {
+            "name": "post_visits",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 20,
+                "end_line": 20,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "post_visits",
+            "retained_output_ordinal": 15
+          },
+          {
+            "name": "profile_visits",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 21,
+                "end_line": 21,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "profile_visits",
+            "retained_output_ordinal": 16
+          },
+          {
+            "name": "community_joins",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 22,
+                "end_line": 22,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "community_joins",
+            "retained_output_ordinal": 17
+          },
+          {
+            "name": "conversions",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 23,
+                "end_line": 23,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "conversions",
+            "retained_output_ordinal": 18
+          },
+          {
+            "name": "conversion_value",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS DECIMAL(18, 2)) AS DECIMAL(18, 2))",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 24,
+                "end_line": 24,
+                "kind": "null_literal",
+                "casts": [
+                  "DECIMAL(18, 2)",
+                  "DECIMAL(18, 2)"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "conversion_value",
+            "retained_output_ordinal": 19
+          },
+          {
+            "name": "click_through_rate",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"ctr\" AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 25,
+                "end_line": 25,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "click_through_rate",
+            "retained_output_ordinal": 20
+          },
+          {
+            "name": "cost_per_click",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"cpc\" AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 26,
+                "end_line": 26,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "cost_per_click",
+            "retained_output_ordinal": 21
+          },
+          {
+            "name": "cost_per_thousand_impressions",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(\"ecpm\" AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 27,
+                "end_line": 27,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "cost_per_thousand_impressions",
+            "retained_output_ordinal": 22
+          },
+          {
+            "name": "cost_per_video_view",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS DOUBLE) AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 28,
+                "end_line": 28,
+                "kind": "null_literal",
+                "casts": [
+                  "DOUBLE",
+                  "DOUBLE"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "cost_per_video_view",
+            "retained_output_ordinal": 23
+          },
+          {
+            "name": "cost_per_conversion",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS DOUBLE) AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 29,
+                "end_line": 29,
+                "kind": "null_literal",
+                "casts": [
+                  "DOUBLE",
+                  "DOUBLE"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "cost_per_conversion",
+            "retained_output_ordinal": 24
+          },
+          {
+            "name": "total_engagements",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 30,
+                "end_line": 30,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "total_engagements",
+            "retained_output_ordinal": 25
+          },
+          {
+            "name": "engagement_rate",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS DOUBLE) AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 31,
+                "end_line": 31,
+                "kind": "null_literal",
+                "casts": [
+                  "DOUBLE",
+                  "DOUBLE"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "engagement_rate",
+            "retained_output_ordinal": 26
+          },
+          {
+            "name": "_dbt_loaded_at",
+            "alternatives": [
+              {
+                "expression_sql": "CURRENT_TIMESTAMP",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 32,
+                "end_line": 32,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "_dbt_loaded_at",
+            "retained_output_ordinal": 27
+          }
+        ],
+        "null_literal_outputs": [
+          {
+            "name": "spend",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS DECIMAL(18, 2)) AS DECIMAL(18, 2))",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 12,
+                "end_line": 12,
+                "kind": "null_literal",
+                "casts": [
+                  "DECIMAL(18, 2)",
+                  "DECIMAL(18, 2)"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "spend",
+            "retained_output_ordinal": 7
+          },
+          {
+            "name": "video_views",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 13,
+                "end_line": 13,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "video_views",
+            "retained_output_ordinal": 8
+          },
+          {
+            "name": "video_view_rate",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS DECIMAL(8, 4)) AS DECIMAL(8, 4))",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 14,
+                "end_line": 14,
+                "kind": "null_literal",
+                "casts": [
+                  "DECIMAL(8, 4)",
+                  "DECIMAL(8, 4)"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "video_view_rate",
+            "retained_output_ordinal": 9
+          },
+          {
+            "name": "upvotes",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 15,
+                "end_line": 15,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "upvotes",
+            "retained_output_ordinal": 10
+          },
+          {
+            "name": "downvotes",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 16,
+                "end_line": 16,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "downvotes",
+            "retained_output_ordinal": 11
+          },
+          {
+            "name": "comments",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 17,
+                "end_line": 17,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "comments",
+            "retained_output_ordinal": 12
+          },
+          {
+            "name": "shares",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 18,
+                "end_line": 18,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "shares",
+            "retained_output_ordinal": 13
+          },
+          {
+            "name": "saves",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 19,
+                "end_line": 19,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "saves",
+            "retained_output_ordinal": 14
+          },
+          {
+            "name": "post_visits",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 20,
+                "end_line": 20,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "post_visits",
+            "retained_output_ordinal": 15
+          },
+          {
+            "name": "profile_visits",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 21,
+                "end_line": 21,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "profile_visits",
+            "retained_output_ordinal": 16
+          },
+          {
+            "name": "community_joins",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 22,
+                "end_line": 22,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "community_joins",
+            "retained_output_ordinal": 17
+          },
+          {
+            "name": "conversions",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 23,
+                "end_line": 23,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "conversions",
+            "retained_output_ordinal": 18
+          },
+          {
+            "name": "conversion_value",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS DECIMAL(18, 2)) AS DECIMAL(18, 2))",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 24,
+                "end_line": 24,
+                "kind": "null_literal",
+                "casts": [
+                  "DECIMAL(18, 2)",
+                  "DECIMAL(18, 2)"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "conversion_value",
+            "retained_output_ordinal": 19
+          },
+          {
+            "name": "cost_per_video_view",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS DOUBLE) AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 28,
+                "end_line": 28,
+                "kind": "null_literal",
+                "casts": [
+                  "DOUBLE",
+                  "DOUBLE"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "cost_per_video_view",
+            "retained_output_ordinal": 23
+          },
+          {
+            "name": "cost_per_conversion",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS DOUBLE) AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 29,
+                "end_line": 29,
+                "kind": "null_literal",
+                "casts": [
+                  "DOUBLE",
+                  "DOUBLE"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "cost_per_conversion",
+            "retained_output_ordinal": 24
+          },
+          {
+            "name": "total_engagements",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS INT) AS INT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 30,
+                "end_line": 30,
+                "kind": "null_literal",
+                "casts": [
+                  "INT",
+                  "INT"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "total_engagements",
+            "retained_output_ordinal": 25
+          },
+          {
+            "name": "engagement_rate",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(CAST(NULL AS DOUBLE) AS DOUBLE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 31,
+                "end_line": 31,
+                "kind": "null_literal",
+                "casts": [
+                  "DOUBLE",
+                  "DOUBLE"
+                ],
+                "literal_sql": "NULL",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "engagement_rate",
+            "retained_output_ordinal": 26
+          }
+        ],
+        "constant_literal_outputs": [
+          {
+            "name": "platform",
+            "alternatives": [
+              {
+                "expression_sql": "'REDDIT_ADS'",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+                "line": 6,
+                "end_line": 6,
+                "kind": "nonnull_literal",
+                "casts": [],
+                "literal_sql": "'REDDIT_ADS'",
+                "via": "literal_projection"
+              }
+            ],
+            "sql_projection_name": "platform",
+            "retained_output_ordinal": 1
+          }
+        ],
+        "runtime_hits": [
+          {
+            "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+            "line": 32,
+            "column": 9,
+            "matched_text": "CURRENT_TIMESTAMP",
+            "line_text": "        CURRENT_TIMESTAMP AS _dbt_loaded_at",
+            "context": "code"
+          }
+        ]
+      }
+    ],
+    "source_comparison": {
+      "contract": {
+        "status": "契约未指定",
+        "references": [],
+        "canonical_names": []
+      },
+      "agent_direct_read_sources": [
+        "raw.reddit_ads_campaign_report_data"
+      ],
+      "scope": "direct physical relation references through reachable local CTE/subqueries; no transitive expansion through other output tables or stored views",
+      "complete": true,
+      "specified_but_not_read": null,
+      "read_but_not_specified": null
+    },
+    "time_dependencies": {
+      "agent_sql": {
+        "available": true,
+        "appears": true,
+        "hits": [
+          {
+            "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+            "line": 32,
+            "column": 9,
+            "matched_text": "CURRENT_TIMESTAMP",
+            "line_text": "        CURRENT_TIMESTAMP AS _dbt_loaded_at",
+            "context": "code"
+          }
+        ]
+      },
+      "gold_sql": {
+        "available": true,
+        "appears": true,
+        "hits": [
+          {
+            "path": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+            "line": 72,
+            "column": 5,
+            "matched_text": "CURRENT_TIMESTAMP",
+            "line_text": "    CURRENT_TIMESTAMP AS _dbt_loaded_at",
+            "context": "code"
+          }
+        ],
+        "paths": [
+          "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql"
+        ]
+      },
+      "contract": {
+        "available": true,
+        "appears": false,
+        "hits": []
+      }
+    },
+    "any_result_keyword_excerpt_ids": [
+      "008-003184"
+    ],
+    "trace_flags": {
+      "A1_zero_rows": false,
+      "A2_all_null_column": true,
+      "A3_constant_nonnull_column": true,
+      "A4_equal_columns": false,
+      "A4_equal_columns_different_description_texts": false,
+      "B5_null_literal_output": true,
+      "B6_constant_literal_output": true,
+      "B7_specified_not_read": null,
+      "B7_read_not_specified": null,
+      "B8_shared_single_source": false,
+      "C9_agent_runtime_text": true,
+      "C9_gold_runtime_text": true,
+      "C9_contract_runtime_text": false,
+      "D10_keyword_in_final_report": false,
+      "D10_keyword_in_any_result_field": true
+    }
+  }
+}
+```
+
+## trace_excerpts
+
+```json
+{
+  "archive": "/home/katherine/Assumption_Ledger/traces/dacomp_deimpl_prev.tar.gz",
+  "event_source_root": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent",
+  "actual_read_sources_from_008_B7": [
+    "raw.reddit_ads_campaign_report_data"
+  ],
+  "name_match_policy": "Case-insensitive complete identifier-name boundaries; source names include qualified form and bare leaf name. No semantic association inferred.",
+  "matched_step_count": 8,
+  "full_original_characters_before_budget": 114390,
+  "budget_triggered": true,
+  "source_only_steps_indexed": 4,
+  "retained_full_original_characters": 17924,
+  "full_target_steps_exceed_60000": false,
+  "budget_policy": "If total command/output text exceeds 60000 characters, keep every target-table step complete and retain only id/location/first line for source-only steps. Do not rewrite or truncate a kept original step."
+}
+```
+
+### event 7
+
+```json
+{
+  "event_id": 7,
+  "agent_command_sequence": 2,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/7.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1873,
+    "decoded_characters": 97
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/7.json",
+  "timestamp": "2026-10-25T01:33:19.408227",
+  "target_table_name_hits": [
+    "stg_reddit_ads__campaign_report"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 7462,
+  "retention": "full_original"
+}
+```
+```bash
+find sql -type f -maxdepth 3 -printf '%p %s bytes\n' | sort && cat config/layer_dependencies.yaml
+```
+```json
+{
+  "event_id": 8,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/8.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1557,
+    "decoded_characters": 7365
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/8.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+find: warning: you have specified the global option -maxdepth after the argument -type, but global options are not positional, i.e., -maxdepth affects tests specified before it as well as those specified after it.  Please specify global options before other arguments.
+# Ad Reporting data layer execution depends on configuration
+# Define the execution order of SQL transformations - enhanced version includes advanced analysis models
+
+layers:
+  staging:
+    description: "Raw advertising data standardization and cleaning"
+    tables:
+      # Amazon Ads
+      - stg_amazon_ads__campaign_report
+      - stg_amazon_ads__ad_group_report
+      - stg_amazon_ads__keyword_report
+      - stg_amazon_ads__search_report
+      - stg_amazon_ads__product_report
+      
+      # Apple Search Ads
+      - stg_apple_search_ads__campaign_report
+      - stg_apple_search_ads__ad_group_report
+      - stg_apple_search_ads__ad_report
+      
+      # Facebook Ads
+      - stg_facebook_ads__ad_report
+      - stg_facebook_ads__ad_actions
+      
+      # Google Ads
+      - stg_google_ads__account_report
+      - stg_google_ads__campaign_report
+      - stg_google_ads__ad_group_report
+      
+      # Other Platforms
+      - stg_linkedin_ads__campaign_report
+      - stg_microsoft_ads__campaign_report
+      - stg_pinterest_ads__campaign_report
+      - stg_reddit_ads__campaign_report
+      - stg_snapchat_ads__campaign_report
+      - stg_tiktok_ads__campaign_report
+      - stg_twitter_ads__campaign_report
+
+  intermediate:
+    description: "Advanced business logic, cross-platform data integration and analytical models"
+    dependencies: ["staging"]
+    tables:
+      # Basic tools and mapping tables
+      - int_ad_reporting__country_mapping
+      
+      # Core Unified Data Model (highest priority)
+      - int_ad_reporting__unified_campaign_metrics
+      
+      # Advanced analytics models (relying on unified data)
+      - int_ad_reporting__customer_journey_analysis
+      - int_ad_reporting__geo_channel_performance
+      - int_ad_reporting__time_series_analytics
+      
+      # Traditional reporting model (maintaining backward compatibility)
+      - int_ad_reporting__account_report
+      - int_ad_reporting__campaign_report
+      - int_ad_reporting__ad_group_report
+      - int_ad_reporting__ad_report
+      - int_ad_reporting__keyword_report
+      - int_ad_reporting__search_report
+      - int_ad_reporting__url_report
+      
+      # Temporal aggregation model (last execution)
+      - int_ad_reporting__monthly_campaign_country_report
+      - int_ad_reporting__monthly_campaign_region_report
+
+  marts:
+    description: "Business-ready advanced analytical reports and dashboards"
+    dependencies: ["intermediate"]
+    tables:
+      # Advanced analysis reports (new core tables)
+      - ad_reporting__executive_dashboard
+      - ad_reporting__customer_analytics
+      - ad_reporting__market_opportunities
+      - ad_reporting__predictive_analytics
+      
+      # Traditional business reporting (maintaining backward compatibility)
+      - ad_reporting__account_report
+      - ad_reporting__campaign_report
+      - ad_reporting__ad_group_report
+      - ad_reporting__ad_report
+      - ad_reporting__keyword_report
+      - ad_reporting__search_report
+      - ad_reporting__url_report
+      - ad_reporting__monthly_campaign_country_report
+      - ad_reporting__monthly_campaign_region_report
+
+# Intra-layer execution order (strictly sorted by dependencies)
+execution_order:
+  intermediate:
+    # 1. Basic mapping and tool table
+    - int_ad_reporting__country_mapping
+    
+    # 2. Core Unified Data Model (the foundation for all advanced analytics)
+    - int_ad_reporting__unified_campaign_metrics
+    
+    # 3. Advanced analysis model (parallel execution, independent of each other)
+    - int_ad_reporting__time_series_analytics
+    - int_ad_reporting__customer_journey_analysis
+    - int_ad_reporting__geo_channel_performance
+    
+    # 4. Traditional report model (backwards compatible)
+    - int_ad_reporting__campaign_report
+    - int_ad_reporting__account_report
+    - int_ad_reporting__ad_group_report
+    - int_ad_reporting__ad_report
+    - int_ad_reporting__keyword_report
+    - int_ad_reporting__search_report
+    - int_ad_reporting__url_report
+    
+    # 5. Time aggregation model (depends on basic reports)
+    - int_ad_reporting__monthly_campaign_country_report
+    - int_ad_reporting__monthly_campaign_region_report
+  
+  marts:
+    # 1. Advanced analysis dashboard (highest priority, relies on multiple intermediate tables)
+    - ad_reporting__executive_dashboard
+    - ad_reporting__customer_analytics
+    - ad_reporting__market_opportunities
+    - ad_reporting__predictive_analytics
+    
+    # 2. Traditional business reports (backwards compatible)
+    - ad_reporting__account_report
+    - ad_reporting__campaign_report
+    - ad_reporting__ad_group_report
+    - ad_reporting__ad_report
+    - ad_reporting__keyword_report
+    - ad_reporting__search_report
+    - ad_reporting__url_report
+    
+    # 3. Aggregation report (final execution)
+    - ad_reporting__monthly_campaign_country_report
+    - ad_reporting__monthly_campaign_region_report
+
+# Data quality check configuration
+data_quality:
+  # Key indicator thresholds
+  thresholds:
+    min_daily_spend: 0
+    max_cpc: 50
+    max_ctr: 100
+    min_campaigns_per_platform: 1
+  
+  # Anomaly detection rules
+  anomaly_rules:
+    - name: "spend_spike_detection"
+      description: "Detect unusual spending increases"
+      threshold: "daily_spend > 3 * spend_7d_ma"
+    
+    - name: "performance_degradation"
+      description: "Detection performance drops significantly"
+      threshold: "daily_ctr < 0.5 * ctr_7d_ma AND daily_spend > spend_7d_ma"
+  
+  # Data integrity check
+  completeness_checks:
+    - table: "int_ad_reporting__unified_campaign_metrics"
+      required_platforms: ["google_ads", "amazon_ads", "facebook_ads"]
+      min_records_per_day: 10
+    
+    - table: "ad_reporting__executive_dashboard"
+      required_months: 6
+      min_platforms: 3
+
+# Performance optimization configuration
+performance:
+  # Parallel execution configuration
+  parallel_execution:
+    intermediate_parallel_groups:
+      - ["int_ad_reporting__time_series_analytics", "int_ad_reporting__customer_journey_analysis"]
+      - ["int_ad_reporting__geo_channel_performance"]
+    
+    marts_parallel_groups:
+      - ["ad_reporting__customer_analytics", "ad_reporting__market_opportunities"]
+      - ["ad_reporting__predictive_analytics"]
+  
+  # Index suggestions
+  recommended_indexes:
+    - table: "int_ad_reporting__unified_campaign_metrics"
+      columns: ["platform", "date_day", "campaign_id"]
+    
+    - table: "int_ad_reporting__customer_journey_analysis"
+      columns: ["customer_identifier", "acquisition_cohort"]
+
+# Business rules and constraints
+business_rules:
+  # Data retention policy
+  retention:
+    staging: "18 months"
+    intermediate: "24 months"
+    marts: "36 months"
+  
+  # Definition of core business indicators
+  kpi_definitions:
+    customer_lifetime_value: "基于历史收入和客户生命周期的预测价值"
+    market_opportunity_score: "基于市场规模、增长潜力、竞争强度的综合评分(0-100)"
+    channel_efficiency: "ROAS ≥ 2.0 且 CPC 在行业基准内"
+    churn_risk: "90天内无活动且历史参与度低"
+  
+  # Alert threshold
+  alert_thresholds:
+    high_anomaly_probability: 25  # 异常概率超过25%
+    low_roas_threshold: 1.0       # ROAS低于1.0
+    high_churn_risk_ratio: 15     # 高风险客户占比超过15%
+```
+
+### event 11
+
+```json
+{
+  "event_id": 11,
+  "agent_command_sequence": 4,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/11.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1926,
+    "decoded_characters": 146
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/11.json",
+  "timestamp": "2026-10-25T01:33:19.461340",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "reddit_ads_campaign_report_data"
+  ],
+  "full_original_characters": 52373,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "python - <<'PY'\n"
+}
+```
+```json
+{
+  "event_id": 12,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/12.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1611,
+    "decoded_characters": 52227
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/12.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+### event 15
+
+```json
+{
+  "event_id": 15,
+  "agent_command_sequence": 6,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/15.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1499,
+    "decoded_characters": 126
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/15.json",
+  "timestamp": "2026-10-25T01:33:29.093880",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "reddit_ads_campaign_report_data"
+  ],
+  "full_original_characters": 7358,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "python - <<'PY'\n"
+}
+```
+```json
+{
+  "event_id": 16,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/16.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1184,
+    "decoded_characters": 7232
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/16.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+### event 17
+
+```json
+{
+  "event_id": 17,
+  "agent_command_sequence": 7,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/17.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2660,
+    "decoded_characters": 695
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/17.json",
+  "timestamp": "2026-10-25T01:33:37.645065",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "reddit_ads_campaign_report_data"
+  ],
+  "full_original_characters": 26781,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "python - <<'PY'\n"
+}
+```
+```json
+{
+  "event_id": 18,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/18.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2344,
+    "decoded_characters": 26086
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/18.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+### event 19
+
+```json
+{
+  "event_id": 19,
+  "agent_command_sequence": 8,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/19.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 20452,
+    "decoded_characters": 9426
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/19.json",
+  "timestamp": "2026-10-25T01:34:08.647265",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "reddit_ads_campaign_report_data"
+  ],
+  "full_original_characters": 9954,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "mkdir -p sql/{staging,intermediate,marts} && cat > /tmp/gen.py <<'PY'\n"
+}
+```
+```json
+{
+  "event_id": 20,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/20.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 20136,
+    "decoded_characters": 528
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/20.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 1
+}
+```
+
+### event 29
+
+```json
+{
+  "event_id": 29,
+  "agent_command_sequence": 13,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/29.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1510,
+    "decoded_characters": 124
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/29.json",
+  "timestamp": "2026-10-25T01:47:06.157680",
+  "target_table_name_hits": [
+    "stg_reddit_ads__campaign_report"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 2080,
+  "retention": "full_original"
+}
+```
+```bash
+python run.py > /tmp/runlog2 2>&1; grep -E 'ERROR - ✗|layer complete|ERROR - Failed|Binder Error|Catalog Error' /tmp/runlog2
+```
+```json
+{
+  "event_id": 30,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/30.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1193,
+    "decoded_characters": 1956
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/30.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+2026-10-25 01:47:06,510 - ERROR - ✗ staging.stg_google_ads__account_report: Conversion Error: Could not convert string "false" to DECIMAL(15,2) when casting from source column conversions_value
+2026-10-25 01:47:06,544 - ERROR - ✗ staging.stg_google_ads__ad_group_report: Conversion Error: Could not convert string "false" to DECIMAL(15,2) when casting from source column conversions_value
+2026-10-25 01:47:06,548 - ERROR - ✗ staging.stg_linkedin_ads__campaign_report: Conversion Error: Could not convert string 'false' to INT32 when casting from source column video_completions
+2026-10-25 01:47:06,569 - ERROR - ✗ staging.stg_reddit_ads__campaign_report: Conversion Error: Could not convert string 'mock_ctr_482' to DOUBLE when casting from source column ctr
+2026-10-25 01:47:06,572 - ERROR - ✗ staging.stg_snapchat_ads__campaign_report: Conversion Error: Could not convert string '2024-03-15 00:00:00.000 +0800' to INT64 when casting from source column screen_time_millis
+2026-10-25 01:47:06,575 - ERROR - ✗ staging.stg_tiktok_ads__campaign_report: Conversion Error: Could not convert string 'true' to INT32 when casting from source column FOLLOWS
+2026-10-25 01:47:06,582 - ERROR - ✗ staging.stg_twitter_ads__campaign_report: Conversion Error: Could not convert string 'false' to INT32 when casting from source column likes
+2026-10-25 01:47:06,582 - INFO - STAGING layer complete: 13/20 tables created successfully
+2026-10-25 01:47:06,612 - ERROR - ✗ intermediate.int_ad_reporting__time_series_analytics: Catalog Error: Table Function with name stg_google_ads__campaign_report does not exist!
+2026-10-25 01:47:08,505 - INFO - INTERMEDIATE layer complete: 13/14 tables created successfully
+2026-10-25 01:47:09,490 - ERROR - ✗ marts.ad_reporting__predictive_analytics: Catalog Error: Table Function with name int_ad_reporting__unified_campaign_metrics does not exist!
+2026-10-25 01:47:10,902 - INFO - MARTS layer complete: 12/13 tables created successfully
+```
+
+### event 37
+
+```json
+{
+  "event_id": 37,
+  "agent_command_sequence": 17,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/37.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1429,
+    "decoded_characters": 83
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/37.json",
+  "timestamp": "2026-10-25T01:47:34.102475",
+  "target_table_name_hits": [
+    "stg_reddit_ads__campaign_report"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 7020,
+  "retention": "full_original"
+}
+```
+```bash
+python run.py > /tmp/runlog3 2>&1; grep -E 'ERROR - ✗|layer complete' /tmp/runlog3;
+```
+```json
+{
+  "event_id": 38,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/38.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1111,
+    "decoded_characters": 6937
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/38.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+2026-10-25 01:47:34,347 - ERROR - ✗ staging.stg_amazon_ads__campaign_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,347 - ERROR - ✗ staging.stg_amazon_ads__ad_group_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,347 - ERROR - ✗ staging.stg_amazon_ads__keyword_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,348 - ERROR - ✗ staging.stg_amazon_ads__search_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,348 - ERROR - ✗ staging.stg_amazon_ads__product_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,348 - ERROR - ✗ staging.stg_apple_search_ads__campaign_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,349 - ERROR - ✗ staging.stg_apple_search_ads__ad_group_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,349 - ERROR - ✗ staging.stg_apple_search_ads__ad_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,349 - ERROR - ✗ staging.stg_facebook_ads__ad_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,349 - ERROR - ✗ staging.stg_facebook_ads__ad_actions: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,350 - ERROR - ✗ staging.stg_google_ads__account_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,350 - ERROR - ✗ staging.stg_google_ads__campaign_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,350 - ERROR - ✗ staging.stg_google_ads__ad_group_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,350 - ERROR - ✗ staging.stg_linkedin_ads__campaign_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,351 - ERROR - ✗ staging.stg_microsoft_ads__campaign_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,351 - ERROR - ✗ staging.stg_pinterest_ads__campaign_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,351 - ERROR - ✗ staging.stg_reddit_ads__campaign_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,352 - ERROR - ✗ staging.stg_snapchat_ads__campaign_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,352 - ERROR - ✗ staging.stg_tiktok_ads__campaign_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,352 - ERROR - ✗ staging.stg_twitter_ads__campaign_report: Parser Error: syntax error at or near "AS"
+2026-10-25 01:47:34,352 - INFO - STAGING layer complete: 0/20 tables created successfully
+2026-10-25 01:47:34,360 - ERROR - ✗ intermediate.int_ad_reporting__unified_campaign_metrics: Catalog Error: Table with name stg_amazon_ads__campaign_report does not exist!
+2026-10-25 01:47:34,361 - ERROR - ✗ intermediate.int_ad_reporting__time_series_analytics: Catalog Error: Table with name stg_google_ads__campaign_report does not exist!
+2026-10-25 01:47:34,361 - ERROR - ✗ intermediate.int_ad_reporting__customer_journey_analysis: Catalog Error: Table with name stg_google_ads__campaign_report does not exist!
+2026-10-25 01:47:34,362 - ERROR - ✗ intermediate.int_ad_reporting__geo_channel_performance: Catalog Error: Table with name stg_google_ads__campaign_report does not exist!
+2026-10-25 01:47:34,362 - ERROR - ✗ intermediate.int_ad_reporting__campaign_report: Catalog Error: Table with name stg_amazon_ads__campaign_report does not exist!
+2026-10-25 01:47:34,363 - ERROR - ✗ intermediate.int_ad_reporting__account_report: Catalog Error: Table with name int_ad_reporting__campaign_report does not exist!
+2026-10-25 01:47:34,363 - ERROR - ✗ intermediate.int_ad_reporting__ad_group_report: Catalog Error: Table with name stg_amazon_ads__ad_group_report does not exist!
+2026-10-25 01:47:34,364 - ERROR - ✗ intermediate.int_ad_reporting__ad_report: Catalog Error: Table with name stg_facebook_ads__ad_report does not exist!
+2026-10-25 01:47:34,365 - ERROR - ✗ intermediate.int_ad_reporting__keyword_report: Catalog Error: Table with name stg_amazon_ads__keyword_report does not exist!
+2026-10-25 01:47:34,365 - ERROR - ✗ intermediate.int_ad_reporting__search_report: Catalog Error: Table with name stg_amazon_ads__search_report does not exist!
+2026-10-25 01:47:34,366 - ERROR - ✗ intermediate.int_ad_reporting__url_report: Catalog Error: Table with name stg_amazon_ads__product_report does not exist!
+2026-10-25 01:47:34,367 - ERROR - ✗ intermediate.int_ad_reporting__monthly_campaign_country_report: Catalog Error: Table with name int_ad_reporting__campaign_report does not exist!
+2026-10-25 01:47:34,367 - ERROR - ✗ intermediate.int_ad_reporting__monthly_campaign_region_report: Catalog Error: Table with name int_ad_reporting__campaign_report does not exist!
+2026-10-25 01:47:34,367 - INFO - INTERMEDIATE layer complete: 1/14 tables created successfully
+2026-10-25 01:47:34,368 - ERROR - ✗ marts.ad_reporting__executive_dashboard: Catalog Error: Table with name int_ad_reporting__unified_campaign_metrics does not exist!
+2026-10-25 01:47:34,369 - ERROR - ✗ marts.ad_reporting__customer_analytics: Catalog Error: Table with name int_ad_reporting__customer_journey_analysis does not exist!
+2026-10-25 01:47:34,369 - ERROR - ✗ marts.ad_reporting__market_opportunities: Catalog Error: Table with name int_ad_reporting__geo_channel_performance does not exist!
+2026-10-25 01:47:34,370 - ERROR - ✗ marts.ad_reporting__predictive_analytics: Catalog Error: Table with name int_ad_reporting__unified_campaign_metrics does not exist!
+2026-10-25 01:47:34,370 - ERROR - ✗ marts.ad_reporting__account_report: Catalog Error: Table with name int_ad_reporting__account_report does not exist!
+2026-10-25 01:47:34,371 - ERROR - ✗ marts.ad_reporting__campaign_report: Catalog Error: Table with name int_ad_reporting__campaign_report does not exist!
+2026-10-25 01:47:34,371 - ERROR - ✗ marts.ad_reporting__ad_group_report: Catalog Error: Table with name int_ad_reporting__ad_group_report does not exist!
+2026-10-25 01:47:34,372 - ERROR - ✗ marts.ad_reporting__ad_report: Catalog Error: Table with name int_ad_reporting__ad_report does not exist!
+2026-10-25 01:47:34,373 - ERROR - ✗ marts.ad_reporting__keyword_report: Catalog Error: Table with name int_ad_reporting__keyword_report does not exist!
+2026-10-25 01:47:34,373 - ERROR - ✗ marts.ad_reporting__search_report: Catalog Error: Table with name int_ad_reporting__search_report does not exist!
+2026-10-25 01:47:34,374 - ERROR - ✗ marts.ad_reporting__url_report: Catalog Error: Table with name int_ad_reporting__url_report does not exist!
+2026-10-25 01:47:34,375 - ERROR - ✗ marts.ad_reporting__monthly_campaign_country_report: Catalog Error: Table with name int_ad_reporting__monthly_campaign_country_report does not exist!
+2026-10-25 01:47:34,375 - ERROR - ✗ marts.ad_reporting__monthly_campaign_region_report: Catalog Error: Table with name int_ad_reporting__monthly_campaign_region_report does not exist!
+2026-10-25 01:47:34,375 - INFO - MARTS layer complete: 0/13 tables created successfully
+```
+
+### event 81
+
+```json
+{
+  "event_id": 81,
+  "agent_command_sequence": 39,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/81.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1997,
+    "decoded_characters": 363
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/81.json",
+  "timestamp": "2026-10-25T01:51:22.237093",
+  "target_table_name_hits": [
+    "stg_reddit_ads__campaign_report"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 1362,
+  "retention": "full_original"
+}
+```
+```bash
+find sql -type f | wc -l; grep -R ';' sql --include='*.sql' | head; git status --short 2>/dev/null || true; python - <<'PY'
+import yaml,os
+c=yaml.safe_load(open('docs/data_contract.yaml'))
+for t in c['staging_contract']['tables']:
+ p=f"sql/staging/{t['name']}.sql"
+ if os.path.exists(p):
+  s=open(p).read();
+  print(t['name'],len(t['columns']),s.count(' AS '))
+PY
+```
+```json
+{
+  "event_id": 82,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/82.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1678,
+    "decoded_characters": 999
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/82.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+53
+stg_amazon_ads__ad_group_report 10 25
+stg_amazon_ads__campaign_report 20 50
+stg_amazon_ads__keyword_report 24 56
+stg_amazon_ads__product_report 23 56
+stg_amazon_ads__search_report 24 56
+stg_apple_search_ads__ad_group_report 25 55
+stg_apple_search_ads__ad_report 20 47
+stg_apple_search_ads__campaign_report 25 54
+stg_facebook_ads__ad_actions 10 22
+stg_facebook_ads__ad_report 11 25
+stg_google_ads__account_report 11 27
+stg_google_ads__ad_group_report 12 30
+stg_google_ads__campaign_report 12 29
+stg_google_ads__account_stats 11 27
+stg_google_ads__campaign_stats 12 29
+stg_google_ads__ad_group_stats 14 34
+stg_google_ads__ad_stats 12 31
+stg_google_ads__keyword_stats 12 30
+stg_google_ads__search_term_keyword_stats 13 31
+stg_linkedin_ads__campaign_report 18 42
+stg_microsoft_ads__campaign_report 21 47
+stg_pinterest_ads__campaign_report 21 45
+stg_reddit_ads__campaign_report 27 58
+stg_snapchat_ads__campaign_report 26 56
+stg_tiktok_ads__campaign_report 28 60
+stg_twitter_ads__campaign_report 33 70
+```
+
+## result_md_table_sentences
+
+```json
+{
+  "present": true,
+  "path": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/result.md",
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/result.md",
+  "sha256": "253de3b1b29a2323df48e87f18bfa798c0f3b5eb5bbb03cfb516be62edcb3b40",
+  "sentences": [],
+  "policy": "All sentences naming the table; includes sentences without 008 keywords. Existing D10 ids attached where applicable."
+}
+```
+
+## original_files
+
+```json
+{
+  "paths": [
+    "/home/katherine/Assumption_Ledger/data/011_agent_alignment/impl-006_attempt_01/stg_reddit_ads__campaign_report_2025-10-12.duckdb",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/11.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/12.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/15.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/16.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/17.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/18.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/19.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/20.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/29.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/30.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/37.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/38.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/7.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/8.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/81.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/.events/sessions/acf22d09-caa1-49-dbca994e29b4624/events/82.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/result.md",
+    "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-006/ad_reporting.duckdb",
+    "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql",
+    "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-006/docs/data_contract.yaml",
+    "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-006/agent/dacomp-de-impl-006/sql/staging/stg_reddit_ads__campaign_report.sql"
+  ],
+  "archive": "/home/katherine/Assumption_Ledger/traces/dacomp_deimpl_prev.tar.gz",
+  "gold_SQL_search_root": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-006/sql",
+  "gold_SQL_search_names": [
+    "stg_reddit_ads__campaign_report",
+    "stg_reddit_ads__campaign_report"
+  ],
+  "source_fingerprints": "records/012_input_before.json"
+}
+```

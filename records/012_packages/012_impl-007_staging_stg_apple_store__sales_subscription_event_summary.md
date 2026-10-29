@@ -1,0 +1,2546 @@
+# impl-007 / stg_apple_store__sales_subscription_event_summary
+
+## basic_information
+
+```json
+{
+  "task": "impl-007",
+  "layer": "staging",
+  "table": "stg_apple_store__sales_subscription_event_summary",
+  "status": "待标注",
+  "difference_source": {
+    "kind": "original_007_009",
+    "record": "records/007_tolerance_tables.jsonl",
+    "detail_record": "/home/katherine/Assumption_Ledger/records/004_staging_impl-007.json",
+    "candidate_date": null,
+    "selection_reason": "未进入 011，沿用原差异"
+  },
+  "status_record": "records/012_statuses.jsonl",
+  "package_scope": "仅原文和机械统计；未概括轨迹、未推测原因"
+}
+```
+
+## contract_specification
+
+```json
+{
+  "source_path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-007/docs/data_contract.yaml",
+  "source_sha256": "d4be53aa1400d278b8fa7da4922ec0747ab95ee1979cd9dfcd2671a190e74401",
+  "parse_mode": "strict",
+  "requested_table": "stg_apple_store__sales_subscription_event_summary",
+  "status": "found"
+}
+```
+```json
+{
+  "yaml_path": [
+    "staging_contract",
+    "tables",
+    18
+  ],
+  "start_line": 462,
+  "end_line": 494
+}
+```
+```yaml
+    - name: stg_apple_store__sales_subscription_event_summary
+      description: "Subscription event summary from Apple Store Connect"
+      source_table: "raw.sales_subscription_event_summary"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR
+        - name: date_day
+          data_type: DATE
+        - name: app_id
+          data_type: VARCHAR
+        - name: app_name
+          data_type: VARCHAR
+        - name: subscription_id
+          data_type: VARCHAR
+        - name: subscription_name
+          data_type: VARCHAR
+        - name: event_type
+          data_type: VARCHAR
+        - name: country
+          data_type: VARCHAR
+        - name: subscriber_id
+          data_type: VARCHAR
+        - name: standard_subscription_duration
+          data_type: VARCHAR
+        - name: proceeds_reason
+          data_type: VARCHAR
+        - name: marketing_opt_in_duration
+          data_type: VARCHAR
+        - name: consecutive_paid_periods
+          data_type: BIGINT
+        - name: quantity
+          data_type: BIGINT
+
+```
+
+## agent_final_SQL
+
+```json
+{
+  "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+  "sha256": "e9f4dcc3fbf3ef1aba0eac8ae101f344c91fd444c430b3475ec51a0918932233",
+  "start_line": 1,
+  "end_line": 16
+}
+```
+```sql
+SELECT
+    CAST(app_apple_id AS VARCHAR) AS source_relation,
+    TRY_CAST(SUBSTR(CAST(event_date AS VARCHAR), 1, 10) AS DATE) AS date_day,
+    CAST(app_apple_id AS VARCHAR) AS app_id,
+    CAST(app_name AS VARCHAR) AS app_name,
+    subscription_apple_id AS subscription_id,
+    CAST(subscription_name AS VARCHAR) AS subscription_name,
+    CAST(event AS VARCHAR) AS event_type,
+    CAST(country AS VARCHAR) AS country,
+    CAST(subscriber_id_vendor AS VARCHAR) AS subscriber_id,
+    subscription_duration AS standard_subscription_duration,
+    CAST(proceeds_reason AS VARCHAR) AS proceeds_reason,
+    CAST(subscription_offer_duration AS VARCHAR) AS marketing_opt_in_duration,
+    TRY_CAST(consecutive_paid_periods AS BIGINT) AS consecutive_paid_periods,
+    CAST(quantity AS BIGINT) AS quantity
+FROM raw.sales_subscription_event_summary
+```
+
+## gold_SQL_仅供定位差异
+
+```json
+{
+  "path": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+  "sha256": "213d5c4af863e5dad990c16c0a7619b0e8188fb3ade842c94c3d6d99b085e28f",
+  "start_line": 1,
+  "end_line": 25
+}
+```
+```sql
+with base as (
+    select *
+    from raw.sales_subscription_event_summary
+),
+
+final as (
+    select
+        'apple_store' as source_relation,
+        cast(event_date as date) as date_day,
+        cast(app_name as varchar) as app_name,
+        cast(app_apple_id as varchar) as app_id,
+        cast(subscription_name as varchar) as subscription_name,
+        cast(subscription_apple_id as varchar) as subscription_id,
+        cast(subscription_duration as varchar) as standard_subscription_duration,
+        cast(marketing_opt_in_duration as varchar) as marketing_opt_in_duration,
+        cast(promotional_offer_id as varchar) as subscriber_id,
+        cast(event as varchar) as event_type,
+        cast(country as varchar) as country,
+        cast(quantity as bigint) as quantity,
+        cast(proceeds_reason as varchar) as proceeds_reason,
+        cast(consecutive_paid_periods as bigint) as consecutive_paid_periods
+    from base
+)
+
+select * from final
+```
+
+## differences
+
+```json
+{
+  "kind": "original_007_009",
+  "record": "records/007_tolerance_tables.jsonl",
+  "detail_record": "/home/katherine/Assumption_Ledger/records/004_staging_impl-007.json",
+  "prediction_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting.duckdb",
+  "gold_database": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-007/app_reporting.duckdb",
+  "actual_schema": "staging",
+  "table": "stg_apple_store__sales_subscription_event_summary",
+  "candidate_date": null,
+  "comparison_columns": [
+    "app_id",
+    "app_name",
+    "consecutive_paid_periods",
+    "country",
+    "date_day",
+    "event_type",
+    "marketing_opt_in_duration",
+    "proceeds_reason",
+    "quantity",
+    "standard_subscription_duration",
+    "subscription_id",
+    "subscription_name"
+  ],
+  "key_columns": [
+    "date_day",
+    "app_id",
+    "subscription_id",
+    "subscriber_id",
+    "country"
+  ],
+  "prediction_rows": 700,
+  "gold_rows": 700,
+  "row_delta": 0,
+  "key_statistics": {
+    "pred_distinct_keys": 700,
+    "gold_distinct_keys": 700,
+    "pred_duplicate_key_groups": 0,
+    "gold_duplicate_key_groups": 0,
+    "pred_only_keys": 700,
+    "gold_only_keys": 700,
+    "shared_keys": 0,
+    "shared_nonunique_key_groups": 0
+  },
+  "l0_column_differences": [
+    {
+      "column": "date_day",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "app_name",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "app_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "subscription_name",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "subscription_id",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "standard_subscription_duration",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "marketing_opt_in_duration",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "event_type",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "country",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "quantity",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "proceeds_reason",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    },
+    {
+      "column": "consecutive_paid_periods",
+      "included_in_official_comparison": true,
+      "one_to_one_mismatch_rows": 0,
+      "nonunique_key_minimum_value_mismatch_pairs": 0,
+      "mismatch_rows_or_minimum_pairs": 0,
+      "pred_unmatched_value_occurrences": 0,
+      "gold_unmatched_value_occurrences": 0,
+      "count_semantics": "exact_one_to_one_rows"
+    }
+  ],
+  "l3_column_differences": null,
+  "whole_match_level": "仍不匹配",
+  "keyed_match_level": null,
+  "selection_reason": "未进入 011，沿用原差异",
+  "value_representation": "Unmodified DuckDB CAST AS VARCHAR; SQL NULL is JSON null. Keys use the unchanged historical L0 normalization.",
+  "new_queries_only_read_existing_results": true,
+  "one_side_key_examples": {
+    "prediction_only": [
+      {
+        "key_normalized": {
+          "date_day": "2024-09-05",
+          "app_id": "app40831872829",
+          "subscription_id": "39923355116",
+          "subscriber_id": "b89d635f-b0ab-40b4-9395-4f365e06cadb",
+          "country": "ro"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-05",
+          "app_id": "APP40831872829",
+          "subscription_id": "39923355116",
+          "subscriber_id": "b89d635f-b0ab-40b4-9395-4f365e06cadb",
+          "country": "RO"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-06",
+          "app_id": "app13018617353",
+          "subscription_id": "65284131421",
+          "subscriber_id": "28010786-81cf-43f0-80b6-e4497ed8abe3",
+          "country": "ee"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-06",
+          "app_id": "APP13018617353",
+          "subscription_id": "65284131421",
+          "subscriber_id": "28010786-81cf-43f0-80b6-e4497ed8abe3",
+          "country": "EE"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-06",
+          "app_id": "app34146276349",
+          "subscription_id": "43789889991",
+          "subscriber_id": "7edc9b57-334d-4b9b-9aa0-cdae49c2b66f",
+          "country": "cz"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-06",
+          "app_id": "APP34146276349",
+          "subscription_id": "43789889991",
+          "subscriber_id": "7edc9b57-334d-4b9b-9aa0-cdae49c2b66f",
+          "country": "CZ"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-06",
+          "app_id": "app44189195532",
+          "subscription_id": "52393027033",
+          "subscriber_id": "592c3996-f502-4f03-99d4-65c68eefd32e",
+          "country": "mx"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-06",
+          "app_id": "APP44189195532",
+          "subscription_id": "52393027033",
+          "subscriber_id": "592c3996-f502-4f03-99d4-65c68eefd32e",
+          "country": "MX"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-06",
+          "app_id": "app82850229000",
+          "subscription_id": "63748102251",
+          "subscriber_id": "54674e83-bade-42a0-97f0-f817c9597339",
+          "country": "ca"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-06",
+          "app_id": "APP82850229000",
+          "subscription_id": "63748102251",
+          "subscriber_id": "54674e83-bade-42a0-97f0-f817c9597339",
+          "country": "CA"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-07",
+          "app_id": "app26405940285",
+          "subscription_id": "10241258361",
+          "subscriber_id": "7ca19181-4fe3-496c-81bc-8eaac5404b98",
+          "country": "kr"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-07",
+          "app_id": "APP26405940285",
+          "subscription_id": "10241258361",
+          "subscriber_id": "7ca19181-4fe3-496c-81bc-8eaac5404b98",
+          "country": "KR"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-07",
+          "app_id": "app76786940092",
+          "subscription_id": "94931649168",
+          "subscriber_id": "42cbb7d3-4989-4401-9dbf-89d64fbc8bce",
+          "country": "pt"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-07",
+          "app_id": "APP76786940092",
+          "subscription_id": "94931649168",
+          "subscriber_id": "42cbb7d3-4989-4401-9dbf-89d64fbc8bce",
+          "country": "PT"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-08",
+          "app_id": "app16563558551",
+          "subscription_id": "93628838848",
+          "subscriber_id": "4c413ea3-51a5-4266-89dc-0479c9561409",
+          "country": "ca"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-08",
+          "app_id": "APP16563558551",
+          "subscription_id": "93628838848",
+          "subscriber_id": "4c413ea3-51a5-4266-89dc-0479c9561409",
+          "country": "CA"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-08",
+          "app_id": "app38072350686",
+          "subscription_id": "96855508325",
+          "subscriber_id": "7b568c5a-13e0-47b6-a967-5fa67978a8e9",
+          "country": "gb"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-08",
+          "app_id": "APP38072350686",
+          "subscription_id": "96855508325",
+          "subscriber_id": "7b568c5a-13e0-47b6-a967-5fa67978a8e9",
+          "country": "GB"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-08",
+          "app_id": "app75540706037",
+          "subscription_id": "93335394163",
+          "subscriber_id": "e7fea304-a080-429a-862a-dc1d4923057e",
+          "country": "it"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-08",
+          "app_id": "APP75540706037",
+          "subscription_id": "93335394163",
+          "subscriber_id": "e7fea304-a080-429a-862a-dc1d4923057e",
+          "country": "IT"
+        },
+        "rows_with_key": 1
+      }
+    ],
+    "gold_only": [
+      {
+        "key_normalized": {
+          "date_day": "2024-09-05",
+          "app_id": "app40831872829",
+          "subscription_id": "39923355116",
+          "subscriber_id": "14509214989",
+          "country": "ro"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-05",
+          "app_id": "APP40831872829",
+          "subscription_id": "39923355116",
+          "subscriber_id": "14509214989",
+          "country": "RO"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-06",
+          "app_id": "app13018617353",
+          "subscription_id": "65284131421",
+          "subscriber_id": "31400519185",
+          "country": "ee"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-06",
+          "app_id": "APP13018617353",
+          "subscription_id": "65284131421",
+          "subscriber_id": "31400519185",
+          "country": "EE"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-06",
+          "app_id": "app34146276349",
+          "subscription_id": "43789889991",
+          "subscriber_id": "93291025984",
+          "country": "cz"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-06",
+          "app_id": "APP34146276349",
+          "subscription_id": "43789889991",
+          "subscriber_id": "93291025984",
+          "country": "CZ"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-06",
+          "app_id": "app44189195532",
+          "subscription_id": "52393027033",
+          "subscriber_id": "55491808282",
+          "country": "mx"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-06",
+          "app_id": "APP44189195532",
+          "subscription_id": "52393027033",
+          "subscriber_id": "55491808282",
+          "country": "MX"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-06",
+          "app_id": "app82850229000",
+          "subscription_id": "63748102251",
+          "subscriber_id": "84233838947",
+          "country": "ca"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-06",
+          "app_id": "APP82850229000",
+          "subscription_id": "63748102251",
+          "subscriber_id": "84233838947",
+          "country": "CA"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-07",
+          "app_id": "app26405940285",
+          "subscription_id": "10241258361",
+          "subscriber_id": "56952275786",
+          "country": "kr"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-07",
+          "app_id": "APP26405940285",
+          "subscription_id": "10241258361",
+          "subscriber_id": "56952275786",
+          "country": "KR"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-07",
+          "app_id": "app76786940092",
+          "subscription_id": "94931649168",
+          "subscriber_id": "15820309097",
+          "country": "pt"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-07",
+          "app_id": "APP76786940092",
+          "subscription_id": "94931649168",
+          "subscriber_id": "15820309097",
+          "country": "PT"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-08",
+          "app_id": "app16563558551",
+          "subscription_id": "93628838848",
+          "subscriber_id": "35058731904",
+          "country": "ca"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-08",
+          "app_id": "APP16563558551",
+          "subscription_id": "93628838848",
+          "subscriber_id": "35058731904",
+          "country": "CA"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-08",
+          "app_id": "app38072350686",
+          "subscription_id": "96855508325",
+          "subscriber_id": "53456730242",
+          "country": "gb"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-08",
+          "app_id": "APP38072350686",
+          "subscription_id": "96855508325",
+          "subscriber_id": "53456730242",
+          "country": "GB"
+        },
+        "rows_with_key": 1
+      },
+      {
+        "key_normalized": {
+          "date_day": "2024-09-08",
+          "app_id": "app75540706037",
+          "subscription_id": "93335394163",
+          "subscriber_id": "98810627752",
+          "country": "it"
+        },
+        "key_raw_text": {
+          "date_day": "2024-09-08",
+          "app_id": "APP75540706037",
+          "subscription_id": "93335394163",
+          "subscriber_id": "98810627752",
+          "country": "IT"
+        },
+        "rows_with_key": 1
+      }
+    ]
+  },
+  "column_details": [
+    {
+      "column": "date_day",
+      "l0_counts_verbatim": {
+        "column": "date_day",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "DATE",
+      "gold_actual_type": "DATE"
+    },
+    {
+      "column": "app_name",
+      "l0_counts_verbatim": {
+        "column": "app_name",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "app_id",
+      "l0_counts_verbatim": {
+        "column": "app_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "subscription_name",
+      "l0_counts_verbatim": {
+        "column": "subscription_name",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "subscription_id",
+      "l0_counts_verbatim": {
+        "column": "subscription_id",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "BIGINT",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "standard_subscription_duration",
+      "l0_counts_verbatim": {
+        "column": "standard_subscription_duration",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "marketing_opt_in_duration",
+      "l0_counts_verbatim": {
+        "column": "marketing_opt_in_duration",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "event_type",
+      "l0_counts_verbatim": {
+        "column": "event_type",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "country",
+      "l0_counts_verbatim": {
+        "column": "country",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "quantity",
+      "l0_counts_verbatim": {
+        "column": "quantity",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "BIGINT",
+      "gold_actual_type": "BIGINT"
+    },
+    {
+      "column": "proceeds_reason",
+      "l0_counts_verbatim": {
+        "column": "proceeds_reason",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "VARCHAR",
+      "gold_actual_type": "VARCHAR"
+    },
+    {
+      "column": "consecutive_paid_periods",
+      "l0_counts_verbatim": {
+        "column": "consecutive_paid_periods",
+        "included_in_official_comparison": true,
+        "one_to_one_mismatch_rows": 0,
+        "nonunique_key_minimum_value_mismatch_pairs": 0,
+        "mismatch_rows_or_minimum_pairs": 0,
+        "pred_unmatched_value_occurrences": 0,
+        "gold_unmatched_value_occurrences": 0,
+        "count_semantics": "exact_one_to_one_rows"
+      },
+      "l3_counts_verbatim": null,
+      "sample_level": "L0",
+      "sample_key_groups": [],
+      "sample_counts_recheck": null,
+      "agent_actual_type": "BIGINT",
+      "gold_actual_type": "BIGINT"
+    }
+  ]
+}
+```
+
+## agent_constraints_006
+
+```json
+{
+  "source_record": "records/006_contract_impl-007.json",
+  "declarations": {
+    "grain": [],
+    "primary_key": [],
+    "not_null": [],
+    "unique": []
+  },
+  "agent": {
+    "table_exists": true,
+    "actual_schema": "staging",
+    "table_type": "BASE TABLE",
+    "same_name_other_schemas": [],
+    "row_count": 700,
+    "checks": {
+      "grain": [],
+      "primary_key": [],
+      "not_null": [],
+      "unique": []
+    },
+    "actual_table": "stg_apple_store__sales_subscription_event_summary",
+    "actual_columns": [
+      "source_relation",
+      "date_day",
+      "app_id",
+      "app_name",
+      "subscription_id",
+      "subscription_name",
+      "event_type",
+      "country",
+      "subscriber_id",
+      "standard_subscription_duration",
+      "proceeds_reason",
+      "marketing_opt_in_duration",
+      "consecutive_paid_periods",
+      "quantity"
+    ],
+    "missing_declared_columns": [],
+    "categories": {
+      "grain": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      },
+      "primary_key": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      },
+      "not_null": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      },
+      "unique": {
+        "status": "not_declared",
+        "violated": null,
+        "declared_checks": 0,
+        "checked_checks": 0,
+        "unknown_checks": 0
+      }
+    },
+    "any_constraint_violated": null
+  }
+}
+```
+
+## all_markers_and_evidence_008
+
+```json
+{
+  "source_record": "records/008_table_scan.jsonl",
+  "verbatim_record": {
+    "task": "impl-007",
+    "layer": "staging",
+    "table": "stg_apple_store__sales_subscription_event_summary",
+    "logical_contract_table": "stg_apple_store__sales_subscription_event_summary",
+    "delivery_name_mapping_evidence": [],
+    "inventory_sources": {
+      "retained_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting.duckdb",
+      "present_in_database": true,
+      "agent_final_sql_files": [
+        "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql"
+      ]
+    },
+    "status_007": {
+      "gold_table_exists_in_original_gold": true,
+      "whole_level_007": "仍不匹配",
+      "007_present": true,
+      "004_failed_set_member": true,
+      "005_failed_set_member": false,
+      "005_current_pred_execution": null,
+      "status_sources": [
+        {
+          "record": "records/007_tolerance_tables.jsonl",
+          "scope": "staging",
+          "rule": "whole_match_level",
+          "value": "仍不匹配",
+          "007_prediction_database": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting.duckdb"
+        }
+      ],
+      "status": "待标注",
+      "comparison_lookup_layer": "staging",
+      "comparison_lookup_table": "stg_apple_store__sales_subscription_event_summary",
+      "actual_gold_relation_exists": true
+    },
+    "contract": {
+      "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-007/docs/data_contract.yaml",
+      "blocks": [
+        {
+          "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-007/docs/data_contract.yaml",
+          "start_line": 462,
+          "end_line": 493,
+          "original_text": "    - name: stg_apple_store__sales_subscription_event_summary\n      description: \"Subscription event summary from Apple Store Connect\"\n      source_table: \"raw.sales_subscription_event_summary\"\n      columns:\n        - name: source_relation\n          data_type: VARCHAR\n        - name: date_day\n          data_type: DATE\n        - name: app_id\n          data_type: VARCHAR\n        - name: app_name\n          data_type: VARCHAR\n        - name: subscription_id\n          data_type: VARCHAR\n        - name: subscription_name\n          data_type: VARCHAR\n        - name: event_type\n          data_type: VARCHAR\n        - name: country\n          data_type: VARCHAR\n        - name: subscriber_id\n          data_type: VARCHAR\n        - name: standard_subscription_duration\n          data_type: VARCHAR\n        - name: proceeds_reason\n          data_type: VARCHAR\n        - name: marketing_opt_in_duration\n          data_type: VARCHAR\n        - name: consecutive_paid_periods\n          data_type: BIGINT\n        - name: quantity\n          data_type: BIGINT\n",
+          "yaml_path": [
+            "staging_contract",
+            "tables",
+            18
+          ]
+        }
+      ]
+    },
+    "output": {
+      "status": "checked",
+      "exists": true,
+      "row_count": 700,
+      "zero_rows": false,
+      "columns": [
+        {
+          "name": "source_relation",
+          "type": "VARCHAR",
+          "nonnull_rows": 700,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "date_day",
+          "type": "DATE",
+          "nonnull_rows": 700,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "app_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 700,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "app_name",
+          "type": "VARCHAR",
+          "nonnull_rows": 700,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "subscription_id",
+          "type": "BIGINT",
+          "nonnull_rows": 700,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "subscription_name",
+          "type": "VARCHAR",
+          "nonnull_rows": 700,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "event_type",
+          "type": "VARCHAR",
+          "nonnull_rows": 700,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "country",
+          "type": "VARCHAR",
+          "nonnull_rows": 700,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "subscriber_id",
+          "type": "VARCHAR",
+          "nonnull_rows": 700,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "standard_subscription_duration",
+          "type": "VARCHAR",
+          "nonnull_rows": 700,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "proceeds_reason",
+          "type": "VARCHAR",
+          "nonnull_rows": 700,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "marketing_opt_in_duration",
+          "type": "VARCHAR",
+          "nonnull_rows": 700,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "consecutive_paid_periods",
+          "type": "BIGINT",
+          "nonnull_rows": 700,
+          "sql_null_rows": 0
+        },
+        {
+          "name": "quantity",
+          "type": "BIGINT",
+          "nonnull_rows": 700,
+          "sql_null_rows": 0
+        }
+      ],
+      "all_null_columns": [],
+      "constant_nonnull_columns": [],
+      "equal_column_groups": [
+        {
+          "columns": [
+            "source_relation",
+            "app_id"
+          ],
+          "table_rows": 700,
+          "nonnull_equal_rows": 700,
+          "both_null_rows_ignored": 0,
+          "mismatch_rows": 0,
+          "column_contracts": {
+            "source_relation": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-007/docs/data_contract.yaml",
+                  "start_line": 466,
+                  "end_line": 467,
+                  "original_text": "        - name: source_relation\n          data_type: VARCHAR\n",
+                  "name": "source_relation",
+                  "description": null,
+                  "specification": {
+                    "name": "source_relation",
+                    "data_type": "VARCHAR"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            },
+            "app_id": {
+              "status": "found",
+              "definitions": [
+                {
+                  "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-007/docs/data_contract.yaml",
+                  "start_line": 470,
+                  "end_line": 471,
+                  "original_text": "        - name: app_id\n          data_type: VARCHAR\n",
+                  "name": "app_id",
+                  "description": null,
+                  "specification": {
+                    "name": "app_id",
+                    "data_type": "VARCHAR"
+                  }
+                }
+              ],
+              "meaning_description_status": "契约未描述含义"
+            }
+          },
+          "description_pairs": [
+            {
+              "left": "source_relation",
+              "right": "app_id",
+              "both_have_explicit_descriptions": false,
+              "description_texts_differ": false,
+              "semantic_equivalence_evaluated": false
+            }
+          ],
+          "has_pair_with_different_explicit_description": false,
+          "meaning_status": "契约未描述含义差别"
+        }
+      ],
+      "profile_sql": "SELECT count(*),count(\"source_relation\"),min(CAST(\"source_relation\" AS VARCHAR)),max(CAST(\"source_relation\" AS VARCHAR)),sum(hash(CAST(\"source_relation\" AS VARCHAR))),count(\"date_day\"),min(CAST(\"date_day\" AS VARCHAR)),max(CAST(\"date_day\" AS VARCHAR)),sum(hash(CAST(\"date_day\" AS VARCHAR))),count(\"app_id\"),min(CAST(\"app_id\" AS VARCHAR)),max(CAST(\"app_id\" AS VARCHAR)),sum(hash(CAST(\"app_id\" AS VARCHAR))),count(\"app_name\"),min(CAST(\"app_name\" AS VARCHAR)),max(CAST(\"app_name\" AS VARCHAR)),sum(hash(CAST(\"app_name\" AS VARCHAR))),count(\"subscription_id\"),min(CAST(\"subscription_id\" AS VARCHAR)),max(CAST(\"subscription_id\" AS VARCHAR)),sum(hash(CAST(\"subscription_id\" AS VARCHAR))),count(\"subscription_name\"),min(CAST(\"subscription_name\" AS VARCHAR)),max(CAST(\"subscription_name\" AS VARCHAR)),sum(hash(CAST(\"subscription_name\" AS VARCHAR))),count(\"event_type\"),min(CAST(\"event_type\" AS VARCHAR)),max(CAST(\"event_type\" AS VARCHAR)),sum(hash(CAST(\"event_type\" AS VARCHAR))),count(\"country\"),min(CAST(\"country\" AS VARCHAR)),max(CAST(\"country\" AS VARCHAR)),sum(hash(CAST(\"country\" AS VARCHAR))),count(\"subscriber_id\"),min(CAST(\"subscriber_id\" AS VARCHAR)),max(CAST(\"subscriber_id\" AS VARCHAR)),sum(hash(CAST(\"subscriber_id\" AS VARCHAR))),count(\"standard_subscription_duration\"),min(CAST(\"standard_subscription_duration\" AS VARCHAR)),max(CAST(\"standard_subscription_duration\" AS VARCHAR)),sum(hash(CAST(\"standard_subscription_duration\" AS VARCHAR))),count(\"proceeds_reason\"),min(CAST(\"proceeds_reason\" AS VARCHAR)),max(CAST(\"proceeds_reason\" AS VARCHAR)),sum(hash(CAST(\"proceeds_reason\" AS VARCHAR))),count(\"marketing_opt_in_duration\"),min(CAST(\"marketing_opt_in_duration\" AS VARCHAR)),max(CAST(\"marketing_opt_in_duration\" AS VARCHAR)),sum(hash(CAST(\"marketing_opt_in_duration\" AS VARCHAR))),count(\"consecutive_paid_periods\"),min(CAST(\"consecutive_paid_periods\" AS VARCHAR)),max(CAST(\"consecutive_paid_periods\" AS VARCHAR)),sum(hash(CAST(\"consecutive_paid_periods\" AS VARCHAR))),count(\"quantity\"),min(CAST(\"quantity\" AS VARCHAR)),max(CAST(\"quantity\" AS VARCHAR)),sum(hash(CAST(\"quantity\" AS VARCHAR))) FROM \"staging\".\"stg_apple_store__sales_subscription_event_summary\"",
+      "equal_column_confirmation_queries": [
+        {
+          "left": "source_relation",
+          "right": "app_id",
+          "sql": "SELECT count(*) FILTER(WHERE CAST(\"source_relation\" AS VARCHAR) IS DISTINCT FROM CAST(\"app_id\" AS VARCHAR)),count(*) FILTER(WHERE \"source_relation\" IS NOT NULL AND \"app_id\" IS NOT NULL AND CAST(\"source_relation\" AS VARCHAR)=CAST(\"app_id\" AS VARCHAR)) FROM \"staging\".\"stg_apple_store__sales_subscription_event_summary\"",
+          "mismatch_rows": 0,
+          "nonnull_equal_rows": 700
+        }
+      ],
+      "equality_policy": "exact CAST AS VARCHAR per row; no trim/case/numeric/date normalization; both NULL ignored; at least one nonnull equal row; one-sided NULL differs",
+      "actual_schema": "staging",
+      "actual_table": "stg_apple_store__sales_subscription_event_summary",
+      "relation_type": "BASE TABLE"
+    },
+    "agent_sql": [
+      {
+        "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+        "status": "parsed",
+        "parser": "30.25.0",
+        "sources": [
+          {
+            "name": "raw.sales_subscription_event_summary",
+            "canonical": "raw.sales_subscription_event_summary",
+            "locations": [
+              {
+                "line": 16,
+                "end_line": 16
+              }
+            ]
+          }
+        ],
+        "unresolved_source_expressions": [],
+        "row_generator_expressions": [],
+        "outputs": [
+          {
+            "name": "source_relation",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(app_apple_id AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+                "line": 2,
+                "end_line": 2,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "source_relation",
+            "retained_output_ordinal": 1
+          },
+          {
+            "name": "date_day",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(SUBSTRING(CAST(event_date AS TEXT), 1, 10) AS DATE)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+                "line": 3,
+                "end_line": 3,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "date_day",
+            "retained_output_ordinal": 2
+          },
+          {
+            "name": "app_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(app_apple_id AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+                "line": 4,
+                "end_line": 4,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "app_id",
+            "retained_output_ordinal": 3
+          },
+          {
+            "name": "app_name",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(app_name AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+                "line": 5,
+                "end_line": 5,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "app_name",
+            "retained_output_ordinal": 4
+          },
+          {
+            "name": "subscription_id",
+            "alternatives": [
+              {
+                "expression_sql": "subscription_apple_id",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+                "line": 6,
+                "end_line": 6,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "subscription_id",
+            "retained_output_ordinal": 5
+          },
+          {
+            "name": "subscription_name",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(subscription_name AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+                "line": 7,
+                "end_line": 7,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "subscription_name",
+            "retained_output_ordinal": 6
+          },
+          {
+            "name": "event_type",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(event AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+                "line": 8,
+                "end_line": 8,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "event_type",
+            "retained_output_ordinal": 7
+          },
+          {
+            "name": "country",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(country AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+                "line": 9,
+                "end_line": 9,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "country",
+            "retained_output_ordinal": 8
+          },
+          {
+            "name": "subscriber_id",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(subscriber_id_vendor AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+                "line": 10,
+                "end_line": 10,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "subscriber_id",
+            "retained_output_ordinal": 9
+          },
+          {
+            "name": "standard_subscription_duration",
+            "alternatives": [
+              {
+                "expression_sql": "subscription_duration",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+                "line": 11,
+                "end_line": 11,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "standard_subscription_duration",
+            "retained_output_ordinal": 10
+          },
+          {
+            "name": "proceeds_reason",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(proceeds_reason AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+                "line": 12,
+                "end_line": 12,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "proceeds_reason",
+            "retained_output_ordinal": 11
+          },
+          {
+            "name": "marketing_opt_in_duration",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(subscription_offer_duration AS TEXT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+                "line": 13,
+                "end_line": 13,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "marketing_opt_in_duration",
+            "retained_output_ordinal": 12
+          },
+          {
+            "name": "consecutive_paid_periods",
+            "alternatives": [
+              {
+                "expression_sql": "TRY_CAST(consecutive_paid_periods AS BIGINT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+                "line": 14,
+                "end_line": 14,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "consecutive_paid_periods",
+            "retained_output_ordinal": 13
+          },
+          {
+            "name": "quantity",
+            "alternatives": [
+              {
+                "expression_sql": "CAST(quantity AS BIGINT)",
+                "path": "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+                "line": 15,
+                "end_line": 15,
+                "kind": "nonliteral"
+              }
+            ],
+            "sql_projection_name": "quantity",
+            "retained_output_ordinal": 14
+          }
+        ],
+        "null_literal_outputs": [],
+        "constant_literal_outputs": [],
+        "runtime_hits": []
+      }
+    ],
+    "source_comparison": {
+      "contract": {
+        "status": "specified",
+        "references": [
+          {
+            "name": "raw.sales_subscription_event_summary",
+            "canonical": "raw.sales_subscription_event_summary",
+            "basis": "source_table",
+            "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-007/docs/data_contract.yaml",
+            "block_start_line": 462
+          },
+          {
+            "name": "raw.sales_subscription_event_summary",
+            "canonical": "raw.sales_subscription_event_summary",
+            "basis": "explicit_schema_qualified_reference_in_original_block",
+            "path": "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-007/docs/data_contract.yaml",
+            "line": 464,
+            "line_text": "      source_table: \"raw.sales_subscription_event_summary\""
+          }
+        ],
+        "canonical_names": [
+          "raw.sales_subscription_event_summary"
+        ]
+      },
+      "agent_direct_read_sources": [
+        "raw.sales_subscription_event_summary"
+      ],
+      "scope": "direct physical relation references through reachable local CTE/subqueries; no transitive expansion through other output tables or stored views",
+      "complete": true,
+      "specified_but_not_read": [],
+      "read_but_not_specified": []
+    },
+    "time_dependencies": {
+      "agent_sql": {
+        "available": true,
+        "appears": false,
+        "hits": []
+      },
+      "gold_sql": {
+        "available": true,
+        "appears": false,
+        "hits": [],
+        "paths": [
+          "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql"
+        ]
+      },
+      "contract": {
+        "available": true,
+        "appears": false,
+        "hits": []
+      }
+    },
+    "trace_flags": {
+      "A1_zero_rows": false,
+      "A2_all_null_column": false,
+      "A3_constant_nonnull_column": false,
+      "A4_equal_columns": true,
+      "A4_equal_columns_different_description_texts": false,
+      "B5_null_literal_output": false,
+      "B6_constant_literal_output": false,
+      "B7_specified_not_read": false,
+      "B7_read_not_specified": false,
+      "B8_shared_single_source": false,
+      "C9_agent_runtime_text": false,
+      "C9_gold_runtime_text": false,
+      "C9_contract_runtime_text": false,
+      "D10_keyword_in_final_report": false,
+      "D10_keyword_in_any_result_field": false
+    }
+  }
+}
+```
+
+## trace_excerpts
+
+```json
+{
+  "archive": "/home/katherine/Assumption_Ledger/traces/dacomp_deimpl_prev.tar.gz",
+  "event_source_root": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent",
+  "actual_read_sources_from_008_B7": [
+    "raw.sales_subscription_event_summary"
+  ],
+  "name_match_policy": "Case-insensitive complete identifier-name boundaries; source names include qualified form and bare leaf name. No semantic association inferred.",
+  "matched_step_count": 10,
+  "full_original_characters_before_budget": 99009,
+  "budget_triggered": true,
+  "source_only_steps_indexed": 4,
+  "retained_full_original_characters": 55495,
+  "full_target_steps_exceed_60000": false,
+  "budget_policy": "If total command/output text exceeds 60000 characters, keep every target-table step complete and retain only id/location/first line for source-only steps. Do not rewrite or truncate a kept original step."
+}
+```
+
+### event 7
+
+```json
+{
+  "event_id": 7,
+  "agent_command_sequence": 2,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/7.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1706,
+    "decoded_characters": 73
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/7.json",
+  "timestamp": "2026-10-25T01:53:30.960819",
+  "target_table_name_hits": [
+    "stg_apple_store__sales_subscription_event_summary"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 6114,
+  "retention": "full_original"
+}
+```
+```bash
+cat config/layer_dependencies.yaml && find sql -type f -maxdepth 3 -print
+```
+```json
+{
+  "event_id": 8,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/8.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1391,
+    "decoded_characters": 6041
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/8.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+layers:
+  staging:
+    description: "Staging layer - standardized raw data from Google Play and Apple Store"
+    dependencies: []
+    tables:
+      # Google Play staging tables
+      - stg_google_play__stats_installs_overview
+      - stg_google_play__stats_ratings_overview  
+      - stg_google_play__stats_crashes_overview
+      - stg_google_play__stats_store_performance_country
+      - stg_google_play__stats_store_performance_traffic_source
+      - stg_google_play__stats_installs_country
+      - stg_google_play__stats_installs_device
+      - stg_google_play__stats_installs_app_version
+      - stg_google_play__stats_installs_os_version
+      - stg_google_play__stats_ratings_country
+      - stg_google_play__stats_ratings_device
+      - stg_google_play__stats_ratings_app_version
+      - stg_google_play__stats_ratings_os_version
+      - stg_google_play__stats_crashes_app_version
+      - stg_google_play__stats_crashes_os_version
+      - stg_google_play__earnings
+      # Apple Store staging tables
+      - stg_apple_store__app_store_download_standard_daily
+      - stg_apple_store__app_store_installation_and_deletion_standard_daily
+      - stg_apple_store__app_store_discovery_and_engagement_standard_daily
+      - stg_apple_store__app_session_standard_daily
+      - stg_apple_store__app_crash_daily
+      - stg_apple_store__app_store_app
+      - stg_apple_store__sales_subscription_summary
+      - stg_apple_store__sales_subscription_event_summary
+      - stg_apple_store__financial_stats_subscriptions_country
+
+  intermediate:
+    description: "Intermediate layer - business logic and transformations"
+    dependencies: ["staging"]
+    tables:
+      # Overview report intermediates
+      - int_google_play__overview
+      - int_apple_store__overview
+      # App version report intermediates  
+      - int_google_play__app_version
+      - int_apple_store__app_version
+      # Country report intermediates
+      - int_google_play__country
+      - int_apple_store__country
+      # Device report intermediates
+      - int_google_play__device
+      - int_apple_store__device
+      # OS version report intermediates
+      - int_google_play__os_version
+      - int_apple_store__os_version
+      # Traffic source report intermediates
+      - int_google_play__traffic_source
+      - int_apple_store__traffic_source
+      # Advanced business analytics intermediates
+      - int_user_lifecycle_analysis
+      - int_user_rfm_analysis
+      - int_app_health_metrics
+      - int_channel_performance
+
+  marts:
+    description: "Marts layer - final business reports"
+    dependencies: ["intermediate"]
+    tables:
+      # Original business reports
+      - app_reporting__overview_report
+      - app_reporting__app_version_report
+      - app_reporting__country_report
+      - app_reporting__device_report
+      - app_reporting__os_version_report
+      - app_reporting__traffic_source_report
+      # Advanced analytics reports
+      - app_reporting__user_lifecycle_report
+      - app_reporting__user_value_segmentation_report
+      - app_reporting__app_health_monitoring_report
+      - app_reporting__channel_effectiveness_report
+
+execution_order:
+  staging:
+    # Google Play staging
+    - stg_google_play__stats_installs_overview
+    - stg_google_play__stats_ratings_overview  
+    - stg_google_play__stats_crashes_overview
+    - stg_google_play__stats_store_performance_country
+    - stg_google_play__stats_store_performance_traffic_source
+    - stg_google_play__stats_installs_country
+    - stg_google_play__stats_installs_device
+    - stg_google_play__stats_installs_app_version
+    - stg_google_play__stats_installs_os_version
+    - stg_google_play__stats_ratings_country
+    - stg_google_play__stats_ratings_device
+    - stg_google_play__stats_ratings_app_version
+    - stg_google_play__stats_ratings_os_version
+    - stg_google_play__stats_crashes_app_version
+    - stg_google_play__stats_crashes_os_version
+    - stg_google_play__earnings
+    # Apple Store staging
+    - stg_apple_store__app_store_download_standard_daily
+    - stg_apple_store__app_store_installation_and_deletion_standard_daily
+    - stg_apple_store__app_store_discovery_and_engagement_standard_daily
+    - stg_apple_store__app_session_standard_daily
+    - stg_apple_store__app_crash_daily
+    - stg_apple_store__app_store_app
+    - stg_apple_store__sales_subscription_summary
+    - stg_apple_store__sales_subscription_event_summary
+    - stg_apple_store__financial_stats_subscriptions_country
+
+  intermediate:
+    # Overview intermediates (these combine multiple staging tables)
+    - int_google_play__overview
+    - int_apple_store__overview
+    # App version intermediates
+    - int_google_play__app_version
+    - int_apple_store__app_version
+    # Country intermediates
+    - int_google_play__country
+    - int_apple_store__country
+    # Device intermediates
+    - int_google_play__device
+    - int_apple_store__device
+    # OS version intermediates
+    - int_google_play__os_version
+    - int_apple_store__os_version
+    # Traffic source intermediates
+    - int_google_play__traffic_source
+    - int_apple_store__traffic_source
+    # Advanced business analytics intermediates
+    - int_user_lifecycle_analysis
+    - int_user_rfm_analysis
+    - int_app_health_metrics
+    - int_channel_performance
+
+  marts:
+    # Original business reports
+    - app_reporting__overview_report
+    - app_reporting__app_version_report
+    - app_reporting__country_report
+    - app_reporting__device_report
+    - app_reporting__os_version_report
+    - app_reporting__traffic_source_report
+    # Advanced analytics reports
+    - app_reporting__user_lifecycle_report
+    - app_reporting__user_value_segmentation_report
+    - app_reporting__app_health_monitoring_report
+    - app_reporting__channel_effectiveness_reportfind: warning: you have specified the global option -maxdepth after the argument -type, but global options are not positional, i.e., -maxdepth affects tests specified before it as well as those specified after it.  Please specify global options before other arguments.
+```
+
+### event 11
+
+```json
+{
+  "event_id": 11,
+  "agent_command_sequence": 4,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/11.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1674,
+    "decoded_characters": 40
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/11.json",
+  "timestamp": "2026-10-25T01:53:31.023825",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "sales_subscription_event_summary"
+  ],
+  "full_original_characters": 5826,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "sed -n '1,220p' app_reporting_start.yaml"
+}
+```
+```json
+{
+  "event_id": 12,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/12.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1360,
+    "decoded_characters": 5786
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/12.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+### event 13
+
+```json
+{
+  "event_id": 13,
+  "agent_command_sequence": 5,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/13.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1949,
+    "decoded_characters": 326
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/13.json",
+  "timestamp": "2026-10-25T01:53:38.403623",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "sales_subscription_event_summary"
+  ],
+  "full_original_characters": 24905,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "find sql -type f -print; sed -n '220,520p' run.py; python - <<'PY'\n"
+}
+```
+```json
+{
+  "event_id": 14,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/14.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1634,
+    "decoded_characters": 24579
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/14.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+### event 15
+
+```json
+{
+  "event_id": 15,
+  "agent_command_sequence": 6,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/15.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2069,
+    "decoded_characters": 409
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/15.json",
+  "timestamp": "2026-10-25T01:53:43.850635",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "sales_subscription_event_summary"
+  ],
+  "full_original_characters": 4685,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "find sql -maxdepth 2 -type d -print; python - <<'PY'\n"
+}
+```
+```json
+{
+  "event_id": 16,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/16.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1754,
+    "decoded_characters": 4276
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/16.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+### event 19
+
+```json
+{
+  "event_id": 19,
+  "agent_command_sequence": 8,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/19.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1968,
+    "decoded_characters": 357
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/19.json",
+  "timestamp": "2026-10-25T01:53:57.681252",
+  "target_table_name_hits": [
+    "stg_apple_store__sales_subscription_event_summary"
+  ],
+  "source_table_name_hits": [
+    "raw.sales_subscription_event_summary",
+    "sales_subscription_event_summary"
+  ],
+  "full_original_characters": 6321,
+  "retention": "full_original"
+}
+```
+```bash
+python - <<'PY'
+import yaml
+c=yaml.safe_load(open('docs/data_contract.yaml'))
+for t in c['staging_contract']['tables']:
+ print(t['name'],t['source_table'],','.join(x['name'] for x in t['columns']))
+print('intermediate', [x['name'] for x in c['modeling_spec']['intermediate_models']])
+print('marts',[x['name'] for x in c['modeling_spec']['marts_models']])
+PY
+```
+```json
+{
+  "event_id": 20,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/20.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1652,
+    "decoded_characters": 5964
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/20.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+stg_google_play__stats_installs_overview raw.stats_installs_overview source_relation,date_day,package_name,active_devices_last_30_days,device_installs,device_uninstalls,device_upgrades,user_installs,user_uninstalls,install_events,uninstall_events,update_events
+stg_google_play__stats_ratings_overview raw.stats_ratings_overview source_relation,date_day,package_name,average_rating,rolling_total_average_rating
+stg_google_play__stats_crashes_overview raw.stats_crashes_overview source_relation,date_day,package_name,crashes,anrs
+stg_google_play__earnings raw.earnings source_relation,date_day,package_name,country,revenue_usd,revenue_local_currency,buyer_currency
+stg_google_play__stats_store_performance_traffic_source raw.stats_store_performance_traffic_source source_relation,date_day,package_name,traffic_source,store_listing_acquisitions,store_listing_visitors,store_listing_conversion_rate
+stg_apple_store__app_store_download_standard_daily raw.app_store_download_standard_daily source_relation,date_day,app_name,country,total_downloads,download_type,device,app_version,source_type,platform_version
+stg_apple_store__app_crash_daily raw.app_crash_daily source_relation,date_day,app_name,app_version,device,platform_version,crashes,unique_devices_with_crashes
+stg_apple_store__app_store_discovery_and_engagement_standard_daily raw.app_store_discovery_and_engagement_standard_daily source_relation,date_day,app_name,country,event_type,page_views,unique_page_views,device,engagement_type,source_type,page_type,platform_version
+stg_apple_store__sales_subscription_summary raw.sales_subscription_summary source_relation,date_day,app_id,app_name,subscription_name,country,active_subscriptions,free_trial_subscriptions,billing_retry,grace_period,marketing_opt_ins,subscription_duration
+stg_google_play__stats_installs_os_version raw.stats_installs_os_version source_relation,date_day,package_name,os_version,active_devices_last_30_days,device_installs,device_uninstalls,device_upgrades,user_installs,user_uninstalls,install_events,uninstall_events,update_events
+stg_google_play__stats_installs_country raw.stats_installs_country source_relation,date_day,package_name,country,device_installs,device_uninstalls,device_upgrades,user_installs,user_uninstalls,install_events,uninstall_events,update_events
+stg_apple_store__financial_stats_subscriptions_country raw.financial_stats_subscriptions_country source_relation,date_day,revenue,subscription_name,app_name,app_id,active_free_trials,country,active_subscriptions
+stg_google_play__stats_store_performance_country raw.stats_store_performance_country source_relation,date_day,package_name,country,store_listing_acquisitions,store_listing_visitors,store_listing_conversion_rate
+stg_google_play__stats_crashes_os_version raw.stats_crashes_os_version source_relation,date_day,package_name,os_version,crashes,anrs
+stg_google_play__stats_ratings_country raw.stats_ratings_country source_relation,date_day,package_name,country,average_rating,rolling_total_average_rating
+stg_google_play__stats_installs_device raw.stats_installs_device source_relation,date_day,package_name,device,active_devices_last_30_days,device_installs,device_uninstalls,device_upgrades,user_installs,user_uninstalls,install_events,uninstall_events,update_events
+stg_google_play__stats_crashes_app_version raw.stats_crashes_app_version source_relation,date_day,package_name,app_version_code,crashes,anrs
+stg_google_play__stats_installs_app_version raw.stats_installs_app_version source_relation,date_day,package_name,app_version_code,active_devices_last_30_days,device_installs,device_uninstalls,device_upgrades,user_installs,user_uninstalls,install_events,uninstall_events,update_events
+stg_apple_store__sales_subscription_event_summary raw.sales_subscription_event_summary source_relation,date_day,app_id,app_name,subscription_id,subscription_name,event_type,country,subscriber_id,standard_subscription_duration,proceeds_reason,marketing_opt_in_duration,consecutive_paid_periods,quantity
+stg_apple_store__app_session_standard_daily raw.app_session_standard_daily source_relation,date_day,app_name,country,app_version,device,platform_version,sessions,total_session_duration,unique_devices,source_type
+stg_apple_store__app_store_installation_and_deletion_standard_daily raw.app_store_installation_and_deletion_standard_daily source_relation,date_day,app_name,country,event_type,app_version,device,platform_version,counts,unique_devices
+stg_google_play__stats_ratings_app_version raw.stats_ratings_app_version source_relation,date_day,package_name,app_version_code,average_rating,rolling_total_average_rating
+stg_google_play__stats_ratings_device raw.stats_ratings_device source_relation,date_day,package_name,device,average_rating,rolling_total_average_rating
+stg_google_play__stats_ratings_os_version raw.stats_ratings_os_version source_relation,date_day,package_name,os_version,average_rating,rolling_total_average_rating
+stg_apple_store__app_store_app raw.app_store_app source_relation,app_id,app_name,primary_locale,content_rights_declaration,was_made_for_kids
+intermediate ['int_user_lifecycle_analysis', 'int_user_rfm_analysis', 'int_app_health_metrics', 'int_channel_performance', 'int_apple_store__app_version', 'int_apple_store__country', 'int_apple_store__device', 'int_apple_store__os_version', 'int_apple_store__overview', 'int_apple_store__traffic_source', 'int_google_play__app_version', 'int_google_play__country', 'int_google_play__device', 'int_google_play__os_version', 'int_google_play__overview', 'int_google_play__traffic_source']
+marts ['app_reporting__user_lifecycle_report', 'app_reporting__user_value_segmentation_report', 'app_reporting__app_health_monitoring_report', 'app_reporting__channel_effectiveness_report', 'app_reporting__app_version_report', 'app_reporting__country_report', 'app_reporting__device_report', 'app_reporting__os_version_report', 'app_reporting__overview_report', 'app_reporting__traffic_source_report']
+```
+
+### event 23
+
+```json
+{
+  "event_id": 23,
+  "agent_command_sequence": 10,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/23.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 17782,
+    "decoded_characters": 8098
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/23.json",
+  "timestamp": "2026-10-25T01:54:25.203705",
+  "target_table_name_hits": [],
+  "source_table_name_hits": [
+    "raw.sales_subscription_event_summary",
+    "sales_subscription_event_summary"
+  ],
+  "full_original_characters": 8098,
+  "retention": "index_and_first_line_only",
+  "first_line_original": "mkdir -p sql/staging sql/intermediate sql/marts; cat > /tmp/gen.py <<'PY'\n"
+}
+```
+```json
+{
+  "event_id": 24,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/24.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 17466,
+    "decoded_characters": 0
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/24.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+
+### event 25
+
+```json
+{
+  "event_id": 25,
+  "agent_command_sequence": 11,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/25.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1696,
+    "decoded_characters": 219
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/25.json",
+  "timestamp": "2026-10-25T01:54:30.173979",
+  "target_table_name_hits": [
+    "stg_apple_store__sales_subscription_event_summary"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 8352,
+  "retention": "full_original"
+}
+```
+```bash
+python - <<'PY'
+import yaml
+c=yaml.safe_load(open('docs/data_contract.yaml'))
+for t in c['staging_contract']['tables']:
+ f='sql/staging/'+t['name']+'.sql'
+ s=open(f).read()
+ print(t['name'],s.replace('\n',' ')[:280])
+PY
+```
+```json
+{
+  "event_id": 26,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/26.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1380,
+    "decoded_characters": 8133
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/26.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+stg_google_play__stats_installs_overview SELECT     CAST(_file AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(package_name AS VARCHAR) AS package_name,     TRY_CAST(active_device_installs AS BIGINT) AS active_devices_last_30_days,     TRY_CAST(daily_devic
+stg_google_play__stats_ratings_overview WITH source_rows AS ( SELECT     CAST(_file AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(package_name AS VARCHAR) AS package_name,     TRY_CAST(daily_average_rating AS DECIMAL(10,2)) AS average_rating,     TRY_CA
+stg_google_play__stats_crashes_overview SELECT     CAST(_file AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(package_name AS VARCHAR) AS package_name,     TRY_CAST(daily_crashes AS BIGINT) AS crashes,     TRY_CAST(daily_anrs AS BIGINT) AS anrs FROM raw.s
+stg_google_play__earnings SELECT     CAST(_file AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(transaction_date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(product_id AS VARCHAR) AS package_name,     CAST(buyer_country AS VARCHAR) AS country,     TRY_CAST(amount_merchant_currency_ AS DECI
+stg_google_play__stats_store_performance_traffic_source WITH source_rows AS ( SELECT     CAST(_file AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(package_name AS VARCHAR) AS package_name,     CAST(traffic_source AS VARCHAR) AS traffic_source,     TRY_CAST(store_listing
+stg_apple_store__app_store_download_standard_daily SELECT     CAST(app_id AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(app_id AS VARCHAR) AS app_name,     CAST(territory AS VARCHAR) AS country,     TRY_CAST(counts AS BIGINT) AS total_downloads,     CAST(download_
+stg_apple_store__app_crash_daily SELECT     CAST(app_id AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(app_id AS VARCHAR) AS app_name,     CAST(app_version AS VARCHAR) AS app_version,     CAST(device AS VARCHAR) AS device,     CAST(platform_versio
+stg_apple_store__app_store_discovery_and_engagement_standard_daily SELECT     CAST(app_id AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(app_id AS VARCHAR) AS app_name,     CAST(territory AS VARCHAR) AS country,     CAST(event AS VARCHAR) AS event_type,     TRY_CAST(counts AS BIGI
+stg_apple_store__sales_subscription_summary SELECT     CAST(app_apple_id AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(app_apple_id AS VARCHAR) AS app_id,     CAST(app_name AS VARCHAR) AS app_name,     CAST(subscription_name AS VARCHAR) AS subscription_name
+stg_google_play__stats_installs_os_version SELECT     CAST(_file AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(package_name AS VARCHAR) AS package_name,     CAST(android_os_version AS VARCHAR) AS os_version,     TRY_CAST(active_device_installs AS BIGINT) A
+stg_google_play__stats_installs_country SELECT     CAST(_file AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(package_name AS VARCHAR) AS package_name,     CAST(country AS VARCHAR) AS country,     TRY_CAST(daily_device_installs AS BIGINT) AS device_instal
+stg_apple_store__financial_stats_subscriptions_country SELECT     CAST(app_apple_id AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     TRY_CAST(revenue AS BIGINT) AS revenue,     CAST(subscription_name AS VARCHAR) AS subscription_name,     CAST(app_name AS VARCHAR) AS app_name,
+stg_google_play__stats_store_performance_country WITH source_rows AS ( SELECT     CAST(_file AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(package_name AS VARCHAR) AS package_name,     CAST(country_region AS VARCHAR) AS country,     TRY_CAST(store_listing_acquis
+stg_google_play__stats_crashes_os_version SELECT     CAST(_file AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(package_name AS VARCHAR) AS package_name,     CAST(android_os_version AS VARCHAR) AS os_version,     TRY_CAST(daily_crashes AS BIGINT) AS crashes
+stg_google_play__stats_ratings_country WITH source_rows AS ( WITH source_rows AS ( SELECT     CAST(_file AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(package_name AS VARCHAR) AS package_name,     CAST(country AS VARCHAR) AS country,     TRY_CAST(daily
+stg_google_play__stats_installs_device SELECT     CAST(_file AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(package_name AS VARCHAR) AS package_name,     CAST(device AS VARCHAR) AS device,     TRY_CAST(active_device_installs AS BIGINT) AS active_devices
+stg_google_play__stats_crashes_app_version SELECT     CAST(_file AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(package_name AS VARCHAR) AS package_name,     TRY_CAST(app_version_code AS BIGINT) AS app_version_code,     TRY_CAST(daily_crashes AS BIGINT) AS 
+stg_google_play__stats_installs_app_version SELECT     CAST(_file AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(package_name AS VARCHAR) AS package_name,     TRY_CAST(app_version_code AS BIGINT) AS app_version_code,     TRY_CAST(active_device_installs AS BI
+stg_apple_store__sales_subscription_event_summary SELECT     CAST(app_apple_id AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(event_date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(app_apple_id AS VARCHAR) AS app_id,     CAST(app_name AS VARCHAR) AS app_name,     subscription_apple_id AS subscription_id,     CAS
+stg_apple_store__app_session_standard_daily SELECT     CAST(app_id AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(app_id AS VARCHAR) AS app_name,     CAST(territory AS VARCHAR) AS country,     CAST(app_version AS VARCHAR) AS app_version,     CAST(device AS V
+stg_apple_store__app_store_installation_and_deletion_standard_daily SELECT     CAST(app_id AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(app_id AS VARCHAR) AS app_name,     CAST(territory AS VARCHAR) AS country,     CAST(event AS VARCHAR) AS event_type,     CAST(app_version AS VAR
+stg_google_play__stats_ratings_app_version WITH source_rows AS ( SELECT     CAST(_file AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(package_name AS VARCHAR) AS package_name,     TRY_CAST(app_version_code AS BIGINT) AS app_version_code,     TRY_CAST(daily_
+stg_google_play__stats_ratings_device WITH source_rows AS ( SELECT     CAST(_file AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(package_name AS VARCHAR) AS package_name,     CAST(device AS VARCHAR) AS device,     TRY_CAST(daily_average_rating AS DECIM
+stg_google_play__stats_ratings_os_version WITH source_rows AS ( WITH source_rows AS ( SELECT     CAST(_file AS VARCHAR) AS source_relation,     TRY_CAST(SUBSTR(CAST(date AS VARCHAR), 1, 10) AS DATE) AS date_day,     CAST(package_name AS VARCHAR) AS package_name,     CAST(android_os_version AS VARCHAR) AS os_version,     
+stg_apple_store__app_store_app SELECT     CAST(id AS VARCHAR) AS source_relation,     CAST(id AS VARCHAR) AS app_id,     CAST(name AS VARCHAR) AS app_name,     CAST(primary_locale AS VARCHAR) AS primary_locale,     CAST(content_rights_declaration AS VARCHAR) AS content_rights_declaration,     was_made_for_kids
+```
+
+### event 45
+
+```json
+{
+  "event_id": 45,
+  "agent_command_sequence": 21,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/45.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1364,
+    "decoded_characters": 63
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/45.json",
+  "timestamp": "2026-10-25T01:56:37.712692",
+  "target_table_name_hits": [
+    "stg_apple_store__sales_subscription_event_summary"
+  ],
+  "source_table_name_hits": [
+    "sales_subscription_event_summary"
+  ],
+  "full_original_characters": 18975,
+  "retention": "full_original"
+}
+```
+```bash
+grep -E 'staging\.|ERROR|WARNING' /tmp/pipeline.log | head -100
+```
+```json
+{
+  "event_id": 46,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/46.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 1046,
+    "decoded_characters": 18912
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/46.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+2026-10-25 01:56:34,577 - ERROR -   ✗ Failed to import table app_crash_daily: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,577 - ERROR -   ✗ Failed to import table app_session_standard_daily: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,577 - ERROR -   ✗ Failed to import table app_store_app: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,577 - ERROR -   ✗ Failed to import table app_store_discovery_and_engagement_standard_daily: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,578 - ERROR -   ✗ Failed to import table app_store_download_standard_daily: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,578 - ERROR -   ✗ Failed to import table app_store_installation_and_deletion_standard_daily: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,578 - ERROR -   ✗ Failed to import table earnings: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,578 - ERROR -   ✗ Failed to import table financial_stats_subscriptions_country: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,578 - ERROR -   ✗ Failed to import table sales_subscription_event_summary: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,579 - ERROR -   ✗ Failed to import table sales_subscription_summary: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,579 - ERROR -   ✗ Failed to import table stats_crashes_app_version: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,579 - ERROR -   ✗ Failed to import table stats_crashes_os_version: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,579 - ERROR -   ✗ Failed to import table stats_crashes_overview: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,580 - ERROR -   ✗ Failed to import table stats_installs_app_version: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,580 - ERROR -   ✗ Failed to import table stats_installs_country: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,580 - ERROR -   ✗ Failed to import table stats_installs_device: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,580 - ERROR -   ✗ Failed to import table stats_installs_os_version: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,581 - ERROR -   ✗ Failed to import table stats_installs_overview: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,581 - ERROR -   ✗ Failed to import table stats_ratings_app_version: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,581 - ERROR -   ✗ Failed to import table stats_ratings_country: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,582 - ERROR -   ✗ Failed to import table stats_ratings_device: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,582 - ERROR -   ✗ Failed to import table stats_ratings_os_version: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,582 - ERROR -   ✗ Failed to import table stats_ratings_overview: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,582 - ERROR -   ✗ Failed to import table stats_store_performance_country: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,583 - ERROR -   ✗ Failed to import table stats_store_performance_traffic_source: Binder Error: Unique file handle conflict: Cannot attach "source_db" - the database file "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting_start.duckdb" is already attached by database "app_reporting_start"
+2026-10-25 01:56:34,609 - INFO - Executing: staging.stg_google_play__stats_installs_overview
+2026-10-25 01:56:34,611 - ERROR - ✗ staging.stg_google_play__stats_installs_overview: Catalog Error: Table with name stats_installs_overview does not exist!
+2026-10-25 01:56:34,611 - INFO - Executing: staging.stg_google_play__stats_ratings_overview
+2026-10-25 01:56:34,611 - ERROR - ✗ staging.stg_google_play__stats_ratings_overview: Catalog Error: Table with name stats_ratings_overview does not exist!
+2026-10-25 01:56:34,611 - INFO - Executing: staging.stg_google_play__stats_crashes_overview
+2026-10-25 01:56:34,612 - ERROR - ✗ staging.stg_google_play__stats_crashes_overview: Catalog Error: Table with name stats_crashes_overview does not exist!
+2026-10-25 01:56:34,612 - INFO - Executing: staging.stg_google_play__stats_store_performance_country
+2026-10-25 01:56:34,612 - ERROR - ✗ staging.stg_google_play__stats_store_performance_country: Catalog Error: Table with name stats_store_performance_country does not exist!
+2026-10-25 01:56:34,612 - INFO - Executing: staging.stg_google_play__stats_store_performance_traffic_source
+2026-10-25 01:56:34,612 - ERROR - ✗ staging.stg_google_play__stats_store_performance_traffic_source: Catalog Error: Table with name stats_store_performance_traffic_source does not exist!
+2026-10-25 01:56:34,612 - INFO - Executing: staging.stg_google_play__stats_installs_country
+2026-10-25 01:56:34,613 - ERROR - ✗ staging.stg_google_play__stats_installs_country: Catalog Error: Table with name stats_installs_country does not exist!
+2026-10-25 01:56:34,613 - INFO - Executing: staging.stg_google_play__stats_installs_device
+2026-10-25 01:56:34,613 - ERROR - ✗ staging.stg_google_play__stats_installs_device: Catalog Error: Table with name stats_installs_device does not exist!
+2026-10-25 01:56:34,613 - INFO - Executing: staging.stg_google_play__stats_installs_app_version
+2026-10-25 01:56:34,614 - ERROR - ✗ staging.stg_google_play__stats_installs_app_version: Catalog Error: Table with name stats_installs_app_version does not exist!
+2026-10-25 01:56:34,614 - INFO - Executing: staging.stg_google_play__stats_installs_os_version
+2026-10-25 01:56:34,614 - ERROR - ✗ staging.stg_google_play__stats_installs_os_version: Catalog Error: Table with name stats_installs_os_version does not exist!
+2026-10-25 01:56:34,614 - INFO - Executing: staging.stg_google_play__stats_ratings_country
+2026-10-25 01:56:34,614 - ERROR - ✗ staging.stg_google_play__stats_ratings_country: Catalog Error: Table with name stats_ratings_country does not exist!
+2026-10-25 01:56:34,614 - INFO - Executing: staging.stg_google_play__stats_ratings_device
+2026-10-25 01:56:34,615 - ERROR - ✗ staging.stg_google_play__stats_ratings_device: Catalog Error: Table with name stats_ratings_device does not exist!
+2026-10-25 01:56:34,615 - INFO - Executing: staging.stg_google_play__stats_ratings_app_version
+2026-10-25 01:56:34,615 - ERROR - ✗ staging.stg_google_play__stats_ratings_app_version: Catalog Error: Table with name stats_ratings_app_version does not exist!
+2026-10-25 01:56:34,615 - INFO - Executing: staging.stg_google_play__stats_ratings_os_version
+2026-10-25 01:56:34,615 - ERROR - ✗ staging.stg_google_play__stats_ratings_os_version: Catalog Error: Table with name stats_ratings_os_version does not exist!
+2026-10-25 01:56:34,616 - INFO - Executing: staging.stg_google_play__stats_crashes_app_version
+2026-10-25 01:56:34,616 - ERROR - ✗ staging.stg_google_play__stats_crashes_app_version: Catalog Error: Table with name stats_crashes_app_version does not exist!
+2026-10-25 01:56:34,616 - INFO - Executing: staging.stg_google_play__stats_crashes_os_version
+2026-10-25 01:56:34,616 - ERROR - ✗ staging.stg_google_play__stats_crashes_os_version: Catalog Error: Table with name stats_crashes_os_version does not exist!
+2026-10-25 01:56:34,616 - INFO - Executing: staging.stg_google_play__earnings
+2026-10-25 01:56:34,617 - ERROR - ✗ staging.stg_google_play__earnings: Catalog Error: Table with name earnings does not exist!
+2026-10-25 01:56:34,617 - INFO - Executing: staging.stg_apple_store__app_store_download_standard_daily
+2026-10-25 01:56:34,617 - ERROR - ✗ staging.stg_apple_store__app_store_download_standard_daily: Catalog Error: Table with name app_store_download_standard_daily does not exist!
+2026-10-25 01:56:34,617 - INFO - Executing: staging.stg_apple_store__app_store_installation_and_deletion_standard_daily
+2026-10-25 01:56:34,617 - ERROR - ✗ staging.stg_apple_store__app_store_installation_and_deletion_standard_daily: Catalog Error: Table with name app_store_installation_and_deletion_standard_daily does not exist!
+2026-10-25 01:56:34,617 - INFO - Executing: staging.stg_apple_store__app_store_discovery_and_engagement_standard_daily
+2026-10-25 01:56:34,618 - ERROR - ✗ staging.stg_apple_store__app_store_discovery_and_engagement_standard_daily: Catalog Error: Table with name app_store_discovery_and_engagement_standard_daily does not exist!
+2026-10-25 01:56:34,618 - INFO - Executing: staging.stg_apple_store__app_session_standard_daily
+2026-10-25 01:56:34,618 - ERROR - ✗ staging.stg_apple_store__app_session_standard_daily: Catalog Error: Table with name app_session_standard_daily does not exist!
+2026-10-25 01:56:34,618 - INFO - Executing: staging.stg_apple_store__app_crash_daily
+2026-10-25 01:56:34,618 - ERROR - ✗ staging.stg_apple_store__app_crash_daily: Catalog Error: Table with name app_crash_daily does not exist!
+2026-10-25 01:56:34,619 - INFO - Executing: staging.stg_apple_store__app_store_app
+2026-10-25 01:56:34,619 - ERROR - ✗ staging.stg_apple_store__app_store_app: Catalog Error: Table with name app_store_app does not exist!
+2026-10-25 01:56:34,619 - INFO - Executing: staging.stg_apple_store__sales_subscription_summary
+2026-10-25 01:56:34,619 - ERROR - ✗ staging.stg_apple_store__sales_subscription_summary: Catalog Error: Table with name sales_subscription_summary does not exist!
+2026-10-25 01:56:34,619 - INFO - Executing: staging.stg_apple_store__sales_subscription_event_summary
+2026-10-25 01:56:34,620 - ERROR - ✗ staging.stg_apple_store__sales_subscription_event_summary: Catalog Error: Table with name sales_subscription_event_summary does not exist!
+2026-10-25 01:56:34,620 - INFO - Executing: staging.stg_apple_store__financial_stats_subscriptions_country
+2026-10-25 01:56:34,620 - ERROR - ✗ staging.stg_apple_store__financial_stats_subscriptions_country: Catalog Error: Table with name financial_stats_subscriptions_country does not exist!
+2026-10-25 01:56:34,620 - ERROR - ❌ STAGING layer execution failed (Success rate: 0.0%)
+2026-10-25 01:56:34,621 - ERROR - ✗ intermediate.int_google_play__overview: Catalog Error: Table with name stg_google_play__stats_installs_overview does not exist!
+LINE 1: ....int_google_play__overview AS (WITH installs AS (SELECT * FROM staging.stg_google_play__stats_installs_overview), crashes...
+2026-10-25 01:56:34,621 - ERROR - ✗ intermediate.int_apple_store__overview: Catalog Error: Table with name stg_apple_store__app_store_download_standard_daily does not exist!
+LINE 1: ...tion,date_day,app_name,sum(total_downloads) downloads FROM staging.stg_apple_store__app_store_download_standard_daily...
+2026-10-25 01:56:34,622 - ERROR - ✗ intermediate.int_google_play__app_version: Catalog Error: Table with name stg_google_play__stats_installs_app_version does not exist!
+LINE 2: FROM staging.stg_google_play__stats_installs_app_version i FULL...
+2026-10-25 01:56:34,622 - ERROR - ✗ intermediate.int_apple_store__app_version: Catalog Error: Table with name stg_apple_store__app_store_download_standard_daily does not exist!
+LINE 1: ... AS (SELECT source_relation,date_day,app_name,app_version FROM staging.stg_apple_store__app_store_download_standard_daily...
+2026-10-25 01:56:34,622 - ERROR - ✗ intermediate.int_google_play__country: Catalog Error: Table with name stg_google_play__stats_installs_country does not exist!
+LINE 1: ... deletions,install_events,uninstall_events,update_events FROM staging.stg_google_play__stats_installs_country
+2026-10-25 01:56:34,623 - ERROR - ✗ intermediate.int_apple_store__country: Catalog Error: Table with name stg_apple_store__app_store_download_standard_daily does not exist!
+LINE 1: ...,date_day,app_name,country,sum(total_downloads) downloads FROM staging.stg_apple_store__app_store_download_standard_daily...
+2026-10-25 01:56:34,623 - ERROR - ✗ intermediate.int_google_play__device: Catalog Error: Table with name stg_google_play__stats_installs_device does not exist!
+LINE 1: ...,device_installs downloads,device_uninstalls deletions FROM staging.stg_google_play__stats_installs_device
+2026-10-25 01:56:34,624 - ERROR - ✗ intermediate.int_apple_store__device: Catalog Error: Table with name stg_apple_store__app_store_download_standard_daily does not exist!
+LINE 1: ...,date_day,app_name,device,sum(total_downloads) downloads FROM staging.stg_apple_store__app_store_download_standard_daily...
+2026-10-25 01:56:34,624 - ERROR - ✗ intermediate.int_google_play__os_version: Catalog Error: Table with name stg_google_play__stats_installs_os_version does not exist!
+LINE 1: ...,device_installs downloads,device_uninstalls deletions FROM staging.stg_google_play__stats_installs_os_version
+2026-10-25 01:56:34,624 - ERROR - ✗ intermediate.int_apple_store__os_version: Catalog Error: Table with name stg_apple_store__app_store_download_standard_daily does not exist!
+LINE 1: ...orm_version os_version,sum(total_downloads) downloads FROM staging.stg_apple_store__app_store_download_standard_daily...
+2026-10-25 01:56:34,625 - ERROR - ✗ intermediate.int_google_play__traffic_source: Catalog Error: Table with name stg_google_play__stats_store_performance_traffic_source does not exist!
+LINE 1: ...) acquisitions,sum(store_listing_visitors) visitors FROM staging.stg_google_play__stats_store_performance_traffic_so...
+2026-10-25 01:56:34,625 - ERROR - ✗ intermediate.int_apple_store__traffic_source: Catalog Error: Table with name stg_apple_store__app_store_download_standard_daily does not exist!
+LINE 1: ...type traffic_source,sum(total_downloads) acquisitions FROM staging.stg_apple_store__app_store_download_standard_daily...
+```
+
+### event 47
+
+```json
+{
+  "event_id": 47,
+  "agent_command_sequence": 22,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/47.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2408,
+    "decoded_characters": 551
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/47.json",
+  "timestamp": "2026-10-25T01:56:42.139912",
+  "target_table_name_hits": [
+    "stg_apple_store__sales_subscription_event_summary"
+  ],
+  "source_table_name_hits": [
+    "sales_subscription_event_summary"
+  ],
+  "full_original_characters": 9289,
+  "retention": "full_original"
+}
+```
+```bash
+rm -f app_reporting.duckdb; python - <<'PY'
+import duckdb
+src=duckdb.connect('app_reporting_start.duckdb',read_only=True); out=duckdb.connect('app_reporting.duckdb'); out.execute('create schema raw')
+for (t,) in src.execute("select table_name from information_schema.tables where table_schema='raw'").fetchall(): out.execute(f'create table raw."{t}" as select * from src.raw."{t}"')
+out.close();src.close()
+PY
+python run.py > /tmp/pipeline2.log 2>&1; echo EXIT:$?; grep -E 'ERROR - ✗|layer complete|complete successfully' /tmp/pipeline2.log | tail -60
+```
+```json
+{
+  "event_id": 48,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/48.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 2090,
+    "decoded_characters": 8738
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/48.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+Traceback (most recent call last):
+  File "<stdin>", line 3, in <module>
+_duckdb.BinderException: Binder Error: Catalog "src" does not exist!
+EXIT:0
+2026-10-25 01:56:42,432 - ERROR - ✗ staging.stg_google_play__stats_installs_overview: Catalog Error: Table with name stats_installs_overview does not exist!
+2026-10-25 01:56:42,433 - ERROR - ✗ staging.stg_google_play__stats_ratings_overview: Catalog Error: Table with name stats_ratings_overview does not exist!
+2026-10-25 01:56:42,433 - ERROR - ✗ staging.stg_google_play__stats_crashes_overview: Catalog Error: Table with name stats_crashes_overview does not exist!
+2026-10-25 01:56:42,434 - ERROR - ✗ staging.stg_google_play__stats_store_performance_country: Catalog Error: Table with name stats_store_performance_country does not exist!
+2026-10-25 01:56:42,434 - ERROR - ✗ staging.stg_google_play__stats_store_performance_traffic_source: Catalog Error: Table with name stats_store_performance_traffic_source does not exist!
+2026-10-25 01:56:42,434 - ERROR - ✗ staging.stg_google_play__stats_installs_country: Catalog Error: Table with name stats_installs_country does not exist!
+2026-10-25 01:56:42,435 - ERROR - ✗ staging.stg_google_play__stats_installs_device: Catalog Error: Table with name stats_installs_device does not exist!
+2026-10-25 01:56:42,435 - ERROR - ✗ staging.stg_google_play__stats_installs_app_version: Catalog Error: Table with name stats_installs_app_version does not exist!
+2026-10-25 01:56:42,435 - ERROR - ✗ staging.stg_google_play__stats_installs_os_version: Catalog Error: Table with name stats_installs_os_version does not exist!
+2026-10-25 01:56:42,436 - ERROR - ✗ staging.stg_google_play__stats_ratings_country: Catalog Error: Table with name stats_ratings_country does not exist!
+2026-10-25 01:56:42,436 - ERROR - ✗ staging.stg_google_play__stats_ratings_device: Catalog Error: Table with name stats_ratings_device does not exist!
+2026-10-25 01:56:42,436 - ERROR - ✗ staging.stg_google_play__stats_ratings_app_version: Catalog Error: Table with name stats_ratings_app_version does not exist!
+2026-10-25 01:56:42,437 - ERROR - ✗ staging.stg_google_play__stats_ratings_os_version: Catalog Error: Table with name stats_ratings_os_version does not exist!
+2026-10-25 01:56:42,437 - ERROR - ✗ staging.stg_google_play__stats_crashes_app_version: Catalog Error: Table with name stats_crashes_app_version does not exist!
+2026-10-25 01:56:42,437 - ERROR - ✗ staging.stg_google_play__stats_crashes_os_version: Catalog Error: Table with name stats_crashes_os_version does not exist!
+2026-10-25 01:56:42,438 - ERROR - ✗ staging.stg_google_play__earnings: Catalog Error: Table with name earnings does not exist!
+2026-10-25 01:56:42,438 - ERROR - ✗ staging.stg_apple_store__app_store_download_standard_daily: Catalog Error: Table with name app_store_download_standard_daily does not exist!
+2026-10-25 01:56:42,438 - ERROR - ✗ staging.stg_apple_store__app_store_installation_and_deletion_standard_daily: Catalog Error: Table with name app_store_installation_and_deletion_standard_daily does not exist!
+2026-10-25 01:56:42,439 - ERROR - ✗ staging.stg_apple_store__app_store_discovery_and_engagement_standard_daily: Catalog Error: Table with name app_store_discovery_and_engagement_standard_daily does not exist!
+2026-10-25 01:56:42,439 - ERROR - ✗ staging.stg_apple_store__app_session_standard_daily: Catalog Error: Table with name app_session_standard_daily does not exist!
+2026-10-25 01:56:42,440 - ERROR - ✗ staging.stg_apple_store__app_crash_daily: Catalog Error: Table with name app_crash_daily does not exist!
+2026-10-25 01:56:42,440 - ERROR - ✗ staging.stg_apple_store__app_store_app: Catalog Error: Table with name app_store_app does not exist!
+2026-10-25 01:56:42,440 - ERROR - ✗ staging.stg_apple_store__sales_subscription_summary: Catalog Error: Table with name sales_subscription_summary does not exist!
+2026-10-25 01:56:42,441 - ERROR - ✗ staging.stg_apple_store__sales_subscription_event_summary: Catalog Error: Table with name sales_subscription_event_summary does not exist!
+2026-10-25 01:56:42,441 - ERROR - ✗ staging.stg_apple_store__financial_stats_subscriptions_country: Catalog Error: Table with name financial_stats_subscriptions_country does not exist!
+2026-10-25 01:56:42,441 - INFO - STAGING layer complete: 0/25 tables created successfully
+2026-10-25 01:56:42,441 - ERROR - ✗ intermediate.int_google_play__overview: Catalog Error: Table with name stg_google_play__stats_installs_overview does not exist!
+2026-10-25 01:56:42,442 - ERROR - ✗ intermediate.int_apple_store__overview: Catalog Error: Table with name stg_apple_store__app_store_download_standard_daily does not exist!
+2026-10-25 01:56:42,442 - ERROR - ✗ intermediate.int_google_play__app_version: Catalog Error: Table with name stg_google_play__stats_installs_app_version does not exist!
+2026-10-25 01:56:42,443 - ERROR - ✗ intermediate.int_apple_store__app_version: Catalog Error: Table with name stg_apple_store__app_store_download_standard_daily does not exist!
+2026-10-25 01:56:42,443 - ERROR - ✗ intermediate.int_google_play__country: Catalog Error: Table with name stg_google_play__stats_installs_country does not exist!
+2026-10-25 01:56:42,443 - ERROR - ✗ intermediate.int_apple_store__country: Catalog Error: Table with name stg_apple_store__app_store_download_standard_daily does not exist!
+2026-10-25 01:56:42,444 - ERROR - ✗ intermediate.int_google_play__device: Catalog Error: Table with name stg_google_play__stats_installs_device does not exist!
+2026-10-25 01:56:42,444 - ERROR - ✗ intermediate.int_apple_store__device: Catalog Error: Table with name stg_apple_store__app_store_download_standard_daily does not exist!
+2026-10-25 01:56:42,445 - ERROR - ✗ intermediate.int_google_play__os_version: Catalog Error: Table with name stg_google_play__stats_installs_os_version does not exist!
+2026-10-25 01:56:42,445 - ERROR - ✗ intermediate.int_apple_store__os_version: Catalog Error: Table with name stg_apple_store__app_store_download_standard_daily does not exist!
+2026-10-25 01:56:42,446 - ERROR - ✗ intermediate.int_google_play__traffic_source: Catalog Error: Table with name stg_google_play__stats_store_performance_traffic_source does not exist!
+2026-10-25 01:56:42,446 - ERROR - ✗ intermediate.int_apple_store__traffic_source: Catalog Error: Table with name stg_apple_store__app_store_download_standard_daily does not exist!
+2026-10-25 01:56:42,446 - ERROR - ✗ intermediate.int_user_lifecycle_analysis: Catalog Error: Table with name stg_google_play__stats_installs_overview does not exist!
+2026-10-25 01:56:42,447 - ERROR - ✗ intermediate.int_user_rfm_analysis: Catalog Error: Table with name stg_google_play__earnings does not exist!
+2026-10-25 01:56:42,448 - ERROR - ✗ intermediate.int_app_health_metrics: Catalog Error: Table with name stg_google_play__stats_crashes_overview does not exist!
+2026-10-25 01:56:42,448 - ERROR - ✗ intermediate.int_channel_performance: Catalog Error: Table with name stg_google_play__stats_store_performance_traffic_source does not exist!
+2026-10-25 01:56:42,448 - INFO - INTERMEDIATE layer complete: 0/16 tables created successfully
+2026-10-25 01:56:42,449 - ERROR - ✗ mart.app_reporting__overview_report: Catalog Error: Table with name int_google_play__overview does not exist!
+2026-10-25 01:56:42,449 - ERROR - ✗ mart.app_reporting__app_version_report: Catalog Error: Table with name int_google_play__app_version does not exist!
+2026-10-25 01:56:42,450 - ERROR - ✗ mart.app_reporting__country_report: Catalog Error: Table with name int_google_play__country does not exist!
+2026-10-25 01:56:42,450 - ERROR - ✗ mart.app_reporting__device_report: Catalog Error: Table with name int_google_play__device does not exist!
+2026-10-25 01:56:42,450 - ERROR - ✗ mart.app_reporting__os_version_report: Catalog Error: Table with name int_google_play__os_version does not exist!
+2026-10-25 01:56:42,451 - ERROR - ✗ mart.app_reporting__traffic_source_report: Catalog Error: Table with name int_google_play__traffic_source does not exist!
+2026-10-25 01:56:42,451 - ERROR - ✗ mart.app_reporting__user_lifecycle_report: Catalog Error: Table with name int_user_lifecycle_analysis does not exist!
+2026-10-25 01:56:42,452 - ERROR - ✗ mart.app_reporting__user_value_segmentation_report: Catalog Error: Table with name int_user_rfm_analysis does not exist!
+2026-10-25 01:56:42,453 - ERROR - ✗ mart.app_reporting__app_health_monitoring_report: Catalog Error: Table with name int_app_health_metrics does not exist!
+2026-10-25 01:56:42,453 - ERROR - ✗ mart.app_reporting__channel_effectiveness_report: Catalog Error: Table with name int_channel_performance does not exist!
+2026-10-25 01:56:42,453 - INFO - MARTS layer complete: 0/10 tables created successfully
+```
+
+### event 55
+
+```json
+{
+  "event_id": 55,
+  "agent_command_sequence": 26,
+  "action_location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/55.json",
+    "json_path": [
+      "args",
+      "command"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 3399,
+    "decoded_characters": 1057
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/55.json",
+  "timestamp": "2026-10-25T01:57:13.516180",
+  "target_table_name_hits": [
+    "stg_apple_store__sales_subscription_event_summary"
+  ],
+  "source_table_name_hits": [],
+  "full_original_characters": 6444,
+  "retention": "full_original"
+}
+```
+```bash
+python - <<'PY'
+import yaml,duckdb,glob,os
+cfg=yaml.safe_load(open('docs/data_contract.yaml')); c=duckdb.connect('app_reporting.duckdb',read_only=True)
+for layer,schema,models in [('staging','staging',cfg['staging_contract']['tables']),('intermediate','intermediate',cfg['modeling_spec']['intermediate_models']),('marts','mart',cfg['modeling_spec']['marts_models'])]:
+ for m in models:
+  n=m['name']; cols=[x[0] for x in c.execute(f'describe {schema}.{n}').fetchall()]
+  wanted=[x['name'] for x in m['columns']] if layer!='staging' else [x['name'] for x in m['columns']]
+  if cols!=wanted: print('COLUMN MISMATCH',layer,n,cols,wanted)
+ print(layer,'tables',len(models))
+print('rows')
+for schema in ['staging','intermediate','mart']:
+ for (name,) in c.execute(f"select table_name from information_schema.tables where table_schema='{schema}' order by table_name").fetchall():
+  print(schema,name,c.execute(f'select count(*) from {schema}.{name}').fetchone()[0])
+PY
+printf 'semicolon count='; grep -R ';' sql --include='*.sql' | wc -l; find sql -type f | wc -l
+```
+```json
+{
+  "event_id": 56,
+  "observation": "run",
+  "location": {
+    "file": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/56.json",
+    "json_path": [
+      "content"
+    ],
+    "file_line": 1,
+    "json_string_token_start_offset": 3081,
+    "decoded_characters": 5387
+  },
+  "archive_member": "dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/56.json",
+  "truncation": {
+    "explicit_metadata_flags": {},
+    "marker_lines": [],
+    "status": "未见显式截断标记"
+  },
+  "exit_code": 0
+}
+```
+```text
+staging tables 25
+COLUMN MISMATCH intermediate int_app_health_metrics ['date_day', 'app_name', 'platform', 'crash_count', 'installs', 'uninstalls', 'daily_average_rating', 'total_average_rating', 'total_activity', 'crash_rate_per_thousand', 'uninstall_rate_percentage', 'crash_rate_7d_avg', 'uninstall_rate_7d_avg', 'rating_7d_avg', 'crash_rate_30d_avg', 'installs_30d_sum', 'crashes_30d_sum', 'rating_7d_ago', 'crash_rate_7d_ago', 'rating_trend_7d', 'crash_rate_trend_7d', 'health_score', 'health_status', 'volume_tier', 'needs_immediate_attention', 'is_high_performing', 'is_declining_quality', 'is_stability_degrading', 'data_quality_flag', 'analysis_timestamp'] ['date_day', 'app_name', 'platform', 'crash_count', 'installs', 'uninstalls', 'total_activity', 'daily_average_rating', 'total_average_rating', 'crash_rate_per_thousand', 'uninstall_rate_percentage', 'crash_rate_7d_avg', 'uninstall_rate_7d_avg', 'rating_7d_avg', 'crash_rate_30d_avg', 'installs_30d_sum', 'crashes_30d_sum', 'rating_trend_7d', 'crash_rate_trend_7d', 'health_score', 'health_status', 'volume_tier', 'needs_immediate_attention', 'is_high_performing', 'is_declining_quality', 'is_stability_degrading', 'data_quality_flag', 'analysis_timestamp']
+COLUMN MISMATCH intermediate int_channel_performance ['date_day', 'app_name', 'platform', 'traffic_source', 'conversions', 'store_visitors', 'installers', 'conversion_rate_percentage', 'install_per_conversion_ratio', 'channel_category', 'conversion_rate_7d_avg', 'installers_7d_sum', 'visitors_7d_sum', 'conversion_rate_30d_avg', 'installers_30d_sum', 'visitors_30d_sum', 'prior_conversion', 'prior_installers', 'conversion_trend_7d', 'installer_growth_7d_percentage', 'volume_rank_daily', 'conversion_rank_daily', 'volume_rank_30d', 'conversion_rank_30d', 'market_share_percentage', 'channel_efficiency_score', 'channel_performance_tier', 'investment_recommendation', 'is_top_channel', 'should_scale_up', 'is_declining_performance', 'is_top_volume_source', 'data_quality_flag', 'analysis_timestamp'] ['date_day', 'app_name', 'platform', 'traffic_source', 'channel_category', 'conversions', 'store_visitors', 'installers', 'conversion_rate_percentage', 'install_per_conversion_ratio', 'market_share_percentage', 'channel_efficiency_score', 'conversion_rate_7d_avg', 'installers_7d_sum', 'visitors_7d_sum', 'conversion_rate_30d_avg', 'installers_30d_sum', 'visitors_30d_sum', 'conversion_trend_7d', 'installer_growth_7d_percentage', 'volume_rank_daily', 'conversion_rank_daily', 'volume_rank_30d', 'conversion_rank_30d', 'channel_performance_tier', 'investment_recommendation', 'is_top_channel', 'should_scale_up', 'is_declining_performance', 'is_top_volume_source', 'data_quality_flag', 'analysis_timestamp']
+intermediate tables 16
+marts tables 10
+rows
+staging stg_apple_store__app_crash_daily 700
+staging stg_apple_store__app_session_standard_daily 700
+staging stg_apple_store__app_store_app 700
+staging stg_apple_store__app_store_discovery_and_engagement_standard_daily 700
+staging stg_apple_store__app_store_download_standard_daily 700
+staging stg_apple_store__app_store_installation_and_deletion_standard_daily 700
+staging stg_apple_store__financial_stats_subscriptions_country 700
+staging stg_apple_store__sales_subscription_event_summary 700
+staging stg_apple_store__sales_subscription_summary 700
+staging stg_google_play__earnings 700
+staging stg_google_play__stats_crashes_app_version 700
+staging stg_google_play__stats_crashes_os_version 700
+staging stg_google_play__stats_crashes_overview 700
+staging stg_google_play__stats_installs_app_version 6000
+staging stg_google_play__stats_installs_country 6000
+staging stg_google_play__stats_installs_device 6000
+staging stg_google_play__stats_installs_os_version 6000
+staging stg_google_play__stats_installs_overview 6000
+staging stg_google_play__stats_ratings_app_version 6000
+staging stg_google_play__stats_ratings_country 6000
+staging stg_google_play__stats_ratings_device 6000
+staging stg_google_play__stats_ratings_os_version 700
+staging stg_google_play__stats_ratings_overview 691
+staging stg_google_play__stats_store_performance_country 700
+staging stg_google_play__stats_store_performance_traffic_source 700
+intermediate int_app_health_metrics 8663
+intermediate int_apple_store__app_version 2099
+intermediate int_apple_store__country 1400
+intermediate int_apple_store__device 1398
+intermediate int_apple_store__os_version 1399
+intermediate int_apple_store__overview 2068
+intermediate int_apple_store__traffic_source 1398
+intermediate int_channel_performance 1400
+intermediate int_google_play__app_version 6700
+intermediate int_google_play__country 6000
+intermediate int_google_play__device 6000
+intermediate int_google_play__os_version 6000
+intermediate int_google_play__overview 6700
+intermediate int_google_play__traffic_source 700
+intermediate int_user_lifecycle_analysis 6700
+intermediate int_user_rfm_analysis 700
+mart app_reporting__app_health_monitoring_report 10571
+mart app_reporting__app_version_report 8799
+mart app_reporting__channel_effectiveness_report 1712
+mart app_reporting__country_report 7400
+mart app_reporting__device_report 7398
+mart app_reporting__os_version_report 7399
+mart app_reporting__overview_report 8768
+mart app_reporting__traffic_source_report 2098
+mart app_reporting__user_lifecycle_report 892
+mart app_reporting__user_value_segmentation_report 1
+semicolon count=0
+51
+```
+
+## result_md_table_sentences
+
+```json
+{
+  "present": false,
+  "searched_path": "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/result.md",
+  "sentences": []
+}
+```
+
+## original_files
+
+```json
+{
+  "paths": [
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/11.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/12.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/13.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/14.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/15.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/16.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/19.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/20.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/23.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/24.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/25.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/26.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/45.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/46.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/47.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/48.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/55.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/56.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/7.json",
+    "/home/katherine/Assumption_Ledger/data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-007/agent/.events/sessions/4b972c8e-5e78-4c-989fe818d782cdb/events/8.json",
+    "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-007/app_reporting.duckdb",
+    "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql",
+    "/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-007/docs/data_contract.yaml",
+    "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/app_reporting.duckdb",
+    "/home/katherine/dac/runs/20261025_de_official_batch_01/impl-007/agent/dacomp-de-impl-007/sql/staging/stg_apple_store__sales_subscription_event_summary.sql"
+  ],
+  "archive": "/home/katherine/Assumption_Ledger/traces/dacomp_deimpl_prev.tar.gz",
+  "gold_SQL_search_root": "/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-007/sql",
+  "gold_SQL_search_names": [
+    "stg_apple_store__sales_subscription_event_summary",
+    "stg_apple_store__sales_subscription_event_summary"
+  ],
+  "source_fingerprints": "records/012_input_before.json"
+}
+```
