@@ -1,0 +1,1188 @@
+[
+  {
+    "index": 0,
+    "task": "impl-012",
+    "layer": "intermediate",
+    "table": "int_marketo__lead",
+    "patches": []
+  },
+  {
+    "index": 1,
+    "task": "impl-012",
+    "layer": "marts",
+    "table": "marketo__lead_intelligence_simple",
+    "patches": [
+      {
+        "label": "missing_segment",
+        "edits": [
+          [
+            "CASE WHEN total_lead_score>=100",
+            "CASE WHEN total_emails_sent=0 THEN 'Unknown' WHEN total_lead_score>=100"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约无engagement时rfm_segment为Unknown；agent在补零后分段为Inactive。"
+      },
+      {
+        "label": "missing_action",
+        "edits": [
+          [
+            "WHEN total_emails_opened=0 THEN 'Welcome Series'",
+            "WHEN total_emails_sent>0 AND total_emails_opened=0 THEN 'Welcome Series'"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约无打开时Welcome Series；gold缺失engagement的NULL未命中0而给Standard Campaign Flow。"
+      }
+    ]
+  },
+  {
+    "index": 2,
+    "task": "impl-012",
+    "layer": "marts",
+    "table": "marketo__leads",
+    "patches": []
+  },
+  {
+    "index": 3,
+    "task": "impl-012",
+    "layer": "marts",
+    "table": "marketo__operational_health_simple",
+    "patches": [
+      {
+        "label": "score_weights",
+        "edits": [
+          [
+            "CAST(ROUND((CASE WHEN overall_delivery_rate_pct>=95 THEN 25 WHEN overall_delivery_rate_pct>=90 THEN 20 WHEN overall_delivery_rate_pct>=85 THEN 15 ELSE 5 END)+(CASE WHEN engaged_leads_pct>=40 THEN 25 WHEN engaged_leads_pct>=25 THEN 20 WHEN engaged_leads_pct>=15 THEN 15 ELSE 5 END)+(CASE WHEN healthy_campaigns_pct>=50 THEN 25 WHEN healthy_campaigns_pct>=25 THEN 20 WHEN healthy_campaigns_pct>=10 THEN 15 ELSE 5 END)+(CASE WHEN delivery_stability='Stable' THEN 25 WHEN delivery_stability='Moderate Variance' THEN 15 ELSE 5 END)) AS INTEGER) AS overall_health_score",
+            "CAST(ROUND((CASE WHEN overall_delivery_rate_pct>=95 THEN 30 WHEN overall_delivery_rate_pct>=90 THEN 25 WHEN overall_delivery_rate_pct>=85 THEN 20 WHEN overall_delivery_rate_pct>=80 THEN 15 ELSE 10 END)+(CASE WHEN engaged_leads_pct>=40 THEN 30 WHEN engaged_leads_pct>=25 THEN 25 WHEN engaged_leads_pct>=15 THEN 20 WHEN engaged_leads_pct>=5 THEN 15 ELSE 10 END)+(CASE WHEN healthy_campaigns_pct>=80 THEN 25 WHEN healthy_campaigns_pct>=60 THEN 20 WHEN healthy_campaigns_pct>=40 THEN 15 ELSE 10 END)+(CASE WHEN delivery_stability='Stable' THEN 15 WHEN delivery_stability='Moderate Variance' THEN 10 ELSE 5 END),2) AS INTEGER) AS overall_health_score"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约只说四项阈值加权，未给分值；agent与gold不同权重。"
+      },
+      {
+        "label": "recommendation_wording",
+        "edits": [
+          [
+            "'Focus on improving email deliverability'",
+            "'Focus on deliverability improvement'"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约只用自然语言re-engage leads说明，没有指定完整字面标签。"
+      }
+    ]
+  },
+  {
+    "index": 4,
+    "task": "impl-012",
+    "layer": "staging",
+    "table": "stg_marketo__activity_send_email",
+    "patches": [
+      {
+        "label": "send_id",
+        "edits": [
+          [
+            "CAST(id AS VARCHAR) AS email_send_id",
+            "MD5(CONCAT(COALESCE(CAST(primary_attribute_value_id AS VARCHAR), ''),COALESCE(CAST(campaign_id AS VARCHAR), ''),COALESCE(CAST(campaign_run_id AS VARCHAR), ''),COALESCE(CAST(lead_id AS VARCHAR), ''))) AS email_send_id"
+          ]
+        ],
+        "category": "A",
+        "reason": "email_send_id派生方式契约未规定；agent源id、gold组合MD5。"
+      }
+    ]
+  },
+  {
+    "index": 5,
+    "task": "impl-012",
+    "layer": "staging",
+    "table": "stg_marketo__campaigns",
+    "patches": [
+      {
+        "label": "blank_names",
+        "edits": [
+          [
+            " AND TRIM(name) <> ''",
+            ""
+          ]
+        ],
+        "category": "O",
+        "reason": "契约显式删除空白campaign_name；gold保留一行。"
+      }
+    ]
+  },
+  {
+    "index": 6,
+    "task": "impl-012",
+    "layer": "utils",
+    "table": "marketo__calendar_spine",
+    "patches": [
+      {
+        "label": "calendar_end",
+        "edits": [
+          [
+            "CURRENT_DATE AS max_date",
+            "CURRENT_DATE + INTERVAL '1 week' AS max_date"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未检出该utils表定义；gold多未来7天。"
+      }
+    ]
+  },
+  {
+    "index": 7,
+    "task": "impl-013",
+    "layer": "intermediate",
+    "table": "int_netsuite2__balance_sheet",
+    "patches": [
+      {
+        "label": "cta_branch",
+        "edits": [
+          [
+            "FROM presented",
+            "FROM presented UNION ALL SELECT md5(transaction_line_id||'_'||transaction_id||'_'||reporting_accounting_period_id||'_Cumulative Translation Adjustment_0'),transaction_id,transaction_line_id,subsidiary_id,subsidiary_full_name,subsidiary_name,subsidiary_currency_symbol,reporting_accounting_period_id,ending_at,period_name,is_adjustment,is_closed,'Equity','Cumulative Translation Adjustment','Cumulative Translation Adjustment','Cumulative Translation Adjustment','cumulative_translation_adjustment',NULL,(SELECT account_number FROM intermediate.int_netsuite2__accounts WHERE lower(type_name)='cumultransadj' LIMIT 1),FALSE,FALSE,CASE WHEN lower(general_rate_type) IN ('historical','average') THEN converted_amount_using_transaction_accounting_period ELSE converted_amount_using_reporting_month END,unconverted_amount,16 FROM presented"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约显式要求每行UNION ALL第二条CTA，agent完全遗漏。"
+      },
+      {
+        "label": "key_null",
+        "edits": [
+          [
+            "coalesce(CASE WHEN is_balancesheet THEN account_id END,'')",
+            "coalesce(CASE WHEN is_balancesheet THEN account_id END,'0')"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约只说coalesced account_id，没有规定空值哨兵；gold用0、agent空串。"
+      },
+      {
+        "label": "account_type_id",
+        "edits": [
+          [
+            "lower(replace(out_type,' ', '_'))",
+            "CASE WHEN NOT is_balancesheet THEN lower(replace(out_type,' ', '_')) WHEN lower(type_name)='retearnings' THEN 'retained_earnings' WHEN lower(type_name) IN ('cta-e','cumultransadj') THEN 'cumulative_translation_adjustment' ELSE type_name END"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约正常账户type_id原样取type_name，agent全部小写。"
+      },
+      {
+        "label": "rate_selection",
+        "edits": [
+          [
+            "CASE WHEN NOT is_balancesheet OR is_leftside IS FALSE THEN -coalesce(converted_amount_using_transaction_accounting_period, converted_amount_using_reporting_month) ELSE coalesce(converted_amount_using_transaction_accounting_period, converted_amount_using_reporting_month) END AS converted_amount",
+            "CASE WHEN NOT is_balancesheet OR is_leftside IS FALSE THEN -CASE WHEN lower(general_rate_type) IN ('historical','average') THEN converted_amount_using_transaction_accounting_period ELSE converted_amount_using_reporting_month END WHEN is_leftside THEN CASE WHEN lower(general_rate_type) IN ('historical','average') THEN converted_amount_using_transaction_accounting_period ELSE converted_amount_using_reporting_month END ELSE 0 END AS converted_amount"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约按rate_type选换算金额，agent优先coalesce交易期间。"
+      }
+    ]
+  },
+  {
+    "index": 8,
+    "task": "impl-013",
+    "layer": "intermediate",
+    "table": "int_netsuite2__customer_credit_risk",
+    "patches": [
+      {
+        "label": "zero_total_receivables",
+        "edits": [
+          [
+            "sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name IN ('AcctRec','Accounts Receivable')) total_receivables",
+            "coalesce(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name IN ('AcctRec','Accounts Receivable')),0) total_receivables"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约按类别SUM CASE ELSE 0；FILTER无匹配得到NULL。"
+      },
+      {
+        "label": "zero_total_collections",
+        "edits": [
+          [
+            "sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name='Bank') total_collections",
+            "coalesce(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name='Bank'),0) total_collections"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约按类别SUM CASE ELSE 0；FILTER无匹配得到NULL。"
+      },
+      {
+        "label": "zero_outstanding_receivables",
+        "edits": [
+          [
+            "sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name IN ('AcctRec','Accounts Receivable')) outstanding_receivables",
+            "coalesce(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name IN ('AcctRec','Accounts Receivable')),0) outstanding_receivables"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约按类别SUM CASE ELSE 0；FILTER无匹配得到NULL。"
+      }
+    ]
+  },
+  {
+    "index": 9,
+    "task": "impl-013",
+    "layer": "intermediate",
+    "table": "int_netsuite2__data_quality_metrics",
+    "patches": [
+      {
+        "label": "accuracy_rules",
+        "edits": [
+          [
+            "100.0 AS accuracy_score",
+            "(SELECT avg(compliance_percentage) FROM (-- Business rules validation\n    select \n        'transaction_id_uniqueness' as rule_name,\n        count(*) as total_transactions,\n        count(*) - count(distinct transaction_id) as rule_violations,\n        case \n            when count(*) > 0 \n            then round((count(distinct transaction_id)::float / count(*)) * 100, 2)\n            else 0 \n        end as compliance_percentage,\n        'Transaction IDs should be unique' as rule_description,\n        current_timestamp as check_timestamp\n    from staging.stg_netsuite2__transactions\n    \n    union all\n    \n    select \n        'customer_id_uniqueness' as rule_name,\n        count(*) as total_customers,\n        count(*) - count(distinct customer_id) as rule_violations,\n        case \n            when count(*) > 0 \n            then round((count(distinct customer_id)::float / count(*)) * 100, 2)\n            else 0 \n        end as compliance_percentage,\n        'Customer IDs should be unique' as rule_description,\n        current_timestamp as check_timestamp\n    from staging.stg_netsuite2__customers\n    \n    union all\n    \n    select \n        'future_transaction_dates' as rule_name,\n        count(*) as total_transactions,\n        count(case when transaction_date > current_date + interval '1 day' then 1 end) as rule_violations,\n        case \n            when count(*) > 0 \n            then round((count(case when transaction_date <= current_date + interval '1 day' then 1 end)::float / count(*)) * 100, 2)\n            else 0 \n        end as compliance_percentage,\n        'Transaction dates should not be more than 1 day in the future' as rule_description,\n        current_timestamp as check_timestamp\n    from staging.stg_netsuite2__transactions\n    \n    union all\n    \n    select \n        'balanced_journal_entries' as rule_name,\n        count(distinct transaction_id) as total_transactions,\n        count(distinct case when abs(total_amount) > 0.01 then transaction_id end) as rule_violations,\n        case \n            when count(distinct transaction_id) > 0 \n            then round((count(distinct case when abs(total_amount) <= 0.01 then transaction_id end)::float / count(distinct transaction_id)) * 100, 2)\n            else 0 \n        end as compliance_percentage,\n        'Transaction lines should balance to zero for each transaction' as rule_description,\n        current_timestamp as check_timestamp\n    from (\n        select \n            transaction_id,\n            sum(netamount) as total_amount\n        from staging.stg_netsuite2__transaction_lines\n        group by transaction_id\n    ) balanced_check) rules) AS accuracy_score"
+          ]
+        ],
+        "category": "D",
+        "reason": "agent用100常数占位四条规则合规率，并在报告披露未完整验证。"
+      },
+      {
+        "label": "customer_counts",
+        "edits": [
+          [
+            "ELSE 'Date Range: ' || null_dates || ' to ' || null_entities",
+            "ELSE 'Date Range: ' || (SELECT count(DISTINCT company_name) FROM staging.stg_netsuite2__customers) || ' to ' || (SELECT count(DISTINCT email_address) FROM staging.stg_netsuite2__customers)"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约客户Date Range是distinct names/emails，不是缺失数。"
+      },
+      {
+        "label": "table_label",
+        "edits": [
+          [
+            "table_name::VARCHAR AS quality_grade",
+            "CASE table_name WHEN 'Transactions' THEN 'staging.stg_netsuite2__transactions' WHEN 'Transaction lines' THEN 'staging.stg_netsuite2__transaction_lines' ELSE 'staging.stg_netsuite2__customers' END::VARCHAR AS quality_grade"
+          ],
+          [
+            "md5(table_name || cast(current_timestamp AS VARCHAR))",
+            "md5((CASE table_name WHEN 'Transactions' THEN 'staging.stg_netsuite2__transactions' WHEN 'Transaction lines' THEN 'staging.stg_netsuite2__transaction_lines' ELSE 'staging.stg_netsuite2__customers' END) || cast(current_timestamp AS VARCHAR))"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未固定table_name字符串；agent简写、gold全限定名，使3个Table Statistics键及标签不同。"
+      }
+    ]
+  },
+  {
+    "index": 10,
+    "task": "impl-013",
+    "layer": "intermediate",
+    "table": "int_netsuite2__financial_ratios",
+    "patches": [
+      {
+        "label": "zero_total_current_assets",
+        "edits": [
+          [
+            "sum(period_balance) FILTER(WHERE account_type_name IN ('Bank','AcctRec','UnbilledRec','OthCurrAsset')) total_current_assets",
+            "coalesce(sum(period_balance) FILTER(WHERE account_type_name IN ('Bank','AcctRec','UnbilledRec','OthCurrAsset')),0) total_current_assets"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约按类别SUM CASE ELSE 0；FILTER无匹配得到NULL。"
+      },
+      {
+        "label": "zero_total_current_liabilities",
+        "edits": [
+          [
+            "sum(abs(period_balance)) FILTER(WHERE account_type_name IN ('AcctPay','CredCard','OthCurrLiab')) total_current_liabilities",
+            "coalesce(sum(abs(period_balance)) FILTER(WHERE account_type_name IN ('AcctPay','CredCard','OthCurrLiab')),0) total_current_liabilities"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约按类别SUM CASE ELSE 0；FILTER无匹配得到NULL。"
+      },
+      {
+        "label": "zero_cash_and_equivalents",
+        "edits": [
+          [
+            "sum(period_balance) FILTER(WHERE account_type_name='Bank') cash_and_equivalents",
+            "coalesce(sum(period_balance) FILTER(WHERE account_type_name='Bank'),0) cash_and_equivalents"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约按类别SUM CASE ELSE 0；FILTER无匹配得到NULL。"
+      },
+      {
+        "label": "zero_accounts_receivable",
+        "edits": [
+          [
+            "sum(period_balance) FILTER(WHERE account_type_name IN ('AcctRec','UnbilledRec')) accounts_receivable",
+            "coalesce(sum(period_balance) FILTER(WHERE account_type_name IN ('AcctRec','UnbilledRec')),0) accounts_receivable"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约按类别SUM CASE ELSE 0；FILTER无匹配得到NULL。"
+      },
+      {
+        "label": "zero_total_equity",
+        "edits": [
+          [
+            "sum(period_balance) FILTER(WHERE account_type_name IN ('Equity','Retained Earnings','Net Income')) total_equity",
+            "coalesce(sum(period_balance) FILTER(WHERE account_type_name IN ('Equity','Retained Earnings','Net Income')),0) total_equity"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约按类别SUM CASE ELSE 0；FILTER无匹配得到NULL。"
+      }
+    ]
+  },
+  {
+    "index": 11,
+    "task": "impl-013",
+    "layer": "intermediate",
+    "table": "int_netsuite2__income_statement",
+    "patches": [
+      {
+        "label": "subsidiary_source",
+        "edits": [
+          [
+            "a.account_number, t.subsidiary_id,",
+            "a.account_number, s.subsidiary_id,"
+          ]
+        ],
+        "category": "A",
+        "reason": "subsidiary_id契约只说明关联交易的subsidiary标识，未定驱动外键或维表匹配键；维表对应缺失，gold NULL、agent保留外键。"
+      }
+    ]
+  },
+  {
+    "index": 12,
+    "task": "impl-013",
+    "layer": "intermediate",
+    "table": "int_netsuite2__supplier_credit_monitoring",
+    "patches": [
+      {
+        "label": "payment_zero",
+        "edits": [
+          [
+            "coalesce(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name='Bank'),0)/nullif(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name IN ('AcctPay','Accounts Payable')),0)",
+            "coalesce(coalesce(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name='Bank'),0)/nullif(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name IN ('AcctPay','Accounts Payable')),0),0)"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约分母无应付时payment_ratio=0，agent返回NULL。"
+      },
+      {
+        "label": "vendor_activity",
+        "edits": [
+          [
+            "'Inactive' vendor_activity_status",
+            "CASE WHEN date_diff('day',last_transaction_date,current_date)<=30 THEN 'Active' WHEN date_diff('day',last_transaction_date,current_date)<=90 THEN 'Recent' WHEN date_diff('day',last_transaction_date,current_date)<=180 THEN 'Dormant' ELSE 'Inactive' END vendor_activity_status"
+          ]
+        ],
+        "category": "D",
+        "reason": "agent用Inactive常数替代契约活动分档。"
+      }
+    ]
+  },
+  {
+    "index": 13,
+    "task": "impl-013",
+    "layer": "intermediate",
+    "table": "int_netsuite__transaction_and_reporting_periods",
+    "patches": [
+      {
+        "label": "parse_period",
+        "edits": [
+          [
+            "try_cast(m.starting_at AS TIMESTAMP)",
+            "strptime(substr(m.starting_at,1,19), '%Y-%m-%d %H:%M:%S')"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约明确截到秒解析；直接TRY_CAST带偏移字符串失败。"
+      }
+    ]
+  },
+  {
+    "index": 14,
+    "task": "impl-013",
+    "layer": "marts",
+    "table": "netsuite2_customer_analytics",
+    "patches": [
+      {
+        "label": "second_join",
+        "edits": [
+          [
+            "FROM enriched)",
+            "FROM enriched e LEFT JOIN (SELECT customer_id AS b_id FROM behavior) b ON e.customer_id=b.b_id)"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约customer_insights再LEFT JOIN behavior；agent遗漏导致少44行。"
+      },
+      {
+        "label": "frequency_zero",
+        "edits": [
+          [
+            "total_transactions/nullif(customer_lifespan_days/30.0,0) avg_transactions_per_month",
+            "coalesce(total_transactions/nullif(customer_lifespan_days/30.0,0),0) avg_transactions_per_month"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约lifespan=0时频率为0，agent NULL。"
+      },
+      {
+        "label": "retention_labels",
+        "edits": [
+          [
+            "CASE WHEN customer_lifespan_days>=365 THEN 'Long-term' WHEN customer_lifespan_days>=180 THEN 'Medium-term' WHEN customer_lifespan_days>=90 THEN 'Short-term' WHEN customer_lifespan_days>=30 THEN 'New' ELSE 'Very New' END retention_category",
+            "CASE WHEN customer_lifespan_days>=365 THEN 'Long-term (1+ Years)' WHEN customer_lifespan_days>=180 THEN 'Medium-term (6-12 Months)' WHEN customer_lifespan_days>=90 THEN 'Short-term (3-6 Months)' WHEN customer_lifespan_days>=30 THEN 'New Customer (1-3 Months)' ELSE 'Very New (<1 Month)' END retention_category"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约明确简短标签，gold输出带括号标签。"
+      },
+      {
+        "label": "score_weights",
+        "edits": [
+          [
+            "least(100,revenue_score*10+frequency_score*5+margin_score*5+CASE WHEN activity_status='Highly Active' THEN 15 WHEN activity_status='Active' THEN 10 ELSE 0 END+retention_probability*20)::INTEGER comprehensive_customer_score",
+            "least(100,revenue_score*20+frequency_score*15+margin_score*20+CASE WHEN activity_status='Highly Active' THEN 25 WHEN activity_status='Active' THEN 20 WHEN activity_status='At Risk' THEN 10 WHEN activity_status='Dormant' THEN 5 ELSE 0 END+CASE WHEN retention_category='Long-term' THEN 20 WHEN retention_category='Medium-term' THEN 15 WHEN retention_category='Short-term' THEN 10 WHEN retention_category='New' THEN 5 ELSE 0 END)::INTEGER comprehensive_customer_score"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未给weighted sum的权重及bonus具体数字。"
+      }
+    ]
+  },
+  {
+    "index": 15,
+    "task": "impl-013",
+    "layer": "marts",
+    "table": "netsuite2_financial_dashboard",
+    "patches": [
+      {
+        "label": "volatility",
+        "edits": [
+          [
+            "overall_financial_health_score*0 financial_health_volatility",
+            "stddev_samp(overall_financial_health_score) OVER(PARTITION BY subsidiary_id) financial_health_volatility"
+          ]
+        ],
+        "category": "D",
+        "reason": "波动率以乘0占位，单观测sample stddev应为NULL。"
+      }
+    ]
+  },
+  {
+    "index": 16,
+    "task": "impl-013",
+    "layer": "marts",
+    "table": "netsuite2_operational_metrics",
+    "patches": [
+      {
+        "label": "zero_department_revenue",
+        "edits": [
+          [
+            "sum(t.converted_amount) FILTER(WHERE t.account_type_name='Income') department_revenue",
+            "coalesce(sum(t.converted_amount) FILTER(WHERE t.account_type_name='Income'),0) department_revenue"
+          ]
+        ],
+        "category": "C",
+        "reason": "类别无匹配时SUM FILTER产生NULL；契约聚合为0。"
+      },
+      {
+        "label": "zero_department_cogs",
+        "edits": [
+          [
+            "sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name='COGS') department_cogs",
+            "coalesce(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name='COGS'),0) department_cogs"
+          ]
+        ],
+        "category": "C",
+        "reason": "类别无匹配时SUM FILTER产生NULL；契约聚合为0。"
+      },
+      {
+        "label": "zero_department_expenses",
+        "edits": [
+          [
+            "sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name='Expense') department_expenses",
+            "coalesce(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name='Expense'),0) department_expenses"
+          ]
+        ],
+        "category": "C",
+        "reason": "类别无匹配时SUM FILTER产生NULL；契约聚合为0。"
+      },
+      {
+        "label": "class_group",
+        "edits": [
+          [
+            "date_trunc('month',t.accounting_period_ending)::DATE performance_month",
+            "l.class_id,date_trunc('month',t.accounting_period_ending)::DATE performance_month"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约内部按class_id分组，agent遗漏。"
+      },
+      {
+        "label": "zero_gross_margin_percentage",
+        "edits": [
+          [
+            "(coalesce(department_revenue,0)-coalesce(department_cogs,0))/nullif(department_revenue,0) gross_margin_percentage",
+            "coalesce((coalesce(department_revenue,0)-coalesce(department_cogs,0))/nullif(department_revenue,0),0) gross_margin_percentage"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约revenue非正时margin为0，agent NULL。"
+      },
+      {
+        "label": "zero_net_margin_percentage",
+        "edits": [
+          [
+            "(coalesce(department_revenue,0)-coalesce(department_cogs,0)-coalesce(department_expenses,0))/nullif(department_revenue,0) net_margin_percentage",
+            "coalesce((coalesce(department_revenue,0)-coalesce(department_cogs,0)-coalesce(department_expenses,0))/nullif(department_revenue,0),0) net_margin_percentage"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约revenue非正时margin为0，agent NULL。"
+      }
+    ]
+  },
+  {
+    "index": 17,
+    "task": "impl-013",
+    "layer": "marts",
+    "table": "netsuite2_transaction_details_original",
+    "patches": [
+      {
+        "label": "required_join",
+        "edits": [
+          [
+            "SELECT * FROM intermediate.int_netsuite2__transaction_details",
+            "SELECT d.* FROM intermediate.int_netsuite2__transaction_details d JOIN staging.stg_netsuite2__subsidiaries s ON s.subsidiary_id=d.subsidiary_id"
+          ]
+        ],
+        "category": "D",
+        "reason": "整张替换成另一表并省掉契约inner subsidiaries连接。仅补该连接，非全表gold替换。"
+      }
+    ]
+  },
+  {
+    "index": 18,
+    "task": "impl-013",
+    "layer": "marts",
+    "table": "netsuite2_vendor_risk_analysis",
+    "patches": [
+      {
+        "label": "contract_recommendation",
+        "edits": [
+          [
+            "'Standard purchase agreement' contract_recommendation",
+            "CASE WHEN supplier_tier='Strategic Partner' THEN 'Long-term strategic contract with SLA' WHEN supplier_tier='Key Supplier' THEN 'Multi-year contract with performance metrics' WHEN supplier_tier='Important Supplier' THEN 'Annual contract with review clause' ELSE 'Standard purchase agreement' END contract_recommendation"
+          ]
+        ],
+        "category": "D",
+        "reason": "合同建议直接固定为Standard purchase agreement而非契约分档。"
+      }
+    ]
+  },
+  {
+    "index": 19,
+    "task": "impl-013",
+    "layer": "staging",
+    "table": "stg_netsuite2__account_types",
+    "patches": [
+      {
+        "label": "type_key",
+        "edits": [
+          [
+            "TRY_CAST(r.\"internalid\" AS BIGINT)",
+            "row_number() OVER (ORDER BY r.\"longname\")"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未给account_type_id生成规则；internalid与按名称row_number两种标识。"
+      }
+    ]
+  },
+  {
+    "index": 20,
+    "task": "impl-013",
+    "layer": "staging",
+    "table": "stg_netsuite2__accounts",
+    "patches": [
+      {
+        "label": "derive_is_leftside",
+        "edits": [
+          [
+            "CAST(NULL AS BOOLEAN) AS is_leftside",
+            "lower(r.accttype) IN ('bank','acctrec','fixedasset','othasset','equity') AS is_leftside"
+          ]
+        ],
+        "category": "A",
+        "reason": "raw无对应布尔列；契约未说明派生映射，gold根据accttype派生。"
+      },
+      {
+        "label": "derive_is_balancesheet",
+        "edits": [
+          [
+            "CAST(NULL AS BOOLEAN) AS is_balancesheet",
+            "lower(r.accttype) IN ('bank','acctrec','fixedasset','othasset','acctpay','credcard','othcurrliab','longtermliab','equity') AS is_balancesheet"
+          ]
+        ],
+        "category": "A",
+        "reason": "raw无对应布尔列；契约未说明派生映射，gold根据accttype派生。"
+      }
+    ]
+  },
+  {
+    "index": 21,
+    "task": "impl-013",
+    "layer": "staging",
+    "table": "stg_netsuite2__classes",
+    "patches": [
+      {
+        "label": "placeholder_mapping",
+        "edits": [
+          [
+            "CAST(NULL AS VARCHAR) AS class_id",
+            "id AS class_id"
+          ],
+          [
+            "CAST(NULL AS VARCHAR) AS class_external_id",
+            "externalid AS class_external_id"
+          ],
+          [
+            "CAST(NULL AS VARCHAR) AS name",
+            "name AS name"
+          ],
+          [
+            "CAST(NULL AS VARCHAR) AS full_name",
+            "fullname AS full_name"
+          ],
+          [
+            "CAST(NULL AS BOOLEAN) AS is_inactive",
+            "isinactive = 'T' AS is_inactive"
+          ]
+        ],
+        "category": "I",
+        "reason": "event15生成器已写出正确列映射，因契约旧源名取不到raw schema而填NULL；event25只修FROM，忘记重生投影。明确实现意图与最终SQL不一致。"
+      }
+    ]
+  },
+  {
+    "index": 22,
+    "task": "impl-013",
+    "layer": "staging",
+    "table": "stg_netsuite2__consolidated_exchange_rates",
+    "patches": [
+      {
+        "label": "placeholder_mapping",
+        "edits": [
+          [
+            "CAST(NULL AS VARCHAR) AS consolidated_exchange_rate_id",
+            "id AS consolidated_exchange_rate_id"
+          ],
+          [
+            "CAST(NULL AS VARCHAR) AS accounting_period_id",
+            "postingperiod AS accounting_period_id"
+          ],
+          [
+            "CAST(NULL AS VARCHAR) AS from_currency_id",
+            "fromcurrency AS from_currency_id"
+          ],
+          [
+            "CAST(NULL AS VARCHAR) AS from_subsidiary_id",
+            "fromsubsidiary AS from_subsidiary_id"
+          ],
+          [
+            "CAST(NULL AS VARCHAR) AS to_currency_id",
+            "tocurrency AS to_currency_id"
+          ],
+          [
+            "CAST(NULL AS VARCHAR) AS to_subsidiary_id",
+            "tosubsidiary AS to_subsidiary_id"
+          ],
+          [
+            "CAST(NULL AS VARCHAR) AS accounting_book_id",
+            "accountingbook AS accounting_book_id"
+          ],
+          [
+            "CAST(NULL AS BOOLEAN) AS current_rate",
+            "coalesce(try_cast(currentrate as double),0) <> 0 AS current_rate"
+          ],
+          [
+            "CAST(NULL AS BOOLEAN) AS average_rate",
+            "coalesce(try_cast(averagerate as double),0) <> 0 AS average_rate"
+          ],
+          [
+            "CAST(NULL AS BOOLEAN) AS historical_rate",
+            "coalesce(try_cast(historicalrate as double),0) <> 0 AS historical_rate"
+          ]
+        ],
+        "category": "I",
+        "reason": "event15生成器已写出正确列映射，因契约旧源名取不到raw schema而填NULL；event25只修FROM，忘记重生投影。明确实现意图与最终SQL不一致。"
+      }
+    ]
+  },
+  {
+    "index": 23,
+    "task": "impl-013",
+    "layer": "staging",
+    "table": "stg_netsuite2__customers",
+    "patches": [
+      {
+        "label": "email_order",
+        "edits": [
+          [
+            "regexp_full_match(trim(source_email),",
+            "regexp_full_match(source_email,"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约列出的验证在清洗之前；agent先trim再验证保留空白邮箱。"
+      },
+      {
+        "label": "loose_email",
+        "edits": [
+          [
+            "regexp_full_match(trim(source_email), '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}$')",
+            "strpos(source_email,'@')>1 AND strpos(source_email,'.')>strpos(source_email,'@')"
+          ]
+        ],
+        "category": "O",
+        "reason": "gold弱校验保留two@@signs.com和missing@.com；契约正则排除，agent照做。"
+      }
+    ]
+  },
+  {
+    "index": 24,
+    "task": "impl-013",
+    "layer": "staging",
+    "table": "stg_netsuite2__entities",
+    "patches": [
+      {
+        "label": "placeholder_mapping",
+        "edits": [
+          [
+            "CAST(NULL AS VARCHAR) AS entity_id",
+            "id AS entity_id"
+          ],
+          [
+            "CAST(NULL AS VARCHAR) AS parent_id",
+            "parent AS parent_id"
+          ],
+          [
+            "CAST(NULL AS VARCHAR) AS entity_name",
+            "entitytitle AS entity_name"
+          ],
+          [
+            "CAST(NULL AS VARCHAR) AS entity_type",
+            "type AS entity_type"
+          ],
+          [
+            "CAST(NULL AS BOOLEAN) AS is_person",
+            "isperson = 'T' AS is_person"
+          ],
+          [
+            "CAST(NULL AS DOUBLE) AS contact_id",
+            "try_cast(contact as double) AS contact_id"
+          ],
+          [
+            "CAST(NULL AS VARCHAR) AS customer_id",
+            "cast(customer as varchar) AS customer_id"
+          ],
+          [
+            "CAST(NULL AS DOUBLE) AS employee_id",
+            "try_cast(employee as double) AS employee_id"
+          ],
+          [
+            "CAST(NULL AS DOUBLE) AS job_id",
+            "try_cast(project as double) AS job_id"
+          ],
+          [
+            "CAST(NULL AS DOUBLE) AS vendor_id",
+            "try_cast(vendor as double) AS vendor_id"
+          ]
+        ],
+        "category": "I",
+        "reason": "event15生成器已写出正确列映射，因契约旧源名取不到raw schema而填NULL；event25只修FROM，忘记重生投影。明确实现意图与最终SQL不一致。"
+      }
+    ]
+  },
+  {
+    "index": 25,
+    "task": "impl-014",
+    "layer": "marts",
+    "table": "qualtrics__user_cohort_analysis",
+    "patches": [
+      {
+        "label": "parse_timestamp",
+        "edits": [
+          [
+            "try_strptime(recorded_date, '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP",
+            "try_cast(recorded_date AS TIMESTAMP)"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约按实际首次响应月份聚合，gold解析失败合到NULL月份。"
+      },
+      {
+        "label": "keep_null_dates",
+        "edits": [
+          [
+            "    WHERE recorded_at IS NOT NULL\n",
+            ""
+          ]
+        ],
+        "category": "C",
+        "reason": "契约仅筛recorded_date非空，agent增加解析成功过滤；单改需检验是否原因。"
+      }
+    ]
+  },
+  {
+    "index": 26,
+    "task": "impl-014",
+    "layer": "staging",
+    "table": "stg_qualtrics__block_question",
+    "patches": [
+      {
+        "label": "preserve_duplicates",
+        "edits": [
+          [
+            "    QUALIFY row_number() OVER (PARTITION BY block_id, question_id ORDER BY block_id, question_id) = 1",
+            ""
+          ]
+        ],
+        "category": "O",
+        "reason": "契约primary_key/unique；gold未去重。"
+      }
+    ]
+  },
+  {
+    "index": 27,
+    "task": "impl-014",
+    "layer": "staging",
+    "table": "stg_qualtrics__contact_mailing_list_membership",
+    "patches": [
+      {
+        "label": "preserve_duplicates",
+        "edits": [
+          [
+            "    QUALIFY row_number() OVER (PARTITION BY contact_id, mailing_list_id ORDER BY contact_id, mailing_list_id) = 1",
+            ""
+          ]
+        ],
+        "category": "O",
+        "reason": "契约primary_key/unique；gold未去重。"
+      },
+      {
+        "label": "timestamp_unsubscribed_at",
+        "edits": [
+          [
+            "try_strptime(cast(src.\"unsubscribe_date\" AS VARCHAR), '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP AS unsubscribed_at",
+            "try_cast(src.\"unsubscribe_date\" AS TIMESTAMP) AS unsubscribed_at"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约仅给TIMESTAMP类型，未规定offset字符串解析表达式；gold TRY_CAST全部NULL。"
+      }
+    ]
+  },
+  {
+    "index": 28,
+    "task": "impl-014",
+    "layer": "staging",
+    "table": "stg_qualtrics__core_contact",
+    "patches": [
+      {
+        "label": "preserve_duplicates",
+        "edits": [
+          [
+            "    QUALIFY row_number() OVER (PARTITION BY contact_id ORDER BY contact_id) = 1",
+            ""
+          ]
+        ],
+        "category": "O",
+        "reason": "契约primary_key/unique；gold未去重。"
+      }
+    ]
+  },
+  {
+    "index": 29,
+    "task": "impl-014",
+    "layer": "staging",
+    "table": "stg_qualtrics__directory_mailing_list",
+    "patches": [
+      {
+        "label": "preserve_duplicates",
+        "edits": [
+          [
+            "    QUALIFY row_number() OVER (PARTITION BY mailing_list_id ORDER BY mailing_list_id) = 1",
+            ""
+          ]
+        ],
+        "category": "O",
+        "reason": "契约primary_key/unique；gold未去重。"
+      },
+      {
+        "label": "timestamp_created_at",
+        "edits": [
+          [
+            "try_strptime(cast(src.\"creation_date\" AS VARCHAR), '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP AS created_at",
+            "try_cast(src.\"creation_date\" AS TIMESTAMP) AS created_at"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约仅给TIMESTAMP类型，未规定offset字符串解析表达式；gold TRY_CAST全部NULL。"
+      },
+      {
+        "label": "timestamp_last_modified_at",
+        "edits": [
+          [
+            "try_strptime(cast(src.\"last_modified_date\" AS VARCHAR), '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP AS last_modified_at",
+            "try_cast(src.\"last_modified_date\" AS TIMESTAMP) AS last_modified_at"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约仅给TIMESTAMP类型，未规定offset字符串解析表达式；gold TRY_CAST全部NULL。"
+      }
+    ]
+  },
+  {
+    "index": 30,
+    "task": "impl-014",
+    "layer": "staging",
+    "table": "stg_qualtrics__distribution",
+    "patches": [
+      {
+        "label": "preserve_duplicates",
+        "edits": [
+          [
+            "    QUALIFY row_number() OVER (PARTITION BY distribution_id ORDER BY distribution_id) = 1",
+            ""
+          ]
+        ],
+        "category": "O",
+        "reason": "契约primary_key/unique；gold未去重。"
+      },
+      {
+        "label": "timestamp_created_at",
+        "edits": [
+          [
+            "try_strptime(cast(src.\"created_date\" AS VARCHAR), '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP AS created_at",
+            "try_cast(src.\"created_date\" AS TIMESTAMP) AS created_at"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约仅给TIMESTAMP类型，未规定offset字符串解析表达式；gold TRY_CAST全部NULL。"
+      },
+      {
+        "label": "timestamp_last_modified_at",
+        "edits": [
+          [
+            "try_strptime(cast(src.\"modified_date\" AS VARCHAR), '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP AS last_modified_at",
+            "try_cast(src.\"modified_date\" AS TIMESTAMP) AS last_modified_at"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约仅给TIMESTAMP类型，未规定offset字符串解析表达式；gold TRY_CAST全部NULL。"
+      },
+      {
+        "label": "timestamp_send_at",
+        "edits": [
+          [
+            "try_strptime(cast(src.\"send_date\" AS VARCHAR), '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP AS send_at",
+            "try_cast(src.\"send_date\" AS TIMESTAMP) AS send_at"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约仅给TIMESTAMP类型，未规定offset字符串解析表达式；gold TRY_CAST全部NULL。"
+      },
+      {
+        "label": "timestamp_survey_link_expires_at",
+        "edits": [
+          [
+            "try_strptime(cast(src.\"survey_link_expiration_date\" AS VARCHAR), '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP AS survey_link_expires_at",
+            "try_cast(src.\"survey_link_expiration_date\" AS TIMESTAMP) AS survey_link_expires_at"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约仅给TIMESTAMP类型，未规定offset字符串解析表达式；gold TRY_CAST全部NULL。"
+      }
+    ]
+  },
+  {
+    "index": 31,
+    "task": "impl-014",
+    "layer": "staging",
+    "table": "stg_qualtrics__distribution_contact",
+    "patches": [
+      {
+        "label": "preserve_duplicates",
+        "edits": [
+          [
+            "    QUALIFY row_number() OVER (PARTITION BY distribution_id, contact_id ORDER BY distribution_id, contact_id) = 1",
+            ""
+          ]
+        ],
+        "category": "O",
+        "reason": "契约primary_key/unique；gold未去重。"
+      }
+    ]
+  },
+  {
+    "index": 32,
+    "task": "impl-014",
+    "layer": "staging",
+    "table": "stg_qualtrics__question_option",
+    "patches": [
+      {
+        "label": "preserve_duplicates",
+        "edits": [
+          [
+            "    QUALIFY row_number() OVER (PARTITION BY question_id, key ORDER BY question_id, key) = 1",
+            ""
+          ]
+        ],
+        "category": "O",
+        "reason": "契约primary_key/unique；gold未去重。"
+      }
+    ]
+  },
+  {
+    "index": 33,
+    "task": "impl-014",
+    "layer": "staging",
+    "table": "stg_qualtrics__question_response",
+    "patches": [
+      {
+        "label": "preserve_duplicates",
+        "edits": [
+          [
+            "    QUALIFY row_number() OVER (PARTITION BY response_id, question_id ORDER BY response_id, question_id) = 1",
+            ""
+          ]
+        ],
+        "category": "O",
+        "reason": "契约primary_key/unique；gold未去重。"
+      }
+    ]
+  },
+  {
+    "index": 34,
+    "task": "impl-014",
+    "layer": "staging",
+    "table": "stg_qualtrics__sub_question",
+    "patches": [
+      {
+        "label": "preserve_duplicates",
+        "edits": [
+          [
+            "    QUALIFY row_number() OVER (PARTITION BY question_id, key ORDER BY question_id, key) = 1",
+            ""
+          ]
+        ],
+        "category": "O",
+        "reason": "契约primary_key/unique；gold未去重。"
+      }
+    ]
+  },
+  {
+    "index": 35,
+    "task": "impl-014",
+    "layer": "staging",
+    "table": "stg_qualtrics__survey",
+    "patches": [
+      {
+        "label": "preserve_duplicates",
+        "edits": [
+          [
+            "    QUALIFY row_number() OVER (PARTITION BY survey_id ORDER BY survey_id) = 1",
+            ""
+          ]
+        ],
+        "category": "O",
+        "reason": "契约primary_key/unique；gold未去重。"
+      },
+      {
+        "label": "timestamp_last_accessed_at",
+        "edits": [
+          [
+            "try_strptime(cast(src.\"last_accessed\" AS VARCHAR), '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP AS last_accessed_at",
+            "try_cast(src.\"last_accessed\" AS TIMESTAMP) AS last_accessed_at"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约仅给TIMESTAMP类型，未规定offset字符串解析表达式；gold TRY_CAST全部NULL。"
+      },
+      {
+        "label": "timestamp_last_activated_at",
+        "edits": [
+          [
+            "try_strptime(cast(src.\"last_activated\" AS VARCHAR), '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP AS last_activated_at",
+            "try_cast(src.\"last_activated\" AS TIMESTAMP) AS last_activated_at"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约仅给TIMESTAMP类型，未规定offset字符串解析表达式；gold TRY_CAST全部NULL。"
+      },
+      {
+        "label": "timestamp_last_modified_at",
+        "edits": [
+          [
+            "try_strptime(cast(src.\"last_modified\" AS VARCHAR), '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP AS last_modified_at",
+            "try_cast(src.\"last_modified\" AS TIMESTAMP) AS last_modified_at"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约仅给TIMESTAMP类型，未规定offset字符串解析表达式；gold TRY_CAST全部NULL。"
+      }
+    ]
+  },
+  {
+    "index": 36,
+    "task": "impl-014",
+    "layer": "staging",
+    "table": "stg_qualtrics__survey_embedded_data",
+    "patches": [
+      {
+        "label": "preserve_duplicates",
+        "edits": [
+          [
+            "    QUALIFY row_number() OVER (PARTITION BY response_id, key ORDER BY response_id, key) = 1",
+            ""
+          ]
+        ],
+        "category": "O",
+        "reason": "契约primary_key/unique；gold未去重。"
+      }
+    ]
+  },
+  {
+    "index": 37,
+    "task": "impl-014",
+    "layer": "staging",
+    "table": "stg_qualtrics__user",
+    "patches": [
+      {
+        "label": "preserve_duplicates",
+        "edits": [
+          [
+            "    QUALIFY row_number() OVER (PARTITION BY user_id ORDER BY user_id) = 1",
+            ""
+          ]
+        ],
+        "category": "O",
+        "reason": "契约primary_key/unique；gold未去重。"
+      },
+      {
+        "label": "email_validation_order",
+        "edits": [
+          [
+            "regexp_matches(email, '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$')",
+            "user_id NOT IN (SELECT id FROM raw.user WHERE NOT regexp_full_match(email, '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$'))"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约先LOWER(TRIM)再验证，gold验证原文后trim，排除5个带空白邮箱。"
+      }
+    ]
+  }
+]
