@@ -1,12 +1,10 @@
-> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
-
 # impl-006 / stg_facebook_ads__ad_actions（全量）
 
 ## 结论
 
 主要原因：**D**；把握：高。Facebook action的五个有候选源字段的输出全部占位。
 
-参与因素：无。标记：已披露。
+参与因素：无。标记：已披露（D占位部分）。
 
 ## 差异与归因依据
 
@@ -22,7 +20,7 @@ _1_d_view、_7_d_click、value、inline、index在原始schema中，event19通�
 
 具体差异表达式和替换（未列出的字节保持不变；共同固定时间除外）：
 
-- action_1_d_view：
+- action_1_d_view（agent SQL 第10行起）：
 ```sql
 CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS action_1_d_view
 ```
@@ -31,7 +29,7 @@ CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS action_1_d_view
 CAST(CASE WHEN _1_d_view < 0 THEN 0.0 WHEN _1_d_view IS NULL THEN 0.0 ELSE ROUND(_1_d_view, 2) END AS DECIMAL(18, 2)) AS action_1_d_view
 ```
 
-- action_7_d_click：
+- action_7_d_click（agent SQL 第11行起）：
 ```sql
 CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS action_7_d_click
 ```
@@ -40,7 +38,7 @@ CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS action_7_d_click
 CAST(CASE WHEN _7_d_click < 0 THEN 0.0 WHEN _7_d_click IS NULL THEN 0.0 ELSE ROUND(_7_d_click, 2) END AS DECIMAL(18, 2)) AS action_7_d_click
 ```
 
-- action_value：
+- action_value（agent SQL 第12行起）：
 ```sql
 CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS action_value
 ```
@@ -49,7 +47,7 @@ CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS action_value
 CAST(CASE WHEN value < 0 THEN 0.0 WHEN value IS NULL THEN 0.0 ELSE ROUND(value, 2) END AS DECIMAL(18, 2)) AS action_value
 ```
 
-- inline_value：
+- inline_value（agent SQL 第13行起）：
 ```sql
 CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS inline_value
 ```
@@ -58,7 +56,7 @@ CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS inline_value
 CAST(CASE WHEN inline < 0 THEN 0.0 WHEN inline IS NULL THEN 0.0 ELSE ROUND(inline, 2) END AS DECIMAL(18, 2)) AS inline_value
 ```
 
-- is_index_action：
+- is_index_action（agent SQL 第14行起）：
 ```sql
 CAST(NULL::BOOLEAN AS BOOLEAN) AS is_index_action
 ```
@@ -111,7 +109,7 @@ SELECT count(*) n,count(*) FILTER(WHERE "index" IS NULL) AS c0_null,count(*) FIL
 
 结果：`[[700, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]`
 
-诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=21 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=21 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。
 
 ## 固定时间与重跑
 
@@ -140,6 +138,8 @@ SELECT count(*) n,count(*) FILTER(WHERE "index" IS NULL) AS c0_null,count(*) FIL
 | action_value | {"action_1_d_view": 700, "action_7_d_click": 700, "inline_value": 700, "is_index_action": 700} |
 | inline_value | {"action_1_d_view": 700, "action_7_d_click": 700, "action_value": 700, "is_index_action": 700} |
 | is_index_action | {"action_1_d_view": 700, "action_7_d_click": 700, "action_value": 700, "inline_value": 700} |
+
+本表全部重跑证据文件：`records/020_reruns_impl-006_stg_facebook_ads__ad_actions.json`。续做重跑私有副本在`data/020_resume_work/`。
 
 规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
 

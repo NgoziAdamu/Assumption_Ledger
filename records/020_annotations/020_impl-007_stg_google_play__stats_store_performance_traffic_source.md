@@ -1,5 +1,3 @@
-> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
-
 # impl-007 / stg_google_play__stats_store_performance_traffic_source（全量）
 
 ## 结论
@@ -22,7 +20,7 @@ raw有3条越界率；gold使用acquisitions/visitors而非nullify，违反明�
 
 具体差异表达式和替换（未列出的字节保持不变；共同固定时间除外）：
 
-- gold_ratio_diagnostic：
+- gold_ratio_diagnostic（agent SQL 第12行起）：
 ```sql
 CASE WHEN store_listing_conversion_rate BETWEEN 0 AND 1 THEN store_listing_conversion_rate ELSE NULL END AS store_listing_conversion_rate
 ```
@@ -31,7 +29,7 @@ CASE WHEN store_listing_conversion_rate BETWEEN 0 AND 1 THEN store_listing_conve
 CAST(CASE WHEN store_listing_visitors > 0 THEN CAST(store_listing_acquisitions AS DECIMAL(18, 3)) / CAST(store_listing_visitors AS DECIMAL(18, 3)) WHEN store_listing_visitors IS NULL THEN NULL ELSE 0.0 END AS DECIMAL(10, 4)) AS store_listing_conversion_rate
 ```
 
-- invalid_rate_policy_diagnostic：
+- invalid_rate_policy_diagnostic（agent SQL 第12行起）：
 ```sql
 CASE WHEN store_listing_conversion_rate BETWEEN 0 AND 1 THEN store_listing_conversion_rate ELSE NULL END AS store_listing_conversion_rate
 ```
@@ -40,7 +38,7 @@ CASE WHEN store_listing_conversion_rate BETWEEN 0 AND 1 THEN store_listing_conve
 CASE WHEN store_listing_conversion_rate NOT BETWEEN 0 AND 1 THEN CAST(CASE WHEN store_listing_visitors > 0 THEN CAST(store_listing_acquisitions AS DECIMAL(18, 3)) / CAST(store_listing_visitors AS DECIMAL(18, 3)) WHEN store_listing_visitors IS NULL THEN NULL ELSE 0.0 END AS DECIMAL(10, 4)) ELSE store_listing_conversion_rate END AS store_listing_conversion_rate
 ```
 
-- valid_rate_formula_choice：
+- valid_rate_formula_choice（agent SQL 第12行起）：
 ```sql
 CASE WHEN store_listing_conversion_rate BETWEEN 0 AND 1 THEN store_listing_conversion_rate ELSE NULL END AS store_listing_conversion_rate
 ```
@@ -95,7 +93,7 @@ SELECT count(*) n,count(*) FILTER(WHERE store_listing_conversion_rate NOT BETWEE
 
 结果：`[[700, 3, 0, 4]]`
 
-诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=42 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=42 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。
 
 ## 固定时间与重跑
 
@@ -120,6 +118,8 @@ SELECT count(*) n,count(*) FILTER(WHERE store_listing_conversion_rate NOT BETWEE
 | gold_ratio_diagnostic | {} |
 | invalid_rate_policy_diagnostic | {"store_listing_conversion_rate": 1} |
 | valid_rate_formula_choice | {"store_listing_conversion_rate": 3} |
+
+本表全部重跑证据文件：`records/020_reruns_impl-007_stg_google_play__stats_store_performance_traffic_source.json`。续做重跑私有副本在`data/020_resume_work/`。
 
 规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
 

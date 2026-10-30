@@ -65,16 +65,28 @@ RULES={
 for i in [0,3,4,5,6,7,9,12]:RULES[i]='此表缺失的是整段聚合/分析实现，原SQL由同一个fallback生成块代替。两种读法：按每个输出列拆成多个错误点；或按整体降级/缺失聚合这一块记录。本次按后一种记录。完整gold实现替换只作诊断，不声称它是满足U第4条件的局部修复；类别依据契约和轨迹直接证据。无法从整段替换推定各未实现子计算的相对贡献。'
 for i in [14,10,11]:RULES[i]=RULES.get(i,'')+' 评测键并不唯一，v2未指定重复键残余行如何配对；沿用已验证脚本：先抵消相同行，再在同键内按整行字典序配对。格子数会包含配对变化，主因排序是此固定口径下的结果；没有把单列边际差异直接当整表格子规模。'
 
+from review_metadata_dacomp020 import apply_review, item_tier, OVERWRITE_INDICES
+apply_review(M, CAT, RULES)
+
 def mdtable(head,data):
  def e(s):return str(s).replace('|','\\|').replace('\n','<br>')
  return '\n'.join(['| '+' | '.join(head)+' |','|'+'|'.join(['---']*len(head))+'|']+['| '+' | '.join(e(v) for v in r)+' |' for r in data])+'\n'
-def rr(i):return json.loads((REC/f'020_reruns_{rows[i]["task"]}_{rows[i]["table"]}.json').read_text())
+def rr(i):
+ basepath=REC/f'020_reruns_{rows[i]["task"]}_{rows[i]["table"]}.json'
+ result=json.loads(basepath.read_text());result['evidence_files']=[str(basepath.relative_to(ROOT))]
+ extra=REC/f'020_resume_reruns_{rows[i]["task"]}_{rows[i]["table"]}.json'
+ if extra.exists():
+  newer=json.loads(extra.read_text())
+  assert result['runs'][0]['comparison']['levels']==newer['runs'][0]['comparison']['levels']
+  result['runs'].extend(newer['runs'][1:]);result['evidence_files'].append(str(extra.relative_to(ROOT)))
+ return result
 def category(i,label):
  if label in CAT.get(i,{}):return CAT[i][label]
  if i in [32,33,34,41]:return {32:'A',33:'O',34:'O',41:'O'}[i]
  if i in [37,38,40]:return 'A'
  return 'D'
 def valid(i,label):
+ if i in OVERWRITE_INDICES and label in ['spend','campaign_id']:return False
  if i==13 and 'gold_diagnostic' in label:return False
  if i==30 and label!='advertiser_id':return False
  if i==32:return False
@@ -97,16 +109,19 @@ def main():
    positive=[x for x in ranks if x[0]>(0,0)];best=max([x[0] for x in positive],default=(0,0));leaders=[x for x in positive if x[0]==best];participants=[x for x in positive if x[0]<best]
    tied='；'.join(x[1]+'='+x[2] for x in leaders) if len(leaders)>1 else '不适用'
    factors='；'.join(x[2]+'：'+x[1]+f'（减{x[0][0]}行/{x[0][1]}格）' for x in participants) or '无'
-   flags='已披露' if (maincat=='D' or any(x[2]=='D' for x in leaders)) and tier in [1,2] else '无'
+   flags='已披露（D占位部分）' if any(x[2]=='D' for x in leaders+participants) else '无'
    conf='中' if i in [0,2,3,4,5,6,7,9,12,14,24,28,32,36,37,38,39,40] else '高'
    rules=RULES.get(i,'无。');um='不适用：主要原因不是U；完整实现诊断不当作U局部修复。'
    if maincat=='多因并列':maincat='多因并列（'+ '、'.join(sorted(set(x[2] for x in leaders)))+'）'
-   uncertainty='；'.join(x[1]+'='+T[tier-1] for x in leaders) if maincat.startswith('多因') else T[tier-1]
+   item_tiers=[{'label':x[1], 'category':x[2], 'tier':item_tier(i,x[1],tier)} for x in leaders] or [{'label':'主要原因', 'category':maincat, 'tier':tier}]
+   uncertainty='；'.join(x['label']+'='+T[x['tier']-1] for x in item_tiers) if maincat.startswith('多因') else T[tier-1]
   else:
+   item_tiers=[]
    x=blind[i-43];maincat=x['main']+('（C、A）' if i==43 else '');short=x['reason'];reason=x['reason'];conf=x['confidence'];tier=2;uq=x['evidence'];uncertainty=x['uncertainty'];flags='无';qcount=1;q=[z for z in json.loads((REC/'020_calibration_queries.json').read_text()) if z['task']==r['task']]
    tied='url=C；key=A' if i==43 else '不适用';factors='U：latitude（单修减少13655格，行数不变）' if i==43 else '无：两个电话字段在盲标中作为同一预修复策略，另保留逐列测试。'
    um='latitude不满足独立主因的一半门槛，但满足U前三项和参与因素减少格子数要求。' if i==43 else '不适用：C；整项电话策略改动L0匹配。'
    rules=x['rule_issue']
+   uq+=' 原句：'+('event59：The work includes staging raw-field mapping, timestamp parsing, event-key generation, filtering and nullification; latest-record models; daily aggregates and calendar spines; and mart entities.' if i==43 else 'event41：依契约的清理策略处理非法日期、枚举、电话和字段值；需要丢弃的记录按整行过滤，非关键字段则置为 NULL。')
    if i==43:rules+=' 不确定性盲标把event59的event-key generation泛述计为通用策略；018只对URL采用通用策略、对key计“看到了但没提”。保留盲标，不在对照后改写；此处通用“工作内容”是否足以算“策略说明”存在边界，018的更窄读法亦有依据。'
    else:rules+=' 盲标按同一电话预修复策略归一项，018按两列独立排序并将user列记参与因素；盲标保留，单列试验显示contact减10行，user减9行。'
   scales=[];percols=[];patchtext=[]
@@ -118,10 +133,15 @@ def main():
     if 'whole_implementation' in run['label'] or run['label'] in ['gold_sql_diagnostic','gold_positional_union_diagnostic','gold_rating_policy_diagnostic']:
      patchtext.append('- '+run['label']+'：替换指定完整实现块（诊断）；old/new完整字节见重跑JSON，私有SQL `'+run['sql_path']+'`。')
     else:
-     for edit in run['edits']:patchtext.append('- '+run['label']+'：\n```sql\n'+edit['old']+'\n```\n→\n```sql\n'+edit['new']+'\n```')
+     for edit in run['edits']:
+      original=d['agent_final_SQL'][0]['text'];line=original[:edit['offset']].count('\n')+1
+      # Clock replacement can change byte offsets, but preserves line counts.
+      baseline_path=Path(run['sql_path']).parent/'baseline.sql'
+      if baseline_path.exists():line=baseline_path.read_text()[:edit['offset']].count('\n')+1
+      patchtext.append('- '+run['label']+'（agent SQL 第'+str(line)+'行起）：\n```sql\n'+edit['old']+'\n```\n→\n```sql\n'+edit['new']+'\n```')
   change='；'.join(f"{z['label']}:{base[1]}→{z['comparison']['levels'][0]['cell_scale']}" for z in runs['runs'][1:] if 'comparison'in z)
   summary={k:'' for k in fields};summary.update({'题目':r['task'],'表':r['table'],'一句话描述':short,'主要原因类别':maincat,'参与因素':factors,'标记':flags,'把握':conf,'核实查询条数':str(qcount),'核实代价档':('需要查业务说明' if i in [2,24,36,37,38,39,40] else '一条查询' if qcount==1 else '多条查询' if qcount>1 else '判断不了'),'重跑是否满足 U 的第 4 个条件':um,'格子数口径规模变化':change,'与 014 相比是否变化':'不适用：020独立全量' if i<43 else '校准：独立盲标；与018对照见020校准记录','agent 是否意识到或提到了与本表差异相关的不确定性':uq,'并列项类别':tied,'不确定性四档':uncertainty})
-  summaries.append(summary);decisions.append(dict(index=i,task=r['task'],table=r['table'],layer=r['layer'],purpose=r['purpose'],main=maincat,factors=factors,flags=flags,confidence=conf,tier=tier,uncertainty=uncertainty,reason=reason,rules=rules,verification_query_count=qcount))
+  summaries.append(summary);decisions.append(dict(index=i,task=r['task'],table=r['table'],layer=r['layer'],purpose=r['purpose'],main=maincat,factors=factors,flags=flags,confidence=conf,tier=tier,main_item_tiers=item_tiers,uncertainty=uncertainty,reason=reason,rules=rules,verification_query_count=qcount))
   text=f"# {r['task']} / {r['table']}（{r['purpose']}）\n\n## 结论\n\n主要原因：**{maincat}**；把握：{conf}。{short}\n\n参与因素：{factors}。标记：{flags}。\n\n## 差异与归因依据\n\n{reason}\n\n层：{r['layer']}；比较库schema：{d['differences']['actual_schema']}；评测键：{', '.join(d['differences']['key_columns'])}。staging使用agent留存raw，后续层采用gold上游的CS口径，不把上游传导错误归给本表。\n\n"
   text+='已核实的契约原文位置：\n\n'
   for block in d['contract_specification']['blocks']:text+='- `'+d['contract_specification']['source_path']+f":{block['start_line']}–{block['end_line']}`；完整逐字原文见材料包。\n"
@@ -135,18 +155,25 @@ def main():
   text+='\n## 核实查询与诊断\n\n核实查询条数（含失败尝试）：'+str(qcount)+'；核实代价档：'+summary['核实代价档']+'。全部连接原件read_only=True，查询只用agent当时可见库。\n\n'
   for j,x in enumerate(q):text+=f"### 核实 {j+1}\n\n数据库：`{x.get('database','见查询记录')}`\n\n```sql\n{x['sql']}\n```\n\n"+('失败：'+x['error'] if x.get('error') else '结果：`'+json.dumps(x.get('result'),ensure_ascii=False,default=str)+'`')+'\n\n'
   if not q:text+='无数据核实查询；静态枚举问题需缺失的业务清单，来源搜索范围见归因说明。\n'
-  text+='诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index='+str(i)+' 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。\n'
+  text+='诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index='+str(i)+' 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。\n'
   text+='\n## 固定时间与重跑\n\n私有目录：`data/020_work/'+r['task']+'_'+r['table']+'/`。原始数据库仅READ_ONLY attach；只复制所需上游表。共同时间替换：`'+json.dumps(runs['clock_control'],ensure_ascii=False)+'`。\n\n'
   text+='留存结果同口径规模：'+str(runs['retained']['levels'][0]['row_scale'])+'行 / '+str(runs['retained']['levels'][0]['cell_scale'])+'格；重跑基线：'+str(base[0])+'行 / '+str(base[1])+'格。\n\n'
   text+=mdtable(['实验','L0–L3 行数/格子规模','整表首次匹配'],scales)
   text+='\n'+um+'\n\n完整每列不一致数（含键，L0–L3）和单侧/重复键额外行数见本表配套重跑JSON的每个comparison.levels；这里另展开L0非零列计数：\n\n'
   text+=mdtable(['实验','L0每列不一致数'],[[z['label'],json.dumps({k:v for k,v in z['comparison']['levels'][0]['column_mismatches'].items() if v},ensure_ascii=False)] for z in runs['runs'] if 'comparison'in z])
+  text+='\n本表全部重跑证据文件：'+ '；'.join('`'+v+'`' for v in runs['evidence_files'])+'。续做重跑私有副本在`data/020_resume_work/`。\n'
   text+='\n规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。\n'
   text+='\n## 规则问题\n\n'+rules+'\n\n## 证据路径\n\n'
   text+='- 精简材料包：`'+r['path']+'`。\n- 重跑：`records/020_reruns_'+r['task']+'_'+r['table']+'.json`（含old/new、偏移、SHA-256、全部层级逐列计数）。\n- 核实：`records/020_queries.json`；校准另见 `records/020_calibration_queries.json`。\n- 轨迹：`records/020_trace_audit.json` 中逐event路径；归档 `traces/dacomp_deimpl_prev.tar.gz`。\n- 输入快照：`records/020_input_before.json`。\n'
-  (OUT/(r['stem']+'.md')).write_text('> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。\n\n'+text)
+  (OUT/(r['stem']+'.md')).write_text(text)
  with (OUT/'020_summary.csv').open('w',newline='') as f:w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(summaries)
  (REC/'020_decisions.json').write_text(json.dumps(decisions,ensure_ascii=False,indent=2)+'\n')
- stats={'formal_tables':43,'calibration_tables':2,'categories':dict(Counter(x['main'] for x in decisions[:43])),'uncertainty_tables':dict(Counter(T[x['tier']-1] for x in decisions[:43])),'by_layer':{layer:{'total':sum(x['layer']==layer for x in decisions[:43]),'categories':dict(Counter(x['main'] for x in decisions[:43] if x['layer']==layer)),'uncertainty':dict(Counter(T[x['tier']-1] for x in decisions[:43] if x['layer']==layer))} for layer in ['staging','intermediate','marts']}}
+ def tiers_for_table(x):return sorted(set(z['tier'] for z in x['main_item_tiers']))
+ def statistics(ds):
+  return {'total':len(ds),'categories':dict(Counter(x['main'] for x in ds)),
+          'uncertainty_table_combinations':dict(Counter('；'.join(T[t-1] for t in tiers_for_table(x)) for x in ds)),
+          'uncertainty_table_coverage':{T[t-1]:sum(t in tiers_for_table(x) for x in ds) for t in range(1,5)},
+          'uncertainty_main_items':dict(Counter(T[z['tier']-1] for x in ds for z in x['main_item_tiers']))}
+ stats={'formal_tables':43,'calibration_tables':2,**statistics(decisions[:43]),'by_layer':{layer:statistics([x for x in decisions[:43] if x['layer']==layer]) for layer in ['staging','intermediate','marts']}}
  (REC/'020_statistics.json').write_text(json.dumps(stats,ensure_ascii=False,indent=2)+'\n');print(json.dumps(stats,ensure_ascii=False,indent=2))
 if __name__=='__main__':main()

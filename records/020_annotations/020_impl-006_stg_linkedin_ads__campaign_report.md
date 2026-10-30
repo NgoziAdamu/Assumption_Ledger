@@ -1,12 +1,10 @@
-> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
-
 # impl-006 / stg_linkedin_ads__campaign_report（全量）
 
 ## 结论
 
 主要原因：**多因并列（A、D）**；把握：高。三列可计算指标的占位，与缺失sends的NULL/0选择并列。
 
-参与因素：A：comments（减0行/1144格）；A：follows（减0行/1107格）；A：likes（减0行/1112格）；A：shares（减0行/1115格）；A：video_completions（减0行/1166格）；A：video_views（减0行/1121格）。标记：已披露。
+参与因素：A：comments（减0行/1144格）；A：follows（减0行/1107格）；A：likes（减0行/1112格）；A：shares（减0行/1115格）；A：video_completions（减0行/1166格）；A：video_views（减0行/1121格）。标记：已披露（D占位部分）。
 
 ## 差异与归因依据
 
@@ -22,7 +20,7 @@ raw有计算指标输入而三列NULL，D；raw没有sends，契约没指定默�
 
 具体差异表达式和替换（未列出的字节保持不变；共同固定时间除外）：
 
-- click_through_rate：
+- click_through_rate（agent SQL 第20行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS click_through_rate
 ```
@@ -31,7 +29,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS click_through_rate
 CASE WHEN impressions > 0 THEN ROUND((CAST(clicks AS DECIMAL(18, 3)) / CAST(impressions AS DECIMAL(18, 3))) * 100, 4) ELSE 0 END AS click_through_rate
 ```
 
-- comments：
+- comments（agent SQL 第18行起）：
 ```sql
 TRY_CAST("comments" AS INTEGER) AS comments
 ```
@@ -40,7 +38,7 @@ TRY_CAST("comments" AS INTEGER) AS comments
 CASE WHEN comments = '' OR comments IS NULL OR comments = 'true' OR comments = 'false' THEN 0 ELSE CAST(comments AS INT) END AS comments
 ```
 
-- cost_per_click：
+- cost_per_click（agent SQL 第21行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_click
 ```
@@ -49,7 +47,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_click
 CASE WHEN clicks > 0 THEN ROUND(cost_in_usd / clicks, 2) ELSE 0 END AS cost_per_click
 ```
 
-- cost_per_thousand_impressions：
+- cost_per_thousand_impressions（agent SQL 第22行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_thousand_impressions
 ```
@@ -58,7 +56,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_thousand_impressions
 CASE WHEN impressions > 0 THEN ROUND((cost_in_usd / impressions) * 1000, 2) ELSE 0 END AS cost_per_thousand_impressions
 ```
 
-- follows：
+- follows（agent SQL 第16行起）：
 ```sql
 TRY_CAST("follows" AS INTEGER) AS follows
 ```
@@ -67,7 +65,7 @@ TRY_CAST("follows" AS INTEGER) AS follows
 CASE WHEN follows = '' OR follows IS NULL OR follows = 'true' OR follows = 'false' THEN 0 ELSE CAST(follows AS INT) END AS follows
 ```
 
-- likes：
+- likes（agent SQL 第19行起）：
 ```sql
 TRY_CAST("likes" AS INTEGER) AS likes
 ```
@@ -76,7 +74,7 @@ TRY_CAST("likes" AS INTEGER) AS likes
 CASE WHEN likes = '' OR likes IS NULL OR likes = 'true' OR likes = 'false' THEN 0 ELSE CAST(likes AS INT) END AS likes
 ```
 
-- sends：
+- sends（agent SQL 第15行起）：
 ```sql
 CAST(NULL::INTEGER AS INTEGER) AS sends
 ```
@@ -85,7 +83,7 @@ CAST(NULL::INTEGER AS INTEGER) AS sends
 CAST(0 AS INT) AS sends
 ```
 
-- shares：
+- shares（agent SQL 第17行起）：
 ```sql
 TRY_CAST("shares" AS INTEGER) AS shares
 ```
@@ -94,7 +92,7 @@ TRY_CAST("shares" AS INTEGER) AS shares
 CASE WHEN shares = '' OR shares IS NULL OR shares = 'true' OR shares = 'false' THEN 0 ELSE CAST(shares AS INT) END AS shares
 ```
 
-- video_completions：
+- video_completions（agent SQL 第13行起）：
 ```sql
 TRY_CAST("video_completions" AS INTEGER) AS video_completions
 ```
@@ -103,7 +101,7 @@ TRY_CAST("video_completions" AS INTEGER) AS video_completions
 CASE WHEN video_completions = '' OR video_completions IS NULL OR video_completions = 'true' OR video_completions = 'false' THEN 0 ELSE CAST(video_completions AS INT) END AS video_completions
 ```
 
-- video_views：
+- video_views（agent SQL 第12行起）：
 ```sql
 CAST(TRY_CAST("video_views" AS BIGINT) AS INTEGER) AS video_views
 ```
@@ -156,7 +154,7 @@ SELECT count(*) n,count(*) FILTER(WHERE "comments" IS NULL) AS c0_null,count(*) 
 
 结果：`[[1500, 368, 776, 396, 711, 0, 0, 387, 725, 369, 746, 395, 771, 360, 761]]`
 
-诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=26 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=26 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。
 
 ## 固定时间与重跑
 
@@ -195,6 +193,8 @@ SELECT count(*) n,count(*) FILTER(WHERE "comments" IS NULL) AS c0_null,count(*) 
 | shares | {"click_through_rate": 1500, "comments": 1144, "cost_per_click": 1500, "cost_per_thousand_impressions": 1500, "follows": 1107, "likes": 1112, "sends": 1500, "video_completions": 1166, "video_views": 1121} |
 | video_completions | {"click_through_rate": 1500, "comments": 1144, "cost_per_click": 1500, "cost_per_thousand_impressions": 1500, "follows": 1107, "likes": 1112, "sends": 1500, "shares": 1115, "video_views": 1121} |
 | video_views | {"click_through_rate": 1500, "comments": 1144, "cost_per_click": 1500, "cost_per_thousand_impressions": 1500, "follows": 1107, "likes": 1112, "sends": 1500, "shares": 1115, "video_completions": 1166} |
+
+本表全部重跑证据文件：`records/020_reruns_impl-006_stg_linkedin_ads__campaign_report.json`。续做重跑私有副本在`data/020_resume_work/`。
 
 规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
 

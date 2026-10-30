@@ -1,16 +1,14 @@
-> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
-
 # impl-006 / stg_snapchat_ads__campaign_report（全量）
 
 ## 结论
 
-主要原因：**多因并列（A、D）**；把握：高。Snapchat spend/率指标占位，与缺失/异常字段默认值选择并列。
+主要原因：**多因并列（A、D、I）**；把握：高。spend映射覆盖（I）、率指标占位（D）及无源/异常字段默认值（A）并列。
 
-参与因素：A：shares（减0行/673格）；A：video_views（减0行/685格）。标记：已披露。
+参与因素：A：shares（减0行/673格）；A：video_views（减0行/685格）。标记：已披露（D占位部分）。
 
 ## 差异与归因依据
 
-raw.spend和计算输入存在却NULL为D；ad_account_id不存在、gold填unknown而agent NULL为A；mock/boolean/空文本清理为0或NULL也没有契约规则，A。
+event19 的 special 字典先有 `'campaign_id':['campaign_id','id']` 和 `'spend':['spend','local_spend_amount']`，后被同名键 `'campaign_id':['campaign_id','CAMPAIGN_ID']`、`'spend':['local_spend_amount']` 覆盖。代码自身给出正确映射意图，符合手册I的明确例子。 ad_account_id缺失，异常文本清理为0或NULL未规定，A；可计算的率指标直接NULL为D。最大单项改善均900格。
 
 层：staging；比较库schema：staging；评测键：campaign_id。staging使用agent留存raw，后续层采用gold上游的CS口径，不把上游传导错误归给本表。
 
@@ -22,7 +20,7 @@ raw.spend和计算输入存在却NULL为D；ad_account_id不存在、gold填unkn
 
 具体差异表达式和替换（未列出的字节保持不变；共同固定时间除外）：
 
-- ad_account_id：
+- ad_account_id（agent SQL 第9行起）：
 ```sql
 CAST(NULL::VARCHAR AS VARCHAR) AS ad_account_id
 ```
@@ -31,7 +29,7 @@ CAST(NULL::VARCHAR AS VARCHAR) AS ad_account_id
 CAST('unknown' AS TEXT) AS ad_account_id
 ```
 
-- conversion_purchases：
+- conversion_purchases（agent SQL 第23行起）：
 ```sql
 TRY_CAST("conversion_purchases" AS INTEGER) AS conversion_purchases
 ```
@@ -40,7 +38,7 @@ TRY_CAST("conversion_purchases" AS INTEGER) AS conversion_purchases
 CASE WHEN conversion_purchases IS NULL OR TRIM(CAST(conversion_purchases AS TEXT)) IN ('', 'true', 'false') OR TRIM(CAST(conversion_purchases AS TEXT)) LIKE 'mock_%' THEN 0 ELSE CAST(conversion_purchases AS INT) END AS conversion_purchases
 ```
 
-- cost_per_install：
+- cost_per_install（agent SQL 第30行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_install
 ```
@@ -49,7 +47,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_install
 CASE WHEN (CASE WHEN total_installs IS NULL OR TRIM(CAST(total_installs AS TEXT)) IN ('', 'true', 'false') THEN 0 ELSE CAST(total_installs AS INT) END) > 0 THEN ROUND(spend / (CASE WHEN total_installs IS NULL OR TRIM(CAST(total_installs AS TEXT)) IN ('', 'true', 'false') THEN 0 ELSE CAST(total_installs AS INT) END), 2) ELSE 0 END AS cost_per_install
 ```
 
-- cost_per_swipe：
+- cost_per_swipe（agent SQL 第27行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_swipe
 ```
@@ -58,7 +56,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_swipe
 CASE WHEN swipes > 0 THEN ROUND(spend / swipes, 2) ELSE 0 END AS cost_per_swipe
 ```
 
-- cost_per_thousand_impressions：
+- cost_per_thousand_impressions（agent SQL 第28行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_thousand_impressions
 ```
@@ -67,7 +65,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_thousand_impressions
 CASE WHEN impressions > 0 THEN ROUND((spend / impressions) * 1000, 2) ELSE 0 END AS cost_per_thousand_impressions
 ```
 
-- cost_per_video_view：
+- cost_per_video_view（agent SQL 第29行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_video_view
 ```
@@ -76,7 +74,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_video_view
 CASE WHEN (CASE WHEN video_views = '' OR video_views = 'true' OR video_views = 'false' OR video_views IS NULL THEN 0 ELSE CAST(video_views AS INT) END) > 0 THEN ROUND(spend / (CASE WHEN video_views = '' OR video_views = 'true' OR video_views = 'false' OR video_views IS NULL THEN 0 ELSE CAST(video_views AS INT) END), 2) ELSE 0 END AS cost_per_video_view
 ```
 
-- quartile_1：
+- quartile_1（agent SQL 第15行起）：
 ```sql
 TRY_CAST("quartile_1" AS INTEGER) AS quartile_1
 ```
@@ -85,7 +83,7 @@ TRY_CAST("quartile_1" AS INTEGER) AS quartile_1
 CASE WHEN quartile_1 IS NULL OR TRIM(CAST(quartile_1 AS TEXT)) IN ('', 'true', 'false') OR TRIM(CAST(quartile_1 AS TEXT)) LIKE 'mock_%' THEN 0 ELSE CAST(quartile_1 AS INT) END AS quartile_1
 ```
 
-- quartile_2：
+- quartile_2（agent SQL 第16行起）：
 ```sql
 TRY_CAST("quartile_2" AS INTEGER) AS quartile_2
 ```
@@ -94,7 +92,7 @@ TRY_CAST("quartile_2" AS INTEGER) AS quartile_2
 CASE WHEN quartile_2 IS NULL OR TRIM(CAST(quartile_2 AS TEXT)) IN ('', 'true', 'false') OR TRIM(CAST(quartile_2 AS TEXT)) LIKE 'mock_%' THEN 0 ELSE CAST(quartile_2 AS INT) END AS quartile_2
 ```
 
-- quartile_3：
+- quartile_3（agent SQL 第17行起）：
 ```sql
 TRY_CAST("quartile_3" AS INTEGER) AS quartile_3
 ```
@@ -103,7 +101,7 @@ TRY_CAST("quartile_3" AS INTEGER) AS quartile_3
 CASE WHEN quartile_3 IS NULL OR TRIM(CAST(quartile_3 AS TEXT)) IN ('', 'true', 'false') OR TRIM(CAST(quartile_3 AS TEXT)) LIKE 'mock_%' THEN 0 ELSE CAST(quartile_3 AS INT) END AS quartile_3
 ```
 
-- screen_time_millis：
+- screen_time_millis（agent SQL 第14行起）：
 ```sql
 TRY_CAST("screen_time_millis" AS BIGINT) AS screen_time_millis
 ```
@@ -112,7 +110,7 @@ TRY_CAST("screen_time_millis" AS BIGINT) AS screen_time_millis
 CASE WHEN screen_time_millis IS NULL OR TRIM(CAST(screen_time_millis AS TEXT)) LIKE '%-%-%' OR TRIM(CAST(screen_time_millis AS TEXT)) LIKE 'mock_%' THEN 0 ELSE CAST(COALESCE(screen_time_millis, '0') AS BIGINT) END AS screen_time_millis
 ```
 
-- shares：
+- shares（agent SQL 第21行起）：
 ```sql
 TRY_CAST("shares" AS INTEGER) AS shares
 ```
@@ -121,7 +119,7 @@ TRY_CAST("shares" AS INTEGER) AS shares
 CASE WHEN shares IS NULL OR TRIM(CAST(shares AS TEXT)) IN ('', 'true', 'false') OR TRIM(CAST(shares AS TEXT)) LIKE 'mock_%' THEN 0 ELSE CAST(shares AS INT) END AS shares
 ```
 
-- spend：
+- spend（agent SQL 第12行起）：
 ```sql
 CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS spend
 ```
@@ -130,7 +128,7 @@ CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS spend
 CAST(spend AS DECIMAL(18, 2)) AS spend
 ```
 
-- story_completes：
+- story_completes（agent SQL 第20行起）：
 ```sql
 TRY_CAST("story_completes" AS INTEGER) AS story_completes
 ```
@@ -139,7 +137,7 @@ TRY_CAST("story_completes" AS INTEGER) AS story_completes
 CASE WHEN story_completes IS NULL OR TRIM(CAST(story_completes AS TEXT)) IN ('', 'true', 'false') OR TRIM(CAST(story_completes AS TEXT)) LIKE 'mock_%' THEN 0 ELSE CAST(story_completes AS INT) END AS story_completes
 ```
 
-- swipe_up_rate：
+- swipe_up_rate（agent SQL 第26行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS swipe_up_rate
 ```
@@ -148,7 +146,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS swipe_up_rate
 CASE WHEN impressions > 0 THEN ROUND((CAST(swipes AS DECIMAL(18, 3)) / CAST(impressions AS DECIMAL(18, 3))) * 100, 4) ELSE 0 END AS swipe_up_rate
 ```
 
-- video_views：
+- video_views（agent SQL 第13行起）：
 ```sql
 CAST(TRY_CAST("video_views" AS BIGINT) AS INTEGER) AS video_views
 ```
@@ -157,7 +155,7 @@ CAST(TRY_CAST("video_views" AS BIGINT) AS INTEGER) AS video_views
 CASE WHEN video_views IS NULL OR TRIM(CAST(video_views AS TEXT)) IN ('', 'true', 'false') OR TRIM(CAST(video_views AS TEXT)) LIKE 'mock_%' THEN 0 ELSE CAST(video_views AS INT) END AS video_views
 ```
 
-- view_completion：
+- view_completion（agent SQL 第18行起）：
 ```sql
 TRY_CAST("view_completion" AS INTEGER) AS view_completion
 ```
@@ -166,11 +164,20 @@ TRY_CAST("view_completion" AS INTEGER) AS view_completion
 CASE WHEN view_completion IS NULL OR TRIM(CAST(view_completion AS TEXT)) IN ('', 'true', 'false') OR TRIM(CAST(view_completion AS TEXT)) LIKE 'mock_%' THEN 0 ELSE CAST(view_completion AS INT) END AS view_completion
 ```
 
+- spend_restore_overwritten_mapping（agent SQL 第12行起）：
+```sql
+CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS spend
+```
+→
+```sql
+CAST(ROUND(TRY_CAST("spend" AS DOUBLE), 2) AS DECIMAL(18,2)) AS spend
+```
+
 ## agent可见证据与不确定性
 
-不确定性四档：**ad_account_id=只有通用策略说明；conversion_purchases=只有通用策略说明；cost_per_install=只有通用策略说明；cost_per_swipe=只有通用策略说明；cost_per_thousand_impressions=只有通用策略说明；cost_per_video_view=只有通用策略说明；quartile_1=只有通用策略说明；quartile_2=只有通用策略说明；quartile_3=只有通用策略说明；screen_time_millis=只有通用策略说明；spend=只有通用策略说明；story_completes=只有通用策略说明；swipe_up_rate=只有通用策略说明；view_completion=只有通用策略说明**。
+不确定性四档：**ad_account_id=只有通用策略说明；conversion_purchases=只有通用策略说明；cost_per_install=只有通用策略说明；cost_per_swipe=只有通用策略说明；cost_per_thousand_impressions=只有通用策略说明；cost_per_video_view=只有通用策略说明；quartile_1=只有通用策略说明；quartile_2=只有通用策略说明；quartile_3=只有通用策略说明；screen_time_millis=只有通用策略说明；story_completes=只有通用策略说明；swipe_up_rate=只有通用策略说明；view_completion=只有通用策略说明；spend_restore_overwritten_mapping=看到了但没提**。
 
-event 97（args.final_thought）：对缺失源字段采用类型明确的 NULL，占用可用字段进行投影，并在缺失加载时间时采用运行时 `CURRENT_TIMESTAMP`。 event 97（args.final_thought）：脏值转换采用 DuckDB `TRY_CAST`；不可解析值转为 NULL，避免全批失败，但该字段数据会缺失并可能降低后续统计有效性。
+event 97（args.final_thought）：对缺失源字段采用类型明确的 NULL，占用可用字段进行投影，并在缺失加载时间时采用运行时 `CURRENT_TIMESTAMP`。 event 97（args.final_thought）：脏值转换采用 DuckDB `TRY_CAST`；不可解析值转为 NULL，避免全批失败，但该字段数据会缺失并可能降低后续统计有效性。 各并列项单独分档：占位/缺省选择沿用适用的NULL通用披露；I覆盖错误只见event18列清单与event19代码，没有说明。
 
 完整事件扫描数：99；可见输出的机械命中及原始截断标记：
 
@@ -209,7 +216,7 @@ SELECT count(*) n,count(*) FILTER(WHERE "conversion_purchases" IS NULL) AS c0_nu
 
 结果：`[[900, 0, 900, 0, 0, 0, 900, 0, 900, 0, 900, 0, 900, 223, 450, 0, 0, 0, 900, 219, 466, 0, 900]]`
 
-诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=29 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=29 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。
 
 ## 固定时间与重跑
 
@@ -236,6 +243,7 @@ SELECT count(*) n,count(*) FILTER(WHERE "conversion_purchases" IS NULL) AS c0_nu
 | swipe_up_rate | L0:900行/13058格 / L1:900行/13058格 / L2:900行/13058格 / L3:900行/13058格 | 均未整表匹配 |
 | video_views | L0:900行/13273格 / L1:900行/13273格 / L2:900行/13273格 / L3:900行/13273格 | 均未整表匹配 |
 | view_completion | L0:900行/13058格 / L1:900行/13058格 / L2:900行/13058格 / L3:900行/13058格 | 均未整表匹配 |
+| spend_restore_overwritten_mapping | L0:900行/13058格 / L1:900行/13058格 / L2:900行/13058格 / L3:900行/13058格 | 均未整表匹配 |
 
 不适用：主要原因不是U；完整实现诊断不当作U局部修复。
 
@@ -260,12 +268,15 @@ SELECT count(*) n,count(*) FILTER(WHERE "conversion_purchases" IS NULL) AS c0_nu
 | swipe_up_rate | {"ad_account_id": 900, "conversion_purchases": 900, "cost_per_install": 900, "cost_per_swipe": 900, "cost_per_thousand_impressions": 900, "cost_per_video_view": 900, "quartile_1": 900, "quartile_2": 900, "quartile_3": 900, "screen_time_millis": 900, "shares": 673, "spend": 900, "story_completes": 900, "video_views": 685, "view_completion": 900} |
 | video_views | {"ad_account_id": 900, "conversion_purchases": 900, "cost_per_install": 900, "cost_per_swipe": 900, "cost_per_thousand_impressions": 900, "cost_per_video_view": 900, "quartile_1": 900, "quartile_2": 900, "quartile_3": 900, "screen_time_millis": 900, "shares": 673, "spend": 900, "story_completes": 900, "swipe_up_rate": 900, "view_completion": 900} |
 | view_completion | {"ad_account_id": 900, "conversion_purchases": 900, "cost_per_install": 900, "cost_per_swipe": 900, "cost_per_thousand_impressions": 900, "cost_per_video_view": 900, "quartile_1": 900, "quartile_2": 900, "quartile_3": 900, "screen_time_millis": 900, "shares": 673, "spend": 900, "story_completes": 900, "swipe_up_rate": 900, "video_views": 685} |
+| spend_restore_overwritten_mapping | {"ad_account_id": 900, "conversion_purchases": 900, "cost_per_install": 900, "cost_per_swipe": 900, "cost_per_thousand_impressions": 900, "cost_per_video_view": 900, "quartile_1": 900, "quartile_2": 900, "quartile_3": 900, "screen_time_millis": 900, "shares": 673, "story_completes": 900, "swipe_up_rate": 900, "video_views": 685, "view_completion": 900} |
+
+本表全部重跑证据文件：`records/020_reruns_impl-006_stg_snapchat_ads__campaign_report.json`；`records/020_resume_reruns_impl-006_stg_snapchat_ads__campaign_report.json`。续做重跑私有副本在`data/020_resume_work/`。
 
 规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
 
 ## 规则问题
 
-无。
+ 映射覆盖有代码自身的明确意图证据，直接适用v2的I定义，不修改规则；复核重跑恢复原先候选列，未套用gold额外清洗。旧gold表达式试验仅作诊断，避免重复计为两个错误点。
 
 ## 证据路径
 

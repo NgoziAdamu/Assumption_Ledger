@@ -1,5 +1,3 @@
-> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
-
 # impl-002 / stg_pendo__guide_event（校准）
 
 ## 结论
@@ -22,7 +20,7 @@ url 未执行契约 ~ '^https?://' 的整串匹配效果，C；surrogate key 契
 
 具体差异表达式和替换（未列出的字节保持不变；共同固定时间除外）：
 
-- latitude：
+- latitude（agent SQL 第12行起）：
 ```sql
 TRY_CAST(latitude AS DOUBLE) AS latitude
 ```
@@ -31,7 +29,7 @@ TRY_CAST(latitude AS DOUBLE) AS latitude
 CASE WHEN TRY_CAST(latitude AS DOUBLE) BETWEEN -90 AND 90 THEN TRY_CAST(latitude AS DOUBLE) ELSE NULL END AS latitude
 ```
 
-- url：
+- url（agent SQL 第16行起）：
 ```sql
 CASE WHEN url IS NULL THEN NULL ELSE NULLIF(TRIM(CAST(url AS VARCHAR)), '') END AS url
 ```
@@ -40,7 +38,7 @@ CASE WHEN url IS NULL THEN NULL ELSE NULLIF(TRIM(CAST(url AS VARCHAR)), '') END 
 CASE WHEN url ~ '^https?://' THEN NULLIF(TRIM(CAST(url AS VARCHAR)), '') ELSE NULL END AS url
 ```
 
-- key：
+- key（agent SQL 第17行起）：
 ```sql
 md5(concat_ws('|', coalesce(CAST(visitor_id AS VARCHAR), ''), coalesce(CAST(timestamp AS VARCHAR), ''), coalesce(CAST(guide_id AS VARCHAR), ''), coalesce(CAST(account_id AS VARCHAR), '')))
 ```
@@ -65,7 +63,7 @@ CASE
 
 不确定性四档：**C：只有通用策略说明；A：只有通用策略说明**。
 
-020_reruns_impl-002_stg_pendo__guide_event.json；020_calibration_queries.json；event13/14仅看schema；event19生成代码；event59泛称event-key generation、filtering and nullification，无本表选择理由。
+020_reruns_impl-002_stg_pendo__guide_event.json；020_calibration_queries.json；event13/14仅看schema；event19生成代码；event59泛称event-key generation、filtering and nullification，无本表选择理由。 原句：event59：The work includes staging raw-field mapping, timestamp parsing, event-key generation, filtering and nullification; latest-record models; daily aggregates and calendar spines; and mart entities.
 
 完整事件扫描数：61；可见输出的机械命中及原始截断标记：
 
@@ -92,7 +90,7 @@ SELECT count(*) n, count(*) FILTER (WHERE latitude NOT BETWEEN -90 AND 90) inval
 
 结果：`[[15000, 13655]]`
 
-诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=43 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=43 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。
 
 ## 固定时间与重跑
 
@@ -117,6 +115,8 @@ latitude不满足独立主因的一半门槛，但满足U前三项和参与因�
 | latitude | {"guide_event_key": 15000, "url": 15000} |
 | url | {"guide_event_key": 15000, "latitude": 13655} |
 | key | {"latitude": 13655, "url": 15000} |
+
+本表全部重跑证据文件：`records/020_reruns_impl-002_stg_pendo__guide_event.json`。续做重跑私有副本在`data/020_resume_work/`。
 
 规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
 

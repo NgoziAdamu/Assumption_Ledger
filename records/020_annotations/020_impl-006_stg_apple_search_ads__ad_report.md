@@ -1,12 +1,10 @@
-> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
-
 # impl-006 / stg_apple_search_ads__ad_report（全量）
 
 ## 结论
 
 主要原因：**D**；把握：高。四个tap和cost衍生指标均为NULL占位。
 
-参与因素：无。标记：已披露。
+参与因素：无。标记：已披露（D占位部分）。
 
 ## 差异与归因依据
 
@@ -22,7 +20,7 @@ taps、impressions、local_spend_amount、conversions和new_downloads均在源sc
 
 具体差异表达式和替换（未列出的字节保持不变；共同固定时间除外）：
 
-- cost_per_conversion：
+- cost_per_conversion（agent SQL 第23行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_conversion
 ```
@@ -31,7 +29,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_conversion
 CAST(CASE WHEN (CASE WHEN conversions = TRUE THEN 1 WHEN conversions = FALSE THEN 0 WHEN CAST(COALESCE(conversions, 0) AS INT) < 0 THEN 0 ELSE CAST(conversions AS INT) END) <= 0 THEN 0.0 WHEN local_spend_amount IS NULL OR local_spend_amount < 0 THEN 0.0 ELSE ROUND(ROUND(CASE WHEN local_spend_amount IS NULL THEN 0.0 WHEN local_spend_amount > 999999999999.99 THEN 999999999999.99 ELSE local_spend_amount END, 2) / (CASE WHEN conversions = TRUE THEN 1 WHEN conversions = FALSE THEN 0 WHEN CAST(COALESCE(conversions, 0) AS INT) < 0 THEN 0 ELSE CAST(conversions AS INT) END), 2) END AS DOUBLE) AS cost_per_conversion
 ```
 
-- cost_per_download：
+- cost_per_download（agent SQL 第24行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_download
 ```
@@ -40,7 +38,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_download
 CAST(CASE WHEN new_downloads IS NULL OR new_downloads <= 0 THEN 0.0 WHEN local_spend_amount IS NULL OR local_spend_amount < 0 THEN 0.0 ELSE ROUND(ROUND(CASE WHEN local_spend_amount IS NULL THEN 0.0 WHEN local_spend_amount > 999999999999.99 THEN 999999999999.99 ELSE local_spend_amount END, 2) / new_downloads, 2) END AS DOUBLE) AS cost_per_download
 ```
 
-- cost_per_tap：
+- cost_per_tap（agent SQL 第22行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_tap
 ```
@@ -49,7 +47,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_tap
 CAST(CASE WHEN taps IS NULL OR taps <= 0 THEN 0.0 WHEN local_spend_amount IS NULL OR local_spend_amount < 0 THEN 0.0 ELSE ROUND(ROUND(CASE WHEN local_spend_amount IS NULL THEN 0.0 WHEN local_spend_amount > 999999999999.99 THEN 999999999999.99 ELSE local_spend_amount END, 2) / taps, 2) END AS DOUBLE) AS cost_per_tap
 ```
 
-- tap_through_rate：
+- tap_through_rate（agent SQL 第21行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS tap_through_rate
 ```
@@ -102,7 +100,7 @@ SELECT count(*) n FROM raw.apple_search_ad_report_data
 
 结果：`[[1500]]`
 
-诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=19 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=19 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。
 
 ## 固定时间与重跑
 
@@ -129,6 +127,8 @@ SELECT count(*) n FROM raw.apple_search_ad_report_data
 | cost_per_download | {"cost_per_conversion": 1500, "cost_per_tap": 1500, "tap_through_rate": 1500} |
 | cost_per_tap | {"cost_per_conversion": 1500, "cost_per_download": 1500, "tap_through_rate": 1500} |
 | tap_through_rate | {"cost_per_conversion": 1500, "cost_per_download": 1500, "cost_per_tap": 1500} |
+
+本表全部重跑证据文件：`records/020_reruns_impl-006_stg_apple_search_ads__ad_report.json`。续做重跑私有副本在`data/020_resume_work/`。
 
 规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
 

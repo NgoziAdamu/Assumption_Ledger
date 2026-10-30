@@ -1,16 +1,14 @@
-> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
-
 # impl-006 / stg_microsoft_ads__campaign_report（全量）
 
 ## 结论
 
-主要原因：**多因并列（A、D）**；把握：高。可用spend及指标占位，与不存在字段的默认值选择并列。
+主要原因：**多因并列（A、D、I）**；把握：高。spend映射覆盖（I）、指标占位（D）与无源字段默认值（A）并列。
 
-参与因素：无。标记：已披露。
+参与因素：无。标记：已披露（D占位部分）。
 
 ## 差异与归因依据
 
-raw.spend及各计算分子分母存在，D；assists/bounce_rate/average_position没有源列，gold常数0与agent NULL归A。单列影响均1500格。
+event19 的 special 字典先有 `'campaign_id':['campaign_id','id']` 和 `'spend':['spend','local_spend_amount']`，后被同名键 `'campaign_id':['campaign_id','CAMPAIGN_ID']`、`'spend':['local_spend_amount']` 覆盖。代码自身给出正确映射意图，符合手册I的明确例子。 assists/bounce_rate/average_position无源列，默认0或NULL未规定，A；其余率指标有输入却占位，D。每项单修减少1500格。
 
 层：staging；比较库schema：staging；评测键：campaign_id。staging使用agent留存raw，后续层采用gold上游的CS口径，不把上游传导错误归给本表。
 
@@ -22,7 +20,7 @@ raw.spend及各计算分子分母存在，D；assists/bounce_rate/average_positi
 
 具体差异表达式和替换（未列出的字节保持不变；共同固定时间除外）：
 
-- assists：
+- assists（agent SQL 第18行起）：
 ```sql
 CAST(NULL::INTEGER AS INTEGER) AS assists
 ```
@@ -31,7 +29,7 @@ CAST(NULL::INTEGER AS INTEGER) AS assists
 CAST(0 AS INT) AS assists
 ```
 
-- average_position：
+- average_position（agent SQL 第20行起）：
 ```sql
 CAST(NULL::DECIMAL(8,2) AS DECIMAL(8,2)) AS average_position
 ```
@@ -40,7 +38,7 @@ CAST(NULL::DECIMAL(8,2) AS DECIMAL(8,2)) AS average_position
 CAST(0 AS DECIMAL(8, 2)) AS average_position
 ```
 
-- bounce_rate：
+- bounce_rate（agent SQL 第19行起）：
 ```sql
 CAST(NULL::DECIMAL(8,4) AS DECIMAL(8,4)) AS bounce_rate
 ```
@@ -49,7 +47,7 @@ CAST(NULL::DECIMAL(8,4) AS DECIMAL(8,4)) AS bounce_rate
 CAST(0 AS DECIMAL(8, 4)) AS bounce_rate
 ```
 
-- click_through_rate：
+- click_through_rate（agent SQL 第21行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS click_through_rate
 ```
@@ -58,7 +56,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS click_through_rate
 CASE WHEN impressions > 0 THEN ROUND((CAST(clicks AS DECIMAL(18, 3)) / CAST(impressions AS DECIMAL(18, 3))) * 100, 4) ELSE 0 END AS click_through_rate
 ```
 
-- cost_per_click：
+- cost_per_click（agent SQL 第22行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_click
 ```
@@ -67,7 +65,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_click
 CASE WHEN clicks > 0 THEN ROUND(spend / clicks, 2) ELSE 0 END AS cost_per_click
 ```
 
-- cost_per_conversion：
+- cost_per_conversion（agent SQL 第24行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_conversion
 ```
@@ -76,7 +74,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_conversion
 CASE WHEN conversions > 0 THEN ROUND(spend / conversions, 2) ELSE 0 END AS cost_per_conversion
 ```
 
-- cost_per_thousand_impressions：
+- cost_per_thousand_impressions（agent SQL 第23行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_thousand_impressions
 ```
@@ -85,7 +83,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_thousand_impressions
 CASE WHEN impressions > 0 THEN ROUND((spend / impressions) * 1000, 2) ELSE 0 END AS cost_per_thousand_impressions
 ```
 
-- return_on_ad_spend：
+- return_on_ad_spend（agent SQL 第25行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS return_on_ad_spend
 ```
@@ -94,7 +92,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS return_on_ad_spend
 CASE WHEN spend > 0 THEN ROUND(CAST(COALESCE(revenue, '0') AS DECIMAL(18, 2)) / spend, 4) ELSE 0 END AS return_on_ad_spend
 ```
 
-- spend：
+- spend（agent SQL 第15行起）：
 ```sql
 CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS spend
 ```
@@ -103,11 +101,20 @@ CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS spend
 CAST(spend AS DECIMAL(18, 2)) AS spend
 ```
 
+- spend_restore_overwritten_mapping（agent SQL 第15行起）：
+```sql
+CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS spend
+```
+→
+```sql
+CAST(ROUND(TRY_CAST("spend" AS DOUBLE), 2) AS DECIMAL(18,2)) AS spend
+```
+
 ## agent可见证据与不确定性
 
-不确定性四档：**assists=只有通用策略说明；average_position=只有通用策略说明；bounce_rate=只有通用策略说明；click_through_rate=只有通用策略说明；cost_per_click=只有通用策略说明；cost_per_conversion=只有通用策略说明；cost_per_thousand_impressions=只有通用策略说明；return_on_ad_spend=只有通用策略说明；spend=只有通用策略说明**。
+不确定性四档：**assists=只有通用策略说明；average_position=只有通用策略说明；bounce_rate=只有通用策略说明；click_through_rate=只有通用策略说明；cost_per_click=只有通用策略说明；cost_per_conversion=只有通用策略说明；cost_per_thousand_impressions=只有通用策略说明；return_on_ad_spend=只有通用策略说明；spend_restore_overwritten_mapping=看到了但没提**。
 
-event 97（args.final_thought）：对缺失源字段采用类型明确的 NULL，占用可用字段进行投影，并在缺失加载时间时采用运行时 `CURRENT_TIMESTAMP`。
+event 97（args.final_thought）：对缺失源字段采用类型明确的 NULL，占用可用字段进行投影，并在缺失加载时间时采用运行时 `CURRENT_TIMESTAMP`。 各并列项单独分档：占位/缺省选择沿用适用的NULL通用披露；I覆盖错误只见event18列清单与event19代码，没有说明。
 
 完整事件扫描数：99；可见输出的机械命中及原始截断标记：
 
@@ -146,7 +153,7 @@ SELECT count(*) n,count(*) FILTER(WHERE "impressions" IS NULL) AS c0_null,count(
 
 结果：`[[1500, 0, 0, 0, 0]]`
 
-诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=27 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=27 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。
 
 ## 固定时间与重跑
 
@@ -166,6 +173,7 @@ SELECT count(*) n,count(*) FILTER(WHERE "impressions" IS NULL) AS c0_null,count(
 | cost_per_thousand_impressions | L0:1500行/12000格 / L1:1500行/12000格 / L2:1500行/12000格 / L3:1500行/12000格 | 均未整表匹配 |
 | return_on_ad_spend | L0:1500行/12000格 / L1:1500行/12000格 / L2:1500行/12000格 / L3:1500行/12000格 | 均未整表匹配 |
 | spend | L0:1500行/12000格 / L1:1500行/12000格 / L2:1500行/12000格 / L3:1500行/12000格 | 均未整表匹配 |
+| spend_restore_overwritten_mapping | L0:1500行/12000格 / L1:1500行/12000格 / L2:1500行/12000格 / L3:1500行/12000格 | 均未整表匹配 |
 
 不适用：主要原因不是U；完整实现诊断不当作U局部修复。
 
@@ -183,12 +191,15 @@ SELECT count(*) n,count(*) FILTER(WHERE "impressions" IS NULL) AS c0_null,count(
 | cost_per_thousand_impressions | {"assists": 1500, "average_position": 1500, "bounce_rate": 1500, "click_through_rate": 1500, "cost_per_click": 1500, "cost_per_conversion": 1500, "return_on_ad_spend": 1500, "spend": 1500} |
 | return_on_ad_spend | {"assists": 1500, "average_position": 1500, "bounce_rate": 1500, "click_through_rate": 1500, "cost_per_click": 1500, "cost_per_conversion": 1500, "cost_per_thousand_impressions": 1500, "spend": 1500} |
 | spend | {"assists": 1500, "average_position": 1500, "bounce_rate": 1500, "click_through_rate": 1500, "cost_per_click": 1500, "cost_per_conversion": 1500, "cost_per_thousand_impressions": 1500, "return_on_ad_spend": 1500} |
+| spend_restore_overwritten_mapping | {"assists": 1500, "average_position": 1500, "bounce_rate": 1500, "click_through_rate": 1500, "cost_per_click": 1500, "cost_per_conversion": 1500, "cost_per_thousand_impressions": 1500, "return_on_ad_spend": 1500} |
+
+本表全部重跑证据文件：`records/020_reruns_impl-006_stg_microsoft_ads__campaign_report.json`；`records/020_resume_reruns_impl-006_stg_microsoft_ads__campaign_report.json`。续做重跑私有副本在`data/020_resume_work/`。
 
 规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
 
 ## 规则问题
 
-无。
+ 映射覆盖有代码自身的明确意图证据，直接适用v2的I定义，不修改规则；复核重跑恢复原先候选列，未套用gold额外清洗。旧gold表达式试验仅作诊断，避免重复计为两个错误点。
 
 ## 证据路径
 

@@ -1,12 +1,10 @@
-> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
-
 # impl-006 / ad_reporting__monthly_campaign_country_report（全量）
 
 ## 结论
 
 主要原因：**D**；把握：高。月度国家 mart 未映射 total_cost 和四个 total_attributed 字段，直接填 NULL。
 
-参与因素：D：spend（减0行/1088格）；D：attributed_sales_14_day（减0行/1902格）；D：attributed_sales_30_day（减0行/1428格）。标记：已披露。
+参与因素：D：spend（减0行/1088格）；D：attributed_sales_14_day（减0行/1902格）；D：attributed_sales_30_day（减0行/1428格）。标记：已披露（D占位部分）。
 
 ## 差异与归因依据
 
@@ -22,7 +20,7 @@
 
 具体差异表达式和替换（未列出的字节保持不变；共同固定时间除外）：
 
-- spend：
+- spend（agent SQL 第13行起）：
 ```sql
 NULL::DECIMAL(38,2) AS "spend"
 ```
@@ -31,7 +29,7 @@ NULL::DECIMAL(38,2) AS "spend"
 total_cost AS spend
 ```
 
-- attributed_sales_14_day：
+- attributed_sales_14_day（agent SQL 第17行起）：
 ```sql
 NULL::DECIMAL(38,2) AS "attributed_sales_14_day"
 ```
@@ -40,7 +38,7 @@ NULL::DECIMAL(38,2) AS "attributed_sales_14_day"
 total_attributed_sales_14_d AS attributed_sales_14_day
 ```
 
-- attributed_sales_30_day：
+- attributed_sales_30_day（agent SQL 第18行起）：
 ```sql
 NULL::DECIMAL(38,2) AS "attributed_sales_30_day"
 ```
@@ -49,7 +47,7 @@ NULL::DECIMAL(38,2) AS "attributed_sales_30_day"
 total_attributed_sales_30_d AS attributed_sales_30_day
 ```
 
-- attributed_conversions_14_day：
+- attributed_conversions_14_day（agent SQL 第19行起）：
 ```sql
 NULL::HUGEINT AS "attributed_conversions_14_day"
 ```
@@ -58,7 +56,7 @@ NULL::HUGEINT AS "attributed_conversions_14_day"
 total_attributed_conversions_14_d AS attributed_conversions_14_day
 ```
 
-- attributed_conversions_30_day：
+- attributed_conversions_30_day（agent SQL 第20行起）：
 ```sql
 NULL::HUGEINT AS "attributed_conversions_30_day"
 ```
@@ -98,7 +96,7 @@ SELECT table_schema,table_name,column_name,data_type FROM information_schema.col
 
 结果：`[["intermediate", "int_ad_reporting__monthly_campaign_country_report", "platform", "VARCHAR"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "country_code", "VARCHAR"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "month_year", "DATE"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "year", "BIGINT"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "month", "BIGINT"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "account_id", "INTEGER"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "campaign_id", "VARCHAR"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "campaign_name", "INTEGER"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "total_impressions", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "total_clicks", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "total_interactions", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "total_cost", "DECIMAL(38,2)"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "total_conversions", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "total_conversions_value", "DECIMAL(38,2)"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "total_view_through_conversions", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "total_active_view_impressions", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "total_active_view_measurable_impressions", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "total_attributed_sales_14_d", "DECIMAL(38,2)"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "total_attributed_sales_30_d", "DECIMAL(38,2)"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "total_attributed_conversions_14_d", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "total_attributed_conversions_30_d", "HUGEINT"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "monthly_click_through_rate", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "monthly_cost_per_click", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "monthly_cost_per_thousand_impressions", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "monthly_cost_per_conversion", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "monthly_return_on_ad_spend", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "monthly_amazon_roas_30d", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "days_active_in_month", "BIGINT"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "avg_daily_spend", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "avg_daily_impressions", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "avg_daily_clicks", "DOUBLE"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "first_active_date", "DATE"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "last_active_date", "DATE"], ["intermediate", "int_ad_reporting__monthly_campaign_country_report", "_dbt_loaded_at", "TIMESTAMP WITH TIME ZONE"]]`
 
-诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=10 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=10 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。
 
 ## 固定时间与重跑
 
@@ -127,6 +125,8 @@ SELECT table_schema,table_name,column_name,data_type FROM information_schema.col
 | attributed_sales_30_day | {"attributed_conversions_14_day": 4236, "attributed_conversions_30_day": 4236, "attributed_sales_14_day": 4236, "attributed_sales_30_day": 3131, "avg_cpa": 3132, "avg_cpc": 3126, "avg_cpm": 3132, "avg_ctr_percent": 3132, "avg_daily_clicks": 3116, "avg_daily_impressions": 3130, "avg_daily_spend": 3132, "avg_roas": 3131, "clicks": 3127, "conversions": 2934, "conversions_value": 3131, "days_active_in_month": 2491, "first_active_date": 3132, "impressions": 3132, "last_active_date": 3132, "month": 2916, "monthly_amazon_roas_30d": 3131, "report_month": 3132, "spend": 4236, "year": 2413} |
 | attributed_conversions_14_day | {"attributed_conversions_30_day": 4236, "attributed_sales_14_day": 4236, "attributed_sales_30_day": 4236, "avg_cpa": 1499, "avg_cpc": 1494, "avg_cpm": 1499, "avg_ctr_percent": 1499, "avg_daily_clicks": 1475, "avg_daily_impressions": 1498, "avg_daily_spend": 1499, "avg_roas": 1498, "clicks": 1489, "conversions_value": 1499, "days_active_in_month": 1131, "first_active_date": 1499, "impressions": 1496, "last_active_date": 1499, "month": 1411, "monthly_amazon_roas_30d": 1498, "report_month": 1499, "spend": 4236, "year": 1160} |
 | attributed_conversions_30_day | {"attributed_conversions_14_day": 4236, "attributed_sales_14_day": 4236, "attributed_sales_30_day": 4236, "avg_cpa": 1499, "avg_cpc": 1494, "avg_cpm": 1499, "avg_ctr_percent": 1499, "avg_daily_clicks": 1475, "avg_daily_impressions": 1498, "avg_daily_spend": 1499, "avg_roas": 1498, "clicks": 1489, "conversions_value": 1499, "days_active_in_month": 1131, "first_active_date": 1499, "impressions": 1496, "last_active_date": 1499, "month": 1411, "monthly_amazon_roas_30d": 1498, "report_month": 1499, "spend": 4236, "year": 1160} |
+
+本表全部重跑证据文件：`records/020_reruns_impl-006_ad_reporting__monthly_campaign_country_report.json`。续做重跑私有副本在`data/020_resume_work/`。
 
 规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
 

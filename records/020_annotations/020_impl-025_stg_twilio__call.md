@@ -1,5 +1,3 @@
-> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
-
 # impl-025 / stg_twilio__call（校准）
 
 ## 结论
@@ -22,7 +20,7 @@
 
 具体差异表达式和替换（未列出的字节保持不变；共同固定时间除外）：
 
-- phone_user：
+- phone_user（agent SQL 第18行起）：
 ```sql
 regexp_replace(regexp_replace(try_cast("from" as varchar), '[^0-9]', '', 'g'), '^1?([0-9]{10})$', '+1\1') as user_phone_number_raw
 ```
@@ -31,7 +29,7 @@ regexp_replace(regexp_replace(try_cast("from" as varchar), '[^0-9]', '', 'g'), '
 try_cast("from" as varchar) as user_phone_number_raw
 ```
 
-- phone_contact：
+- phone_contact（agent SQL 第19行起）：
 ```sql
 regexp_replace(regexp_replace(try_cast("to" as varchar), '[^0-9]', '', 'g'), '^1?([0-9]{10})$', '+1\1') as contact_phone_number_raw
 ```
@@ -40,7 +38,7 @@ regexp_replace(regexp_replace(try_cast("to" as varchar), '[^0-9]', '', 'g'), '^1
 try_cast("to" as varchar) as contact_phone_number_raw
 ```
 
-- phone_policy：
+- phone_policy（agent SQL 第18行起）：
 ```sql
 regexp_replace(regexp_replace(try_cast("from" as varchar), '[^0-9]', '', 'g'), '^1?([0-9]{10})$', '+1\1') as user_phone_number_raw
 ```
@@ -49,7 +47,7 @@ regexp_replace(regexp_replace(try_cast("from" as varchar), '[^0-9]', '', 'g'), '
 try_cast("from" as varchar) as user_phone_number_raw
 ```
 
-- phone_policy：
+- phone_policy（agent SQL 第18行起）：
 ```sql
 regexp_replace(regexp_replace(try_cast("to" as varchar), '[^0-9]', '', 'g'), '^1?([0-9]{10})$', '+1\1') as contact_phone_number_raw
 ```
@@ -62,7 +60,7 @@ try_cast("to" as varchar) as contact_phone_number_raw
 
 不确定性四档：**只有通用策略说明**。
 
-020_reruns_impl-025_stg_twilio__call.json；event15/16源schema与样例；event23/24清理后电话分布；event41泛称依契约清理非法日期、枚举、电话和字段值，没有说明本表先补+号的选择。
+020_reruns_impl-025_stg_twilio__call.json；event15/16源schema与样例；event23/24清理后电话分布；event41泛称依契约清理非法日期、枚举、电话和字段值，没有说明本表先补+号的选择。 原句：event41：依契约的清理策略处理非法日期、枚举、电话和字段值；需要丢弃的记录按整行过滤，非关键字段则置为 NULL。
 
 完整事件扫描数：43；可见输出的机械命中及原始截断标记：
 
@@ -93,7 +91,7 @@ SELECT count(*) n, count(*) FILTER(WHERE regexp_matches("from", '^\+1[0-9]{10}$'
 
 结果：`[[2500, 0, 0]]`
 
-诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=44 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=44 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。
 
 ## 固定时间与重跑
 
@@ -118,6 +116,8 @@ SELECT count(*) n, count(*) FILTER(WHERE regexp_matches("from", '^\+1[0-9]{10}$'
 | phone_user | {"contact_phone_number": 2483} |
 | phone_contact | {"user_phone_number": 2482} |
 | phone_policy | {} |
+
+本表全部重跑证据文件：`records/020_reruns_impl-025_stg_twilio__call.json`。续做重跑私有副本在`data/020_resume_work/`。
 
 规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
 

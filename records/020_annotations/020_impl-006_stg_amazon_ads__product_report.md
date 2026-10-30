@@ -1,12 +1,10 @@
-> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
-
 # impl-006 / stg_amazon_ads__product_report（全量）
 
 ## 结论
 
 主要原因：**多因并列（A、D）**；把握：高。产品归因字段的缺省选择，与可计算CTR/CPC占位并列。
 
-参与因素：无。标记：已披露。
+参与因素：无。标记：已披露（D占位部分）。
 
 ## 差异与归因依据
 
@@ -22,7 +20,7 @@ raw无销售、转化、件数字段，gold常数0和agent NULL属于A；已有c
 
 具体差异表达式和替换（未列出的字节保持不变；共同固定时间除外）：
 
-- attributed_conversions_14_d：
+- attributed_conversions_14_d（agent SQL 第21行起）：
 ```sql
 CAST(NULL::INTEGER AS INTEGER) AS attributed_conversions_14_d
 ```
@@ -31,7 +29,7 @@ CAST(NULL::INTEGER AS INTEGER) AS attributed_conversions_14_d
 CAST(0 AS INT) AS attributed_conversions_14_d
 ```
 
-- attributed_conversions_30_d：
+- attributed_conversions_30_d（agent SQL 第22行起）：
 ```sql
 CAST(NULL::INTEGER AS INTEGER) AS attributed_conversions_30_d
 ```
@@ -40,7 +38,7 @@ CAST(NULL::INTEGER AS INTEGER) AS attributed_conversions_30_d
 CAST(0 AS INT) AS attributed_conversions_30_d
 ```
 
-- attributed_sales_14_d：
+- attributed_sales_14_d（agent SQL 第19行起）：
 ```sql
 CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS attributed_sales_14_d
 ```
@@ -49,7 +47,7 @@ CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS attributed_sales_14_d
 CAST(0.0 AS DECIMAL(18, 2)) AS attributed_sales_14_d
 ```
 
-- attributed_sales_30_d：
+- attributed_sales_30_d（agent SQL 第20行起）：
 ```sql
 CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS attributed_sales_30_d
 ```
@@ -58,7 +56,7 @@ CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS attributed_sales_30_d
 CAST(0.0 AS DECIMAL(18, 2)) AS attributed_sales_30_d
 ```
 
-- attributed_units_ordered_14_d：
+- attributed_units_ordered_14_d（agent SQL 第23行起）：
 ```sql
 CAST(NULL::INTEGER AS INTEGER) AS attributed_units_ordered_14_d
 ```
@@ -67,7 +65,7 @@ CAST(NULL::INTEGER AS INTEGER) AS attributed_units_ordered_14_d
 CAST(0 AS INT) AS attributed_units_ordered_14_d
 ```
 
-- attributed_units_ordered_30_d：
+- attributed_units_ordered_30_d（agent SQL 第24行起）：
 ```sql
 CAST(NULL::INTEGER AS INTEGER) AS attributed_units_ordered_30_d
 ```
@@ -76,7 +74,7 @@ CAST(NULL::INTEGER AS INTEGER) AS attributed_units_ordered_30_d
 CAST(0 AS INT) AS attributed_units_ordered_30_d
 ```
 
-- click_through_rate：
+- click_through_rate（agent SQL 第25行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS click_through_rate
 ```
@@ -85,7 +83,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS click_through_rate
 CAST(CASE WHEN CAST(impressions AS INT) IS NULL OR CAST(impressions AS INT) <= 0 THEN 0.0 WHEN CAST(CASE WHEN clicks < 0 THEN 0 ELSE clicks END AS INT) IS NULL OR CAST(CASE WHEN clicks < 0 THEN 0 ELSE clicks END AS INT) < 0 THEN 0.0 ELSE ROUND((CAST(CAST(CASE WHEN clicks < 0 THEN 0 ELSE clicks END AS INT) AS DECIMAL(18, 3)) / CAST(CAST(impressions AS INT) AS DECIMAL(18, 3))) * 100, 4) END AS DOUBLE) AS click_through_rate
 ```
 
-- cost_per_click：
+- cost_per_click（agent SQL 第26行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_click
 ```
@@ -94,7 +92,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_click
 CAST(CASE WHEN CAST(CASE WHEN clicks < 0 THEN 0 ELSE clicks END AS INT) IS NULL OR CAST(CASE WHEN clicks < 0 THEN 0 ELSE clicks END AS INT) <= 0 THEN 0.0 ELSE ROUND(ROUND(CASE WHEN CAST(ROUND(CASE WHEN cost IS NULL THEN 0.0 WHEN cost < 0 THEN 0.0 ELSE cost END, 2) AS DECIMAL(18, 2)) IS NULL THEN 0.0 WHEN CAST(ROUND(CASE WHEN cost IS NULL THEN 0.0 WHEN cost < 0 THEN 0.0 ELSE cost END, 2) AS DECIMAL(18, 2)) < 0 THEN 0.0 ELSE CAST(ROUND(CASE WHEN cost IS NULL THEN 0.0 WHEN cost < 0 THEN 0.0 ELSE cost END, 2) AS DECIMAL(18, 2)) END, 2) / CAST(CASE WHEN clicks < 0 THEN 0 ELSE clicks END AS INT), 2) END AS DOUBLE) AS cost_per_click
 ```
 
-- return_on_ad_spend：
+- return_on_ad_spend（agent SQL 第27行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS return_on_ad_spend
 ```
@@ -147,7 +145,7 @@ SELECT count(*) n,count(*) FILTER(WHERE "cost" IS NULL) AS c0_null,count(*) FILT
 
 结果：`[[700, 0, 0]]`
 
-诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=16 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=16 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。
 
 ## 固定时间与重跑
 
@@ -184,6 +182,8 @@ SELECT count(*) n,count(*) FILTER(WHERE "cost" IS NULL) AS c0_null,count(*) FILT
 | click_through_rate | {"attributed_conversions_14_d": 700, "attributed_conversions_30_d": 700, "attributed_sales_14_d": 700, "attributed_sales_30_d": 700, "attributed_units_ordered_14_d": 700, "attributed_units_ordered_30_d": 700, "cost_per_click": 700, "return_on_ad_spend": 700} |
 | cost_per_click | {"attributed_conversions_14_d": 700, "attributed_conversions_30_d": 700, "attributed_sales_14_d": 700, "attributed_sales_30_d": 700, "attributed_units_ordered_14_d": 700, "attributed_units_ordered_30_d": 700, "click_through_rate": 700, "return_on_ad_spend": 700} |
 | return_on_ad_spend | {"attributed_conversions_14_d": 700, "attributed_conversions_30_d": 700, "attributed_sales_14_d": 700, "attributed_sales_30_d": 700, "attributed_units_ordered_14_d": 700, "attributed_units_ordered_30_d": 700, "click_through_rate": 700, "cost_per_click": 700} |
+
+本表全部重跑证据文件：`records/020_reruns_impl-006_stg_amazon_ads__product_report.json`。续做重跑私有副本在`data/020_resume_work/`。
 
 规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
 

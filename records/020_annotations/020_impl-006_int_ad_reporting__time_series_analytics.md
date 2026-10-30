@@ -1,12 +1,10 @@
-> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
-
 # impl-006 / int_ad_reporting__time_series_analytics（全量）
 
 ## 结论
 
 主要原因：**D**；把握：中。时间序列模型用全列 NULL 单源投影代替四源日汇总和窗口分析。
 
-参与因素：无。标记：已披露。
+参与因素：无。标记：已披露（D占位部分）。
 
 ## 差异与归因依据
 
@@ -59,7 +57,7 @@ SELECT table_schema,table_name,column_name,data_type FROM information_schema.col
 
 结果：`[["staging", "stg_google_ads__campaign_report", "source_relation", "VARCHAR"], ["staging", "stg_google_ads__campaign_report", "account_id", "VARCHAR"], ["staging", "stg_google_ads__campaign_report", "date_day", "DATE"], ["staging", "stg_google_ads__campaign_report", "campaign_id", "VARCHAR"], ["staging", "stg_google_ads__campaign_report", "ad_network_type", "VARCHAR"], ["staging", "stg_google_ads__campaign_report", "device", "VARCHAR"], ["staging", "stg_google_ads__campaign_report", "clicks", "BIGINT"], ["staging", "stg_google_ads__campaign_report", "spend", "DECIMAL(18,2)"], ["staging", "stg_google_ads__campaign_report", "impressions", "BIGINT"], ["staging", "stg_google_ads__campaign_report", "conversions", "DECIMAL(10,2)"], ["staging", "stg_google_ads__campaign_report", "conversions_value", "DECIMAL(15,2)"], ["staging", "stg_google_ads__campaign_report", "view_through_conversions", "BIGINT"]]`
 
-诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=7 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=7 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。
 
 ## 固定时间与重跑
 
@@ -80,6 +78,8 @@ SELECT table_schema,table_name,column_name,data_type FROM information_schema.col
 |---|---|
 | baseline | {} |
 | whole_implementation_diagnostic | {"cpc_30d_volatility": 8, "cpc_z_score": 7, "ctr_30d_trend_forecast": 32, "ctr_30d_volatility": 5, "ctr_dow_deviation_pct": 66, "ctr_seasonal_factor": 90, "ctr_trend_slope_90d": 79, "ctr_z_score": 4, "dow_avg_ctr": 71, "dow_avg_spend": 59, "monthly_avg_ctr": 106, "monthly_avg_spend": 108, "spend_30d_trend_forecast": 31, "spend_dow_deviation_pct": 47, "spend_lower_confidence": 3, "spend_seasonal_factor": 92, "spend_trend_slope_90d": 66, "spend_upper_confidence": 1} |
+
+本表全部重跑证据文件：`records/020_reruns_impl-006_int_ad_reporting__time_series_analytics.json`。续做重跑私有副本在`data/020_resume_work/`。
 
 规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
 

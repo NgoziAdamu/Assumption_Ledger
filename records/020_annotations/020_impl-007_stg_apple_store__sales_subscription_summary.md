@@ -1,5 +1,3 @@
-> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
-
 # impl-007 / stg_apple_store__sales_subscription_summary（全量）
 
 ## 结论
@@ -22,7 +20,7 @@
 
 具体差异表达式和替换（未列出的字节保持不变；共同固定时间除外）：
 
-- active_subscriptions：
+- active_subscriptions（agent SQL 第8行起）：
 ```sql
 TRY_CAST(subscribers AS BIGINT) AS active_subscriptions
 ```
@@ -31,7 +29,7 @@ TRY_CAST(subscribers AS BIGINT) AS active_subscriptions
 CAST(CASE WHEN active_standard_price_subscriptions THEN 1 ELSE 0 END AS BIGINT) AS active_subscriptions
 ```
 
-- free_trial_subscriptions：
+- free_trial_subscriptions（agent SQL 第9行起）：
 ```sql
 CASE WHEN active_free_trial_introductory_offer_subscriptions THEN TRY_CAST(subscribers AS BIGINT) ELSE 0 END AS free_trial_subscriptions
 ```
@@ -88,7 +86,7 @@ SELECT count(*) n,count(*) FILTER(WHERE subscribers<0) negative_subscribers,coun
 
 结果：`[[700, 0, 700, 347]]`
 
-诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=36 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=36 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。
 
 ## 固定时间与重跑
 
@@ -111,6 +109,8 @@ SELECT count(*) n,count(*) FILTER(WHERE subscribers<0) negative_subscribers,coun
 | baseline | {"active_subscriptions": 700, "free_trial_subscriptions": 347} |
 | active_subscriptions | {"free_trial_subscriptions": 347} |
 | free_trial_subscriptions | {"active_subscriptions": 700} |
+
+本表全部重跑证据文件：`records/020_reruns_impl-007_stg_apple_store__sales_subscription_summary.json`。续做重跑私有副本在`data/020_resume_work/`。
 
 规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
 

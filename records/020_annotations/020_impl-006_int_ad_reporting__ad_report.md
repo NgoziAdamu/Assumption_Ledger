@@ -1,12 +1,10 @@
-> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
-
 # impl-006 / int_ad_reporting__ad_report（全量）
 
 ## 结论
 
 主要原因：**D**；把握：高。仅取 Facebook 分支且将可映射指标填 NULL，遗漏 Apple 的 1500 行。
 
-参与因素：D：clicks（减0行/1000格）；D：cost（减0行/1000格）；D：interactions（减0行/1000格）；D：conversions（减0行/1000格）；D：conversions_value（减0行/1000格）；D：view_through_conversions（减0行/1000格）；D：cost_per_conversion（减0行/1000格）；D：return_on_ad_spend（减0行/1000格）。标记：已披露。
+参与因素：D：clicks（减0行/1000格）；D：cost（减0行/1000格）；D：interactions（减0行/1000格）；D：conversions（减0行/1000格）；D：conversions_value（减0行/1000格）；D：view_through_conversions（减0行/1000格）；D：cost_per_conversion（减0行/1000格）；D：return_on_ad_spend（减0行/1000格）。标记：已披露（D占位部分）。
 
 ## 差异与归因依据
 
@@ -22,7 +20,7 @@ event23 写明 primary source only / fanin unsupported；event27 fallback 用 so
 
 具体差异表达式和替换（未列出的字节保持不变；共同固定时间除外）：
 
-- missing_apple_branch：
+- missing_apple_branch（agent SQL 第35行起）：
 ```sql
 FROM staging.stg_facebook_ads__ad_report
 ```
@@ -96,7 +94,7 @@ SELECT
 FROM staging.stg_apple_search_ads__ad_report
 ```
 
-- clicks：
+- clicks（agent SQL 第11行起）：
 ```sql
 NULL::INTEGER AS "clicks"
 ```
@@ -105,7 +103,7 @@ NULL::INTEGER AS "clicks"
 inline_link_clicks AS clicks
 ```
 
-- cost：
+- cost（agent SQL 第13行起）：
 ```sql
 NULL::DECIMAL(18,2) AS "cost"
 ```
@@ -114,7 +112,7 @@ NULL::DECIMAL(18,2) AS "cost"
 spend AS cost
 ```
 
-- interactions：
+- interactions（agent SQL 第12行起）：
 ```sql
 NULL::INTEGER AS "interactions"
 ```
@@ -123,7 +121,7 @@ NULL::INTEGER AS "interactions"
 0 AS interactions
 ```
 
-- conversions：
+- conversions（agent SQL 第14行起）：
 ```sql
 NULL::INTEGER AS "conversions"
 ```
@@ -132,7 +130,7 @@ NULL::INTEGER AS "conversions"
 0 AS conversions
 ```
 
-- conversions_value：
+- conversions_value（agent SQL 第15行起）：
 ```sql
 NULL::DECIMAL(2,1) AS "conversions_value"
 ```
@@ -141,7 +139,7 @@ NULL::DECIMAL(2,1) AS "conversions_value"
 0.0 AS conversions_value
 ```
 
-- view_through_conversions：
+- view_through_conversions（agent SQL 第16行起）：
 ```sql
 NULL::INTEGER AS "view_through_conversions"
 ```
@@ -150,7 +148,7 @@ NULL::INTEGER AS "view_through_conversions"
 0 AS view_through_conversions
 ```
 
-- cost_per_conversion：
+- cost_per_conversion（agent SQL 第31行起）：
 ```sql
 NULL::DOUBLE AS "cost_per_conversion"
 ```
@@ -159,7 +157,7 @@ NULL::DOUBLE AS "cost_per_conversion"
 0.0 AS cost_per_conversion
 ```
 
-- return_on_ad_spend：
+- return_on_ad_spend（agent SQL 第32行起）：
 ```sql
 NULL::DECIMAL(2,1) AS "return_on_ad_spend"
 ```
@@ -201,7 +199,7 @@ SELECT table_schema,table_name,column_name,data_type FROM information_schema.col
 
 结果：`[["staging", "stg_facebook_ads__ad_report", "platform", "VARCHAR"], ["staging", "stg_facebook_ads__ad_report", "ad_id", "VARCHAR"], ["staging", "stg_facebook_ads__ad_report", "date_day", "DATE"], ["staging", "stg_facebook_ads__ad_report", "account_id", "VARCHAR"], ["staging", "stg_facebook_ads__ad_report", "impressions", "INTEGER"], ["staging", "stg_facebook_ads__ad_report", "inline_link_clicks", "INTEGER"], ["staging", "stg_facebook_ads__ad_report", "spend", "DECIMAL(18,2)"], ["staging", "stg_facebook_ads__ad_report", "click_through_rate", "INTEGER"], ["staging", "stg_facebook_ads__ad_report", "cost_per_click", "INTEGER"], ["staging", "stg_facebook_ads__ad_report", "cost_per_thousand_impressions", "DOUBLE"], ["staging", "stg_facebook_ads__ad_report", "_dbt_loaded_at", "TIMESTAMP WITH TIME ZONE"]]`
 
-诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=1 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=1 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。
 
 ## 固定时间与重跑
 
@@ -238,6 +236,8 @@ SELECT table_schema,table_name,column_name,data_type FROM information_schema.col
 | view_through_conversions | {"clicks": 1000, "conversions": 1000, "conversions_value": 1000, "cost": 1000, "cost_per_conversion": 1000, "interactions": 1000, "return_on_ad_spend": 1000} |
 | cost_per_conversion | {"clicks": 1000, "conversions": 1000, "conversions_value": 1000, "cost": 1000, "interactions": 1000, "return_on_ad_spend": 1000, "view_through_conversions": 1000} |
 | return_on_ad_spend | {"clicks": 1000, "conversions": 1000, "conversions_value": 1000, "cost": 1000, "cost_per_conversion": 1000, "interactions": 1000, "view_through_conversions": 1000} |
+
+本表全部重跑证据文件：`records/020_reruns_impl-006_int_ad_reporting__ad_report.json`。续做重跑私有副本在`data/020_resume_work/`。
 
 规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
 

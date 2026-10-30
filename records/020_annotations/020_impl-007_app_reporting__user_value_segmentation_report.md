@@ -1,5 +1,3 @@
-> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
-
 # impl-007 / app_reporting__user_value_segmentation_report（全量）
 
 ## 结论
@@ -22,7 +20,7 @@
 
 具体差异表达式和替换（未列出的字节保持不变；共同固定时间除外）：
 
-- gold_roi_labels_diagnostic：
+- gold_roi_labels_diagnostic（agent SQL 第7行起）：
 ```sql
 CASE WHEN global_avg_clv>500 THEN 'High' WHEN global_avg_clv>200 THEN 'Medium' WHEN global_avg_clv>50 THEN 'Low' ELSE 'Uncertain' END roi_expectation
 ```
@@ -64,7 +62,7 @@ SELECT table_schema,table_name,column_name,data_type FROM information_schema.col
 
 结果：`[["intermediate", "int_user_rfm_analysis", "app_id", "VARCHAR"], ["intermediate", "int_user_rfm_analysis", "buyer_country", "VARCHAR"], ["intermediate", "int_user_rfm_analysis", "buyer_currency", "VARCHAR"], ["intermediate", "int_user_rfm_analysis", "recency_days", "BIGINT"], ["intermediate", "int_user_rfm_analysis", "frequency_count", "BIGINT"], ["intermediate", "int_user_rfm_analysis", "monetary_value", "DECIMAL(38,2)"], ["intermediate", "int_user_rfm_analysis", "first_transaction_date", "DATE"], ["intermediate", "int_user_rfm_analysis", "last_transaction_date", "DATE"], ["intermediate", "int_user_rfm_analysis", "total_transactions", "BIGINT"], ["intermediate", "int_user_rfm_analysis", "avg_transaction_value", "DOUBLE"], ["intermediate", "int_user_rfm_analysis", "subscription_count", "HUGEINT"], ["intermediate", "int_user_rfm_analysis", "purchase_count", "HUGEINT"], ["intermediate", "int_user_rfm_analysis", "refund_count", "HUGEINT"], ["intermediate", "int_user_rfm_analysis", "customer_lifetime_days", "BIGINT"], ["intermediate", "int_user_rfm_analysis", "recency_score", "INTEGER"], ["intermediate", "int_user_rfm_analysis", "frequency_score", "INTEGER"], ["intermediate", "int_user_rfm_analysis", "monetary_score", "INTEGER"], ["intermediate", "int_user_rfm_analysis", "rfm_score", "INTEGER"], ["intermediate", "int_user_rfm_analysis", "rfm_segment_code", "VARCHAR"], ["intermediate", "int_user_rfm_analysis", "customer_segment", "VARCHAR"], ["intermediate", "int_user_rfm_analysis", "estimated_clv", "DOUBLE"], ["intermediate", "int_user_rfm_analysis", "customer_health_status", "VARCHAR"], ["intermediate", "int_user_rfm_analysis", "is_high_value_customer", "INTEGER"], ["intermediate", "int_user_rfm_analysis", "is_churn_risk", "INTEGER"], ["intermediate", "int_user_rfm_analysis", "is_recent_customer", "INTEGER"], ["intermediate", "int_user_rfm_analysis", "data_quality_flag", "VARCHAR"], ["intermediate", "int_user_rfm_analysis", "analysis_timestamp", "TIMESTAMP WITH TIME ZONE"]]`
 
-诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=34 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=34 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。
 
 ## 固定时间与重跑
 
@@ -85,6 +83,8 @@ SELECT table_schema,table_name,column_name,data_type FROM information_schema.col
 |---|---|
 | baseline | {"global_avg_clv": 3, "roi_expectation": 3} |
 | gold_roi_labels_diagnostic | {"global_avg_clv": 3} |
+
+本表全部重跑证据文件：`records/020_reruns_impl-007_app_reporting__user_value_segmentation_report.json`。续做重跑私有副本在`data/020_resume_work/`。
 
 规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
 

@@ -1,5 +1,3 @@
-> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
-
 # impl-006 / int_ad_reporting__country_mapping（全量）
 
 ## 结论
@@ -47,7 +45,7 @@ event 97：`int_ad_reporting__country_mapping` 由于契约没有给出完整静
 核实查询条数（含失败尝试）：0；核实代价档：需要查业务说明。全部连接原件read_only=True，查询只用agent当时可见库。
 
 无数据核实查询；静态枚举问题需缺失的业务清单，来源搜索范围见归因说明。
-诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=2 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=2 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。
 
 ## 固定时间与重跑
 
@@ -68,6 +66,8 @@ event 97：`int_ad_reporting__country_mapping` 由于契约没有给出完整静
 |---|---|
 | baseline | {"continent": 1, "gdp_per_capita_usd": 1, "internet_penetration_pct": 1, "mobile_penetration_pct": 1, "sub_region": 1} |
 | whole_implementation_diagnostic | {} |
+
+本表全部重跑证据文件：`records/020_reruns_impl-006_int_ad_reporting__country_mapping.json`。续做重跑私有副本在`data/020_resume_work/`。
 
 规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
 

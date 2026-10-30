@@ -1,12 +1,10 @@
-> **暂停检查点／待复核草稿**：用户于 2026-10-29 要求暂停。此文件尚未通过任务020最终复核，请勿作为正式定稿使用。
-
 # impl-006 / stg_amazon_ads__ad_group_report（全量）
 
 ## 结论
 
 主要原因：**C**；把握：高。未按契约删除非法 ad_group_id；同时遗漏CTR/CPC，并有策略清洗歧义。
 
-参与因素：A：campaign_bidding_strategy（减0行/17987格）；D：click_through_rate（减0行/18347格）；D：cost_per_click（减0行/17251格）。标记：无。
+参与因素：A：campaign_bidding_strategy（减0行/17987格）；D：click_through_rate（减0行/18347格）；D：cost_per_click（减0行/17251格）。标记：已披露（D占位部分）。
 
 ## 差异与归因依据
 
@@ -22,7 +20,7 @@
 
 具体差异表达式和替换（未列出的字节保持不变；共同固定时间除外）：
 
-- campaign_bidding_strategy：
+- campaign_bidding_strategy（agent SQL 第9行起）：
 ```sql
 TRY_CAST("campaign_bidding_strategy" AS VARCHAR) AS campaign_bidding_strategy
 ```
@@ -31,7 +29,7 @@ TRY_CAST("campaign_bidding_strategy" AS VARCHAR) AS campaign_bidding_strategy
 CAST(CASE WHEN LOWER(TRIM(campaign_bidding_strategy)) IN ('advanced cpc', 'enhanced cpc', 'manual cpc', 'manual cpm', 'target impression share bids', 'maximize conversions', 'maximize conversion value', 'target cpa', 'target roas', 'viewable cpm', 'target cpm', 'commission', 'percent cpc') THEN UPPER(TRIM(campaign_bidding_strategy)) ELSE NULL END AS TEXT) AS campaign_bidding_strategy
 ```
 
-- click_through_rate：
+- click_through_rate（agent SQL 第13行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS click_through_rate
 ```
@@ -40,7 +38,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS click_through_rate
 CAST(CASE WHEN impressions IS NULL OR impressions < 0 THEN 0.0 WHEN clicks IS NULL OR clicks < 0 THEN 0.0 WHEN impressions > 0 THEN ROUND((CAST(clicks AS DECIMAL(18, 3)) / CAST(impressions AS DECIMAL(18, 3))) * 100, 4) ELSE 0.0 END AS DOUBLE) AS click_through_rate
 ```
 
-- cost_per_click：
+- cost_per_click（agent SQL 第14行起）：
 ```sql
 CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_click
 ```
@@ -49,7 +47,7 @@ CAST(NULL::DOUBLE AS DOUBLE) AS cost_per_click
 CAST(CASE WHEN clicks IS NULL OR clicks <= 0 THEN 0.0 ELSE ROUND(ROUND(CASE WHEN cost IS NULL THEN 0.0 WHEN cost < 0 THEN 0.0 ELSE cost END, 2) / clicks, 2) END AS DOUBLE) AS cost_per_click
 ```
 
-- ad_group_id_gold_diagnostic：
+- ad_group_id_gold_diagnostic（agent SQL 第7行起）：
 ```sql
 CAST(TRY_CAST("ad_group_id" AS VARCHAR) AS VARCHAR) AS ad_group_id
 ```
@@ -58,7 +56,7 @@ CAST(TRY_CAST("ad_group_id" AS VARCHAR) AS VARCHAR) AS ad_group_id
 CAST(CASE WHEN TRIM(CAST(ad_group_id AS TEXT)) = '' OR ad_group_id IS NULL THEN NULL WHEN NOT REGEXP_MATCHES(TRIM(CAST(ad_group_id AS TEXT)), '^[A-Za-z0-9_-]{1,128}$') THEN NULL ELSE TRIM(CAST(ad_group_id AS TEXT)) END AS TEXT) AS ad_group_id
 ```
 
-- invalid_id_contract_delete：
+- invalid_id_contract_delete（agent SQL 第18行起）：
 ```sql
 SELECT * FROM cleaned
 ```
@@ -69,9 +67,9 @@ SELECT * FROM cleaned WHERE ad_group_id IS NOT NULL AND TRIM(ad_group_id) != '' 
 
 ## agent可见证据与不确定性
 
-不确定性四档：**只有通用策略说明**。
+不确定性四档：**看到了但没提**。
 
-event 97（args.final_thought）：对缺失源字段采用类型明确的 NULL，占用可用字段进行投影，并在缺失加载时间时采用运行时 `CURRENT_TIMESTAMP`。 event 97（args.final_thought）：脏值转换采用 DuckDB `TRY_CAST`；不可解析值转为 NULL，避免全批失败，但该字段数据会缺失并可能降低后续统计有效性。
+event18输出ad_group_id列，event19写转换，event86核对列类型。未找到对本表非法ID应删除还是保留的说明；event97的TRY_CAST/NULL泛述不能代替本处delete_row政策。
 
 完整事件扫描数：99；可见输出的机械命中及原始截断标记：
 
@@ -111,7 +109,7 @@ SELECT count(*) n,count(*) FILTER(WHERE "campaign_bidding_strategy" IS NULL) AS 
 
 结果：`[[17868, 0, 17868, 0, 0]]`
 
-诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=13 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025的agent修改raw不适用“不可评估”，本次使用留存raw。
+诊断允许读gold，不计入上面的五条限额。详见 `records/020_diagnostics.json`、`records/020_final_diagnostics.json` 中 index=13 的条目；仅在本表有条目时适用。015已核实impl-006/007所有raw三侧一致，校准002一致；025本表实际使用的raw.call_data也三侧一致（2500行、同内容哈希），不把其他Snowflake兼容表的类型改动归给本表。
 
 ## 固定时间与重跑
 
@@ -140,6 +138,8 @@ SELECT count(*) n,count(*) FILTER(WHERE "campaign_bidding_strategy" IS NULL) AS 
 | cost_per_click | {"campaign_bidding_strategy": 17852, "click_through_rate": 17852, "clicks": 601, "cost": 605, "cost_per_click": 601, "impressions": 605} |
 | ad_group_id_gold_diagnostic | {"campaign_bidding_strategy": 17868, "click_through_rate": 17868, "clicks": 614, "cost": 618, "cost_per_click": 17868, "impressions": 618} |
 | invalid_id_contract_delete | {"campaign_bidding_strategy": 17852, "click_through_rate": 17852, "clicks": 601, "cost": 605, "cost_per_click": 17852, "impressions": 605} |
+
+本表全部重跑证据文件：`records/020_reruns_impl-006_stg_amazon_ads__ad_group_report.json`。续做重跑私有副本在`data/020_resume_work/`。
 
 规模先行数、相同再按格子数。重复键先抵消整行相等项，剩余按既有脚本固定字典序配对，因此单列patch也可能改变其他列的配对；不是逐列计数简单相加来选择主因。类别相同的并列项合并类别；完全无改善不列参与因素。
 
