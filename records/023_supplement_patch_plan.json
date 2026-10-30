@@ -1,0 +1,248 @@
+[
+  {
+    "task": "impl-016",
+    "table": "workday__employee_overview",
+    "clock": "2025-10-13 00:00:00+00",
+    "patches": [
+      {
+        "label": "comp_ebe_join",
+        "edits": [
+          [
+            "LEFT JOIN comp ON b.position_id=comp.position_id AND b.source_relation=comp.source_relation",
+            "LEFT JOIN (SELECT eb.worker_id,eb.position_id,eb.source_relation,c.compensation_grade_id,c.is_work_shift_required,c.is_union_eligible FROM intermediate.int_workday__worker_employee_enhanced eb LEFT JOIN comp c ON eb.position_id=c.position_id AND eb.source_relation=c.source_relation) comp ON b.worker_id=comp.worker_id AND b.position_id=comp.position_id AND b.source_relation=comp.source_relation"
+          ]
+        ],
+        "category": "C",
+        "reason": "恢复契约规定 ebe 派生 compensation 后按 worker/source/position 回接的重复度；仅修改该 JOIN 一处。"
+      }
+    ]
+  },
+  {
+    "task": "impl-016",
+    "table": "workday__position_overview",
+    "clock": "2025-10-13 00:00:00+00",
+    "patches": [
+      {
+        "label": "similar_group",
+        "edits": [
+          [
+            " SELECT po.organization_id,pr.job_profile_id,count(DISTINCT b.position_id) similar_positions_in_department FROM base b LEFT JOIN po ON b.position_id=po.position_id AND b.source_relation=po.source_relation AND po.rn=1 LEFT JOIN profiles pr ON b.position_id=pr.position_id AND b.source_relation=pr.source_relation GROUP BY po.organization_id,pr.job_profile_id",
+            " SELECT o.organization_id,pr.job_profile_id,count(*) similar_positions_in_department FROM base b LEFT JOIN po ON b.position_id=po.position_id AND b.source_relation=po.source_relation AND po.rn=1 LEFT JOIN staging.stg_workday__organization o ON po.organization_id=o.organization_id AND po.source_relation=o.source_relation LEFT JOIN profiles pr ON b.position_id=pr.position_id AND b.source_relation=pr.source_relation GROUP BY o.organization_id,pr.job_profile_id"
+          ]
+        ],
+        "category": "C",
+        "reason": "相似岗位按实际组织维度分组；孤儿组织关系归 NULL 组。"
+      }
+    ]
+  },
+  {
+    "task": "impl-017",
+    "table": "greenhouse__job_enhanced",
+    "clock": "2025-10-24 00:00:00+00",
+    "patches": [
+      {
+        "label": "ratio_zero_vs_null",
+        "edits": [
+          [
+            "count_total_interviews * 100.0 / count_total_applications",
+            "nullif(count_total_interviews,0) * 100.0 / count_total_applications"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约先将 count 默认0；gold 用未补零的原始聚合生成 NULL 比率。"
+      }
+    ]
+  },
+  {
+    "task": "impl-018",
+    "table": "stg_salesforce__contact_history",
+    "clock": "2025-10-24 15:24:19.642344+08:00",
+    "patches": [
+      {
+        "label": "history_key_clock",
+        "edits": [
+          [
+            "md5(concat_ws('|', coalesce(cast(contact_id as varchar), ''), coalesce(cast(_fivetran_start as varchar), ''), coalesce(cast(_fivetran_end as varchar), '')))",
+            "concat(id, '_', cast(current_timestamp as timestamp)::varchar)"
+          ]
+        ],
+        "category": "A",
+        "reason": "history_unique_key 算法未规定；在 gold 生成时刻共同固定时间后单改键表达式。"
+      }
+    ]
+  },
+  {
+    "task": "impl-018",
+    "table": "stg_salesforce__user",
+    "clock": null,
+    "patches": [
+      {
+        "label": "email_not_null",
+        "edits": [
+          [
+            "and email is not null",
+            "and TRUE"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约 email not_null；gold 保留空 email。"
+      },
+      {
+        "label": "email_length",
+        "edits": [
+          [
+            "and length(lower(trim(email))) <= 255",
+            "and TRUE"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约明确长邮箱删除，gold 保留。"
+      }
+    ]
+  },
+  {
+    "task": "impl-019",
+    "table": "stg_apple_store__app_session_daily",
+    "clock": "2025-10-24 00:00:00+00",
+    "patches": [
+      {
+        "label": "semver_regex",
+        "edits": [
+          [
+            "CASE WHEN r.app_version IS NULL THEN NULL WHEN regexp_matches(trim(cast(r.app_version AS VARCHAR)), '^[0-9]+(\\.[0-9]+\\.[0-9]+|)$') THEN trim(cast(r.app_version AS VARCHAR)) ELSE NULL END AS app_version",
+            "CASE WHEN regexp_matches(cast(r.app_version AS VARCHAR), '^[0-9]+\\\\.[0-9]+\\\\.[0-9]+$') OR regexp_matches(cast(r.app_version AS VARCHAR), '^[0-9]+$') THEN cast(r.app_version AS VARCHAR) ELSE NULL END AS app_version"
+          ]
+        ],
+        "category": "O",
+        "reason": "gold 使用双反斜杠而不接受普通三段数字版本；契约 YAML 解析后接受。"
+      },
+      {
+        "label": "date_filter_null",
+        "edits": [
+          [
+            "WHERE try_cast(r.date AS DATE) IS NOT NULL",
+            "WHERE cast(coalesce(try_strptime(r.date,'%Y-%m-%d'),try_strptime(r.date,'%d-%m-%Y'),try_strptime(r.date,'%b %d, %Y')) as date) IS NOT NULL"
+          ]
+        ],
+        "category": "A",
+        "reason": "日期输入格式支持范围未明确；每处过滤表达式分别修改。"
+      },
+      {
+        "label": "date_filter_upper",
+        "edits": [
+          [
+            "AND try_cast(r.date AS DATE) <= CURRENT_DATE",
+            "AND cast(coalesce(try_strptime(r.date,'%Y-%m-%d'),try_strptime(r.date,'%d-%m-%Y'),try_strptime(r.date,'%b %d, %Y')) as date) <= CURRENT_DATE"
+          ]
+        ],
+        "category": "A",
+        "reason": "日期输入格式支持范围未明确；每处过滤表达式分别修改。"
+      },
+      {
+        "label": "date_filter_lower",
+        "edits": [
+          [
+            "AND try_cast(r.date AS DATE) >= DATE '2020-01-01'",
+            "AND cast(coalesce(try_strptime(r.date,'%Y-%m-%d'),try_strptime(r.date,'%d-%m-%Y'),try_strptime(r.date,'%b %d, %Y')) as date) >= DATE '2020-01-01'"
+          ]
+        ],
+        "category": "A",
+        "reason": "日期输入格式支持范围未明确；每处过滤表达式分别修改。"
+      }
+    ]
+  },
+  {
+    "task": "impl-020",
+    "table": "int_intercom__conversation_part_aggregates",
+    "clock": null,
+    "patches": [
+      {
+        "label": "conversation_coverage",
+        "edits": [
+          [
+            "from rollup r join staging.stg_intercom__conversation_history c on r.conversation_id=c.conversation_id",
+            "from (SELECT c0.conversation_id,coalesce(r0.count_total_parts,0) count_total_parts,r0.first_contact_reply_at,r0.first_assignment_at,r0.first_admin_response_at,r0.first_reopen_at,r0.last_assignment_at,r0.last_contact_reply_at,r0.last_admin_response_at,r0.last_reopen_at,coalesce(r0.count_assignments,0) count_assignments,coalesce(r0.count_reopens,0) count_reopens FROM staging.stg_intercom__conversation_history c0 LEFT JOIN rollup r0 ON c0.conversation_id=r0.conversation_id) r join staging.stg_intercom__conversation_history c on r.conversation_id=c.conversation_id"
+          ]
+        ],
+        "category": "U",
+        "reason": "P=每个 conversation 都有匹配的 part；由 part 驱动的内连接丢失无 part 对话。可见库5726个对话无 part；CS 全部无匹配。"
+      }
+    ]
+  },
+  {
+    "task": "impl-020",
+    "table": "stg_intercom__contact_history",
+    "clock": null,
+    "patches": [
+      {
+        "label": "phone_gold_regex",
+        "edits": [
+          [
+            "regexp_matches(normalized_phone, '^\\+[1-9][0-9]{1,14}$')",
+            "regexp_matches(normalized_phone, '^\\\\+[1-9]\\\\d{1,14}$')"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约显式 E.164 允许的1079条，gold 双反斜杠表达式全部拒绝。"
+      }
+    ]
+  },
+  {
+    "task": "impl-020",
+    "table": "stg_intercom__conversation_contact_history",
+    "clock": null,
+    "patches": [
+      {
+        "label": "contact_column",
+        "edits": [
+          [
+            "try_cast(conversation_id as varchar) as contact_id",
+            "contact_id as contact_id"
+          ]
+        ],
+        "category": "O",
+        "reason": "原始列错位，agent 输出 contact VARCHAR 与数据关系一致；gold 按原名透传。"
+      },
+      {
+        "label": "conversation_column",
+        "edits": [
+          [
+            "try_cast(contact_id as bigint) as conversation_id",
+            "conversation_id as conversation_id"
+          ]
+        ],
+        "category": "O",
+        "reason": "agent 遵守 conversation_id BIGINT；gold 保留无法转成 BIGINT 的原始字符串。"
+      }
+    ]
+  },
+  {
+    "task": "impl-021",
+    "table": "stg_klaviyo__person",
+    "clock": null,
+    "patches": [
+      {
+        "label": "full_name_null",
+        "edits": [
+          [
+            "nullif(trim(concat_ws(' ', nullif(trim(cast(first_name as varchar)), ''), nullif(trim(cast(last_name as varchar)), ''))), '') full_name",
+            "first_name || ' ' || last_name full_name"
+          ]
+        ],
+        "category": "A",
+        "reason": "只缺一侧姓名时拼接剩余姓名还是 NULL，契约未明确。"
+      },
+      {
+        "label": "phone_normalization",
+        "edits": [
+          [
+            "case when phone_digits='' then null else '+' || phone_digits end",
+            "case when phone_number is null then null when left(regexp_replace(phone_number, '[^0-9]+', ''),1)='0' then '+' || ltrim(regexp_replace(phone_number, '[^0-9]+', ''),'0') else '+' || regexp_replace(phone_number, '[^0-9]+', '') end"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约要求移除非数字并加+；gold还移除前导0且regexp_replace未指定全局。仅改一个phone CASE，检验其是否独立改善。"
+      }
+    ]
+  }
+]

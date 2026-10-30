@@ -1,0 +1,1150 @@
+[
+  {
+    "task": "impl-015",
+    "table": "stg_quickbooks__invoice_line",
+    "clock": null,
+    "patches": [
+      {
+        "label": "item_mapping",
+        "edits": [
+          [
+            "CAST(r.item_id AS VARCHAR)",
+            "CAST(r.sales_item_item_id AS VARCHAR)"
+          ]
+        ],
+        "category": "U",
+        "reason": "item_id 全空，候选 sales_item_item_id 有值；核实其与商品主表关系后判定。"
+      }
+    ]
+  },
+  {
+    "task": "impl-015",
+    "table": "stg_quickbooks__payment_line",
+    "clock": null,
+    "patches": [
+      {
+        "label": "linked_id",
+        "edits": [
+          [
+            "CAST(NULL AS VARCHAR) AS \"linked_txn_payment_id\"",
+            "CAST(r.invoice_id AS VARCHAR) AS \"linked_txn_payment_id\""
+          ]
+        ],
+        "category": "D",
+        "reason": "有 invoice_id 候选但直接整列占位。"
+      }
+    ]
+  },
+  {
+    "task": "impl-015",
+    "table": "stg_quickbooks__vendor",
+    "clock": null,
+    "patches": [
+      {
+        "label": "vendor_name",
+        "edits": [
+          [
+            "CAST(NULL AS VARCHAR) AS \"name\"",
+            "CAST(r.display_name AS VARCHAR) AS \"name\""
+          ]
+        ],
+        "category": "D",
+        "reason": "存在 display_name 候选，name 整列占位。"
+      }
+    ]
+  },
+  {
+    "task": "impl-016",
+    "table": "int_workday__organization_metrics",
+    "clock": "2025-10-13 00:00:00+00",
+    "patches": [
+      {
+        "label": "tenure_all_assignments",
+        "edits": [
+          [
+            "coalesce(c.avg_tenure_days,0)::DOUBLE avg_tenure_days",
+            "coalesce((SELECT avg(date_diff('day',w.effective_start,coalesce(w.effective_end,current_date))) FROM staging.stg_workday__worker_position_organization w WHERE w.organization_id=o.organization_id AND w.source_relation=o.source_relation),0)::DOUBLE avg_tenure_days"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约明确平均任期涵盖全部历史与当前 assignment，代码只取当前。"
+      }
+    ]
+  },
+  {
+    "task": "impl-016",
+    "table": "stg_workday__position",
+    "clock": null,
+    "patches": [
+      {
+        "label": "validation_order",
+        "edits": [
+          [
+            "TRIM(r.employee_type) NOT IN",
+            "r.employee_type NOT IN"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约先对原始值执行枚举检查、再 trim；agent 用 trim 后值校验。"
+      }
+    ]
+  },
+  {
+    "task": "impl-016",
+    "table": "workday__employee_overview",
+    "clock": "2025-10-13 00:00:00+00",
+    "patches": [
+      {
+        "label": "compensation_regex",
+        "edits": [
+          [
+            "CASE WHEN regexp_extract(coalesce(compensation_grade_id,''),'([0-9]+)',1)='' THEN 'Ungraded' WHEN try_cast(regexp_extract(compensation_grade_id,'([0-9]+)',1) AS INTEGER)<=5 THEN 'Entry Level' WHEN try_cast(regexp_extract(compensation_grade_id,'([0-9]+)',1) AS INTEGER)<=10 THEN 'Mid Level' WHEN try_cast(regexp_extract(compensation_grade_id,'([0-9]+)',1) AS INTEGER)<=15 THEN 'Senior Level' ELSE 'Executive Level' END",
+            "'Ungraded'"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约要求提取首段数字，agent 符合；gold 双反斜杠正则对当前 grade 未提取数字。常量仅为定位 gold 差异的诊断。"
+      },
+      {
+        "label": "comp_base_multiplicity",
+        "edits": [
+          [
+            "FROM staging.stg_workday__position_job_profile p\n LEFT JOIN staging.stg_workday__job_profile jp ON p.job_profile_id=jp.job_profile_id AND p.source_relation=jp.source_relation",
+            "FROM staging.stg_workday__position_job_profile p\n LEFT JOIN staging.stg_workday__job_profile jp ON p.job_profile_id=jp.job_profile_id AND p.source_relation=jp.source_relation\n JOIN intermediate.int_workday__worker_employee_enhanced eb ON eb.position_id=p.position_id AND eb.source_relation=p.source_relation"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约明确 compensation 从 ebe 出发并按 worker/source/position 回接；agent 直接按 position profile 连接省略 ebe 重复。"
+      }
+    ]
+  },
+  {
+    "task": "impl-016",
+    "table": "workday__position_overview",
+    "clock": "2025-10-13 00:00:00+00",
+    "patches": [
+      {
+        "label": "compensation_regex",
+        "edits": [
+          [
+            "CASE WHEN regexp_extract(compensation_grade_id,'([0-9]+)',1)='' THEN 'Ungraded' WHEN try_cast(regexp_extract(compensation_grade_id,'([0-9]+)',1) AS INTEGER)<=5 THEN 'Entry Level' WHEN try_cast(regexp_extract(compensation_grade_id,'([0-9]+)',1) AS INTEGER)<=10 THEN 'Mid Level' WHEN try_cast(regexp_extract(compensation_grade_id,'([0-9]+)',1) AS INTEGER)<=15 THEN 'Senior Level' ELSE 'Executive Level' END",
+            "'Ungraded'"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约要求提取首段数字，agent 符合；gold 双反斜杠正则对当前 grade 未提取数字。常量仅为定位 gold 差异的诊断。"
+      },
+      {
+        "label": "organization_dimension",
+        "edits": [
+          [
+            "SELECT organization_id,source_relation,organization_name,organization_type,organization_sub_type,staffing_model,current_employee_count,organization_health_score,annual_turnover_rate,performance_category,organization_size_category FROM intermediate.int_workday__organization_metrics",
+            "SELECT o.organization_id,o.source_relation,o.organization_name,o.organization_type,o.organization_sub_type,o.staffing_model,m.current_employee_count,m.organization_health_score,m.annual_turnover_rate,m.performance_category,m.organization_size_category FROM staging.stg_workday__organization o LEFT JOIN intermediate.int_workday__organization_metrics m USING(organization_id,source_relation)"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约组织维度应来自 organization，agent 只读 active organization metrics，丢失非 active 组织属性。"
+      },
+      {
+        "label": "organization_id",
+        "edits": [
+          [
+            "coalesce(po.organization_id,'Unknown') organization_id",
+            "coalesce(o.organization_id,'Unknown') organization_id"
+          ]
+        ],
+        "category": "A",
+        "reason": "组织关联不存在时保留关系 ID 还是输出 Unknown。"
+      }
+    ]
+  },
+  {
+    "task": "impl-017",
+    "table": "stg_greenhouse__eeoc",
+    "clock": null,
+    "patches": [
+      {
+        "label": "uniqueness",
+        "edits": [
+          [
+            "WHERE _row_num = 1",
+            "WHERE TRUE"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约声明 primary_key/unique，agent 去重而 gold 保留重复。移除去重仅为定位诊断。"
+      }
+    ]
+  },
+  {
+    "task": "impl-017",
+    "table": "stg_greenhouse__email_address",
+    "clock": null,
+    "patches": [
+      {
+        "label": "uniqueness",
+        "edits": [
+          [
+            "WHERE _row_num = 1",
+            "WHERE TRUE"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约声明 primary_key/unique，agent 去重而 gold 保留重复。移除去重仅为定位诊断。"
+      }
+    ]
+  },
+  {
+    "task": "impl-017",
+    "table": "stg_greenhouse__hiring_team",
+    "clock": null,
+    "patches": [
+      {
+        "label": "uniqueness",
+        "edits": [
+          [
+            "WHERE _row_num = 1",
+            "WHERE TRUE"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约声明 primary_key/unique，agent 去重而 gold 保留重复。移除去重仅为定位诊断。"
+      }
+    ]
+  },
+  {
+    "task": "impl-017",
+    "table": "stg_greenhouse__job_department",
+    "clock": null,
+    "patches": [
+      {
+        "label": "uniqueness",
+        "edits": [
+          [
+            "WHERE _row_num = 1",
+            "WHERE TRUE"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约声明 primary_key/unique，agent 去重而 gold 保留重复。移除去重仅为定位诊断。"
+      }
+    ]
+  },
+  {
+    "task": "impl-017",
+    "table": "stg_greenhouse__job_office",
+    "clock": null,
+    "patches": [
+      {
+        "label": "uniqueness",
+        "edits": [
+          [
+            "WHERE _row_num = 1",
+            "WHERE TRUE"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约声明 primary_key/unique，agent 去重而 gold 保留重复。移除去重仅为定位诊断。"
+      }
+    ]
+  },
+  {
+    "task": "impl-017",
+    "table": "stg_greenhouse__phone_number",
+    "clock": null,
+    "patches": [
+      {
+        "label": "uniqueness",
+        "edits": [
+          [
+            "WHERE _row_num = 1",
+            "WHERE TRUE"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约声明 primary_key/unique，agent 去重而 gold 保留重复。移除去重仅为定位诊断。"
+      }
+    ]
+  },
+  {
+    "task": "impl-017",
+    "table": "stg_greenhouse__social_media_address",
+    "clock": null,
+    "patches": [
+      {
+        "label": "uniqueness",
+        "edits": [
+          [
+            "WHERE _row_num = 1",
+            "WHERE TRUE"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约声明 primary_key/unique，agent 去重而 gold 保留重复。移除去重仅为定位诊断。"
+      }
+    ]
+  },
+  {
+    "task": "impl-017",
+    "table": "greenhouse__job_enhanced",
+    "clock": "2025-10-24 00:00:00+00",
+    "patches": [
+      {
+        "label": "prospect_cast",
+        "edits": [
+          [
+            "prospect::VARCHAR = 'True'",
+            "prospect = 'True'"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约给出了可执行的 prospect = True 字符串比较，agent 预先转 VARCHAR 改变 BOOLEAN 比较。"
+      },
+      {
+        "label": "days_clock",
+        "edits": [
+          [
+            "DATE_DIFF('microsecond', created_at, CURRENT_TIMESTAMP)",
+            "DATE_DIFF('microsecond', created_at, CURRENT_DATE)"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约要求 current date，agent 使用 current timestamp。"
+      }
+    ]
+  },
+  {
+    "task": "impl-018",
+    "table": "salesforce__daily_activity",
+    "clock": null,
+    "patches": [
+      {
+        "label": "won_amount_null",
+        "edits": [
+          [
+            "coalesce(round(sum(amount) filter(where deal_status='Won')),0)",
+            "round(sum(case when deal_status='Won' then amount else 0 end))"
+          ]
+        ],
+        "category": "C",
+        "reason": "只应在无 Won 记录时为零；有 Won 且 amount 全 NULL 时保留 NULL。"
+      }
+    ]
+  },
+  {
+    "task": "impl-018",
+    "table": "salesforce__team_performance",
+    "clock": null,
+    "patches": [
+      {
+        "label": "health_growth_null",
+        "edits": [
+          [
+            "case when coalesce(revenue_growth_qoq_percentage,0)>10 then 20 when coalesce(revenue_growth_qoq_percentage,0)>0 then 15 when coalesce(revenue_growth_qoq_percentage,0)>=-10 then 10 else 5 end",
+            "case when revenue_growth_qoq_percentage>10 then 20 when revenue_growth_qoq_percentage>0 then 15 when revenue_growth_qoq_percentage>=-10 then 10 else 5 end"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约增长率 NULL 落 else=5，agent COALESCE 成0给10分。"
+      },
+      {
+        "label": "revenue_sum",
+        "edits": [
+          [
+            "sum(total_revenue_won) as team_total_revenue",
+            "sum(total_won_amount) as team_total_revenue"
+          ]
+        ],
+        "category": "A",
+        "reason": "total revenue 的来源两种聚合未明确列映射。"
+      },
+      {
+        "label": "revenue_avg",
+        "edits": [
+          [
+            "round(avg(total_revenue_won)) as avg_revenue_per_member",
+            "round(avg(total_won_amount)) as avg_revenue_per_member"
+          ]
+        ],
+        "category": "A",
+        "reason": "平均 revenue 来源不同。"
+      },
+      {
+        "label": "revenue_top",
+        "edits": [
+          [
+            "arg_max(full_name,total_revenue_won) filter(where total_revenue_won is not null)",
+            "arg_max(full_name,total_won_amount) filter(where total_won_amount is not null)"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约明确 highest total won amount。"
+      }
+    ]
+  },
+  {
+    "task": "impl-018",
+    "table": "stg_salesforce__contact",
+    "clock": "2025-10-24 00:00:00+00",
+    "patches": [
+      {
+        "label": "null_empty_assistant_name",
+        "edits": [
+          [
+            "assistant_name as assistant_name",
+            "coalesce(assistant_name, '') as assistant_name"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_department",
+        "edits": [
+          [
+            "department as department",
+            "coalesce(department, '') as department"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_email_bounced_reason",
+        "edits": [
+          [
+            "email_bounced_reason as email_bounced_reason",
+            "coalesce(email_bounced_reason, '') as email_bounced_reason"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_fax",
+        "edits": [
+          [
+            "fax as fax",
+            "coalesce(fax, '') as fax"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_lead_source",
+        "edits": [
+          [
+            "lead_source as lead_source",
+            "coalesce(lead_source, '') as lead_source"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_master_record_id",
+        "edits": [
+          [
+            "master_record_id as master_record_id",
+            "coalesce(master_record_id, '') as master_record_id"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_other_city",
+        "edits": [
+          [
+            "other_city as other_city",
+            "coalesce(other_city, '') as other_city"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_other_country",
+        "edits": [
+          [
+            "other_country as other_country",
+            "coalesce(other_country, '') as other_country"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_other_postal_code",
+        "edits": [
+          [
+            "other_postal_code as other_postal_code",
+            "coalesce(other_postal_code, '') as other_postal_code"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_other_state",
+        "edits": [
+          [
+            "other_state as other_state",
+            "coalesce(other_state, '') as other_state"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_other_street",
+        "edits": [
+          [
+            "other_street as other_street",
+            "coalesce(other_street, '') as other_street"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_photo_url",
+        "edits": [
+          [
+            "case when photo_url is null or length(trim(photo_url)) <= 500 then trim(photo_url) end as photo_url",
+            "coalesce(case when photo_url is null or length(trim(photo_url)) <= 500 then trim(photo_url) end, '') as photo_url"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_salutation",
+        "edits": [
+          [
+            "salutation as salutation",
+            "coalesce(salutation, '') as salutation"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_title",
+        "edits": [
+          [
+            "title as title",
+            "coalesce(title, '') as title"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      }
+    ]
+  },
+  {
+    "task": "impl-018",
+    "table": "stg_salesforce__lead",
+    "clock": null,
+    "patches": [
+      {
+        "label": "null_empty_email_bounced_reason",
+        "edits": [
+          [
+            "email_bounced_reason as email_bounced_reason",
+            "coalesce(email_bounced_reason, '') as email_bounced_reason"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_fax",
+        "edits": [
+          [
+            "fax as fax",
+            "coalesce(fax, '') as fax"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_geocode_accuracy",
+        "edits": [
+          [
+            "geocode_accuracy as geocode_accuracy",
+            "coalesce(geocode_accuracy, '') as geocode_accuracy"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_industry",
+        "edits": [
+          [
+            "industry as industry",
+            "coalesce(industry, '') as industry"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_master_record_id",
+        "edits": [
+          [
+            "master_record_id as master_record_id",
+            "coalesce(master_record_id, '') as master_record_id"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_photo_url",
+        "edits": [
+          [
+            "photo_url as photo_url",
+            "coalesce(photo_url, '') as photo_url"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_salutation",
+        "edits": [
+          [
+            "salutation as salutation",
+            "coalesce(salutation, '') as salutation"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_title",
+        "edits": [
+          [
+            "title as title",
+            "coalesce(title, '') as title"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "status_filter",
+        "edits": [
+          [
+            "and trim(status) in ('Open - Not Contacted', 'Working - Contacted', 'Closed - Converted', 'Closed - Not Converted')",
+            "and TRUE"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约要求枚举并删除无效值，gold 留存。"
+      },
+      {
+        "label": "status_value",
+        "edits": [
+          [
+            "trim(status) as status",
+            "case when trim(status) in ('Open', 'Closed - Converted', 'Closed - Not Converted') then trim(status) else null end as status"
+          ]
+        ],
+        "category": "O",
+        "reason": "gold 对契约允许的两种 status 置空。"
+      },
+      {
+        "label": "revenue_range",
+        "edits": [
+          [
+            "try_cast(annual_revenue as DECIMAL(18,3))",
+            "case when annual_revenue<0 or annual_revenue>999999999999.99 then null else try_cast(annual_revenue as DECIMAL(18,2)) end"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未规定 annual revenue 边界，gold 额外范围清洗；负收入不一概视为硬约束。"
+      },
+      {
+        "label": "converted_date",
+        "edits": [
+          [
+            "try_cast(converted_date as TIMESTAMP)",
+            "case when converted_date < DATE '1900-01-01' or converted_date > current_date + interval '1 year' or converted_date < created_date::DATE then null else try_cast(converted_date as TIMESTAMP) end"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未规定 converted_date 清洗范围，gold 额外清洗。"
+      }
+    ]
+  },
+  {
+    "task": "impl-018",
+    "table": "stg_salesforce__opportunity",
+    "clock": "2025-10-24 00:00:00+00",
+    "patches": [
+      {
+        "label": "null_empty_lead_source",
+        "edits": [
+          [
+            "lead_source as lead_source",
+            "coalesce(lead_source, '') as lead_source"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      },
+      {
+        "label": "null_empty_type",
+        "edits": [
+          [
+            "\"type\" as type",
+            "coalesce(\"type\", '') as type"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定该列 NULL 与空串默认；两侧选择不同。"
+      }
+    ]
+  },
+  {
+    "task": "impl-018",
+    "table": "stg_salesforce__contact_history",
+    "clock": null,
+    "patches": [
+      {
+        "label": "history_key",
+        "edits": [
+          [
+            "md5(concat_ws('|', coalesce(cast(contact_id as varchar), ''), coalesce(cast(_fivetran_start as varchar), ''), coalesce(cast(_fivetran_end as varchar), '')))",
+            "concat(id, '_', created_date::varchar)"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约没有规定 history_unique_key 的构造算法。"
+      },
+      {
+        "label": "unique_contact",
+        "edits": [
+          [
+            "qualify row_number() over (partition by id order by id) = 1",
+            ""
+          ]
+        ],
+        "category": "O",
+        "reason": "契约 contact_id unique 而 gold 保留重复。"
+      }
+    ]
+  },
+  {
+    "task": "impl-018",
+    "table": "stg_salesforce__order",
+    "clock": null,
+    "patches": [
+      {
+        "label": "account_mapping",
+        "edits": [
+          [
+            "id as account_id",
+            "account_id as account_id"
+          ]
+        ],
+        "category": "U",
+        "reason": "ID 指订单，不对应 raw.account；需查询证实可见数据唯一指向 account_id。"
+      }
+    ]
+  },
+  {
+    "task": "impl-018",
+    "table": "stg_salesforce__task",
+    "clock": null,
+    "patches": [
+      {
+        "label": "status_filter",
+        "edits": [
+          [
+            "and trim(status) in ('Not Started', 'In Progress', 'Completed', 'Waiting on someone else', 'Deferred')",
+            "and TRUE"
+          ]
+        ],
+        "category": "O",
+        "reason": "agent 按契约删除无效状态，gold 留存。"
+      }
+    ]
+  },
+  {
+    "task": "impl-018",
+    "table": "stg_salesforce__user",
+    "clock": null,
+    "patches": [
+      {
+        "label": "email_filter",
+        "edits": [
+          [
+            "and regexp_matches(lower(trim(email)), '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$')",
+            "and TRUE"
+          ]
+        ],
+        "category": "O",
+        "reason": "契约 email 正则校验删除，gold 未执行。"
+      }
+    ]
+  },
+  {
+    "task": "impl-019",
+    "table": "apple_store__app_version_report",
+    "clock": null,
+    "patches": [
+      {
+        "label": "join_cr",
+        "edits": [
+          [
+            "LEFT JOIN cr ON g.source_relation IS NOT DISTINCT FROM cr.source_relation AND g.date_day IS NOT DISTINCT FROM cr.date_day AND g.app_id IS NOT DISTINCT FROM cr.app_id AND g.source_type IS NOT DISTINCT FROM cr.source_type AND g.app_version IS NOT DISTINCT FROM cr.app_version",
+            "LEFT JOIN cr ON g.source_relation = cr.source_relation AND g.date_day = cr.date_day AND g.app_id = cr.app_id AND g.source_type = cr.source_type AND g.app_version = cr.app_version"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未明确 NULL 键是否相等连接；agent null-safe，gold 普通等号。"
+      },
+      {
+        "label": "join_inst",
+        "edits": [
+          [
+            "LEFT JOIN inst ON g.source_relation IS NOT DISTINCT FROM inst.source_relation AND g.date_day IS NOT DISTINCT FROM inst.date_day AND g.app_id IS NOT DISTINCT FROM inst.app_id AND g.source_type IS NOT DISTINCT FROM inst.source_type AND g.app_version IS NOT DISTINCT FROM inst.app_version",
+            "LEFT JOIN inst ON g.source_relation = inst.source_relation AND g.date_day = inst.date_day AND g.app_id = inst.app_id AND g.source_type = inst.source_type AND g.app_version = inst.app_version"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未明确 NULL 键是否相等连接；agent null-safe，gold 普通等号。"
+      },
+      {
+        "label": "join_ses",
+        "edits": [
+          [
+            "LEFT JOIN ses ON g.source_relation IS NOT DISTINCT FROM ses.source_relation AND g.date_day IS NOT DISTINCT FROM ses.date_day AND g.app_id IS NOT DISTINCT FROM ses.app_id AND g.source_type IS NOT DISTINCT FROM ses.source_type AND g.app_version IS NOT DISTINCT FROM ses.app_version",
+            "LEFT JOIN ses ON g.source_relation = ses.source_relation AND g.date_day = ses.date_day AND g.app_id = ses.app_id AND g.source_type = ses.source_type AND g.app_version = ses.app_version"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未明确 NULL 键是否相等连接；agent null-safe，gold 普通等号。"
+      },
+      {
+        "label": "join_app",
+        "edits": [
+          [
+            "LEFT JOIN app ON g.source_relation IS NOT DISTINCT FROM app.source_relation AND g.app_id IS NOT DISTINCT FROM app.app_id",
+            "LEFT JOIN app ON g.source_relation = app.source_relation AND g.app_id = app.app_id"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未明确 NULL 键是否相等连接；agent null-safe，gold 普通等号。"
+      }
+    ]
+  },
+  {
+    "task": "impl-019",
+    "table": "apple_store__territory_report",
+    "clock": null,
+    "patches": [
+      {
+        "label": "join_ses",
+        "edits": [
+          [
+            "LEFT JOIN ses ON g.source_relation IS NOT DISTINCT FROM ses.source_relation AND g.date_day IS NOT DISTINCT FROM ses.date_day AND g.app_id IS NOT DISTINCT FROM ses.app_id AND g.source_type IS NOT DISTINCT FROM ses.source_type AND g.territory IS NOT DISTINCT FROM ses.territory",
+            "LEFT JOIN ses ON g.source_relation = ses.source_relation AND g.date_day = ses.date_day AND g.app_id = ses.app_id AND g.source_type = ses.source_type AND g.territory = ses.territory"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未明确 NULL 键是否相等连接；agent null-safe，gold 普通等号。"
+      },
+      {
+        "label": "join_ip",
+        "edits": [
+          [
+            "LEFT JOIN ip ON g.source_relation IS NOT DISTINCT FROM ip.source_relation AND g.date_day IS NOT DISTINCT FROM ip.date_day AND g.app_id IS NOT DISTINCT FROM ip.app_id AND g.source_type IS NOT DISTINCT FROM ip.source_type AND g.territory IS NOT DISTINCT FROM ip.territory",
+            "LEFT JOIN ip ON g.source_relation = ip.source_relation AND g.date_day = ip.date_day AND g.app_id = ip.app_id AND g.source_type = ip.source_type AND g.territory = ip.territory"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未明确 NULL 键是否相等连接；agent null-safe，gold 普通等号。"
+      },
+      {
+        "label": "join_dl",
+        "edits": [
+          [
+            "LEFT JOIN dl ON g.source_relation IS NOT DISTINCT FROM dl.source_relation AND g.date_day IS NOT DISTINCT FROM dl.date_day AND g.app_id IS NOT DISTINCT FROM dl.app_id AND g.source_type IS NOT DISTINCT FROM dl.source_type AND g.territory IS NOT DISTINCT FROM dl.territory",
+            "LEFT JOIN dl ON g.source_relation = dl.source_relation AND g.date_day = dl.date_day AND g.app_id = dl.app_id AND g.source_type = dl.source_type AND g.territory = dl.territory"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未明确 NULL 键是否相等连接；agent null-safe，gold 普通等号。"
+      },
+      {
+        "label": "join_ins",
+        "edits": [
+          [
+            "LEFT JOIN ins ON g.source_relation IS NOT DISTINCT FROM ins.source_relation AND g.date_day IS NOT DISTINCT FROM ins.date_day AND g.app_id IS NOT DISTINCT FROM ins.app_id AND g.source_type IS NOT DISTINCT FROM ins.source_type AND g.territory IS NOT DISTINCT FROM ins.territory",
+            "LEFT JOIN ins ON g.source_relation = ins.source_relation AND g.date_day = ins.date_day AND g.app_id = ins.app_id AND g.source_type = ins.source_type AND g.territory = ins.territory"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未明确 NULL 键是否相等连接；agent null-safe，gold 普通等号。"
+      },
+      {
+        "label": "join_app",
+        "edits": [
+          [
+            "LEFT JOIN app ON g.source_relation IS NOT DISTINCT FROM app.source_relation AND g.app_id IS NOT DISTINCT FROM app.app_id",
+            "LEFT JOIN app ON g.source_relation = app.source_relation AND g.app_id = app.app_id"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未明确 NULL 键是否相等连接；agent null-safe，gold 普通等号。"
+      },
+      {
+        "label": "aggregate_ip",
+        "edits": [
+          [
+            "ip AS (SELECT source_relation, date_day, app_id, source_type, territory, SUM(impressions) AS impressions, SUM(impressions_unique_device) AS impressions_unique_device, SUM(page_views) AS page_views, SUM(page_views_unique_device) AS page_views_unique_device FROM intermediate.int_apple_store__territory_impressions_page_views GROUP BY source_relation, date_day, app_id, source_type, territory),",
+            "ip AS (SELECT source_relation, date_day, app_id, source_type, territory, impressions, impressions_unique_device, page_views, page_views_unique_device FROM intermediate.int_apple_store__territory_impressions_page_views),"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约明确不聚合，agent 额外 group by。"
+      },
+      {
+        "label": "aggregate_dl",
+        "edits": [
+          [
+            "dl AS (SELECT source_relation, date_day, app_id, source_type, territory, SUM(first_time_downloads) AS first_time_downloads, SUM(redownloads) AS redownloads, SUM(total_downloads) AS total_downloads FROM intermediate.int_apple_store__territory_downloads_daily GROUP BY source_relation, date_day, app_id, source_type, territory),",
+            "dl AS (SELECT source_relation, date_day, app_id, source_type, territory, first_time_downloads, redownloads, total_downloads FROM intermediate.int_apple_store__territory_downloads_daily),"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约明确不聚合，agent 额外 group by。"
+      },
+      {
+        "label": "aggregate_ins",
+        "edits": [
+          [
+            "ins AS (SELECT source_relation, date_day, app_id, source_type, territory, SUM(deletions) AS deletions, SUM(installations) AS installations FROM intermediate.int_apple_store__territory_install_deletions GROUP BY source_relation, date_day, app_id, source_type, territory),",
+            "ins AS (SELECT source_relation, date_day, app_id, source_type, territory, deletions, installations FROM intermediate.int_apple_store__territory_install_deletions),"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约明确不聚合，agent 额外 group by。"
+      },
+      {
+        "label": "aggregate_ses",
+        "edits": [
+          [
+            "ses AS (SELECT source_relation, date_day, app_id, source_type, territory, SUM(active_devices) AS active_devices, SUM(sessions) AS sessions FROM intermediate.int_apple_store__territory_sessions_activity GROUP BY source_relation, date_day, app_id, source_type, territory),",
+            "ses AS (SELECT source_relation, date_day, app_id, source_type, territory, active_devices, sessions FROM intermediate.int_apple_store__territory_sessions_activity),"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约明确不聚合，agent 额外 group by。"
+      }
+    ]
+  },
+  {
+    "task": "impl-019",
+    "table": "stg_apple_store__app_session_daily",
+    "clock": "2025-10-24 00:00:00+00",
+    "patches": [
+      {
+        "label": "null_version_filter",
+        "edits": [
+          [
+            "coalesce(cast(r.app_version AS VARCHAR), '')",
+            "cast(r.app_version AS VARCHAR)"
+          ]
+        ],
+        "category": "C",
+        "reason": "契约原式 NOT regexp(NULL) 为 UNKNOWN 而筛除；COALESCE 为空串额外保留。"
+      }
+    ]
+  },
+  {
+    "task": "impl-020",
+    "table": "int_intercom__conversation_part_aggregates",
+    "clock": null,
+    "patches": [
+      {
+        "label": "left_conversation",
+        "edits": [
+          [
+            "from rollup r join staging.stg_intercom__conversation_history c",
+            "from rollup r left join staging.stg_intercom__conversation_history c"
+          ]
+        ],
+        "category": "U",
+        "reason": "假设每个 part conversation 均存在 history 主表；需可见数据核实。"
+      }
+    ]
+  },
+  {
+    "task": "impl-020",
+    "table": "intercom__company_metrics",
+    "clock": null,
+    "patches": [
+      {
+        "label": "contacts_total",
+        "edits": [
+          [
+            "coalesce(co.contacts_total,0)",
+            "co.contacts_total"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未指定无匹配 contact 聚合时补0还是 NULL。"
+      },
+      {
+        "label": "contacts_active_7d",
+        "edits": [
+          [
+            "coalesce(co.contacts_active_7d,0)",
+            "co.contacts_active_7d"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未指定无匹配 contact 聚合时补0还是 NULL。"
+      },
+      {
+        "label": "contacts_active_30d",
+        "edits": [
+          [
+            "coalesce(co.contacts_active_30d,0)",
+            "co.contacts_active_30d"
+          ]
+        ],
+        "category": "A",
+        "reason": "契约未指定无匹配 contact 聚合时补0还是 NULL。"
+      }
+    ]
+  },
+  {
+    "task": "impl-021",
+    "table": "stg_klaviyo__campaign",
+    "clock": null,
+    "patches": [
+      {
+        "label": "null_id_filter",
+        "edits": [
+          [
+            "nullif(trim(cast(\"ID\" as varchar)), '') is not null",
+            "TRUE"
+          ]
+        ],
+        "category": "O",
+        "reason": "前三表契约明确 ID not_null，gold 保留 NULL；person 没有非空要求，额外删除为未规定取舍。"
+      }
+    ]
+  },
+  {
+    "task": "impl-021",
+    "table": "stg_klaviyo__flow",
+    "clock": null,
+    "patches": [
+      {
+        "label": "null_id_filter",
+        "edits": [
+          [
+            "nullif(trim(cast(id as varchar)), '') is not null",
+            "TRUE"
+          ]
+        ],
+        "category": "O",
+        "reason": "前三表契约明确 ID not_null，gold 保留 NULL；person 没有非空要求，额外删除为未规定取舍。"
+      }
+    ]
+  },
+  {
+    "task": "impl-021",
+    "table": "stg_klaviyo__metric",
+    "clock": null,
+    "patches": [
+      {
+        "label": "null_id_filter",
+        "edits": [
+          [
+            "nullif(trim(cast(id as varchar)), '') is not null",
+            "TRUE"
+          ]
+        ],
+        "category": "O",
+        "reason": "前三表契约明确 ID not_null，gold 保留 NULL；person 没有非空要求，额外删除为未规定取舍。"
+      }
+    ]
+  },
+  {
+    "task": "impl-021",
+    "table": "stg_klaviyo__person",
+    "clock": null,
+    "patches": [
+      {
+        "label": "null_id_filter",
+        "edits": [
+          [
+            "nullif(trim(cast(id as varchar)), '') is not null",
+            "TRUE"
+          ]
+        ],
+        "category": "A",
+        "reason": "前三表契约明确 ID not_null，gold 保留 NULL；person 没有非空要求，额外删除为未规定取舍。"
+      }
+    ]
+  },
+  {
+    "task": "impl-021",
+    "table": "stg_klaviyo__event",
+    "clock": null,
+    "patches": [
+      {
+        "label": "email_regex",
+        "edits": [
+          [
+            "(property_email is null or regexp_full_match(lower(trim(cast(property_email as varchar))), '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}'))",
+            "(property_email is null or regexp_matches(property_email, '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}$'))"
+          ]
+        ],
+        "category": "O",
+        "reason": "gold 双反斜杠正则拒绝普通有效邮箱，而契约只要求删除 invalid property_email；需诊断确认。"
+      }
+    ]
+  },
+  {
+    "task": "impl-015",
+    "table": "quickbooks__general_ledger",
+    "clock": null,
+    "patches": []
+  },
+  {
+    "task": "impl-017",
+    "table": "greenhouse__application_history",
+    "clock": null,
+    "patches": []
+  },
+  {
+    "task": "impl-020",
+    "table": "stg_intercom__contact_history",
+    "clock": null,
+    "patches": []
+  },
+  {
+    "task": "impl-020",
+    "table": "stg_intercom__conversation_contact_history",
+    "clock": null,
+    "patches": []
+  },
+  {
+    "task": "impl-021",
+    "table": "int_klaviyo__events",
+    "clock": null,
+    "patches": []
+  }
+]
