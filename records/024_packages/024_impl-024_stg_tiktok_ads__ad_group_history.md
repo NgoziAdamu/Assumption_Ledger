@@ -1,0 +1,304 @@
+# impl-024 | staging | stg_tiktok_ads__ad_group_history | 差异：S1；日期 原记录
+
+## 契约完整原文
+
+S3:140–191
+
+```yaml
+    - name: stg_tiktok_ads__ad_group_history
+      description: "Typed ad group attributes with selected targeting fields and recency flag."
+      source_table: raw.tiktok_adgroup_history_data
+      columns:
+        - name: source_relation
+          data_type: VARCHAR
+        - name: ad_group_id
+          data_type: VARCHAR
+        - name: updated_at
+          data_type: TIMESTAMP
+          validation_rules:
+            - rule: "updated_at is a valid timestamp"
+              on_failure: nullify_field
+        - name: advertiser_id
+          data_type: VARCHAR
+        - name: campaign_id
+          data_type: VARCHAR
+        - name: interest_category
+          data_type: VARCHAR
+        - name: ad_group_name
+          data_type: VARCHAR
+        - name: frequency
+          data_type: VARCHAR
+        - name: frequency_schedule
+          data_type: VARCHAR
+        - name: age_groups
+          data_type: VARCHAR
+        - name: languages
+          data_type: VARCHAR
+        - name: gender
+          data_type: VARCHAR
+        - name: budget_mode
+          data_type: VARCHAR
+        - name: budget
+          data_type: DOUBLE
+          validation_rules:
+            - rule: "budget is numeric"
+              on_failure: nullify_field
+        - name: landing_page_url
+          data_type: VARCHAR
+        - name: secondary_optimization_event
+          data_type: VARCHAR
+        - name: creative_material_mode
+          data_type: VARCHAR
+        - name: audience_type
+          data_type: VARCHAR
+        - name: is_most_recent_record
+          data_type: BOOLEAN
+          validation_rules:
+            - rule: "true only for the row with maximal updated_at per ad_group_id and source system"
+              on_failure: correct
+
+```
+
+## agent 最终 SQL
+
+S4
+
+```sql
+with staged as (
+with source_data as (
+    select "ADGROUP_ID,UPDATED_AT,ADVERTISER_ID,CAMPAIGN_ID,CREATE_TIME,ADGROUP_NAME,PLACEMENT_TYPE,PROFILE_IMAGE,LANDING_PAGE_URL,DISPLAY_NAME,APP_TYPE,APP_DOWNLOAD_URL,APP_NAME,OPTIMIZATION_EVENT,SECONDARY_OPTIMIZATION_EVENT,CREATIVE_MATERIAL_MODE,AUDIENCE_TYPE,GENDER,MIN_ANDROID_VERSION,MIN_IOS_VERSION,BUDGET_MODE,SCHEDULE_TYPE,DAYPARTING,OPTIMIZATION_GOAL,CPV_VIDEO_DURATION,PACING,BILLING_EVENT,BID_TYPE,DEEP_BID_TYPE,IMPRESSION_TRACKING_URL,CLICK_TRACKING_URL,SECONDARY_STATUS,OPERATION_STATUS,STATISTIC_TYPE,VIDEO_DOWNLOAD,OPEN_URL,OPEN_URL_TYPE,FALLBACK_TYPE,BUDGET,BID_PRICE,CONVERSION_BID_PRICE,DEEP_CPA_BID,SCHEDULE_START_TIME,SCHEDULE_END_TIME,APP_ID,PIXEL_ID,INVENTORY_FILTER_ENABLED,IS_HFSS,IS_NEW_STRUCTURE,CATEGORY,IS_COMMENT_DISABLE,SKIP_LEARNING_PHASE,FREQUENCY,FREQUENCY_SCHEDULE,ACTION_DAYS,AUDIENCE,EXCLUDED_AUDIENCE,LOCATION,INTEREST_CATEGORY_V_2,PANGLE_BLOCK_APP_LIST_ID,ACTION_CATEGORIES,PLACEMENTS,KEYWORDS,AGE_GROUPS,LANGUAGES,OPERATING_SYSTEMS,NETWORK_TYPES,CARRIERS,VIDEO_ACTIONS,PACKAGE,_FIVETRAN_SYNCED" as record from raw.tiktok_adgroup_history_data
+)
+select
+        'tiktok_ads' as source_relation,
+        cast(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 1), '""', '"')) as VARCHAR) as ad_group_id,
+        try_cast(nullif(trim(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 2), '""', '"'))), '') as TIMESTAMP) as updated_at,
+        cast(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 3), '""', '"')) as VARCHAR) as advertiser_id,
+        cast(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 4), '""', '"')) as VARCHAR) as campaign_id,
+        cast(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 59), '""', '"')) as VARCHAR) as interest_category,
+        cast(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 6), '""', '"')) as VARCHAR) as ad_group_name,
+        cast(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 53), '""', '"')) as VARCHAR) as frequency,
+        cast(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 54), '""', '"')) as VARCHAR) as frequency_schedule,
+        cast(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 64), '""', '"')) as VARCHAR) as age_groups,
+        cast(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 65), '""', '"')) as VARCHAR) as languages,
+        cast(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 18), '""', '"')) as VARCHAR) as gender,
+        cast(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 21), '""', '"')) as VARCHAR) as budget_mode,
+        try_cast(nullif(trim(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 39), '""', '"'))), '') as DOUBLE) as budget,
+        cast(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 9), '""', '"')) as VARCHAR) as landing_page_url,
+        cast(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 15), '""', '"')) as VARCHAR) as secondary_optimization_event,
+        cast(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 16), '""', '"')) as VARCHAR) as creative_material_mode,
+        cast(trim(both '"' from replace(list_extract(regexp_extract_all(record, '(^|,)("(?:[^"]|"")*"|\[[^\]]*\]|[^,]*)', 2), 17), '""', '"')) as VARCHAR) as audience_type
+from source_data
+), ranked as (
+    select *, max(updated_at) over (partition by source_relation, ad_group_id) as max_updated_at
+    from staged
+)
+select
+    source_relation,
+    ad_group_id,
+    updated_at,
+    advertiser_id,
+    campaign_id,
+    interest_category,
+    ad_group_name,
+    frequency,
+    frequency_schedule,
+    age_groups,
+    languages,
+    gender,
+    budget_mode,
+    budget,
+    landing_page_url,
+    secondary_optimization_event,
+    creative_material_mode,
+    audience_type,
+    (updated_at is not distinct from max_updated_at) as is_most_recent_record
+from ranked
+```
+
+## gold SQL（仅供定位差异）
+
+S5
+
+```sql
+with rows as (
+  select "ADGROUP_ID,UPDATED_AT,ADVERTISER_ID,CAMPAIGN_ID,CREATE_TIME,ADGROUP_NAME,PLACEMENT_TYPE,PROFILE_IMAGE,LANDING_PAGE_URL,DISPLAY_NAME,APP_TYPE,APP_DOWNLOAD_URL,APP_NAME,OPTIMIZATION_EVENT,SECONDARY_OPTIMIZATION_EVENT,CREATIVE_MATERIAL_MODE,AUDIENCE_TYPE,GENDER,MIN_ANDROID_VERSION,MIN_IOS_VERSION,BUDGET_MODE,SCHEDULE_TYPE,DAYPARTING,OPTIMIZATION_GOAL,CPV_VIDEO_DURATION,PACING,BILLING_EVENT,BID_TYPE,DEEP_BID_TYPE,IMPRESSION_TRACKING_URL,CLICK_TRACKING_URL,SECONDARY_STATUS,OPERATION_STATUS,STATISTIC_TYPE,VIDEO_DOWNLOAD,OPEN_URL,OPEN_URL_TYPE,FALLBACK_TYPE,BUDGET,BID_PRICE,CONVERSION_BID_PRICE,DEEP_CPA_BID,SCHEDULE_START_TIME,SCHEDULE_END_TIME,APP_ID,PIXEL_ID,INVENTORY_FILTER_ENABLED,IS_HFSS,IS_NEW_STRUCTURE,CATEGORY,IS_COMMENT_DISABLE,SKIP_LEARNING_PHASE,FREQUENCY,FREQUENCY_SCHEDULE,ACTION_DAYS,AUDIENCE,EXCLUDED_AUDIENCE,LOCATION,INTEREST_CATEGORY_V_2,PANGLE_BLOCK_APP_LIST_ID,ACTION_CATEGORIES,PLACEMENTS,KEYWORDS,AGE_GROUPS,LANGUAGES,OPERATING_SYSTEMS,NETWORK_TYPES,CARRIERS,VIDEO_ACTIONS,PACKAGE,_FIVETRAN_SYNCED" as row_str
+  from raw.tiktok_adgroup_history_data
+), fields as (
+  select
+    'raw.tiktok_adgroup_history_data' as source_relation,
+    split_part(row_str, ',', 1) as ad_group_id,
+    try_cast(split_part(row_str, ',', 2) as timestamp) as updated_at,
+    split_part(row_str, ',', 3) as advertiser_id,
+    split_part(row_str, ',', 4) as campaign_id,
+    split_part(row_str, ',', 56) as interest_category,
+    split_part(row_str, ',', 6) as ad_group_name,
+    split_part(row_str, ',', 53) as frequency,
+    split_part(row_str, ',', 54) as frequency_schedule,
+    split_part(row_str, ',', 64) as age_groups,
+    split_part(row_str, ',', 67) as languages,
+    split_part(row_str, ',', 18) as gender,
+    split_part(row_str, ',', 21) as budget_mode,
+    try_cast(split_part(row_str, ',', 38) as double) as budget,
+    split_part(row_str, ',', 9) as landing_page_url,
+    split_part(row_str, ',', 15) as secondary_optimization_event,
+    split_part(row_str, ',', 16) as creative_material_mode,
+    split_part(row_str, ',', 17) as audience_type
+  from rows
+), final as (
+  select
+    *,
+    row_number() over (partition by source_relation, ad_group_id order by updated_at desc) = 1 as is_most_recent_record
+  from fields
+)
+select *
+from final
+```
+
+## 差异（L0；沿用 012 选定结果）
+
+| agent 行 | gold 行 | 仅 agent 键 | 仅 gold 键 | agent 重复键组 | gold 重复键组 |
+|---|---|---|---|---|---|
+| 2504 | 2504 | 0 | 0 | 0 | 0 |
+
+列值为原始 CAST AS VARCHAR；表格转义仅用于展示换行与分隔符。无共同键的 0 个行对不表示值一致。
+
+
+样例键映射：
+
+| 键代号 | 完整规范化键 |
+|---|---|
+| K1 | <code>{"ad_group_id":"1"}</code> |
+| K2 | <code>{"ad_group_id":"10"}</code> |
+| K3 | <code>{"ad_group_id":"100"}</code> |
+
+| 列 | 不一致行/最少对数 | agent 未抵消次数 | gold 未抵消次数 | agent 类型 | gold 类型 |
+|---|---|---|---|---|---|
+| source_relation | 2504 | 2504 | 2504 | VARCHAR | VARCHAR |
+| ad_group_id | 0 | 0 | 0 | VARCHAR | VARCHAR |
+| advertiser_id | 0 | 0 | 0 | VARCHAR | VARCHAR |
+| campaign_id | 0 | 0 | 0 | VARCHAR | VARCHAR |
+| interest_category | 0 | 0 | 0 | VARCHAR | VARCHAR |
+| ad_group_name | 0 | 0 | 0 | VARCHAR | VARCHAR |
+| frequency | 0 | 0 | 0 | VARCHAR | VARCHAR |
+| frequency_schedule | 0 | 0 | 0 | VARCHAR | VARCHAR |
+| age_groups | 2504 | 2504 | 2504 | VARCHAR | VARCHAR |
+| gender | 0 | 0 | 0 | VARCHAR | VARCHAR |
+| budget_mode | 0 | 0 | 0 | VARCHAR | VARCHAR |
+| budget | 2504 | 2504 | 2504 | DOUBLE | DOUBLE |
+| landing_page_url | 0 | 0 | 0 | VARCHAR | VARCHAR |
+| secondary_optimization_event | 0 | 0 | 0 | VARCHAR | VARCHAR |
+| creative_material_mode | 0 | 0 | 0 | VARCHAR | VARCHAR |
+| audience_type | 0 | 0 | 0 | VARCHAR | VARCHAR |
+| is_most_recent_record | 0 | 0 | 0 | BOOLEAN | BOOLEAN |
+
+source_relation 样例：
+
+| 键 | agent 值 | gold 值 |
+|---|---|---|
+| K1 | tiktok_ads | raw.tiktok_adgroup_history_data |
+| K2 | tiktok_ads | raw.tiktok_adgroup_history_data |
+| K3 | tiktok_ads | raw.tiktok_adgroup_history_data |
+
+age_groups 样例：
+
+| 键 | agent 值 | gold 值 |
+|---|---|---|
+| K1 | <code>[ "AGE_25_34", "AGE_35_44", "AGE_45_54", "AGE_55_100", "AGE_18_24" ]</code> | <code>"[ ""AGE_25_34""</code> |
+| K2 | <code>[ "AGE_25_34", "AGE_35_44", "AGE_45_54", "AGE_55_100", "AGE_18_24" ]</code> | <code>"[ ""AGE_25_34""</code> |
+| K3 | <code>[ "AGE_25_34", "AGE_35_44", "AGE_45_54", "AGE_55_100", "AGE_18_24" ]</code> | <code>"[ ""AGE_25_34""</code> |
+
+budget 样例：
+
+| 键 | agent 值 | gold 值 |
+|---|---|---|
+| K1 | 500.0 | null |
+| K2 | 500.0 | null |
+| K3 | 0.0 | null |
+
+独有键样例：
+
+| 仅 agent 原始键 | 仅 gold 原始键 |
+|---|---|
+| <code>[]</code> | <code>[]</code> |
+
+## 006：仅 agent 违反的约束
+
+未记录违反为 True 的约束。
+
+## 008：仅 True 痕迹与最少证据
+
+| 标记 | 最少证据（多项只列少量例子） |
+|---|---|
+| A3_constant_nonnull_column | <code>11列；[{"column":"source_relation","value":"tiktok_ads"},{"column":"interest_category","value":"[ 124938917 ]"},{"column":"frequency","value":""}]</code> |
+| A4_equal_columns | <code>1组；[{"columns":["frequency","frequency_schedule","landing_page_url","secondary_optimization_event","audience_type"],"nonnull_equal_rows":2504,"meaning_status":"契约未描述含义差别"}]</code> |
+| B6_constant_literal_output | <code>1输出列；[{"column":"source_relation","expression":["'tiktok_ads'"]}]</code> |
+
+## 轨迹索引（不放输出原文）
+
+本题事件总数：65；归档：S8。
+
+归档事件目录：
+- dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-024/agent/.events/sessions/06ab78b3-1c60-4e-ba8aaeb602afee5/events/
+
+| 事件 | 动作 | 命令原文前 200 字符 | 输出字符 | 输出含本表名 | 显式截断 |
+|---|---|---|---|---|---|
+| 5 | run | <code>pwd &amp;&amp; ls -la &amp;&amp; find sql -maxdepth 3 -type f -print &#124; sort &amp;&amp; echo '--- config ---' &amp;&amp; cat config/layer_dependencies.yaml</code> | 3033 | true | false |
+| 11 | run | cat tiktok_ads_start.yaml | 4854 | false | false |
+| 13 | run | <code>find sql -maxdepth 2 -type d -print; python - &lt;&lt;'PY'<br>import duckdb<br>c=duckdb.connect('tiktok_ads_start.duckdb',read_only=True)<br>print(c.execute("select table_schema,table_name from information_schema.ta</code> | 377 | false | false |
+| 15 | run | <code>python - &lt;&lt;'PY'<br>import duckdb<br>c=duckdb.connect('tiktok_ads_start.duckdb',read_only=True)<br>for t, in c.execute("select table_name from information_schema.tables where table_schema='raw'").fetchall():<br> p</code> | 10620 | false | false |
+| 19 | run | <code>python - &lt;&lt;'PY'<br>import duckdb<br>c=duckdb.connect('tiktok_ads_start.duckdb',read_only=True)<br>s=c.execute('select "ADGROUP_ID,UPDATED_AT,ADVERTISER_ID,CAMPAIGN_ID,CREATE_TIME,ADGROUP_NAME,PLACEMENT_TYPE,PR</code> | 340 | false | false |
+| 23 | run | <code>cat &gt; /tmp/gen.py &lt;&lt;'PY'<br>from pathlib import Path<br>import yaml<br>root=Path('sql')<br>for layer in ('staging','intermediate','marts'):(root/layer).mkdir(exist_ok=True)<br># Contract table specifications<br>numeric</code> | 256 | false | false |
+| 37 | run | <code>cat &gt; /tmp/fixcampaign.py &lt;&lt;'PY'<br>from pathlib import Path<br>fields=[('source_relation',"'tiktok_ads'"),('campaign_id','CAMPAIGN_ID'),('updated_at','try_cast(nullif(trim(UPDATED_AT), \'\') as TIMESTAMP)'</code> | 3378 | true | false |
+| 41 | run | <code>python - &lt;&lt;'PY'<br>import duckdb<br>c=duckdb.connect('tiktok_ads.duckdb',read_only=True)<br>for t in ['stg_tiktok_ads__campaign_history','stg_tiktok_ads__ad_history','stg_tiktok_ads__ad_group_history','stg_tik</code> | 2369 | true | false |
+| 43 | run | <code>python - &lt;&lt;'PY'<br>import duckdb<br>c=duckdb.connect('tiktok_ads.duckdb',read_only=True)<br>for schema,t in [('staging','stg_tiktok_ads__advertiser'),('staging','stg_tiktok_ads__campaign_history'),('staging','</code> | 457 | true | false |
+| 49 | run | <code>python - &lt;&lt;'PY'<br>import duckdb<br>from pathlib import Path<br>c=duckdb.connect('tiktok_ads.duckdb',read_only=True)<br>for layer, pref in [('staging','stg_'),('intermediate','int_'),('marts','tiktok_ads__')]:<br> p</code> | 1078 | true | false |
+
+### agent action 的 thought/message 命中原句
+
+event 23 / message
+
+```text
+'stg_tiktok_ads__ad_group_history':('tiktok_adgroup_history_data',{'ad_group_id':'ADGROUP_ID','interest_category':'INTEREST_CATEGORY_V_2','ad_group_name':'ADGROUP_NAME'}),
+```
+event 23 / message
+
+```text
+    if tb in ('stg_tiktok_ads__campaign_history','stg_tiktok_ads__ad_group_history','stg_tiktok_ads__ad_history'):
+```
+event 23 / message
+
+```text
+        key={'stg_tiktok_ads__campaign_history':'campaign_id','stg_tiktok_ads__ad_group_history':'ad_group_id','stg_tiktok_ads__ad_history':'ad_id'}[tb]
+```
+event 41 / message
+
+```text
+for t in ['stg_tiktok_ads__campaign_history','stg_tiktok_ads__ad_history','stg_tiktok_ads__ad_group_history','stg_tiktok_ads__ad_report_hourly']:
+```
+event 43 / message
+
+```text
+for schema,t in [('staging','stg_tiktok_ads__advertiser'),('staging','stg_tiktok_ads__campaign_history'),('staging','stg_tiktok_ads__ad_group_history'),('staging','stg_tiktok_ads__ad_history'),('marts','tiktok_ads__ad_report'),('marts','tiktok_ads__campaign_country_report')]:
+```
+
+## result.md 本表名原句
+
+原文件未出现本表名。
+
+## 原始文件路径（集中列一次）
+
+仓库相对路径基准：`/home/katherine/Assumption_Ledger`。
+
+- S1: `records/007_tolerance_tables.jsonl`
+- S2: `records/004_staging_impl-024.json`
+- S3: `/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-024/docs/data_contract.yaml`
+- S4: `/home/katherine/dac/runs/20261025_de_official_batch_01/impl-024/agent/dacomp-de-impl-024/sql/staging/stg_tiktok_ads__ad_group_history.sql`
+- S5: `/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-024/sql/staging/stg_tiktok_ads__ad_group_history.sql`
+- S6: `records/006_contract_impl-024.json`
+- S7: `records/008_table_scan.jsonl`
+- S8: `traces/dacomp_deimpl_prev.tar.gz`
+- S9: `data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-024/agent/dacomp-de-impl-024/result.md`
+- S10: `data/024_packages_work/024_impl-024_stg_tiktok_ads__ad_group_history/024_impl-024_stg_tiktok_ads__ad_group_history.json`
+- S11: `/home/katherine/dac/runs/20261025_de_official_batch_01/impl-024/agent/dacomp-de-impl-024/tiktok_ads.duckdb`
+- S12: `/home/katherine/dac/benchmarks/dacomp-de-gold/dacomp-de-impl-024/tiktok_ads.duckdb`
+- S13: `data/dacomp_deimpl_prev/runs/20261025_de_official_batch_01/impl-024/agent/.events/sessions`
