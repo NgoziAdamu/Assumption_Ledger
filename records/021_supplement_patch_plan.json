@@ -1,0 +1,364 @@
+[
+  {
+    "index": 2,
+    "patches": [
+      {
+        "label": "source_timezone_midnight",
+        "edits": [
+          [
+            "CAST(CAST(created_at AS DATE) AS TIMESTAMP) AT TIME ZONE 'UTC'",
+            "CAST(CAST(created_at AS DATE) AS TIMESTAMP) AT TIME ZONE 'Asia/Singapore'"
+          ],
+          [
+            "CAST(CAST(completed_at AS DATE) AS TIMESTAMP) AT TIME ZONE 'UTC'",
+            "CAST(CAST(completed_at AS DATE) AS TIMESTAMP) AT TIME ZONE 'Asia/Singapore'"
+          ]
+        ],
+        "category": "A",
+        "diagnostic_only": false
+      }
+    ]
+  },
+  {
+    "index": 4,
+    "patches": [
+      {
+        "label": "unique_action_types",
+        "edits": [
+          [
+            "COALESCE(s.unique_action_types,0)",
+            "s.unique_action_types"
+          ]
+        ],
+        "category": "A",
+        "diagnostic_only": false
+      },
+      {
+        "label": "days_with_activity",
+        "edits": [
+          [
+            "COALESCE(s.days_with_activity,0)",
+            "s.days_with_activity"
+          ]
+        ],
+        "category": "A",
+        "diagnostic_only": false
+      },
+      {
+        "label": "missing_activity_null_policy",
+        "edits": [
+          [
+            "ROUND(COALESCE(s.total_story_events,0)::DOUBLE/DATE_DIFF('day',t.created_at,COALESCE(t.completed_at,CURRENT_TIMESTAMP)),2) ELSE COALESCE(s.total_story_events,0)::DOUBLE",
+            "ROUND(s.total_story_events::DOUBLE/DATE_DIFF('day',t.created_at,COALESCE(t.completed_at,CURRENT_TIMESTAMP)),2) ELSE s.total_story_events::DOUBLE"
+          ],
+          [
+            "AND avg_daily_activity_rate>=0 AND",
+            "AND (avg_daily_activity_rate IS NULL OR avg_daily_activity_rate>=0) AND"
+          ]
+        ],
+        "category": "A",
+        "diagnostic_only": false
+      },
+      {
+        "label": "modification_source",
+        "edits": [
+          [
+            "modified_at>=CURRENT_TIMESTAMP-INTERVAL '7 day' THEN 'active_development' WHEN NOT is_completed AND assignee_user_id IS NOT NULL THEN 'stagnant'",
+            "DATE_DIFF('day',last_modification_timestamp,CURRENT_TIMESTAMP)<=7 THEN 'active_development' WHEN NOT is_completed AND assignee_user_id IS NOT NULL AND DATE_DIFF('day',last_modification_timestamp,CURRENT_TIMESTAMP)>7 THEN 'stagnant'"
+          ]
+        ],
+        "category": "C",
+        "diagnostic_only": false
+      },
+      {
+        "label": "gold_sql_same_clock",
+        "edits": [
+          [
+            "WITH story_agg AS (SELECT target_task_id,MIN(created_at) FILTER(WHERE action_taken='created') creation_timestamp,MIN(created_at) FILTER(WHERE action_taken='assigned') first_assignment_timestamp,MAX(created_at) FILTER(WHERE action_taken='assigned') last_assignment_timestamp,MAX(created_at) last_modification_timestamp,MIN(created_at) FILTER(WHERE action_taken='completed') completion_timestamp,COUNT(*)::BIGINT total_story_events,COUNT(DISTINCT action_taken)::BIGINT unique_action_types,COUNT(DISTINCT created_at::DATE)::BIGINT days_with_activity FROM intermediate.int_asana__task_story WHERE action_taken IS NOT NULL GROUP BY target_task_id),\nbase AS (SELECT t.*,m.task_status_category,m.performance_grade,m.health_score,m.response_time_days,m.delay_days,m.complexity_score,m.urgency_score,m.activity_score,s.creation_timestamp,s.first_assignment_timestamp,s.last_assignment_timestamp,s.last_modification_timestamp,s.completion_timestamp,COALESCE(s.total_story_events,0)::BIGINT total_story_events,COALESCE(s.unique_action_types,0)::BIGINT unique_action_types,COALESCE(s.days_with_activity,0)::BIGINT days_with_activity,\n DATE_DIFF('hour',t.created_at,s.first_assignment_timestamp)::BIGINT hours_to_assignment,DATE_DIFF('hour',s.first_assignment_timestamp,t.completed_at)::BIGINT hours_assigned_to_completion,DATE_DIFF('hour',t.created_at,COALESCE(t.completed_at,CURRENT_TIMESTAMP))::BIGINT total_lifecycle_hours,\n CASE WHEN DATE_DIFF('day',t.created_at,COALESCE(t.completed_at,CURRENT_TIMESTAMP))>0 THEN ROUND(COALESCE(s.total_story_events,0)::DOUBLE/DATE_DIFF('day',t.created_at,COALESCE(t.completed_at,CURRENT_TIMESTAMP)),2) ELSE COALESCE(s.total_story_events,0)::DOUBLE END avg_daily_activity_rate\nFROM staging.stg_asana__task t LEFT JOIN intermediate.int_asana__task_performance_metrics m ON t.task_id=m.task_id LEFT JOIN story_agg s ON t.task_id=s.target_task_id WHERE t.created_at IS NOT NULL),\ncalc AS (SELECT *,CASE WHEN is_completed THEN CASE WHEN hours_to_assignment<=24 AND hours_assigned_to_completion<=168 THEN 'highly_efficient' WHEN hours_to_assignment<=72 AND hours_assigned_to_completion<=336 THEN 'efficient' WHEN hours_to_assignment<=168 AND hours_assigned_to_completion<=720 THEN 'moderate' WHEN hours_to_assignment<=336 THEN 'slow_start' WHEN hours_assigned_to_completion>720 THEN 'slow_completion' ELSE 'inefficient' END WHEN hours_to_assignment IS NULL AND total_lifecycle_hours>168 THEN 'stalled_unassigned' WHEN hours_to_assignment IS NOT NULL AND total_lifecycle_hours>720 THEN 'stalled_assigned' WHEN urgency_score>=4 AND total_lifecycle_hours>72 THEN 'urgent_delayed' ELSE 'in_progress' END lifecycle_efficiency_category,\nCASE WHEN avg_daily_activity_rate>=2 THEN 'very_active' WHEN avg_daily_activity_rate>=1 THEN 'active' WHEN avg_daily_activity_rate>=.5 THEN 'moderate_activity' WHEN avg_daily_activity_rate>=.1 THEN 'low_activity' ELSE 'dormant' END activity_level,\nLEAST(100,GREATEST(0,(CASE WHEN is_completed AND delay_days=0 THEN 40 WHEN is_completed AND delay_days<=2 THEN 30 WHEN is_completed AND delay_days<=7 THEN 20 WHEN is_completed THEN 10 WHEN due_date::DATE>CURRENT_DATE THEN 35 WHEN due_date::DATE=CURRENT_DATE THEN 25 ELSE 5 END)+(CASE WHEN response_time_days<=1 THEN 30 WHEN response_time_days<=3 THEN 25 WHEN response_time_days<=7 THEN 20 WHEN response_time_days<=14 THEN 15 WHEN response_time_days IS NOT NULL THEN 10 ELSE 5 END)+COALESCE(activity_score,1)*4+(CASE WHEN complexity_score=1 AND total_lifecycle_hours<=168 THEN 10 WHEN complexity_score=2 AND total_lifecycle_hours<=336 THEN 10 WHEN complexity_score=3 AND total_lifecycle_hours<=720 THEN 10 WHEN total_lifecycle_hours<=72 THEN 8 ELSE 5 END)))::INTEGER lifecycle_health_score,\nCASE WHEN NOT is_completed AND assignee_user_id IS NULL THEN 'backlog' WHEN NOT is_completed AND assignee_user_id IS NOT NULL AND COALESCE(first_assignment_timestamp,created_at)>=CURRENT_TIMESTAMP-INTERVAL '1 day' THEN 'newly_assigned' WHEN NOT is_completed AND assignee_user_id IS NOT NULL AND modified_at>=CURRENT_TIMESTAMP-INTERVAL '7 day' THEN 'active_development' WHEN NOT is_completed AND assignee_user_id IS NOT NULL THEN 'stagnant' WHEN is_completed AND delay_days=0 THEN 'completed_on_time' WHEN is_completed AND delay_days>0 THEN 'completed_delayed' ELSE 'unknown_state' END current_lifecycle_stage\nFROM base), context AS (SELECT c.*,p.project_name,p.team_id,CASE WHEN p.project_id IS NULL THEN NULL ELSE COALESCE(h.overall_health_score,50) END::INTEGER project_health_score,u.user_name assignee_name,CASE WHEN u.user_id IS NOT NULL THEN 'unknown' END assignee_performance_grade\nFROM calc c LEFT JOIN staging.stg_asana__project_task pt ON c.task_id=pt.task_id::VARCHAR LEFT JOIN staging.stg_asana__project p ON pt.project_id::VARCHAR=p.project_id LEFT JOIN intermediate.int_asana__project_health_indicators h ON p.project_id=h.project_id LEFT JOIN staging.stg_asana__user u ON c.assignee_user_id::VARCHAR=u.user_id),\nfinal AS (SELECT *,CASE WHEN project_health_score IS NULL THEN 'below_project_average' WHEN lifecycle_health_score-project_health_score>20 THEN 'above_project_average' WHEN lifecycle_health_score-project_health_score>10 THEN 'slightly_above_average' WHEN lifecycle_health_score-project_health_score>=-10 THEN 'project_average' WHEN lifecycle_health_score-project_health_score>=-20 THEN 'slightly_below_average' ELSE 'below_project_average' END relative_performance_vs_project,\nconcat_ws(', ',CASE WHEN hours_to_assignment>336 THEN 'delayed_assignment' END,CASE WHEN hours_assigned_to_completion>1440 THEN 'prolonged_execution' END,CASE WHEN avg_daily_activity_rate<.1 AND NOT is_completed THEN 'dormant_task' END,CASE WHEN complexity_score=1 AND total_lifecycle_hours>336 THEN 'overengineered_simple' END,CASE WHEN urgency_score>=4 AND response_time_days>3 THEN 'urgent_ignored' END,CASE WHEN parent_task_id IS NOT NULL AND total_lifecycle_hours>720 THEN 'blocked_subtask' END,CASE WHEN delay_days>14 THEN 'severely_delayed' END,CASE WHEN total_story_events>50 THEN 'high_churn' END) anomaly_patterns,\nconcat_ws(', ',CASE WHEN lifecycle_efficiency_category='highly_efficient' THEN 'fast_track' END,CASE WHEN is_completed AND delay_days=0 AND performance_grade='excellent' THEN 'exemplary_execution' END,CASE WHEN avg_daily_activity_rate>=1 AND is_completed THEN 'consistent_progress' END,CASE WHEN response_time_days<=1 AND hours_assigned_to_completion<=168 THEN 'rapid_delivery' END,CASE WHEN complexity_score=3 AND lifecycle_health_score>=80 THEN 'complex_mastery' END,CASE WHEN urgency_score>=4 AND delay_days=0 THEN 'urgent_success' END) success_patterns,\nconcat_ws(', ',CASE WHEN hours_to_assignment>72 THEN 'faster_assignment' END,CASE WHEN activity_level IN ('low_activity','dormant') THEN 'increase_engagement' END,CASE WHEN delay_days>0 THEN 'improve_time_management' END,CASE WHEN response_time_days>3 THEN 'enhance_responsiveness' END,CASE WHEN lifecycle_health_score<60 THEN 'overall_process_improvement' END,CASE WHEN total_story_events<3 AND NOT is_completed THEN 'add_progress_updates' END) improvement_opportunities,\nCASE WHEN complexity_score=1 AND total_lifecycle_hours<=72 THEN 'appropriate_simple' WHEN complexity_score=2 AND total_lifecycle_hours BETWEEN 73 AND 336 THEN 'appropriate_medium' WHEN complexity_score=3 AND total_lifecycle_hours BETWEEN 337 AND 720 THEN 'appropriate_complex' WHEN total_lifecycle_hours<complexity_score*72 THEN 'faster_than_expected' WHEN total_lifecycle_hours>complexity_score*240 THEN 'slower_than_expected' ELSE 'within_range' END complexity_execution_match,\n(task_id IS NOT NULL AND task_name IS NOT NULL AND lifecycle_health_score BETWEEN 0 AND 100 AND total_lifecycle_hours>=0 AND (hours_to_assignment IS NULL OR hours_to_assignment>=0) AND (hours_assigned_to_completion IS NULL OR hours_assigned_to_completion>=0) AND avg_daily_activity_rate>=0 AND NOT(is_completed AND completion_timestamp IS NULL AND completed_at IS NULL)) is_valid_record\nFROM context)\nSELECT task_id,task_name,created_at,completed_at,due_date,is_completed,assignee_user_id,parent_task_id,task_status_category,performance_grade,health_score,response_time_days,delay_days,complexity_score,urgency_score,activity_score,creation_timestamp,first_assignment_timestamp,last_assignment_timestamp,last_modification_timestamp,completion_timestamp,hours_to_assignment,hours_assigned_to_completion,total_lifecycle_hours,total_story_events,unique_action_types,days_with_activity,avg_daily_activity_rate,lifecycle_efficiency_category,activity_level,lifecycle_health_score,current_lifecycle_stage,anomaly_patterns,success_patterns,improvement_opportunities,complexity_execution_match,project_name,team_id,project_health_score,assignee_name,assignee_performance_grade,relative_performance_vs_project,is_valid_record\nFROM final WHERE is_valid_record ORDER BY lifecycle_health_score DESC,total_lifecycle_hours,task_id",
+            "-- Task Lifecycle Analysis\n-- Task life cycle analysis - in-depth analysis of the entire process of tasks from creation to completion\n\nwith task_base as (\n    select *\n    from staging.stg_asana__task\n    where created_at is not null\n),\n\ntask_performance as (\n    select *\n    from intermediate.int_asana__task_performance_metrics\n),\n\ntask_stories as (\n    select *\n    from intermediate.int_asana__task_story\n    where action_taken is not null\n),\n\n-- Simplify access to project information\nproject_info as (\n    select \n        p.project_id,\n        p.project_name,\n        p.team_id,\n        coalesce(phi.overall_health_score, 50) as overall_health_score\n    from staging.stg_asana__project p\n    left join intermediate.int_asana__project_health_indicators phi on p.project_id = phi.project_id\n),\n\n-- Simplify user information acquisition\nuser_info as (\n    select \n        u.user_id,\n        u.user_name,\n        'unknown' as performance_grade  -- Simplify and avoid circular dependencies\n    from staging.stg_asana__user u\n),\n\n-- Task life cycle phase definition\ntask_lifecycle_stages as (\n    select \n        tb.task_id,\n        tb.task_name,\n        tb.created_at,\n        tb.completed_at,\n        tb.due_date,\n        tb.is_completed,\n        tb.assignee_user_id,\n        tb.parent_task_id,\n        \n        -- Get detailed metrics from the performance table\n        tp.task_status_category,\n        tp.performance_grade,\n        tp.health_score,\n        tp.response_time_days,\n        tp.delay_days,\n        tp.complexity_score,\n        tp.urgency_score,\n        tp.activity_score,\n        \n        -- key points in life cycle\n        ts_created.created_at as creation_timestamp,\n        ts_assigned.min_assigned_at as first_assignment_timestamp,\n        ts_assigned.max_assigned_at as last_assignment_timestamp,\n        ts_modified.max_modified_at as last_modification_timestamp,\n        ts_completed.completed_at as completion_timestamp,\n        \n        -- Life cycle duration calculation\n        case \n            when ts_assigned.min_assigned_at is not null then\n                date_diff('hour', tb.created_at, ts_assigned.min_assigned_at)\n            else null\n        end as hours_to_assignment,\n        \n        case \n            when tb.completed_at is not null and ts_assigned.min_assigned_at is not null then\n                date_diff('hour', ts_assigned.min_assigned_at, tb.completed_at)\n            else null\n        end as hours_assigned_to_completion,\n        \n        case \n            when tb.completed_at is not null then\n                date_diff('hour', tb.created_at, tb.completed_at)\n            else \n                date_diff('hour', tb.created_at, current_timestamp)\n        end as total_lifecycle_hours,\n        \n        -- Activity frequency analysis\n        ts_activity.total_story_events,\n        ts_activity.unique_action_types,\n        ts_activity.days_with_activity,\n        \n        case \n            when date_diff('day', tb.created_at, coalesce(tb.completed_at, current_timestamp)) > 0 then\n                round(ts_activity.total_story_events * 1.0 / \n                      date_diff('day', tb.created_at, coalesce(tb.completed_at, current_timestamp)), 2)\n            else ts_activity.total_story_events\n        end as avg_daily_activity_rate\n        \n    from task_base tb\n    left join task_performance tp on tb.task_id = tp.task_id\n    \n    -- Creation time (should be equal to created_at of task table, but verified from story table)\n    left join (\n        select target_task_id, min(created_at) as created_at\n        from task_stories \n        where action_taken = 'created'\n        group by 1\n    ) ts_created on tb.task_id = ts_created.target_task_id\n    \n    -- Allocate time points\n    left join (\n        select \n            target_task_id,\n            min(created_at) as min_assigned_at,\n            max(created_at) as max_assigned_at,\n            count(*) as assignment_count\n        from task_stories \n        where action_taken = 'assigned'\n        group by 1\n    ) ts_assigned on tb.task_id = ts_assigned.target_task_id\n    \n    -- last modified time\n    left join (\n        select \n            target_task_id,\n            max(created_at) as max_modified_at\n        from task_stories \n        group by 1\n    ) ts_modified on tb.task_id = ts_modified.target_task_id\n    \n    -- Completion time (obtained from story table)\n    left join (\n        select \n            target_task_id,\n            min(created_at) as completed_at\n        from task_stories \n        where action_taken = 'completed'\n        group by 1\n    ) ts_completed on tb.task_id = ts_completed.target_task_id\n    \n    -- activity statistics\n    left join (\n        select \n            target_task_id,\n            count(*) as total_story_events,\n            count(distinct action_taken) as unique_action_types,\n            count(distinct date(created_at)) as days_with_activity\n        from task_stories\n        group by 1\n    ) ts_activity on tb.task_id = ts_activity.target_task_id\n),\n\n-- Life cycle stage classification and efficiency analysis\nlifecycle_efficiency_analysis as (\n    select \n        *,\n        \n        -- Life cycle efficiency classification\n        case \n            when is_completed then\n                case \n                    when hours_to_assignment <= 24 and hours_assigned_to_completion <= 168 then 'highly_efficient'  -- 1 day allocated, 1 week to complete\n                    when hours_to_assignment <= 72 and hours_assigned_to_completion <= 336 then 'efficient'  -- 3 days allocated, 2 weeks to complete\n                    when hours_to_assignment <= 168 and hours_assigned_to_completion <= 720 then 'moderate'  -- 1 week allocated, completed in 1 month\n                    when hours_to_assignment <= 336 then 'slow_start'  -- Distributed in 2 weeks\n                    when hours_assigned_to_completion > 720 then 'slow_completion'  -- Completed over 1 month\n                    else 'inefficient'\n                end\n            else\n                case \n                    when hours_to_assignment is null and total_lifecycle_hours > 168 then 'stalled_unassigned'  -- Not allocated for more than 1 week\n                    when hours_to_assignment is not null and total_lifecycle_hours > 720 then 'stalled_assigned'  -- Assigned but not completed for more than 1 month\n                    when urgency_score >= 4 and total_lifecycle_hours > 72 then 'urgent_delayed'  -- urgent but delayed\n                    else 'in_progress'\n                end\n        end as lifecycle_efficiency_category,\n        \n        -- Task activity analysis\n        case \n            when avg_daily_activity_rate >= 2.0 then 'very_active'\n            when avg_daily_activity_rate >= 1.0 then 'active'\n            when avg_daily_activity_rate >= 0.5 then 'moderate_activity'\n            when avg_daily_activity_rate >= 0.1 then 'low_activity'\n            else 'dormant'\n        end as activity_level,\n        \n        -- life cycle health score\n        least(100, greatest(0,\n            -- Timeliness score (40%)\n            (case \n                when is_completed and delay_days = 0 then 40\n                when is_completed and delay_days <= 2 then 30\n                when is_completed and delay_days <= 7 then 20\n                when is_completed then 10\n                when not is_completed and due_date > current_date then 35\n                when not is_completed and due_date = current_date then 25\n                else 5\n            end) +\n            -- Responsiveness score (30%)\n            (case \n                when response_time_days <= 1 then 30\n                when response_time_days <= 3 then 25\n                when response_time_days <= 7 then 20\n                when response_time_days <= 14 then 15\n                when response_time_days is not null then 10\n                else 5\n            end) +\n            -- Activity score (20%)\n            (activity_score * 4) +\n            -- Complexity adaptability score (10%)\n            (case \n                when complexity_score = 1 and total_lifecycle_hours <= 168 then 10  -- Simple tasks within 1 week\n                when complexity_score = 2 and total_lifecycle_hours <= 336 then 10  -- Medium tasks within 2 weeks\n                when complexity_score = 3 and total_lifecycle_hours <= 720 then 10  -- Complex tasks within 1 month\n                when total_lifecycle_hours <= 72 then 8  -- Any task within 3 days\n                else 5\n            end)\n        )) as lifecycle_health_score,\n        \n        -- Life cycle stage identification\n        case \n            when not is_completed and assignee_user_id is null then 'backlog'\n            when not is_completed and assignee_user_id is not null and \n                 date_diff('day', coalesce(first_assignment_timestamp, created_at), current_timestamp) <= 1 then 'newly_assigned'\n            when not is_completed and assignee_user_id is not null and \n                 date_diff('day', last_modification_timestamp, current_timestamp) <= 7 then 'active_development'\n            when not is_completed and assignee_user_id is not null and \n                 date_diff('day', last_modification_timestamp, current_timestamp) > 7 then 'stagnant'\n            when is_completed and delay_days = 0 then 'completed_on_time'\n            when is_completed and delay_days > 0 then 'completed_delayed'\n            else 'unknown_state'\n        end as current_lifecycle_stage\n        \n    from task_lifecycle_stages\n),\n\n-- Pattern recognition and anomaly detection\nlifecycle_pattern_analysis as (\n    select \n        *,\n        \n        -- Abnormal pattern recognition\n        trim(\n            case when hours_to_assignment > 336 then 'delayed_assignment, ' else '' end ||\n            case when hours_assigned_to_completion > 1440 then 'prolonged_execution, ' else '' end ||\n            case when avg_daily_activity_rate < 0.1 and not is_completed then 'dormant_task, ' else '' end ||\n            case when complexity_score = 1 and total_lifecycle_hours > 336 then 'overengineered_simple, ' else '' end ||\n            case when urgency_score >= 4 and response_time_days > 3 then 'urgent_ignored, ' else '' end ||\n            case when parent_task_id is not null and total_lifecycle_hours > 720 then 'blocked_subtask, ' else '' end ||\n            case when delay_days > 14 then 'severely_delayed, ' else '' end ||\n            case when total_story_events > 50 then 'high_churn, ' else '' end,\n            ', '\n        ) as anomaly_patterns,\n        \n        -- successful pattern recognition\n        trim(\n            case when lifecycle_efficiency_category = 'highly_efficient' then 'fast_track, ' else '' end ||\n            case when is_completed and delay_days = 0 and performance_grade = 'excellent' then 'exemplary_execution, ' else '' end ||\n            case when avg_daily_activity_rate >= 1.0 and is_completed then 'consistent_progress, ' else '' end ||\n            case when response_time_days <= 1 and hours_assigned_to_completion <= 168 then 'rapid_delivery, ' else '' end ||\n            case when complexity_score = 3 and lifecycle_health_score >= 80 then 'complex_mastery, ' else '' end ||\n            case when urgency_score >= 4 and delay_days = 0 then 'urgent_success, ' else '' end,\n            ', '\n        ) as success_patterns,\n        \n        -- Opportunities for improvement\n        trim(\n            case when hours_to_assignment > 72 then 'faster_assignment, ' else '' end ||\n            case when activity_level in ('low_activity', 'dormant') then 'increase_engagement, ' else '' end ||\n            case when delay_days > 0 then 'improve_time_management, ' else '' end ||\n            case when response_time_days > 3 then 'enhance_responsiveness, ' else '' end ||\n            case when lifecycle_health_score < 60 then 'overall_process_improvement, ' else '' end ||\n            case when total_story_events < 3 and not is_completed then 'add_progress_updates, ' else '' end,\n            ', '\n        ) as improvement_opportunities,\n        \n        -- Matching task complexity with actual execution time\n        case \n            when complexity_score = 1 and total_lifecycle_hours <= 72 then 'appropriate_simple'\n            when complexity_score = 2 and total_lifecycle_hours between 73 and 336 then 'appropriate_medium'\n            when complexity_score = 3 and total_lifecycle_hours between 337 and 720 then 'appropriate_complex'\n            when total_lifecycle_hours < complexity_score * 72 then 'faster_than_expected'\n            when total_lifecycle_hours > complexity_score * 240 then 'slower_than_expected'\n            else 'within_range'\n        end as complexity_execution_match\n        \n    from lifecycle_efficiency_analysis\n),\n\n-- Final data validation and benchmark comparison\nfinal_lifecycle_analysis as (\n    select \n        lpa.*,\n        \n        -- Add project and user context\n        pi.project_name,\n        pi.team_id,\n        pi.overall_health_score as project_health_score,\n        ui.user_name as assignee_name,\n        ui.performance_grade as assignee_performance_grade,\n        \n        -- Relative performance indicators (compared to project average)\n        case \n            when lpa.lifecycle_health_score > pi.overall_health_score + 20 then 'above_project_average'\n            when lpa.lifecycle_health_score > pi.overall_health_score + 10 then 'slightly_above_average'\n            when lpa.lifecycle_health_score >= pi.overall_health_score - 10 then 'project_average'\n            when lpa.lifecycle_health_score >= pi.overall_health_score - 20 then 'slightly_below_average'\n            else 'below_project_average'\n        end as relative_performance_vs_project,\n        \n        -- Data quality verification\n        case \n            when lpa.task_id is null or lpa.task_name is null then false\n            when lpa.lifecycle_health_score < 0 or lpa.lifecycle_health_score > 100 then false\n            when lpa.total_lifecycle_hours < 0 then false\n            when lpa.hours_to_assignment < 0 then false\n            when lpa.hours_assigned_to_completion < 0 then false\n            when lpa.avg_daily_activity_rate < 0 then false\n            when lpa.is_completed and lpa.completion_timestamp is null and lpa.completed_at is null then false\n            else true\n        end as is_valid_record\n        \n    from lifecycle_pattern_analysis lpa\n    left join staging.stg_asana__project_task pt on lpa.task_id = pt.task_id\n    left join project_info pi on pt.project_id = pi.project_id\n    left join user_info ui on cast(lpa.assignee_user_id as varchar) = ui.user_id\n)\n\nselect *\nfrom final_lifecycle_analysis\nwhere is_valid_record = true\norder by lifecycle_health_score desc, total_lifecycle_hours asc, task_id"
+          ]
+        ],
+        "category": "O",
+        "diagnostic_only": true
+      }
+    ]
+  },
+  {
+    "index": 7,
+    "patches": [
+      {
+        "label": "due_source_choice",
+        "edits": [
+          [
+            "COALESCE(CAST(TRY_STRPTIME(due_at, '%Y-%m-%d %H:%M:%S.%f %z') AS TIMESTAMP), CAST(TRY_STRPTIME(due_on, '%Y-%m-%d %H:%M:%S.%f %z') AS TIMESTAMP))",
+            "CAST(TRY_STRPTIME(due_on, '%Y-%m-%d %H:%M:%S.%f %z') AS TIMESTAMP)"
+          ]
+        ],
+        "category": "A",
+        "diagnostic_only": false
+      },
+      {
+        "label": "due_gold_type",
+        "edits": [
+          [
+            "COALESCE(CAST(TRY_STRPTIME(due_at, '%Y-%m-%d %H:%M:%S.%f %z') AS TIMESTAMP), CAST(TRY_STRPTIME(due_on, '%Y-%m-%d %H:%M:%S.%f %z') AS TIMESTAMP))",
+            "COALESCE(TRY_STRPTIME(due_at, '%Y-%m-%d %H:%M:%S.%f %z'), TRY_STRPTIME(due_on, '%Y-%m-%d %H:%M:%S.%f %z'))"
+          ]
+        ],
+        "category": "O",
+        "diagnostic_only": true
+      },
+      {
+        "label": "start_gold_type",
+        "edits": [
+          [
+            "CAST(TRY_STRPTIME(start_on, '%Y-%m-%d %H:%M:%S.%f %z') AS TIMESTAMP)",
+            "TRY_STRPTIME(start_on, '%Y-%m-%d %H:%M:%S.%f %z')"
+          ]
+        ],
+        "category": "O",
+        "diagnostic_only": true
+      }
+    ]
+  },
+  {
+    "index": 9,
+    "patches": [
+      {
+        "label": "device_installs",
+        "edits": [
+          [
+            "cast(0 as BIGINT) AS device_installs",
+            "cast(coalesce(src.daily_device_installs,0) as BIGINT) AS device_installs"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      },
+      {
+        "label": "device_uninstalls",
+        "edits": [
+          [
+            "cast(0 as BIGINT) AS device_uninstalls",
+            "cast(coalesce(src.daily_device_uninstalls,0) as BIGINT) AS device_uninstalls"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      },
+      {
+        "label": "device_upgrades",
+        "edits": [
+          [
+            "cast(NULL as BIGINT) AS device_upgrades",
+            "cast(coalesce(src.daily_device_upgrades,0) as BIGINT) AS device_upgrades"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      },
+      {
+        "label": "user_installs",
+        "edits": [
+          [
+            "cast(NULL as BIGINT) AS user_installs",
+            "cast(coalesce(src.daily_user_installs,0) as BIGINT) AS user_installs"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      },
+      {
+        "label": "user_uninstalls",
+        "edits": [
+          [
+            "cast(NULL as BIGINT) AS user_uninstalls",
+            "cast(coalesce(src.daily_user_uninstalls,0) as BIGINT) AS user_uninstalls"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      },
+      {
+        "label": "active_devices_last_30_days",
+        "edits": [
+          [
+            "cast(NULL as BIGINT) AS active_devices_last_30_days",
+            "cast(coalesce(src.active_device_installs,0) as BIGINT) AS active_devices_last_30_days"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      }
+    ]
+  },
+  {
+    "index": 12,
+    "patches": [
+      {
+        "label": "device_installs",
+        "edits": [
+          [
+            "cast(0 as BIGINT) AS device_installs",
+            "cast(coalesce(src.daily_device_installs,0) as BIGINT) AS device_installs"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      },
+      {
+        "label": "device_uninstalls",
+        "edits": [
+          [
+            "cast(0 as BIGINT) AS device_uninstalls",
+            "cast(coalesce(src.daily_device_uninstalls,0) as BIGINT) AS device_uninstalls"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      },
+      {
+        "label": "device_upgrades",
+        "edits": [
+          [
+            "cast(NULL as BIGINT) AS device_upgrades",
+            "cast(coalesce(src.daily_device_upgrades,0) as BIGINT) AS device_upgrades"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      },
+      {
+        "label": "user_installs",
+        "edits": [
+          [
+            "cast(NULL as BIGINT) AS user_installs",
+            "cast(coalesce(src.daily_user_installs,0) as BIGINT) AS user_installs"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      },
+      {
+        "label": "user_uninstalls",
+        "edits": [
+          [
+            "cast(NULL as BIGINT) AS user_uninstalls",
+            "cast(coalesce(src.daily_user_uninstalls,0) as BIGINT) AS user_uninstalls"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      },
+      {
+        "label": "active_devices_last_30_days",
+        "edits": [
+          [
+            "cast(NULL as BIGINT) AS active_devices_last_30_days",
+            "cast(coalesce(src.active_device_installs,0) as BIGINT) AS active_devices_last_30_days"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      }
+    ]
+  },
+  {
+    "index": 14,
+    "patches": [
+      {
+        "label": "device_installs",
+        "edits": [
+          [
+            "cast(0 as BIGINT) AS device_installs",
+            "cast(coalesce(src.daily_device_installs,0) as BIGINT) AS device_installs"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      },
+      {
+        "label": "device_uninstalls",
+        "edits": [
+          [
+            "cast(0 as BIGINT) AS device_uninstalls",
+            "cast(coalesce(src.daily_device_uninstalls,0) as BIGINT) AS device_uninstalls"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      },
+      {
+        "label": "device_upgrades",
+        "edits": [
+          [
+            "cast(NULL as BIGINT) AS device_upgrades",
+            "cast(coalesce(src.daily_device_upgrades,0) as BIGINT) AS device_upgrades"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      },
+      {
+        "label": "user_installs",
+        "edits": [
+          [
+            "cast(NULL as BIGINT) AS user_installs",
+            "cast(coalesce(src.daily_user_installs,0) as BIGINT) AS user_installs"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      },
+      {
+        "label": "user_uninstalls",
+        "edits": [
+          [
+            "cast(NULL as BIGINT) AS user_uninstalls",
+            "cast(coalesce(src.daily_user_uninstalls,0) as BIGINT) AS user_uninstalls"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      },
+      {
+        "label": "active_devices_last_30_days",
+        "edits": [
+          [
+            "cast(NULL as BIGINT) AS active_devices_last_30_days",
+            "cast(coalesce(src.active_device_installs,0) as BIGINT) AS active_devices_last_30_days"
+          ]
+        ],
+        "category": "D",
+        "diagnostic_only": false
+      }
+    ]
+  },
+  {
+    "index": 16,
+    "patches": [
+      {
+        "label": "output_not_null_policy",
+        "edits": [
+          [
+            "SELECT\n    try_cast(CASE WHEN try_cast(amount_buyer_currency_ AS DECIMAL(18,3)) BETWEEN -999999.99 AND 999999.99 THEN try_cast(amount_buyer_currency_ AS DECIMAL(18,3)) ELSE NULL END AS DECIMAL(18,3)) AS amount_buyer_currency,\n    try_cast(amount_merchant_currency_ AS DECIMAL(18,3)) AS amount_merchant_currency,\n    CAST(base_plan_id AS VARCHAR) AS base_plan_id,\n    CAST(buyer_country AS VARCHAR) AS buyer_country,\n    CAST(CASE WHEN length(upper(trim(buyer_currency))) = 3 THEN upper(trim(buyer_currency)) ELSE NULL END AS VARCHAR) AS buyer_currency,\n    try_cast(buyer_postal_code AS DOUBLE) AS buyer_postal_code,\n    CAST(buyer_state AS VARCHAR) AS buyer_state,\n    try_cast(currency_conversion_rate AS DOUBLE) AS currency_conversion_rate,\n    CAST(description AS VARCHAR) AS order_id,\n    try_cast(hardware AS DOUBLE) AS buyer_hardware,\n    CAST(merchant_currency AS VARCHAR) AS merchant_currency,\n    CAST(offer_id AS VARCHAR) AS offer_id,\n    CAST(base_plan_id AS VARCHAR) AS package_name,\n    CAST(product_title AS VARCHAR) AS product_title,\n    try_cast(product_type AS BOOLEAN) AS product_type,\n    try_cast(refund_type AS DOUBLE) AS refund_type,\n    CAST(coalesce(sku_id, product_id, base_plan_id) AS VARCHAR) AS sku_id,\n    try_cast(tax_type AS DOUBLE) AS tax_type,\n    try_cast(substr(transaction_time, 1, 10) AS DATE) AS transaction_date,\n    try_cast(substr(transaction_time, 1, 19) AS TIMESTAMP) AS transaction_pt_timestamp,\n    CAST(regexp_extract(transaction_time, '([+-][0-9]{2}:[0-9]{2})', 1) AS VARCHAR) AS transaction_timezone,\n    CAST(CASE WHEN lower(trim(transaction_type)) = 'charge' THEN 'Charge' WHEN lower(trim(transaction_type)) = 'refund' THEN 'Refund' WHEN lower(trim(transaction_type)) = 'other' THEN 'Other' ELSE NULL END AS VARCHAR) AS transaction_type,\n    CAST(_modified AS VARCHAR) AS _fivetran_synced\nFROM raw.earnings\n",
+            "SELECT * FROM (SELECT\n    try_cast(CASE WHEN try_cast(amount_buyer_currency_ AS DECIMAL(18,3)) BETWEEN -999999.99 AND 999999.99 THEN try_cast(amount_buyer_currency_ AS DECIMAL(18,3)) ELSE NULL END AS DECIMAL(18,3)) AS amount_buyer_currency,\n    try_cast(amount_merchant_currency_ AS DECIMAL(18,3)) AS amount_merchant_currency,\n    CAST(base_plan_id AS VARCHAR) AS base_plan_id,\n    CAST(buyer_country AS VARCHAR) AS buyer_country,\n    CAST(CASE WHEN length(upper(trim(buyer_currency))) = 3 THEN upper(trim(buyer_currency)) ELSE NULL END AS VARCHAR) AS buyer_currency,\n    try_cast(buyer_postal_code AS DOUBLE) AS buyer_postal_code,\n    CAST(buyer_state AS VARCHAR) AS buyer_state,\n    try_cast(currency_conversion_rate AS DOUBLE) AS currency_conversion_rate,\n    CAST(description AS VARCHAR) AS order_id,\n    try_cast(hardware AS DOUBLE) AS buyer_hardware,\n    CAST(merchant_currency AS VARCHAR) AS merchant_currency,\n    CAST(offer_id AS VARCHAR) AS offer_id,\n    CAST(base_plan_id AS VARCHAR) AS package_name,\n    CAST(product_title AS VARCHAR) AS product_title,\n    try_cast(product_type AS BOOLEAN) AS product_type,\n    try_cast(refund_type AS DOUBLE) AS refund_type,\n    CAST(coalesce(sku_id, product_id, base_plan_id) AS VARCHAR) AS sku_id,\n    try_cast(tax_type AS DOUBLE) AS tax_type,\n    try_cast(substr(transaction_time, 1, 10) AS DATE) AS transaction_date,\n    try_cast(substr(transaction_time, 1, 19) AS TIMESTAMP) AS transaction_pt_timestamp,\n    CAST(regexp_extract(transaction_time, '([+-][0-9]{2}:[0-9]{2})', 1) AS VARCHAR) AS transaction_timezone,\n    CAST(CASE WHEN lower(trim(transaction_type)) = 'charge' THEN 'Charge' WHEN lower(trim(transaction_type)) = 'refund' THEN 'Refund' WHEN lower(trim(transaction_type)) = 'other' THEN 'Other' ELSE NULL END AS VARCHAR) AS transaction_type,\n    CAST(_modified AS VARCHAR) AS _fivetran_synced\nFROM raw.earnings\n) checked WHERE package_name IS NOT NULL AND sku_id IS NOT NULL AND transaction_date IS NOT NULL AND transaction_type IS NOT NULL"
+          ]
+        ],
+        "category": "C",
+        "diagnostic_only": false
+      },
+      {
+        "label": "missing_required_source_policy",
+        "edits": [
+          [
+            "SELECT\n    try_cast(CASE WHEN try_cast(amount_buyer_currency_ AS DECIMAL(18,3)) BETWEEN -999999.99 AND 999999.99 THEN try_cast(amount_buyer_currency_ AS DECIMAL(18,3)) ELSE NULL END AS DECIMAL(18,3)) AS amount_buyer_currency,\n    try_cast(amount_merchant_currency_ AS DECIMAL(18,3)) AS amount_merchant_currency,\n    CAST(base_plan_id AS VARCHAR) AS base_plan_id,\n    CAST(buyer_country AS VARCHAR) AS buyer_country,\n    CAST(CASE WHEN length(upper(trim(buyer_currency))) = 3 THEN upper(trim(buyer_currency)) ELSE NULL END AS VARCHAR) AS buyer_currency,\n    try_cast(buyer_postal_code AS DOUBLE) AS buyer_postal_code,\n    CAST(buyer_state AS VARCHAR) AS buyer_state,\n    try_cast(currency_conversion_rate AS DOUBLE) AS currency_conversion_rate,\n    CAST(description AS VARCHAR) AS order_id,\n    try_cast(hardware AS DOUBLE) AS buyer_hardware,\n    CAST(merchant_currency AS VARCHAR) AS merchant_currency,\n    CAST(offer_id AS VARCHAR) AS offer_id,\n    CAST(base_plan_id AS VARCHAR) AS package_name,\n    CAST(product_title AS VARCHAR) AS product_title,\n    try_cast(product_type AS BOOLEAN) AS product_type,\n    try_cast(refund_type AS DOUBLE) AS refund_type,\n    CAST(coalesce(sku_id, product_id, base_plan_id) AS VARCHAR) AS sku_id,\n    try_cast(tax_type AS DOUBLE) AS tax_type,\n    try_cast(substr(transaction_time, 1, 10) AS DATE) AS transaction_date,\n    try_cast(substr(transaction_time, 1, 19) AS TIMESTAMP) AS transaction_pt_timestamp,\n    CAST(regexp_extract(transaction_time, '([+-][0-9]{2}:[0-9]{2})', 1) AS VARCHAR) AS transaction_timezone,\n    CAST(CASE WHEN lower(trim(transaction_type)) = 'charge' THEN 'Charge' WHEN lower(trim(transaction_type)) = 'refund' THEN 'Refund' WHEN lower(trim(transaction_type)) = 'other' THEN 'Other' ELSE NULL END AS VARCHAR) AS transaction_type,\n    CAST(_modified AS VARCHAR) AS _fivetran_synced\nFROM raw.earnings\n",
+            "with base as (\n    select *\n    from raw.earnings\n),\n\nvalidated as (\n    select\n        -- Apply data quality corrections according to YAML spec\n\n        -- amount_buyer_currency: DECIMAL(18,3) with validation\n        case\n            when cast(amount_buyer_currency_ as decimal(18,3)) >= -999999.99\n                 and cast(amount_buyer_currency_ as decimal(18,3)) <= 999999.99\n            then cast(amount_buyer_currency_ as decimal(18,3))\n            else null\n        end as amount_buyer_currency,\n\n        -- amount_merchant_currency: DECIMAL(18,3)\n        cast(amount_merchant_currency_ as decimal(18,3)) as amount_merchant_currency,\n\n        base_plan_id,\n\n        -- buyer_country: VARCHAR (no specific validation)\n        cast(buyer_country as varchar) as buyer_country,\n\n        -- buyer_currency: VARCHAR with corrections and validation\n        case\n            when length(trim(upper(buyer_currency))) = 3\n            then upper(trim(buyer_currency))\n            else null\n        end as buyer_currency,\n\n        -- buyer_postal_code: DOUBLE (cast as-is)\n        cast(buyer_postal_code as double) as buyer_postal_code,\n\n        buyer_state,\n\n        -- currency_conversion_rate: DOUBLE (cast as-is)\n        cast(currency_conversion_rate as double) as currency_conversion_rate,\n\n        description as order_id,\n\n        -- buyer_hardware: DOUBLE (cast as-is)\n        cast(hardware as double) as buyer_hardware,\n\n        merchant_currency,\n        offer_id,\n\n        -- package_name: VARCHAR with not null constraint enforced\n        case\n            when product_id is not null then cast(product_id as varchar)\n            else null\n        end as package_name,\n\n        product_title,\n\n        -- product_type: BOOLEAN (cast as-is)\n        cast(product_type as boolean) as product_type,\n\n        -- refund_type: DOUBLE (cast as-is)\n        cast(refund_type as double) as refund_type,\n\n        -- sku_id: VARCHAR with not null constraint enforced\n        case\n            when sku_id is not null then cast(sku_id as varchar)\n            else null\n        end as sku_id,\n\n        -- tax_type: DOUBLE (cast as-is)\n        cast(tax_type as double) as tax_type,\n\n        -- transaction_date: DATE with not null constraint - delete row if null\n        case\n            when transaction_date is not null\n            then cast(substr(cast(transaction_date as varchar), 1, 10) as date)\n            else null\n        end as transaction_date,\n\n        -- transaction_pt_timestamp: TIMESTAMP (standard format)\n        cast(substr(cast(transaction_time as varchar), 1, 19) as timestamp) as transaction_pt_timestamp,\n\n        -- transaction_timezone: VARCHAR (extract from timestamp)\n        case\n            when cast(transaction_time as varchar) like '%PDT%' then 'PDT'\n            when cast(transaction_time as varchar) like '%PST%' then 'PST'\n            else 'UTC'\n        end as transaction_timezone,\n\n        -- transaction_type: VARCHAR with validation and correction\n        case\n            when transaction_type in ('Charge', 'Refund') then transaction_type\n            else 'Other'\n        end as transaction_type,\n\n        _modified as _fivetran_synced\n\n    from base\n),\n\nfinal as (\n    select\n        amount_buyer_currency,\n        amount_merchant_currency,\n        base_plan_id,\n        buyer_country,\n        buyer_currency,\n        buyer_postal_code,\n        buyer_state,\n        currency_conversion_rate,\n        order_id,\n        buyer_hardware,\n        merchant_currency,\n        offer_id,\n        package_name,\n        product_title,\n        product_type,\n        refund_type,\n        sku_id,\n        tax_type,\n        transaction_date,\n        transaction_pt_timestamp,\n        transaction_timezone,\n        transaction_type,\n        _fivetran_synced\n    from validated\n    where\n        -- Enforce not null constraints by deleting rows with null values\n        package_name is not null\n        and sku_id is not null\n        and transaction_date is not null\n        and transaction_type is not null\n)\n\nselect *\nfrom final"
+          ]
+        ],
+        "category": "A",
+        "diagnostic_only": true
+      }
+    ]
+  }
+]
