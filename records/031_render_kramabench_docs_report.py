@@ -1,0 +1,149 @@
+"""Render the document inventory and files_read statistics without interpretation."""
+from pathlib import Path
+from collections import Counter
+import csv
+import json
+
+ROOT=Path(__file__).resolve().parents[1]
+R=ROOT/'records'
+s=json.loads((R/'031_kramabench_docs_summary.json').read_bytes())
+v=json.loads((R/'031_kramabench_docs_validation.json').read_bytes())
+rows=list(csv.DictReader((R/'031_kramabench_docs_read.csv').open()))
+assert v['passed']
+names={'archeology':'考古','astronomy':'天文','biomedical':'生物医学','environment':'环境','legal':'法律','wildfire':'野火'}
+materials={
+'archeology':'2 个 Excel 的 Sheet1 前 10 行；3 个 CSV 前 5 行；未发现 README 类页。',
+'astronomy':'omni2_low_res/omni2.text 全文；5 个 geomag_forecast TXT 全文；12 个 swarmb TXT 前 200 行；37 个 HDR 全文、37 个 SP3 前 30 行；2 个 LST 前 5 行；1 个 NPZ 的键/形状、1 个 CDF 的 15 个变量及属性；全部 1,438 个 CSV 前 5 行；另摘 2 个 TLE、2 个 DAT。',
+'biomedical':'7 个 Excel 共 29 页；mmc2–mmc7 各有 1 个 README 页，6 页均全文；其余 23 页各前 10 行；1 个 CSV 前 5 行。',
+'environment':'boston-harbor-beaches.txt 全文；36 个 CSV 前 5 行；另有本地 quickstart 海滩年度 PDF 与 notebook 说明文字。',
+'legal':'131 个 CSV 前 5 行；metropolitan_statistics.html 按超过 50,000 字符的文本规则摘前 200 行。',
+'wildfire':'noaa_wildfires_variabledescrip.csv 全文；load_data.py、state_abbreviation_to_state.json 全文；其余 16 个 CSV 前 5 行；1 个 Excel 的 1 页前 10 行；2 个 GPKG 的图层/字段名。'}
+report='''# KramaBench 说明材料摘录
+
+日期：2026-10-31。
+
+## 任务
+
+清点六领域数据湖，按指定规则摘录说明原文、表头/文件开头及结构元数据；查找本地 KramaBench 仓库中的相关说明文档；对 029 最终状态表中的 42 道失败题，仅使用 028 材料包的 `files_read` 记录建立读取矩阵。不判断说明内容或读取行为与答题结果的关系，不根据代码推测读取，不重跑 agent。
+
+## 结论
+
+**已核实**：六领域共有 **1,742 文件、666,850,039 字节**，清点与 027 接收记录一致，并逐文件确认与旧本地仓库数据目录字节相同。生成六份领域摘录，合计 **1,811 个摘录块、3,292,759 个正文字符**（不含 Markdown 包装）。
+
+10 个 Excel 共 **32 页**；生物医学 mmc2–mmc7 各有一个 `README` 页，共 **6 个说明页**，已全文摘录。其余页均摘前 10 个物理行。另已核对 1 个 NPZ、1 个 CDF（15 个变量）、2 个 GPKG（2 个图层），以及所有文本/CSV/SP3 开头摘录。
+
+读取矩阵共 **9,318 行**：**337 行命中文件、8,957 行未记录、24 行 README 页级读取无法判定**。这些是“题号 × 材料单元”的行数，不是不同文件数。24 行 README 对应的工作簿都有 `files_read` 命中，但记录没有页名，不能据此说 agent 读过 README 页。
+
+## 详细发现
+
+### 交付路径
+
+- 六份领域摘录：`records/031_kramabench_docs/<领域>.md`。每个数据文件均单独成节，注明路径、大小和扩展名；Excel 逐页、PDF 逐页、notebook 逐 Markdown cell 定位。
+- [031_kramabench_docs_files.csv](../records/031_kramabench_docs_files.csv)：全部 1,742 文件，含相对路径、领域 input 内相对路径、字节数、原扩展名和 SHA-256。
+- [031_kramabench_docs_read.csv](../records/031_kramabench_docs_read.csv)：42 题的全部读取矩阵，含文件/页标识、files_read 命中原值、材料包步骤与出处。
+- [摘录索引](../records/031_kramabench_docs_excerpts.json)、[材料单元清单](../records/031_kramabench_docs_units.json)、[Excel 页记录](../records/031_kramabench_docs_sheets.json)、[本地仓库查找记录](../records/031_kramabench_docs_repository_search.json)、[逐题 files_read 原字段证据](../records/031_kramabench_docs_files_read_evidence.json)。
+- [抽取脚本](../records/031_extract_kramabench_docs.py)、[检查脚本](../records/031_check_kramabench_docs.py)、[验证结果](../records/031_kramabench_docs_validation.json)。
+
+本次按用户明确要求提交说明全文、表头/前若干行和元数据摘录；不提交 Excel、NPZ、CDF、GPKG、PDF 等源文件本体或完整数据湖。源码文件只读作文本，没有执行其中指令。
+
+### 各领域说明材料简表
+
+所有领域另附本地仓库根 README 的完整原文，保留其中原有计数和描述，不以本次清点数字替换原文。
+
+| 领域 | 文件数 | 字节数 | 已摘材料 |
+| --- | ---: | ---: | --- |
+'''
+for d,value in s['domains'].items():
+    report+=f'| [{names[d]}](../records/031_kramabench_docs/{d}.md) | {value["files"]:,} | {value["bytes"]:,} | {materials[d]} |\n'
+report+='''
+天文文件数较多，完整列表在 CSV 和 astronomy.md 中；报告按 input 下第一层目录汇总：
+
+| astronomy/input 下目录 | 文件数 | 字节数 |
+| --- | ---: | ---: |
+'''
+for row in s['directory_summary']:
+    if row['domain']=='astronomy':report+=f'| `{row["input_directory"]}` | {row["files"]:,} | {row["bytes"]:,} |\n'
+report+='''
+`.` 表示 input 根目录中的文件。
+
+### 摘录规则与原样范围
+
+1. **文本**：`.txt/.md/.json/.py/.HDR`，以及文件名命中 `readme/descrip/dictionary/codebook/metadata/notes/variable` 的文件，按不超过 50,000 字符全文、超过则前 200 个物理行处理。关键词文件优先于普通 CSV 的前 5 行规则，因此 `noaa_wildfires_variabledescrip.csv` 全文保留。`.text` 也按文本说明处理；未单列规则的 `.tle/.dat/.html` 同样采用文本长度规则并注明范围，不删除其数字行。
+2. **LST**：两个 `.lst` 文件摘前 5 个物理行作为开头记录。它们开头为数值行；本次没有补造列名或断言这些行就是语义表头。
+3. **CSV/TSV**：逐字摘前 5 个物理行，保留分隔符、引号、空白和原换行，不经过 pandas 重新输出；这里的“行”是文本行，不是 CSV 引号解析后的逻辑记录。当前清点没有 TSV。
+4. **Excel**：每个文件列出全部原页名和 visible/hidden 状态。页名按 `readme/notes/description/info/instruction/metadata/dictionary/codebook/guide/contents/legend/overview/about/说明/注释` 等正则匹配，实际只有 6 个 README 命中。说明页保留全部物理行，其余页保留行号 1–10，包括空行。
+5. **Excel 的“原样”表示**：直接读取 XLSX 的 OOXML；每行保存行号，每个单元格保存坐标、原类型和原值。共享/inline string 按原文本次序拼接，保留文本空白；数值、bool、错误值保留 XML 中的值字符串，公式保留公式正文与已有缓存值，不计算公式。JSON 只作为坐标和值的可读包装，不推断表头、不转换日期、不把空白填成字符串、不合并单元格。格式、颜色、列宽、合并单元格视觉效果不等于文本，未伪装成截图。
+6. **其他格式**：NPZ 只从 NPY 头部读取键名、shape、dtype；CDF 列出所有 15 个变量和原变量属性，包含 DESCRIPTION、UNITS 及字段是否存在，不读取变量数据数组；SP3 原样摘前 30 行；GPKG 以 SQLite `mode=ro&immutable=1` 读取 gpkg_contents 与表字段，不摘几何/业务数据行。
+7. **编码与换行**：先严格 UTF-8 解码；失败时回退 CP1252，不用 replacement character。1,728 个输入文本文件中，1,718 个为 UTF-8 解码，10 个使用 CP1252 回退（9 个 legal CSV 和 wildfire 变量说明 CSV）。回退编码未得到独立来源声明，已逐块注明；验证确认摘录重新编码后仍是对应原始字节前缀。字符统计不包括代码围栏所需的额外换行，原文块有长度与 hash 可核验。
+
+### 本地仓库说明文档
+
+查找范围为 `/home/katherine/dac/benchmarks/KramaBench` 整棵目录，排除 `.git` 和 `__pycache__`；按 `.md/.rst/.pdf/.ipynb` 及说明文件名关键词清点候选，同时核对六领域 input 的说明文件。没有下载网页或读取远端数据。
+
+| 本地路径 | 摘录范围 | 放置领域 |
+| --- | --- | --- |
+| `/home/katherine/dac/benchmarks/KramaBench/README.md` | 全文；包含六领域数据概况、目录及 dataset availability 等原文 | 六领域均附 |
+| `/home/katherine/dac/benchmarks/KramaBench/quickstart/2023_Annual_Beach_Report.pdf` | 全部 10 页可提取文字，按页保留，10 页均有文本 | environment |
+| `/home/katherine/dac/benchmarks/KramaBench/quickstart/quickstart_questions.ipynb` | 全部 21 个 Markdown cell 的原文，按原 cell index 定位；不运行代码、不摘代码/输出单元格 | environment |
+| `/home/katherine/dac/benchmarks/KramaBench/data/wildfire/input/noaa_wildfires_variabledescrip.csv` | 与本项目同路径数据文件逐字节相同，全文已在 wildfire.md；不重复生成第二份 | wildfire |
+
+未找到 data 目录内额外的 README/Markdown 文档，仓库也没有 `docs/` 目录。其他候选包括 `benchmark/llm_tools/README.md`（测试命令说明）、专家工作流程 notebook、结果 notebook、只有目录标题的 workload notebook，已登记在查找记录中；未将代码执行输出或 gold 当成说明文档混入六领域摘录。
+
+PDF 保存的是 pypdf 对每页文本层的原提取结果，未重排或摘要；图片中的文字、图表视觉布局没有做 OCR。notebook 的“全文”指全部 Markdown 说明 cell 的原文，不指整个带代码和输出的 JSON 原件。根 README 中的命令和链接只作为原文保存，没有执行。
+
+### files_read 读取矩阵口径
+
+来源严格为 **028 材料包每一步的 `files_read` 原字段**，不是代码、模型正文或本次实际读取行为。脚本直接解析 42 个 Markdown 包的长度标记，再与 028 来源索引的去重清单交叉核对，保留命中的步骤号。
+
+为避免判断“哪个数据文件算说明文件”，矩阵将**每个输入文件的开头/元数据摘录都作为文件级材料单元**，再添加 6 个 Excel README 页及本地仓库说明文档。每题只与其所属领域的这些材料单元配对。因此矩阵也覆盖普通 CSV 的表头摘录，不把 337 次文件命中统称为“337 次阅读说明文档”。
+
+匹配采用明确路径别名：`data/<input 内相对路径>`、旧仓库 input 绝对路径、本项目 input 绝对路径、本项目根目录下的相对 input 路径。不按 basename 模糊匹配，不把不同目录的同名文件合并，不根据代码推测别名。
+
+- **是（files_read 命中文件）**：只证明该路径在 files_read 中有记录，不证明读过文件全部内容、前几行说明或理解其含义。
+- **未记录**：该文件路径未在此题 files_read 中命中；不推断实际绝对没读过。
+- **无法判定（files_read 无页名）**：README 页没有单独的页级读取证据。另列“文件级files_read是否命中”，不得把工作簿读取直接写成 README 已读。
+
+### 按领域的机械读取计数
+
+| 领域 | 失败题数 | 矩阵行数 | 命中文件 | 未记录 | 页级无法判定 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+'''
+for d in names:
+    ds=[r for r in rows if r['领域']==d];c=Counter(r['agent是否读过'] for r in ds)
+    report+=f'| {names[d]} | {len({r["题号"] for r in ds})} | {len(ds):,} | {c["是（files_read 命中文件）"]} | {c["未记录"]:,} | {c["无法判定（files_read 无页名）"]} |\n'
+report+='''
+下表列出若干明确名称材料的文件级记录；仍不推断读到了哪一段：
+
+| 材料路径（相对 data/kramabench/data） | 该领域失败题数 | 文件级命中题数 | 命中的题号 |
+| --- | ---: | ---: | --- |
+'''
+for p in ['astronomy/input/omni2_low_res/omni2.text','environment/input/boston-harbor-beaches.txt','wildfire/input/noaa_wildfires_variabledescrip.csv','wildfire/input/load_data.py','wildfire/input/state_abbreviation_to_state.json']:
+    ds=[r for r in rows if r['说明文件路径']==p];hit=[r['题号'] for r in ds if r['文件级files_read是否命中']=='是']
+    report+=f'| `{p}` | {len(ds)} | {len(hit)} | '+ '、'.join(hit)+' |\n'
+report+='''
+生物医学 4 道失败题对 mmc2–mmc7 的 6 个工作簿均有文件级命中，共 24 个“题 × README 页”条目；24 个页级结论全部仍为无法判定。仓库根 README 的 42 个配对以及 environment 的 PDF/notebook 共 18 个配对均未在 files_read 中命中。
+
+## 证据来源
+
+- 数据湖：`data/kramabench/data/<领域>/input/`；[全部文件清单](../records/031_kramabench_docs_files.csv) 和 [来源 SHA-256](../records/031_kramabench_docs_source_hashes.json) 提供逐文件定位。
+- 42 题名单：`records/029_kramabench_final_scores.csv`，筛选最终状态为“未通过”或“未交卷”。
+- agent 读取证据：`records/028_kramabench_packages/<题号>.md` 的 `step.N.files_read` 原文块；[证据 JSON](../records/031_kramabench_docs_files_read_evidence.json) 保存原路径和步骤，未使用轨迹代码推测。
+- 本地仓库查找记录：[031_kramabench_docs_repository_search.json](../records/031_kramabench_docs_repository_search.json)。旧仓库说明文档、数据文件全程只读。
+- 验证结果：1,742 文件字节/hash、1,811 摘录块、10 个 Excel 页名列表、32 页的 10,921 个原单元格、15 个 CDF 变量、2 个 GPKG 图层、10 个 PDF 页、21 个 Markdown cell，以及 9,318 条读取矩阵均已核对通过。来源 hash 复核 1,787 项不变，旧仓库的 1,742 份输入同源文件也逐字节一致。
+- 主要命令：`uv venv --python 3.12 /tmp/assumption-ledger-031-venv`；`uv pip install --python /tmp/assumption-ledger-031-venv/bin/python openpyxl cdflib numpy pypdf`；`PYTHONDONTWRITEBYTECODE=1 /tmp/assumption-ledger-031-venv/bin/python records/031_extract_kramabench_docs.py`；同环境运行 `031_check_kramabench_docs.py`；`python3 records/031_render_kramabench_docs_report.py`。依赖版本保存于 summary，日志保存在 records/031 前缀文件中。
+
+## 不确定或没查到的
+
+- files_read 没有 sheet 名或读取范围，所以无法确认 README 页、文本说明行、CSV 表头是否实际被读到；未记录也不等同于确定未读。
+- 10 个文件的原编码未获得独立声明，采用无替换字符的 CP1252 回退并保留编码说明；字节可逆核对不等于确认作者选择了该编码。
+- LST 开头没有另存的列名说明，本次仅摘开头；没有凭数字位置补全字段意义。
+- Excel 的单元格原存储值、PDF 的文本层、notebook 的 Markdown cell 不是原文件视觉版式；未 OCR 图片，未展开 notebook 输出，未复制绘图或样式。
+- 未验证本地数据相对上游发布版是否齐全；只核对当前本项目输入与旧本地输入相同。不根据这些说明材料或读取记录解释任何题的结果。
+
+## 建议的下一步
+
+将六份领域摘录和读取矩阵交给用户与 Claude 查阅。需要定位原文时用摘录索引；需要判断 README 是否实际被读过时，现有 files_read 证据不足，本任务不补推结论。
+'''
+path=ROOT/'notes/031_2026-10-31_KramaBench说明材料摘录.md'
+with path.open('x',encoding='utf-8') as f:f.write(report)
+print('Rendered',path.relative_to(ROOT))
