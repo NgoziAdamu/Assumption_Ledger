@@ -1,0 +1,63 @@
+import json,csv,hashlib,collections,re,subprocess
+from pathlib import Path
+R=Path(__file__).resolve().parents[2]
+a=json.loads((R/'records/034_checks/dacomp_decisions.json').read_text());b=json.loads((R/'records/034_checks/krama_decisions.json').read_text());objs=a['objects']+b['objects'];pts=a['points']+b['points']
+for name,rows in [('objects',objs),('points',pts)]:
+ with (R/f'records/034_{name}.csv').open('w',newline='') as f:
+  w=csv.DictWriter(f,fieldnames=list(rows[0]),lineterminator="\n");w.writeheader();w.writerows(rows)
+assert len(objs)==72 and len(list((R/'records/034_annotations').glob('*.md')))==72
+stats={}
+for bench in ['DAComp','KramaBench']:
+ oo=[o for o in objs if o['benchmark']==bench];pp=[p for p in pts if p['benchmark']==bench]
+ stats[bench]={'objects':len(oo),'points':len(pp),'main':dict(collections.Counter(o['主要原因'] for o in oo)),'specific_statement_points':sum(p['是否说出（四档）']=='针对本处的具体说明' for p in pp),'specific_statement_objects':len({p['对象编号'] for p in pp if p['是否说出（四档）']=='针对本处的具体说明'}),'disclosed_choice_downgrade_points':sum(p['类别'] in ['已说出的选择','已说出的降级'] for p in pp),'presence':dict(collections.Counter(p['证据在场'] for p in pp)),'confidence':dict(collections.Counter(o['把握'] for o in oo))}
+sha=hashlib.sha256((R/'docs/标注手册_v3.md').read_bytes()).hexdigest();assert sha==hashlib.sha256(Path('/mnt/c/Users/jucc116/Downloads/标注手册_v3.md').read_bytes()).hexdigest()
+# Only allowed task sources: no reads of 033 or project narrative documents.
+sources=[R/'docs/标注手册_v3.md',R/'records/029_kramabench_final_scores.csv',R/'records/018_uncertainty_audit.json']
+sources+=sorted((R/'records/018_annotations').glob('*.md'))
+sources+=[R/f'records/028_kramabench_packages/{o["对象编号"]}.md' for o in b['objects'] if o['对象编号']!='astronomy-hard-11']
+sources+=sorted((R/'records/032_kramabench_queries').glob('*.stdout.txt'))
+manifest={str(p.relative_to(R)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}
+(R/'records/034_source_manifest.json').write_text(json.dumps({'manual_sha256':sha,'blind_exclusions':['records/033_KramaBench_Claude错因描述.md','notes/033_*','项目文档中的Claude试分结果'],'source_sha256_at_delivery':manifest,'note':'交付时指纹；不是伪称执行前数据快照。所有新计算只读源文件、在内存处理。'},ensure_ascii=False,indent=2))
+(R/'records/034_statistics.json').write_text(json.dumps(stats,ensure_ascii=False,indent=2))
+# Check each mandatory point field and local source file references where explicit.
+missing=[]
+for p in pts:
+ for source in p['证据来源'].split(';'):
+  if source.startswith('records/') and not (R/source).exists():missing.append(source)
+assert not missing,missing
+assert not [p for p in pts if p['对象编号']=='astronomy-hard-11']
+validation={'objects':len(objs),'points':len(pts),'annotations':72,'manual_sha256':sha,'source_links_missing':missing,'missing_required_fields':sum(any(not x for x in p.values()) for p in pts),'only_task_additions':subprocess.check_output(['git','diff','--name-only'],cwd=R,text=True).strip()==''}
+(R/'records/034_validation.json').write_text(json.dumps(validation,ensure_ascii=False,indent=2));print(json.dumps(stats,ensure_ascii=False,indent=2))
+L=['# 任务034：新分类试点重标','', '编号核对：开始时 notes/、records/ 均无034，沿用034。日期：2026-10-31（Asia/Singapore）。','','## 任务','按原样保存的v3手册复核KramaBench 41道未通过题、1道未交卷及018的DAComp 30张表；不含另53张其他表。不读取033或Claude试分结果，不对比盲标结果。','','## 结论','已完成72份逐对象记录、对象表和123行错误点/差异点表（未交卷不生成错误点）。**KramaBench有4道主因仍无法判定**：archeology-hard-2、archeology-hard-12、astronomy-hard-8、wildfire-hard-18。候选机制写在逐题记录中，但没有将未完成逐项因果分离的方案当作已验证主因。另有低把握或未解释残差的项目，不能将本批理解为所有错误均已完整归因。','DAComp复用原单改规模；新判断中impl-021从旧U转为Intent Misreading，因为契约已经规定缺失天数的算法。impl-004与impl-014按具体披露改记已说出的选择。','','## 详细发现','### 主要原因分布（按对象）','|类别|KramaBench|DAComp|','|---|---:|---:|']
+for cat in sorted(set(stats['DAComp']['main'])|set(stats['KramaBench']['main'])):L.append(f'|{cat}|{stats["KramaBench"]["main"].get(cat,0)}|{stats["DAComp"]["main"].get(cat,0)}|')
+L+=['','多因并列单列；同类别多个并列点折叠为该类别。KramaBench分母42包含未交卷1；原因分布不改变029官方评分。没有预设类别配额。','### 是否说出与证据在场','|benchmark|具体说明点数|涉及对象数|改名为已说出选择/降级的点数|在场是|在场否|不适用|','|---|---:|---:|---:|---:|---:|---:|']
+for bench,s in stats.items():L.append(f'|{bench}|{s["specific_statement_points"]}|{s["specific_statement_objects"]}|{s["disclosed_choice_downgrade_points"]}|{s["presence"].get("是",0)}|{s["presence"].get("否",0)}|{s["presence"].get("不适用",0)}|')
+L+=['','“已说出”第一列指四档中针对本处的具体说明，包括探索类与其他；第三列只统计v3改名类别。4道无法判定中的候选Choice即便有说明，也不计入已定Choice类别。', 'DAComp逐张检查实际event 1 message的相关契约段并核对复用引句；29张定位到相关段，impl-006初始消息没有该表段，本表均为Conclusion或代码类，未凭别表段声称证据在场。完整定位在 `records/034_checks/dacomp_trace_presence.json`。', '截断按片段处理：astronomy-hard-9的step6整体输出截断，但WORD50/51原句确实保留，且step5有短输出，故该事实在场。biomedical两题只看到Case_excluded列名，没有具体Serous排除行，填否；environment-hard-18不能把标注者重放看到的2021编码当作agent当时看到。', '“曾经理解对过”要求代码或计算结果；environment-easy-3 step7已算268，填是；wildfire-hard-6仅早先reasoning说数据从2000开始，未按完整区间算答案，填否。','','### DAComp新旧对照','|对象|018旧标签|v3主要原因|并列项|','|---|---|---|---|']
+for o in a['objects']:L.append(f'|{o["对象编号"]}|{o["旧标签"]}|{o["主要原因"]}|{o["并列项"] or "—"}|')
+L+=['','不属于第12节简单对应的表：', '- impl-021 / int_klaviyo__person_metrics：U→Intent Misreading。契约明确 `missing_day_count equals the number of spine days that have no events on that exact date; multiple events on a day do not change this count`；依第5节规定做法优先。', '- impl-004 / stg_salesforce__contact_history：A→已说出的选择；event51点明来源和hash公式。', '- impl-014 / stg_qualtrics__survey_version：A→已说出的选择；event79点明时区格式、TRY_CAST失败及替代解析格式。旧四档称通用，本次按“本处前提”判断为具体，详见规则问题。', 'impl-006旧“已披露”标记未自动转为已说出的降级：旧event97只是跨表NULL策略，未具体说明四个指标候选为何不使用。','','### 规则问题（供修订，不改手册）','|对象|两种读法|本次采用及原因|','|---|---|---|',
+'|DAComp impl-008|retain rows是规定投影左id；或只说明project可能缺失|Data：没有明确投影表达式，44条未匹配事实反证所依赖的全匹配前提。|',
+'|DAComp impl-021|连接扩行的数据理解；或违反明定指标算法|Intent：契约明确重复事件不改变缺失天数。|',
+'|DAComp impl-014|跨表解析声明算通用；或具体说明同一源格式和解析选择已足够|选具体；v3按错误点前提而非是否重复表名判断。|',
+'|DAComp impl-002、004|hash差异只是表现；或键本身是计算值|按v3明确规则选Choice，不当Form。|',
+'|DAComp impl-006、030|粗糙映射都是代码错；或必须有正确意图证据|006 spend先正确后覆盖是代码错；030无本处正确意图而匹配反证清楚是Data。|',
+'|archeology-hard-1|from first and last指两端；或整个区间|选区间Intent，但单改仍残差99.9825，未将gold特殊插值作为规范。|',
+'|archeology-hard-5|Maltese指Malta地域；或整本regional附件|选前者，gold指定Southern Italy样本；低把握其他，不隐藏地域歧义。|',
+'|archeology-hard-9|题面last sample；或子任务highest rank|按题面，其他；两种排序分别复现agent和gold。|',
+'|archeology-hard-7、astronomy-easy-6|代码/注释是否算披露；或只有最终回答算|明确对比并命名具体算法算披露，普通代码不自动算。手册应明确思考、代码注释与最终用户说明是否另设字段。|',
+'|astronomy-easy-6|按数值距离改善；或列表按不同元素数|依第7节选元素数：估计器、符号各单改仍2个不同，组合为0；必须拆点。|',
+'|astronomy-hard-12|mock暗示自行定义场，Choice；或输入不存在而自造，Downgrade|按v3后者并记录具体披露，低把握；未凭gold反推出场公式。|',
+'|biomedical-easy-2、hard-5|全部Serous附件行；或研究纳入样本|选纳入范围Intent；仅列名在场不等于排除样本事实在场。|',
+'|biomedical-easy-9|未定模态Choice；或最后明确意图与调用参数冲突|先排代码错；step11说FDR.phos却调用FDR.protein，step10已有正确候选结果。|',
+'|biomedical-hard-8|protein sites具体位点；或泛指protein|选位点自然读法，gold只给protein，归其他而非Form。|',
+'|environment-hard-18|只对有降雨数据城市分析；或题面全体淡水海滩|选全体；另有大小写问题，单改均False、组合True。|',
+'|environment-hard-19|True表示不同；或表示相同|题面未绑定，子任务改问same；归其他，不能把signed/absolute差异直接当布尔错因。|',
+'|legal-hard-17、22|印刷比例或计数重算；all reports全域或identity域|均不由题面唯一确定，按Choice；17有具体说明，22没有。|',
+'|environment-easy-2/5、hard-7/15/20，legal-hard-14/24/29，wildfire-easy-1、hard-4|问数值/名称隐含裸值；或必须显式限制形式|按v3后者，其他；新做仅输出变换后均匹配。|',
+'|legal-hard-8、wildfire-hard-16|参考字符串/舍入精度代表规范；或题面才代表规范|agent布尔/数值列表已符合要求，参考存储与未规定精度不能反判Form。|',
+'|wildfire-hard-19/21|缺输入仍分析替代或拒答；或先不可评估|依第3节先排不可评估；没有扩展下载缺失原始数据。|',
+'|archeology-hard-12、astronomy-hard-8、wildfire-hard-18|整套方案算一个Choice；或独立可修改处必须拆分并单改排名|采用后者；现证据不足，留无法判定，不捆绑通过因果门槛。|',
+'|含最终常量答案的KramaBench题|保持所有字节重放最后常量；或局部计算变动后重新读取计算结果|034记录后者为诊断，不冒充完整agent重跑。需手册明确“单改”的计算终点；environment-hard-18尤其受此限制。|',
+'','### 复用与新做','30/30张DAComp的数值因果证据复用已有014/016/017/018记录及018索引，0次新SQL重跑；本次新增轨迹定位。019–024主要是其他表，不冒用它们的同impl记录。全部KramaBench复用028题面轨迹，数值优先用030/032；新做输出变换13题、若干原代码局部重放和只读诊断。按对象计：72/72复用了既有材料；按点计的新做标记见下句。']
+new=sum('新做' in p['证据是复用还是新做'] for p in pts);L.append(f'123点中{new}点标记包含新做（包括DAComp轨迹定位），其余{len(pts)-new}点只复用；这些是工作覆盖比例，不是独立实验数量。DAComp“复用；新做轨迹定位”不能理解成新跑了数据库。')
+L+=['','不能/未完成重跑与处理：wildfire-hard-19/21缺WeatherEvents/ZHVI，先不可评估；astronomy-hard-11按要求不分析；archeology-hard-2未复现38.42；archeology-hard-12、astronomy-hard-8、wildfire-hard-18尚无足以分离所有候选并排名的干预，留无法判定。archeology-hard-1、environment-hard-16已定位改善但仍有残差。其余仅呈现差异采用输出级诊断，避免无必要的全流程执行。', '失败尝试保留：wildfire-easy-9初次UTF-8解码失败，跳过历史失败读文件步骤后复现；legal-hard-18首次缺pd初始化后补全原初始化；legal-hard-17多次前置状态或替换唯一性检查失败，最终printed_share_success单改estimate表达式复现32542。环境错误不归agent。', '', '## 证据来源',f'- 手册：`docs/标注手册_v3.md`，SHA-256 `{sha}`，与Windows源一致。', '- 主交付：`records/034_objects.csv`、`records/034_points.csv`、`records/034_annotations/`；统计与检查：`034_statistics.json`、`034_validation.json`、`034_source_manifest.json`。', '- 复用：`records/018_annotations/`及其逐表契约/SQL行号/单改L0–L3链接；`018_uncertainty_audit.json`及实际014/016/017 trace；`029_kramabench_final_scores.csv`、`028_kramabench_packages/`、`030_kramabench_tolerance_details.json`、`032_kramabench_queries/`。', '- 新做：`records/034_checks/`中replay、supplement、more、remaining、final_supplement、form_checks、climate_diagnostic及输出JSON。JSON逐次记录修改原文、实际执行代码、stdout、失败原因；未调用模型。', '- 命令：`cp /mnt/c/Users/jucc116/Downloads/标注手册_v3.md docs/标注手册_v3.md`；`sha256sum`；`PYTHONDONTWRITEBYTECODE=1 /home/katherine/dac/.venv/bin/python records/034_checks/<脚本>.py`；`python3 records/034_checks/finalize.py`；Git核对后commit并push main。', '', '## 不确定或没查到的', '- 已知方法局限：部分KramaBench的原代码把最终答案写死，后缀诊断不是字节严格不变的整段提交重放；不能声称都已满足严格可执行单改。四道无法判定不是“规则不支持就凑类”。', '- 018已有干预通常足以复用规模，但新增四档中参与/非原因项有时只能引用相关字段或通用策略，未据缺少内部思考推断agent心理。', '- 未下载或重新生成缺失gold输入；没有把标准答案隐含规则、子任务或Claude判断当作agent可见证据。', '', '## 建议的下一步', '请用户与Claude优先审阅上述规则问题，明确“单改”面对常量最终答案的计算终点、列表差异规模以及具体披露的渠道范围；对4道未定项指定可审计的候选干预后补证，再冻结v3和铺开。当前手册未改。']
+(R/'notes/034_2026-10-31_新分类试点重标.md').write_text('\n'.join(L)+'\n')
