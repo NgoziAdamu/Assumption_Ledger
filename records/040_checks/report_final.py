@@ -1,0 +1,177 @@
+"""Render the complete task040 report without changing phase-one sealed artifacts."""
+from pathlib import Path
+import json
+from collections import Counter
+
+C = Path('records/040_checks')
+working = json.loads((C / 'formal_working.json').read_text())
+validation = json.loads((C / 'validation.json').read_text())
+assert validation['task_complete']
+points = [p for o in working for p in o['points']]
+categories = ['Intent Misreading', 'Quiet Downgrade', 'Unstated Choice', 'Form Mismatch',
+              '代码写错', '其他', '多因并列', '已说出的选择', '已说出的降级']
+layers = ['staging', 'intermediate', 'marts', 'utils']
+lines = ["""# 040：DAComp 按 v3.2 重标第四批（完整批次）
+
+## 任务
+
+承接 `records/040_checks/phase1_handoff.json`，完成 impl-012～014 的38张正式表，并保留阶段一2张盲标校准。阶段一开工前已确认 notes/、records/ 没有040编号；第二阶段沿用040，不顺延。采用冻结的 `docs/标注手册_v3.2.md`。
+
+阶段一CSV的前2个对象、5个点保持原字节前缀，正式结果追加其后；封存件、解盲对比和两张校准说明均未改变。本报告替换阶段一报告。阶段一已说明无法用工具自行新建Codex会话；阶段二按用户续做指令接续，没有调用agent或子agent。
+
+## 结论
+
+已完成 **38＋2＝40张表、115个点**，其中正式110点、校准5点；40份逐表说明齐备。最终验证通过：421条契约、SQL、轨迹和交付物引句逐字回查成功，2024个018～039记录/报告及v3.1、v3.2手册保护项hash未变；封存与解盲对比hash不变。
+
+38张正式表主因：Unstated Choice 12、其他12、Intent Misreading 4、Quiet Downgrade 3、代码写错3、多因并列3、已说出的选择1。没有不可评估表。旧022标签只在CSV原样存档，不作为新分类依据。
+
+主因严格按 **先行数、行数相同再格子数** 排序。40张均不是“只能组合修复”；单改行数不变但格子减少，仍可作为主因或参与因素。不同单改的减量不相加。
+
+## 详细发现
+
+### 范围和逐表结果
+
+013中status=待标注、task=impl-012～014共41行，按完整对象键排除036的 `impl-012_stg_marketo__lead`、`impl-013_int_netsuite2__customer_profitability`、`impl-014_stg_qualtrics__survey_version` 后得到 **7＋18＋13＝38张**。起始清单与最终复算一致。阶段一首次临时代码误用子串匹配错排survey，37张断言失败后改为完整键相等；未改源清单或扩大范围。范围原件见[040_scope.json](../records/040_scope.json)。
+
+| 对象 | 层 | 主要原因 | 点数 |
+|---|---|---|---:|"""]
+for o in working:
+    lines.append(f"| `{o['id']}` | {o['layer']} | {o['main']} | {len(o['points'])} |")
+lines += ['\n### 主因分布（38张正式表）\n',
+          '| 主要原因 | staging | intermediate | marts | utils | 合计 |',
+          '|---|---:|---:|---:|---:|---:|']
+for category in categories:
+    counts = [sum(o['main'] == category and o['layer'] == layer for o in working) for layer in layers]
+    if sum(counts):
+        lines.append('| ' + category + ' | ' + ' | '.join(map(str, counts + [sum(counts)])) + ' |')
+lines += ['\n多因并列按表单列，不分摊为某个单类：\n']
+for o in working:
+    if o['main'] == '多因并列':
+        ties = '；'.join(f"{p['name']}（{p['category']}，减少{p['reduction'][0]}行/{p['reduction'][1]}格）"
+                       for p in o['points'] if p['role'] == '并列')
+        lines.append(f"- `{o['id']}`：{ties}。")
+lines += ['\n### 是否说出五档（110个正式点，含非原因）\n',
+          '| 类别 | 第1档 | 第2档 | 第3档 | 第4档 | 第5档 | 合计 |',
+          '|---|---:|---:|---:|---:|---:|---:|']
+for category in categories:
+    counts = [sum(p['category'] == category and p['disclosure'] == grade for p in points) for grade in range(1, 6)]
+    if sum(counts):
+        lines.append('| ' + category + ' | ' + ' | '.join(map(str, counts + [sum(counts)])) + ' |')
+lines.append('| 合计 | ' + ' | '.join(str(sum(p['disclosure'] == g for p in points)) for g in range(1, 6)) + ' | 110 |')
+lines += ['\n正式点角色：主要29、并列21、参与10、非原因50。加上校准后，五档为第1档4、第2档25、第3档0、第4档86、第5档0。\n',
+          '另报第1、2档都算说出的口径（原CSV类别、五档不改）：\n', '| 另报类别 | 正式点数 |', '|---|---:|']
+alternate = Counter()
+for p in points:
+    category = p['category']
+    if p['disclosure'] <= 2:
+        category = {'Unstated Choice': '已说出的选择', 'Quiet Downgrade': '已说出的降级'}.get(category, category)
+    alternate[category] += 1
+for category in categories:
+    if alternate[category]:
+        lines.append(f'| {category} | {alternate[category]} |')
+lines += ["""
+### 026三条事实更正的处理结果
+
+| 台账条目 | 核实结果与v3.2判断 | 同口径L0变化及五档 |
+|---|---|---|
+| 022-1：`impl-014_qualtrics__user_cohort_analysis` | agent按格式解析17995/17995成功；gold直接TRY_CAST为0/17995。契约未规定解析表达式，主因是Unstated Choice，不能把gold解析失败当数据事实。另拆DATE/TIMESTAMP和额外解析成功过滤。 | 解析单改5行/40格→1行/8格，第2档；单改cohort_month类型无改善，属其他非原因；额外过滤属Intent非原因、第1档。 |
+| 022-2：`impl-012_marketo__calendar_spine` | 完整契约没有工具表定义，按材料未规定处理，主因Unstated Choice。finish只说明做法，不据旧“具体说明”字段判第1档；测试脚本不算交付物。 | 用022单改确定日历终点贡献；报告原句混合工具终点和逐lead起点，不一一对应工具表，记第2档。 |
+| 020-5：`impl-013_int_netsuite__transaction_and_reporting_periods` | 契约明定multiplier starting_at截到秒再解释timestamp。agent直接TRY_CAST违反明文算法，主因Intent Misreading，不归Data。 | 2230行/4460格→0；第2档；证据在场“是”（event1完整契约），曾经理解对过“否”。 |
+
+三条均已完成；来源与具体索引见[fact_corrections.json](../records/040_checks/fact_corrections.json)。
+
+**calendar_spine完整搜索。** 已读取完整2098行 `/home/katherine/dac/benchmarks/dacomp-de/dacomp-de-impl-012/docs/data_contract.yaml`，搜索表名、calendar、spine及日期边界关键词；没有 `name: marketo__calendar_spine` 定义。表名仅出现于1040行下游依赖及1042行 `marketo__lead_calendar_spine` 的业务逻辑。下游原文为“The upper bound of dates is defined only by the calendar spine; no additional end-date filter is applied.”，它把终点交给工具表，没有规定工具表应截止今天还是下周。依赖配置也未给出该工具表定义。完整文件hash及命中原文见[calendar_contract_search.json](../records/040_checks/calendar_contract_search.json)。
+
+finish event55原句“日历延伸至当前日期，并按 lead created date 起算。”确实说到日期处理，但后半句属于逐lead日历，不能把整句当一一对应工具表的说明。本轮按第2档；该边界保留在规则问题中。
+
+### 其他关键事实与分类
+
+**空集补零逐表查明文。** `int_netsuite2__financial_ratios`的五个条件求和只规定类别求和，没有always populated、not_null或空类别补0条款，归Unstated Choice；不能沿用022“契约明确SUM CASE ELSE 0”的说法。相对地，`customer_credit_risk`的三列有always populated/非空要求，agent返回NULL，归Intent。`operational_metrics`只对明确要求无Income时revenue=0的点判Intent，COGS和Expense的空集政策仍为Choice。
+
+**三张NULL投影按列恢复。** classes、consolidated_exchange_rates、entities分别记录5、10、10个点。event15已有大部分源列映射和转换意图，但旧源表名让schema lookup失败，event25只改FROM、未重生成投影；这些点归代码写错。entities.parent_id没有正确映射意图，raw有parent候选列却整列NULL，单独归Quiet Downgrade。entity_name恢复的是agent原定的entityid，不使用gold的entitytitle冒充agent意图。
+
+三表的主键单改行数均不减少，但分别少100、700、700格，因此主因可定为代码写错。其他列单改被空主键过滤遮住，保留非原因；022的整组恢复只作定位。共享生成器不代替逐列单改，也不能据此写“只能组合修复”。
+
+**常量、透传和无贡献点。** supplier_credit的payment_ratio明定非正分母时0，vendor_activity整列Inactive则跳过日期分档，两项各少104格而跨类并列。另补11项常量输出诊断；financial_dashboard的三项平均透传和固定建议、customer_analytics/vendor_risk的评分或建议缺口也各自诊断。所有新补的这些单输出未带来净改善，保留非原因，不把存在实现缺口自动等同于本次差异主因。dashboard的波动率占位仍为主因。
+
+**排除不存在的错误。** `netsuite2_operational_metrics`的交付SQL已经选出 `l.class_id` 并使用GROUP BY ALL；022的class_group补丁重复加入class_id，不是遗漏该维度的证据，本轮排除。该表实际主因zero_department_revenue只减12661格，行规模不变，仍按用户排序规则确定主因。
+
+**Qualtrics解析与唯一性分开。** agent解析成功而gold直接TRY_CAST失败、契约没有规定解析方式的点归Choice。契约有primary_key，agent去重符合唯一性而gold保留重复的点归其他；membership去重单改只少175格仍是参与。directory_mailing_list、distribution、survey、user的无重复诊断不另造去重点。cohort的DATE符合契约，不能把组合诊断的收益分给类型单改。
+
+### 交付物覆盖
+
+三题finish分别是impl-012 event55、impl-013 event65、impl-014 event79，留存result.md与finish核对；38份交付SQL均无注释。只接受finish/result和交付SQL注释作为“是否说出”的交付证据，临时脚本与测试脚本排除。
+
+正式第1档只有三个点：Marketo发送表id映射为已说出的选择；NetSuite数据质量模型accuracy_rules为已说出的降级；Qualtrics cohort额外解析成功过滤为Intent非原因。三点各自的一一对应原句均在逐表说明、披露审计中。数据质量模型的说明不推广给其他NetSuite模型；“一些高阶指标”或无关完成陈述不覆盖未点名表的占位。
+
+第2档只用于与该类处理相符的通用解析、去重、清洗或日历说明。第3档要求意识到疑问或别种做法的迹象；本批没有符合此条件的点，不把写下实现计划当第3档。分类为Data/Intent前逐条查契约，本批正式没有Data Misconception；证据在场和曾经理解对过单列，见[process_review.json](../records/040_checks/process_review.json)。
+
+### 盲标封存、校准与阶段二保护
+
+阶段一封存前只读冻结手册、013材料包、允许复用的014～022重跑/查询及原始事件、SQL、result.md；没有阅读两张试点的034/036标注、018逐表标注和037～039报告。036 CSV在范围核对时只程序提取本批三个试点对象编号；保护hash按字节计算。封存后才解盲及读取039报告。
+
+封存UTC：`2026-11-01T12:41:39.524171+00:00`。SHA-256：
+
+```text
+f6266a990ee358000aeef90147b5d84f7a60907a0619fafe1feeed38c1e854f6
+```
+
+[封存件](../records/040_calibration_blind_sealed.json)及[解盲对比](../records/040_calibration_comparison.json)保持原样。校准主因与036一致2/2，对应主因点类别、五档一致2/2；Google Ads额外三项类型参与点不混入两个对应点的一致率分母。
+
+| 校准表 | 主因及点数 | 证据与保留差别 |
+|---|---|---|
+| impl-005_stg_google_ads__ad_group_stats | Unstated Choice，4点 | campaign来源未定，第4档；三个符合契约的DECIMAL类型/精度点属其他参与、第4档。单改分别少15、15、2格，行数均不变。主因点与036一致；把握高而036中。 |
+| impl-027_int_xero__invoice_line_items_enriched | 其他，1点 | 按line_item_id唯一化符合契约，去掉account_by_code QUALIFY后209行/4807格→0。finish明确最低account_id和可能丢失其他属性，第1档；把握高而036中。 |
+
+阶段二未改校准CSV前缀、角色、类别、五档、原文引用或两份说明。前缀、封存、对比以及Git阶段一版本均纳入最终验证，不重新开始盲标。
+
+### 原始数据、复用证据和新做证据
+
+已核实 `records/013_raw_differences.csv` 没有impl-012、013、014条目。013各题JSON覆盖14、42、19张raw表，结构、类型、行数检查均相同；022三侧复用审计的different_tables也为空，没有发现与任务给定事实冲突的记录。013结构/行数检查本身不扩张为所有格子值相同的证明。详见[raw_integrity_review.json](../records/040_checks/raw_integrity_review.json)。
+
+优先复用022材料包、单改、核实查询、诊断及原始轨迹。37张已有表契约块与完整原文件匹配，并完整出现在event1初始提示中；calendar例外按完整文件搜索处理。阶段二新增 **44个单改、8个基线**：三张NULL投影25项、cohort类型1项、supplier常量11项、customer_analytics 1项、financial_dashboard 4项、vendor_risk 2项。8个新基线的完整比较结果与022一致。
+
+所有原数据库通过READ_ONLY打开；执行在DuckDB内存副本中，staging从agent留存库读取raw，CS使用gold上游。NetSuite留存库raw为引用初始库的视图，附加初始库同样只读。涉及4个原数据库文件的前后SHA-256一致。没有写原数据库、下载数据或处理其他批次。补跑设置时曾修正缺失source catalog与同层别名引用的执行错误，成功结果及基线断言才进入证据文件。
+
+没有新增核实查询；复用查询连失败尝试保守计入，正式表最多5条，Google Ads校准3条，Xero校准2条（成功采用1条、另计已读失败查询）。单改/诊断不伪装为核实查询。每张逐表说明均列出查询来源、索引及失败状态。
+
+### 最终验证
+
+`validation.json`为 `status=complete`、`task_complete=true`。覆盖40张范围、7/18/13张数、CSV列名与039一致、022旧标签原样、点键唯一、五档/类别/角色合法、已说出选择/降级与第1档一致、每点披露审计、421条引句原文和hash、单改规模溯源、先行再格排序、查询预算、原库只读及hash、完整契约在场、三条026更正、阶段一不变前缀和2024个保护文件。
+
+引句逐字匹配是机械验证，不代替类别和披露覆盖的语义判断；具体判断写在逐表说明中。阶段一handoff/evidence_catalog保留为历史准备文件，其中pending状态不代表最终完成状态。
+
+## 证据来源
+
+- [040_objects.csv](../records/040_objects.csv)、[040_points.csv](../records/040_points.csv)、[40份逐表说明](../records/040_annotations/)。
+- [formal_working.json](../records/040_checks/formal_working.json)、[披露审计](../records/040_checks/disclosure_audit.json)、[引句回查](../records/040_checks/quote_checks.json)、[轨迹核读](../records/040_checks/process_review.json)、[交付来源](../records/040_checks/delivery_sources.json)。
+- [最终验证](../records/040_checks/validation.json)、[保护hash](../records/040_checks/protected_hashes_before.json)、[calendar完整契约搜索](../records/040_checks/calendar_contract_search.json)、[026更正处理](../records/040_checks/fact_corrections.json)。
+- 8份 `records/040_checks/supplement_*.json` 保存完整SQL、逐处编辑、比较结果、基线一致断言、原库hash；对应脚本和extra_plans在同目录。
+- 冻结[标注手册v3.2](../docs/标注手册_v3.2.md)、[026检查台账](../records/026_Claude全量标注检查台账.md)、022各表材料/重跑/查询/诊断；每点明确到文件与条目，不把旧类别当证据。
+
+第二阶段执行命令（仓库根目录；不要重跑阶段一封存、解盲或渲染脚本覆盖最终产物）：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 /home/katherine/dac/.venv/bin/python records/040_checks/supplement_phase2.py
+PYTHONDONTWRITEBYTECODE=1 /home/katherine/dac/.venv/bin/python records/040_checks/supplement_extra_phase2.py
+PYTHONDONTWRITEBYTECODE=1 python3 records/040_checks/build_formal.py
+PYTHONDONTWRITEBYTECODE=1 python3 records/040_checks/render_final.py
+PYTHONDONTWRITEBYTECODE=1 python3 records/040_checks/validate_final.py
+PYTHONDONTWRITEBYTECODE=1 python3 records/040_checks/report_final.py
+git diff --check
+```
+
+## 不确定或没查到的（含规则问题）
+
+1. calendar报告句可读为工具终点的具体说明，也可读为逐lead日历的组合说明；没有点名工具表且混合两张表，本轮按用户“一一对应”要求保守记第2档。完整契约确实未找到工具表定义，因此类别按材料没有规定，未补造算法。
+2. financial_ratios的“总额”空集也可按日常语言理解为0；契约未写非空或默认值，本轮不以gold实现补契约，五点记Unstated Choice、把握中。
+3. customer_analytics的“一客户一行”grain与明确两次LEFT JOIN在重复上游下存在张力；本轮按明确连接条款判遗漏Intent，不自行删除第二次连接。以上按第11节记录，不改手册。
+4. customer_credit_risk官方comparison_columns只覆盖14列及键；其他契约风险/评分输出未进入本次官方比较。未把这些缺口虚填成差异规模，当前主因只解释该评测口径及已诊断点。
+5. 无单改改善的50个正式点仍记录其前提或实现缺口与非原因角色；不宣称这些缺口对所有数据都无影响，也不把联合修复收益拆分给它们。组合诊断、原始数据审计与逐字匹配均保留其各自证明边界。
+
+## 建议的下一步
+
+任务040已完成。建议用户与Claude复核上述三项规则边界及非原因点；后续批次按原串行计划另行启动，本次不扩展范围。提交并推送main后以Git提交记录为准。
+"""]
+Path('notes/040_2026-11-01_DAComp重标第四批.md').write_text('\n'.join(lines).rstrip() + '\n')
+print('Complete report written: 38 formal + 2 calibration.')
