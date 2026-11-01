@@ -1,0 +1,619 @@
+{
+  "impl-001_lever__hiring_manager_scorecard": [
+    {
+      "label": "unweighted_total_applications",
+      "old": "avg(pp.total_applications)",
+      "new": "(SELECT avg(pp2.total_applications) FROM staging.stg_lever__posting p2 LEFT JOIN intermediate.int_lever__posting_performance pp2 USING(posting_id) WHERE p2.owner_user_id=p.owner_user_id)",
+      "why": "契约按posting聚合；移除application扩行对均值的权重，仅替换一个聚合表达式。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "unweighted_posting_performance_score",
+      "old": "avg(pp.posting_performance_score)",
+      "new": "(SELECT avg(pp2.posting_performance_score) FROM staging.stg_lever__posting p2 LEFT JOIN intermediate.int_lever__posting_performance pp2 USING(posting_id) WHERE p2.owner_user_id=p.owner_user_id)",
+      "why": "契约按posting聚合；移除application扩行对均值的权重，仅替换一个聚合表达式。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "avg_candidate_experience_score",
+      "old": "0.0 avg_candidate_experience_score",
+      "new": "(SELECT coalesce(avg(ce.overall_candidate_experience_score),0) FROM staging.stg_lever__application aa LEFT JOIN marts.lever__candidate_experience_insights ce ON aa.opportunity_id=ce.opportunity_id WHERE aa.posting_hiring_manager_user_id=m.hiring_manager_id) avg_candidate_experience_score",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "interview_success_rate",
+      "old": "0.0 interview_success_rate",
+      "new": "(SELECT coalesce(round(count(DISTINCT ii.interview_id) FILTER(WHERE ii.canceled_at IS NULL)*100.0/nullif(count(DISTINCT ii.interview_id),0),2),0) FROM staging.stg_lever__application aa LEFT JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id LEFT JOIN staging.stg_lever__interviewer_user iu ON ii.interview_id=iu.interview_id LEFT JOIN staging.stg_lever__interview_feedback fb ON ii.interview_id=fb.interview_id WHERE aa.posting_hiring_manager_user_id=m.hiring_manager_id) interview_success_rate",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "feedback_completion_rate_managed",
+      "old": "0.0 feedback_completion_rate_managed",
+      "new": "(SELECT CASE WHEN count(DISTINCT fb.feedback_form_id)>0 THEN 100.0 ELSE 0.0 END::DOUBLE FROM staging.stg_lever__application aa LEFT JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id LEFT JOIN staging.stg_lever__interviewer_user iu ON ii.interview_id=iu.interview_id LEFT JOIN staging.stg_lever__interview_feedback fb ON ii.interview_id=fb.interview_id WHERE aa.posting_hiring_manager_user_id=m.hiring_manager_id) feedback_completion_rate_managed",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "interviewer_network_size",
+      "old": "0::BIGINT interviewer_network_size",
+      "new": "(SELECT count(DISTINCT iu.user_id) FROM staging.stg_lever__application aa LEFT JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id LEFT JOIN staging.stg_lever__interviewer_user iu ON ii.interview_id=iu.interview_id LEFT JOIN staging.stg_lever__interview_feedback fb ON ii.interview_id=fb.interview_id WHERE aa.posting_hiring_manager_user_id=m.hiring_manager_id) interviewer_network_size",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "total_interviews_coordinated",
+      "old": "0::BIGINT total_interviews_coordinated",
+      "new": "(SELECT count(DISTINCT ii.interview_id) FROM staging.stg_lever__application aa LEFT JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id LEFT JOIN staging.stg_lever__interviewer_user iu ON ii.interview_id=iu.interview_id LEFT JOIN staging.stg_lever__interview_feedback fb ON ii.interview_id=fb.interview_id WHERE aa.posting_hiring_manager_user_id=m.hiring_manager_id) total_interviews_coordinated",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "high_efficiency_postings",
+      "old": "0::BIGINT high_efficiency_postings",
+      "new": "(SELECT count(DISTINCT aa.posting_id) FILTER(WHERE ff.hiring_efficiency_grade='High Efficiency (≥10%)') FROM staging.stg_lever__application aa LEFT JOIN intermediate.int_lever__hiring_funnel_metrics ff ON aa.posting_id=ff.posting_id WHERE aa.posting_hiring_manager_user_id=m.hiring_manager_id) high_efficiency_postings",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "overall_performance_score",
+      "old": "NULL::DOUBLE overall_performance_score",
+      "new": "least(100,greatest(0,round(.25*requisition_fill_rate+.25*high_performing_posting_rate+.25*candidate_hire_rate+.15*interview_success_rate+CASE WHEN avg_total_days_to_hire<=45 THEN 10 ELSE greatest(0,10-(avg_total_days_to_hire-45)*.2) END,0))) overall_performance_score",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "performance_tier",
+      "old": "'New/Limited Experience' performance_tier",
+      "new": "CASE WHEN overall_performance_score>=80 THEN 'Outstanding Hiring Manager' WHEN overall_performance_score>=65 THEN 'Effective Hiring Manager' WHEN overall_performance_score>=50 THEN 'Competent Hiring Manager' WHEN coalesce(p.total_candidates_managed,0)>=5 THEN 'Developing Hiring Manager' ELSE 'New/Limited Experience' END performance_tier",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "hiring_specialization",
+      "old": "'Generalist' hiring_specialization",
+      "new": "CASE WHEN high_performing_posting_rate>=70 THEN 'Job Marketing Expert' WHEN avg_candidate_experience_score>=4 THEN 'Candidate Experience Specialist' WHEN feedback_completion_rate_managed>=85 THEN 'Process Coordinator' WHEN avg_total_days_to_hire<=30 THEN 'Fast Decision Maker' WHEN coalesce(r.teams_supported,0)>=3 THEN 'Multi-Team Recruiter' ELSE 'Generalist' END hiring_specialization",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "development_recommendations",
+      "old": "'' development_recommendations",
+      "new": "concat(CASE WHEN requisition_fill_rate<50 THEN 'Focus on requirement clarity; ' ELSE '' END,CASE WHEN coalesce(p.avg_applications_per_posting,0)<10 THEN 'Improve job posting appeal; ' ELSE '' END,CASE WHEN interview_success_rate<80 THEN 'Improve interview coordination; ' ELSE '' END,CASE WHEN avg_total_days_to_hire>60 THEN 'Accelerate decision process; ' ELSE '' END) development_recommendations",
+      "why": "恢复四段条件拼接，沿原SQL的现有指标值；缺失其他指标仍保留原值。仅文字代表采用gold已有片段/语义表述，不把gold当规则。",
+      "kind": "单改重跑"
+    }
+  ],
+  "impl-002_pendo__customer_lifecycle_insights": [
+    {
+      "label": "customer_segment_branches",
+      "old": "WHEN l.lifecycle_stage='New User' AND r.rfm_segment='New Customers' THEN 'Fresh Prospect' ELSE 'Standard Customer' END customer_segment_label",
+      "new": "WHEN l.lifecycle_stage='New User' AND r.rfm_segment='New Customers' THEN 'Fresh Prospect' WHEN l.lifecycle_stage='Growing User' AND r.rfm_segment='Potential Loyalists' THEN 'Rising Star' WHEN l.churn_risk_level IN ('High Risk','Medium Risk') AND r.rfm_segment='At Risk' THEN 'Save Immediately' WHEN l.lifecycle_stage='At Risk' AND r.action_priority='Re-engagement' THEN 'Rescue Mission' WHEN l.lifecycle_stage='Churned' THEN 'Lost Customer' ELSE 'Standard Customer' END customer_segment_label",
+      "why": "只补齐契约已写明的customer_segment_label四个遗漏分支，不修改其他默认列。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "recommended_next_action",
+      "old": "'Standard nurturing; Regular check-ins; Content engagement' recommended_next_action",
+      "new": "CASE WHEN l.lifecycle_stage='Power User' AND r.rfm_segment='Champions' THEN 'Leverage as advocate; Offer exclusive features; Request testimonials' WHEN l.is_new_user AND r.rfm_segment='New Customers' THEN 'Intensive onboarding; Feature education; Success manager assignment' WHEN l.needs_attention AND r.action_priority='Re-engagement' THEN 'Personalized outreach; Usage analysis; Feature recommendations' WHEN l.churn_risk_level='High Risk' THEN 'Immediate intervention; Executive outreach; Value demonstration' WHEN l.lifecycle_stage='Growing User' THEN 'Feature adoption campaign; Usage optimization; Upgrade path guidance' WHEN r.rfm_segment='Loyal Customers' THEN 'Upsell opportunities; Loyalty rewards; Advanced feature training' ELSE 'Standard nurturing; Regular check-ins; Content engagement' END recommended_next_action",
+      "why": "将单个固定输出改为契约逐字规则。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "account_influence_level",
+      "old": "'Single Account User' account_influence_level",
+      "new": "CASE WHEN v.count_associated_accounts>3 THEN 'Multi-Account Influencer' WHEN v.count_associated_accounts>1 THEN 'Cross-Account User' ELSE 'Single Account User' END account_influence_level",
+      "why": "核验未覆盖的常量输出；即使净改善0也保留非原因标记。",
+      "kind": "单改重跑"
+    }
+  ],
+  "impl-003_customer360__conversion_funnel_analysis": [
+    {
+      "label": "presentation_round_revenue",
+      "old": null,
+      "new": "SELECT * REPLACE(round(revenue_velocity_monthly,2) AS revenue_velocity_monthly) FROM result_baseline",
+      "why": "只对最终输出舍入，不改变计算链，检验Form Mismatch。",
+      "kind": "呈现诊断"
+    }
+  ],
+  "impl-005_google_ads__executive_dashboard": [
+    {
+      "label": "trending_null",
+      "old": "(spend_wow_growth_pct>50 OR conversions_wow_growth_pct< -30) trending_alert",
+      "new": "coalesce((spend_wow_growth_pct>50 OR conversions_wow_growth_pct< -30),false) trending_alert",
+      "why": "契约trending_alert的else false；核实SQL原片段后执行。",
+      "kind": "单改重跑"
+    }
+  ],
+  "impl-001_int_lever__posting_analytics": [
+    {
+      "label": "total_interviews_scheduled",
+      "old": "0::BIGINT total_interviews_scheduled",
+      "new": "(SELECT count(DISTINCT ii.interview_id) FROM staging.stg_lever__application aa JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id LEFT JOIN staging.stg_lever__interviewer_user iu ON ii.interview_id=iu.interview_id WHERE aa.posting_id=p.posting_id) total_interviews_scheduled",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "completed_interviews",
+      "old": "0::BIGINT completed_interviews",
+      "new": "(SELECT count(DISTINCT ii.interview_id) FILTER(WHERE ii.canceled_at IS NULL) FROM staging.stg_lever__application aa JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id LEFT JOIN staging.stg_lever__interviewer_user iu ON ii.interview_id=iu.interview_id WHERE aa.posting_id=p.posting_id) completed_interviews",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "unique_interviewers",
+      "old": "0::BIGINT unique_interviewers",
+      "new": "(SELECT count(DISTINCT iu.user_id) FROM staging.stg_lever__application aa JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id LEFT JOIN staging.stg_lever__interviewer_user iu ON ii.interview_id=iu.interview_id WHERE aa.posting_id=p.posting_id) unique_interviewers",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "avg_interview_duration_minutes",
+      "old": "0.0 avg_interview_duration_minutes",
+      "new": "(SELECT coalesce(avg(ii.duration),0) FROM staging.stg_lever__application aa JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id LEFT JOIN staging.stg_lever__interviewer_user iu ON ii.interview_id=iu.interview_id WHERE aa.posting_id=p.posting_id) avg_interview_duration_minutes",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "total_interview_time_minutes",
+      "old": "0.0 total_interview_time_minutes",
+      "new": "(SELECT coalesce(sum(ii.duration),0) FROM staging.stg_lever__application aa JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id LEFT JOIN staging.stg_lever__interviewer_user iu ON ii.interview_id=iu.interview_id WHERE aa.posting_id=p.posting_id) total_interview_time_minutes",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "interview_completion_rate_pct",
+      "old": "0.0 interview_completion_rate_pct",
+      "new": "(SELECT CASE WHEN count(DISTINCT ii.interview_id)>0 THEN round(count(DISTINCT ii.interview_id) FILTER(WHERE ii.canceled_at IS NULL)*100.0/count(DISTINCT ii.interview_id),1) ELSE 0 END FROM staging.stg_lever__application aa JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id LEFT JOIN staging.stg_lever__interviewer_user iu ON ii.interview_id=iu.interview_id WHERE aa.posting_id=p.posting_id) interview_completion_rate_pct",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "performance_tier",
+      "old": "'No Applications' performance_tier",
+      "new": "CASE WHEN total_applications>=20 AND candidates_hired>=2 AND avg_days_to_advancement<=45 THEN 'High Performing' WHEN total_applications>=10 AND candidates_hired>=1 AND avg_days_to_advancement<=60 THEN 'Good Performing' WHEN total_applications>=5 THEN 'Moderate Performing' WHEN total_applications>=1 THEN 'Low Performing' ELSE 'No Applications' END performance_tier",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "posting_effectiveness_score",
+      "old": "0::BIGINT posting_effectiveness_score",
+      "new": "least(100,greatest(0,round(least(20,total_applications)+CASE WHEN candidates_hired>0 THEN 25 ELSE 0 END+CASE WHEN avg_days_to_advancement<=30 THEN 20 WHEN avg_days_to_advancement<=60 THEN 10 ELSE 0 END+CASE WHEN interview_completion_rate_pct>=80 THEN 15 ELSE 5 END+CASE WHEN referral_rate_pct>=20 THEN 10 WHEN referral_rate_pct>=10 THEN 5 ELSE 0 END+CASE WHEN offer_acceptance_rate_pct>=70 THEN 10 ELSE 0 END,0))) posting_effectiveness_score",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "primary_bottleneck",
+      "old": "'No Major Issues' primary_bottleneck",
+      "new": "CASE WHEN total_applications=0 THEN 'No Attraction - Poor Job Posting' WHEN interview_completion_rate_pct<70 THEN 'Interview Scheduling Issues' WHEN offer_acceptance_rate_pct<60 AND offers_extended>0 THEN 'Low Offer Acceptance' WHEN avg_days_to_advancement>60 THEN 'Slow Decision Process' WHEN candidates_hired=0 AND total_applications>=10 THEN 'High Standards or Poor Fit' ELSE 'No Major Issues' END primary_bottleneck",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    }
+  ],
+  "impl-001_int_lever__posting_performance": [
+    {
+      "label": "candidates_reached_interview",
+      "old": "0::BIGINT candidates_reached_interview",
+      "new": "(SELECT count(DISTINCT aa.opportunity_id) FILTER(WHERE oo.stage_id IN (SELECT stage_id FROM staging.stg_lever__stage WHERE lower(stage_name) LIKE '%interview%' OR lower(stage_name) LIKE '%technical%' OR lower(stage_name) LIKE '%onsite%')) FROM staging.stg_lever__application aa LEFT JOIN staging.stg_lever__opportunity oo ON aa.opportunity_id=oo.opportunity_id LEFT JOIN staging.stg_lever__contact_email ce ON oo.contact_id=ce.contact_id LEFT JOIN staging.stg_lever__contact_phone cp ON oo.contact_id=cp.contact_id LEFT JOIN staging.stg_lever__resume rr ON aa.opportunity_id=rr.opportunity_id LEFT JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id WHERE aa.posting_id=p.posting_id) candidates_reached_interview",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "candidates_with_email",
+      "old": "0::BIGINT candidates_with_email",
+      "new": "(SELECT count(DISTINCT aa.opportunity_id) FILTER(WHERE ce.email IS NOT NULL) FROM staging.stg_lever__application aa LEFT JOIN staging.stg_lever__opportunity oo ON aa.opportunity_id=oo.opportunity_id LEFT JOIN staging.stg_lever__contact_email ce ON oo.contact_id=ce.contact_id LEFT JOIN staging.stg_lever__contact_phone cp ON oo.contact_id=cp.contact_id LEFT JOIN staging.stg_lever__resume rr ON aa.opportunity_id=rr.opportunity_id LEFT JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id WHERE aa.posting_id=p.posting_id) candidates_with_email",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "candidates_with_phone",
+      "old": "0::BIGINT candidates_with_phone",
+      "new": "(SELECT count(DISTINCT aa.opportunity_id) FILTER(WHERE cp.phone_number IS NOT NULL) FROM staging.stg_lever__application aa LEFT JOIN staging.stg_lever__opportunity oo ON aa.opportunity_id=oo.opportunity_id LEFT JOIN staging.stg_lever__contact_email ce ON oo.contact_id=ce.contact_id LEFT JOIN staging.stg_lever__contact_phone cp ON oo.contact_id=cp.contact_id LEFT JOIN staging.stg_lever__resume rr ON aa.opportunity_id=rr.opportunity_id LEFT JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id WHERE aa.posting_id=p.posting_id) candidates_with_phone",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "candidates_with_resume",
+      "old": "0::BIGINT candidates_with_resume",
+      "new": "(SELECT count(DISTINCT aa.opportunity_id) FILTER(WHERE rr.resume_id IS NOT NULL) FROM staging.stg_lever__application aa LEFT JOIN staging.stg_lever__opportunity oo ON aa.opportunity_id=oo.opportunity_id LEFT JOIN staging.stg_lever__contact_email ce ON oo.contact_id=ce.contact_id LEFT JOIN staging.stg_lever__contact_phone cp ON oo.contact_id=cp.contact_id LEFT JOIN staging.stg_lever__resume rr ON aa.opportunity_id=rr.opportunity_id LEFT JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id WHERE aa.posting_id=p.posting_id) candidates_with_resume",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "total_interviews_scheduled",
+      "old": "0::BIGINT total_interviews_scheduled",
+      "new": "(SELECT count(DISTINCT ii.interview_id) FROM staging.stg_lever__application aa LEFT JOIN staging.stg_lever__opportunity oo ON aa.opportunity_id=oo.opportunity_id LEFT JOIN staging.stg_lever__contact_email ce ON oo.contact_id=ce.contact_id LEFT JOIN staging.stg_lever__contact_phone cp ON oo.contact_id=cp.contact_id LEFT JOIN staging.stg_lever__resume rr ON aa.opportunity_id=rr.opportunity_id LEFT JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id WHERE aa.posting_id=p.posting_id) total_interviews_scheduled",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "completed_interviews",
+      "old": "0::BIGINT completed_interviews",
+      "new": "(SELECT count(DISTINCT ii.interview_id) FILTER(WHERE ii.canceled_at IS NULL) FROM staging.stg_lever__application aa LEFT JOIN staging.stg_lever__opportunity oo ON aa.opportunity_id=oo.opportunity_id LEFT JOIN staging.stg_lever__contact_email ce ON oo.contact_id=ce.contact_id LEFT JOIN staging.stg_lever__contact_phone cp ON oo.contact_id=cp.contact_id LEFT JOIN staging.stg_lever__resume rr ON aa.opportunity_id=rr.opportunity_id LEFT JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id WHERE aa.posting_id=p.posting_id) completed_interviews",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "interview_completion_rate",
+      "old": "0.0 interview_completion_rate",
+      "new": "(SELECT coalesce(round(count(DISTINCT ii.interview_id) FILTER(WHERE ii.canceled_at IS NULL)*100.0/nullif(count(DISTINCT ii.interview_id),0),1),0) FROM staging.stg_lever__application aa LEFT JOIN staging.stg_lever__opportunity oo ON aa.opportunity_id=oo.opportunity_id LEFT JOIN staging.stg_lever__contact_email ce ON oo.contact_id=ce.contact_id LEFT JOIN staging.stg_lever__contact_phone cp ON oo.contact_id=cp.contact_id LEFT JOIN staging.stg_lever__resume rr ON aa.opportunity_id=rr.opportunity_id LEFT JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id WHERE aa.posting_id=p.posting_id) interview_completion_rate",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "application_to_interview_rate",
+      "old": "0.0 application_to_interview_rate",
+      "new": "(SELECT coalesce(round(count(DISTINCT aa.opportunity_id) FILTER(WHERE oo.stage_id IN (SELECT stage_id FROM staging.stg_lever__stage WHERE lower(stage_name) LIKE '%interview%' OR lower(stage_name) LIKE '%technical%' OR lower(stage_name) LIKE '%onsite%'))*100.0/nullif(count(DISTINCT aa.application_id),0),2),0) FROM staging.stg_lever__application aa LEFT JOIN staging.stg_lever__opportunity oo ON aa.opportunity_id=oo.opportunity_id LEFT JOIN staging.stg_lever__contact_email ce ON oo.contact_id=ce.contact_id LEFT JOIN staging.stg_lever__contact_phone cp ON oo.contact_id=cp.contact_id LEFT JOIN staging.stg_lever__resume rr ON aa.opportunity_id=rr.opportunity_id LEFT JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id WHERE aa.posting_id=p.posting_id) application_to_interview_rate",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "performance_tier",
+      "old": "'No Applications' performance_tier",
+      "new": "CASE WHEN total_applications=0 THEN 'No Applications' WHEN total_applications<5 THEN 'Low Volume' WHEN candidates_hired>0 AND total_applications>=10 THEN 'High Performing' WHEN candidates_reached_offer>0 AND total_applications>=5 THEN 'Moderate Performing' WHEN candidates_reached_interview>0 THEN 'Building Pipeline' ELSE 'Needs Attention' END performance_tier",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "posting_performance_score",
+      "old": "NULL::DOUBLE posting_performance_score",
+      "new": "CASE WHEN total_applications>=5 THEN round(least(25,total_applications*1.25)+CASE WHEN candidates_hired>0 THEN 25 ELSE 0 END+least(25,candidates_reached_interview*100.0/total_applications)+CASE WHEN interview_completion_rate>=80 THEN 25 ELSE interview_completion_rate*.3125 END,1) END posting_performance_score",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "posting_status_analysis",
+      "old": "'Unknown Status' posting_status_analysis",
+      "new": "CASE WHEN any_value(p.state)='published' AND active_candidates_30d>0 THEN 'Active & Engaging' WHEN any_value(p.state)='published' AND total_applications>0 THEN 'Published with Interest' WHEN any_value(p.state)='published' THEN 'Published but No Interest' WHEN any_value(p.state)='closed' AND candidates_hired>0 THEN 'Successfully Filled' WHEN any_value(p.state)='closed' THEN 'Closed without Hire' ELSE 'Unknown Status' END posting_status_analysis",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    }
+  ],
+  "impl-001_lever__departmental_hiring_trends": [
+    {
+      "label": "total_interviews_conducted",
+      "old": "0::BIGINT AS total_interviews_conducted",
+      "new": "(SELECT count(DISTINCT ii.interview_id) FROM staging.stg_lever__posting p2 LEFT JOIN staging.stg_lever__application aa ON p2.posting_id=aa.posting_id LEFT JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id LEFT JOIN staging.stg_lever__interviewer_user iu ON ii.interview_id=iu.interview_id LEFT JOIN staging.stg_lever__interview_feedback fb ON ii.interview_id=fb.interview_id WHERE coalesce(p2.categories_department,'Unknown Department')=b.department AND coalesce(p2.categories_team,'Unknown Team')=b.team) AS total_interviews_conducted",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "unique_interviewers",
+      "old": "0::BIGINT AS unique_interviewers",
+      "new": "(SELECT count(DISTINCT iu.user_id) FROM staging.stg_lever__posting p2 LEFT JOIN staging.stg_lever__application aa ON p2.posting_id=aa.posting_id LEFT JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id LEFT JOIN staging.stg_lever__interviewer_user iu ON ii.interview_id=iu.interview_id LEFT JOIN staging.stg_lever__interview_feedback fb ON ii.interview_id=fb.interview_id WHERE coalesce(p2.categories_department,'Unknown Department')=b.department AND coalesce(p2.categories_team,'Unknown Team')=b.team) AS unique_interviewers",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "avg_interview_duration_minutes",
+      "old": "0.0 AS avg_interview_duration_minutes",
+      "new": "(SELECT coalesce(avg(ii.duration),0) FROM staging.stg_lever__posting p2 LEFT JOIN staging.stg_lever__application aa ON p2.posting_id=aa.posting_id LEFT JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id LEFT JOIN staging.stg_lever__interviewer_user iu ON ii.interview_id=iu.interview_id LEFT JOIN staging.stg_lever__interview_feedback fb ON ii.interview_id=fb.interview_id WHERE coalesce(p2.categories_department,'Unknown Department')=b.department AND coalesce(p2.categories_team,'Unknown Team')=b.team) AS avg_interview_duration_minutes",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "interview_completion_rate",
+      "old": "0.0 AS interview_completion_rate",
+      "new": "(SELECT coalesce(round(count(DISTINCT ii.interview_id) FILTER(WHERE ii.canceled_at IS NULL)*100.0/nullif(count(DISTINCT ii.interview_id),0),2),0) FROM staging.stg_lever__posting p2 LEFT JOIN staging.stg_lever__application aa ON p2.posting_id=aa.posting_id LEFT JOIN staging.stg_lever__interview ii ON aa.opportunity_id=ii.opportunity_id LEFT JOIN staging.stg_lever__interviewer_user iu ON ii.interview_id=iu.interview_id LEFT JOIN staging.stg_lever__interview_feedback fb ON ii.interview_id=fb.interview_id WHERE coalesce(p2.categories_department,'Unknown Department')=b.department AND coalesce(p2.categories_team,'Unknown Team')=b.team) AS interview_completion_rate",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "avg_candidate_experience_score",
+      "old": "0.0 AS avg_candidate_experience_score",
+      "new": "(SELECT coalesce(avg(cei.overall_candidate_experience_score),0) FROM staging.stg_lever__posting p2 LEFT JOIN staging.stg_lever__application aa ON p2.posting_id=aa.posting_id LEFT JOIN marts.lever__candidate_experience_insights cei ON aa.opportunity_id=cei.opportunity_id LEFT JOIN intermediate.int_lever__hiring_funnel_metrics hfm ON p2.posting_id=hfm.posting_id WHERE coalesce(p2.categories_department,'Unknown Department')=b.department AND coalesce(p2.categories_team,'Unknown Team')=b.team) AS avg_candidate_experience_score",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "avg_screening_pass_rate",
+      "old": "0.0 AS avg_screening_pass_rate",
+      "new": "(SELECT coalesce(avg(hfm.application_to_screening_rate),0) FROM staging.stg_lever__posting p2 LEFT JOIN staging.stg_lever__application aa ON p2.posting_id=aa.posting_id LEFT JOIN marts.lever__candidate_experience_insights cei ON aa.opportunity_id=cei.opportunity_id LEFT JOIN intermediate.int_lever__hiring_funnel_metrics hfm ON p2.posting_id=hfm.posting_id WHERE coalesce(p2.categories_department,'Unknown Department')=b.department AND coalesce(p2.categories_team,'Unknown Team')=b.team) AS avg_screening_pass_rate",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "high_efficiency_postings",
+      "old": "0::BIGINT AS high_efficiency_postings",
+      "new": "(SELECT count(DISTINCT p2.posting_id) FILTER(WHERE hfm.hiring_efficiency_grade='High Efficiency (≥10%)') FROM staging.stg_lever__posting p2 LEFT JOIN staging.stg_lever__application aa ON p2.posting_id=aa.posting_id LEFT JOIN marts.lever__candidate_experience_insights cei ON aa.opportunity_id=cei.opportunity_id LEFT JOIN intermediate.int_lever__hiring_funnel_metrics hfm ON p2.posting_id=hfm.posting_id WHERE coalesce(p2.categories_department,'Unknown Department')=b.department AND coalesce(p2.categories_team,'Unknown Team')=b.team) AS high_efficiency_postings",
+      "why": "契约逐项规定的输出被常量替代；只恢复这一处表达式，其他输出与上游保持agent原代码。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "department_strength_referral",
+      "old": "'Standard Operations' AS department_strength",
+      "new": "CASE WHEN referral_rate>=30 THEN 'Strong Referral Network' ELSE 'Standard Operations' END AS department_strength",
+      "why": "只恢复契约规定的首个referral>=30分支；文字未写死，用诊断所得gold表达测量该分支贡献，不把这个英文标签当契约要求。",
+      "kind": "单改重跑"
+    }
+  ],
+  "impl-002_int_pendo__product_health_metrics": [
+    {
+      "label": "retention_join",
+      "old": "FROM f FULL OUTER JOIN e ON f.account_id=e.account_id AND f.app_id=e.app_id",
+      "new": "FROM (SELECT coalesce(f.account_id,urm.account_id) account_id,f.* EXCLUDE(account_id) FROM f FULL OUTER JOIN (SELECT account_id,count(DISTINCT visitor_id) total_users,avg(count_active_days) avg_active_days_per_user,avg(sum_events) avg_lifetime_events,count(*) FILTER(WHERE count_active_days>=20)::FLOAT/count(DISTINCT visitor_id) highly_active_user_rate FROM (SELECT account_id,visitor_id,count(DISTINCT CAST(occurred_at AS DATE)) count_active_days,sum(num_events) sum_events,max(CAST(occurred_at AS DATE)) last_event_on FROM staging.stg_pendo__event GROUP BY 1,2) GROUP BY 1) urm ON f.account_id=urm.account_id) f FULL OUTER JOIN e ON f.account_id=e.account_id AND f.app_id=e.app_id",
+      "why": "契约要求在feature与engagement之间full outer join账户级retention；只改这一处来源连接。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "retention_7d",
+      "old": "NULL::FLOAT retention_7d",
+      "new": "(SELECT count(*) FILTER(WHERE vv.last_event_on>=current_date-INTERVAL 7 DAY)::FLOAT/count(DISTINCT vv.visitor_id) FROM (SELECT account_id,visitor_id,count(DISTINCT CAST(occurred_at AS DATE)) count_active_days,sum(num_events) sum_events,max(CAST(occurred_at AS DATE)) last_event_on FROM staging.stg_pendo__event GROUP BY 1,2) vv WHERE vv.account_id=f.account_id GROUP BY vv.account_id) retention_7d",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "retention_30d",
+      "old": "NULL::FLOAT retention_30d",
+      "new": "(SELECT count(*) FILTER(WHERE vv.last_event_on>=current_date-INTERVAL 30 DAY)::FLOAT/count(DISTINCT vv.visitor_id) FROM (SELECT account_id,visitor_id,count(DISTINCT CAST(occurred_at AS DATE)) count_active_days,sum(num_events) sum_events,max(CAST(occurred_at AS DATE)) last_event_on FROM staging.stg_pendo__event GROUP BY 1,2) vv WHERE vv.account_id=f.account_id GROUP BY vv.account_id) retention_30d",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "retention_90d",
+      "old": "NULL::FLOAT retention_90d",
+      "new": "(SELECT count(*) FILTER(WHERE vv.last_event_on>=current_date-INTERVAL 90 DAY)::FLOAT/count(DISTINCT vv.visitor_id) FROM (SELECT account_id,visitor_id,count(DISTINCT CAST(occurred_at AS DATE)) count_active_days,sum(num_events) sum_events,max(CAST(occurred_at AS DATE)) last_event_on FROM staging.stg_pendo__event GROUP BY 1,2) vv WHERE vv.account_id=f.account_id GROUP BY vv.account_id) retention_90d",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "avg_active_days_per_user",
+      "old": "NULL::DOUBLE avg_active_days_per_user",
+      "new": "(SELECT rr.avg_active_days_per_user FROM (SELECT account_id,count(DISTINCT visitor_id) total_users,avg(count_active_days) avg_active_days_per_user,avg(sum_events) avg_lifetime_events,count(*) FILTER(WHERE count_active_days>=20)::FLOAT/count(DISTINCT visitor_id) highly_active_user_rate FROM (SELECT account_id,visitor_id,count(DISTINCT CAST(occurred_at AS DATE)) count_active_days,sum(num_events) sum_events,max(CAST(occurred_at AS DATE)) last_event_on FROM staging.stg_pendo__event GROUP BY 1,2) GROUP BY 1) rr WHERE rr.account_id=f.account_id) avg_active_days_per_user",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "avg_lifetime_events",
+      "old": "NULL::DOUBLE avg_lifetime_events",
+      "new": "(SELECT rr.avg_lifetime_events FROM (SELECT account_id,count(DISTINCT visitor_id) total_users,avg(count_active_days) avg_active_days_per_user,avg(sum_events) avg_lifetime_events,count(*) FILTER(WHERE count_active_days>=20)::FLOAT/count(DISTINCT visitor_id) highly_active_user_rate FROM (SELECT account_id,visitor_id,count(DISTINCT CAST(occurred_at AS DATE)) count_active_days,sum(num_events) sum_events,max(CAST(occurred_at AS DATE)) last_event_on FROM staging.stg_pendo__event GROUP BY 1,2) GROUP BY 1) rr WHERE rr.account_id=f.account_id) avg_lifetime_events",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "highly_active_user_rate",
+      "old": "NULL::FLOAT highly_active_user_rate",
+      "new": "(SELECT rr.highly_active_user_rate FROM (SELECT account_id,count(DISTINCT visitor_id) total_users,avg(count_active_days) avg_active_days_per_user,avg(sum_events) avg_lifetime_events,count(*) FILTER(WHERE count_active_days>=20)::FLOAT/count(DISTINCT visitor_id) highly_active_user_rate FROM (SELECT account_id,visitor_id,count(DISTINCT CAST(occurred_at AS DATE)) count_active_days,sum(num_events) sum_events,max(CAST(occurred_at AS DATE)) last_event_on FROM staging.stg_pendo__event GROUP BY 1,2) GROUP BY 1) rr WHERE rr.account_id=f.account_id) highly_active_user_rate",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "feature_depth_adoption_rate",
+      "old": "NULL::FLOAT feature_depth_adoption_rate",
+      "new": "(SELECT count(DISTINCT feature_id) FILTER(WHERE num_events>=10)::FLOAT/nullif(count(DISTINCT feature_id),0) FROM staging.stg_pendo__feature_event ff WHERE ff.account_id=f.account_id AND ff.app_id=f.app_id) feature_depth_adoption_rate",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "avg_features_per_user",
+      "old": "NULL::FLOAT avg_features_per_user",
+      "new": "f.features_used::FLOAT/nullif(f.active_feature_users,0) avg_features_per_user",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "deep_engagement_session_rate",
+      "old": "NULL::FLOAT deep_engagement_session_rate",
+      "new": "(SELECT count(*) FILTER(WHERE num_minutes>=10 OR num_events>=20)::FLOAT/count(*) FROM staging.stg_pendo__event ee WHERE ee.account_id=e.account_id AND ee.app_id=e.app_id) deep_engagement_session_rate",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "health_grade",
+      "old": "'Critical' health_grade",
+      "new": "CASE WHEN overall_health_score>=80 THEN 'Excellent' WHEN overall_health_score>=60 THEN 'Good' WHEN overall_health_score>=40 THEN 'Fair' WHEN overall_health_score>=20 THEN 'Poor' ELSE 'Critical' END health_grade",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "risk_level",
+      "old": "'High Risk' risk_level",
+      "new": "CASE WHEN overall_health_score<30 THEN 'High Risk' WHEN (overall_health_score<50 AND coalesce(NULL::FLOAT,0)<.4) OR coalesce(NULL::FLOAT,0)<-.2 THEN 'Medium Risk' ELSE 'Low' END risk_level",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "health_score_complete",
+      "old": "0::FLOAT overall_health_score",
+      "new": "least(100,(coalesce(NULL::FLOAT,0)+1)*12.5+coalesce(f.features_used::FLOAT/nullif(f.total_features_available,0),0)*25+coalesce(NULL::FLOAT,0)*25+coalesce(NULL::FLOAT,0)*12.5+coalesce(CASE WHEN e.unique_users>0 THEN .2 ELSE NULL END,0)*12.5)::FLOAT overall_health_score",
+      "why": "恢复完整评分公式，仍保留其他列原先NULL/默认输入；只改score表达式。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "primary_improvement_area",
+      "old": "'Improve feature adoption' primary_improvement_area",
+      "new": "CASE WHEN coalesce(net_promoter_score,-1)<0 THEN 'Focus on customer satisfaction and NPS improvement' ELSE 'Improve feature adoption' END primary_improvement_area",
+      "why": "只恢复契约首优先NPS缺失视为-1分支；条件源于契约，文字代表由只读gold诊断获得。",
+      "kind": "单改重跑"
+    }
+  ],
+  "impl-002_pendo__executive_dashboard_metrics": [
+    {
+      "label": "avg_platform_health_score",
+      "old": "NULL::DOUBLE avg_platform_health_score",
+      "new": "(SELECT avg(health) FROM (SELECT ah.account_id,max(ph.overall_health_score) health,max(ph.net_promoter_score) nps,max(ph.feature_adoption_rate) adoption,max(ph.retention_30d) retention FROM staging.stg_pendo__account_history ah LEFT JOIN intermediate.int_pendo__product_health_metrics ph USING(account_id) GROUP BY ah.account_id)) avg_platform_health_score",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "avg_retention_rate",
+      "old": "NULL::DOUBLE avg_retention_rate",
+      "new": "(SELECT avg(retention) FROM (SELECT ah.account_id,max(ph.overall_health_score) health,max(ph.net_promoter_score) nps,max(ph.feature_adoption_rate) adoption,max(ph.retention_30d) retention FROM staging.stg_pendo__account_history ah LEFT JOIN intermediate.int_pendo__product_health_metrics ph USING(account_id) GROUP BY ah.account_id)) avg_retention_rate",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "medium_risk_accounts",
+      "old": "0::BIGINT medium_risk_accounts",
+      "new": "(SELECT count(*) FILTER(WHERE health<50) FROM (SELECT ah.account_id,max(ph.overall_health_score) health,max(ph.net_promoter_score) nps,max(ph.feature_adoption_rate) adoption,max(ph.retention_30d) retention FROM staging.stg_pendo__account_history ah LEFT JOIN intermediate.int_pendo__product_health_metrics ph USING(account_id) GROUP BY ah.account_id)) medium_risk_accounts",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "low_risk_accounts",
+      "old": "0::BIGINT low_risk_accounts",
+      "new": "(SELECT count(*) FILTER(WHERE (health>=50 OR health IS NULL) AND (nps>=0 OR nps IS NULL)) FROM (SELECT ah.account_id,max(ph.overall_health_score) health,max(ph.net_promoter_score) nps,max(ph.feature_adoption_rate) adoption,max(ph.retention_30d) retention FROM staging.stg_pendo__account_history ah LEFT JOIN intermediate.int_pendo__product_health_metrics ph USING(account_id) GROUP BY ah.account_id)) low_risk_accounts",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "overall_business_health_score",
+      "old": "NULL::DOUBLE overall_business_health_score",
+      "new": "least(100,.25*avg_platform_health_score+.15*((avg_platform_nps+1)*50)+.15*avg_feature_adoption*100+.15*avg_retention_rate*100+.10*conversion_rate*100+.20*CASE WHEN user_growth_rate_7d>=0 THEN 50+100*user_growth_rate_7d ELSE 50*(1+user_growth_rate_7d) END) overall_business_health_score",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "primary_alert_status",
+      "old": "'All Systems Normal' primary_alert_status",
+      "new": "CASE WHEN high_risk_accounts>.2*a.total_accounts THEN 'Account Risk Alert' WHEN avg_platform_nps<-.2 THEN 'Customer Satisfaction Alert' WHEN user_growth_rate_7d<-.1 THEN 'Growth Decline Alert' WHEN avg_retention_rate<.6 THEN 'Retention Alert' WHEN customers_needing_attention>.25*platform_total_users THEN 'Customer Health Alert' ELSE 'All Systems Normal' END primary_alert_status",
+      "why": "恢复契约规定的这一列；其余SQL字节不动。",
+      "kind": "单改重跑"
+    }
+  ],
+  "impl-002_int_pendo__conversion_funnel_analysis": [
+    {
+      "label": "daily_event_sources",
+      "old": "SELECT account_id,app_id,CAST(occurred_at AS DATE) event_date,count(DISTINCT visitor_id) total_visitors,count(DISTINCT CASE WHEN page_id IS NOT NULL THEN visitor_id END) visitors_with_page_views,count(DISTINCT CASE WHEN num_events>0 THEN visitor_id END) visitors_with_feature_use,count(DISTINCT CASE WHEN num_minutes>=1 THEN visitor_id END) visitors_with_deep_engagement FROM staging.stg_pendo__event GROUP BY 1,2,3",
+      "new": "SELECT account_id,app_id,event_date,count(DISTINCT visitor_id) total_visitors,count(DISTINCT visitor_id) FILTER(WHERE pg=1) visitors_with_page_views,count(DISTINCT visitor_id) FILTER(WHERE ft=1) visitors_with_feature_use,count(DISTINCT visitor_id) FILTER(WHERE dp=1) visitors_with_deep_engagement FROM (SELECT visitor_id,account_id,app_id,event_date,max(CASE WHEN typ=1 THEN 1 ELSE 0 END) pg,max(CASE WHEN typ=2 THEN 1 ELSE 0 END) ft,max(CASE WHEN typ=3 THEN 1 ELSE 0 END) dp,count(DISTINCT entity_id) FILTER(WHERE typ=1) pages,count(DISTINCT entity_id) FILTER(WHERE typ=2) features,sum(CASE WHEN typ=1 THEN num_events ELSE 0 END)*.1+sum(CASE WHEN typ=2 THEN num_events ELSE 0 END)*.3+sum(CASE WHEN typ=3 THEN num_events ELSE 0 END)*.6+sum(num_minutes)*.05 engagement,sum(num_minutes) all_minutes,sum(CASE WHEN typ=1 THEN num_minutes ELSE 0 END) pgminutes FROM (SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE) event_date,page_id entity_id,num_events,num_minutes,1 typ FROM staging.stg_pendo__event UNION ALL SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE),feature_id,num_events,num_minutes,2 FROM staging.stg_pendo__feature_event UNION ALL SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE),page_id,count(*),sum(num_minutes),3 FROM staging.stg_pendo__page_event GROUP BY 1,2,3,4,5) GROUP BY 1,2,3,4) GROUP BY 1,2,3",
+      "why": "修复同一个daily来源模块：按契约三源UNION ALL与类型存在标志，替代event.num_events/num_minutes代理；不改后续占位或cohort。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "avg_engagement_score",
+      "old": "NULL::DOUBLE avg_engagement_score",
+      "new": "(SELECT avg(engagement) FILTER(WHERE pg=1) FROM (SELECT visitor_id,account_id,app_id,event_date,max(CASE WHEN typ=1 THEN 1 ELSE 0 END) pg,max(CASE WHEN typ=2 THEN 1 ELSE 0 END) ft,max(CASE WHEN typ=3 THEN 1 ELSE 0 END) dp,count(DISTINCT entity_id) FILTER(WHERE typ=1) pages,count(DISTINCT entity_id) FILTER(WHERE typ=2) features,sum(CASE WHEN typ=1 THEN num_events ELSE 0 END)*.1+sum(CASE WHEN typ=2 THEN num_events ELSE 0 END)*.3+sum(CASE WHEN typ=3 THEN num_events ELSE 0 END)*.6+sum(num_minutes)*.05 engagement,sum(num_minutes) all_minutes,sum(CASE WHEN typ=1 THEN num_minutes ELSE 0 END) pgminutes FROM (SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE) event_date,page_id entity_id,num_events,num_minutes,1 typ FROM staging.stg_pendo__event UNION ALL SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE),feature_id,num_events,num_minutes,2 FROM staging.stg_pendo__feature_event UNION ALL SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE),page_id,count(*),sum(num_minutes),3 FROM staging.stg_pendo__page_event GROUP BY 1,2,3,4,5) GROUP BY 1,2,3,4) x WHERE x.account_id IS NOT DISTINCT FROM rates.account_id AND x.app_id IS NOT DISTINCT FROM rates.app_id AND x.event_date IS NOT DISTINCT FROM rates.event_date)::DOUBLE avg_engagement_score",
+      "why": "仅恢复单个按visitor聚合的指标，daily主行集仍使用原agent来源。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "avg_pages_per_visitor",
+      "old": "NULL::DOUBLE avg_pages_per_visitor",
+      "new": "(SELECT avg(pages) FILTER(WHERE pg=1) FROM (SELECT visitor_id,account_id,app_id,event_date,max(CASE WHEN typ=1 THEN 1 ELSE 0 END) pg,max(CASE WHEN typ=2 THEN 1 ELSE 0 END) ft,max(CASE WHEN typ=3 THEN 1 ELSE 0 END) dp,count(DISTINCT entity_id) FILTER(WHERE typ=1) pages,count(DISTINCT entity_id) FILTER(WHERE typ=2) features,sum(CASE WHEN typ=1 THEN num_events ELSE 0 END)*.1+sum(CASE WHEN typ=2 THEN num_events ELSE 0 END)*.3+sum(CASE WHEN typ=3 THEN num_events ELSE 0 END)*.6+sum(num_minutes)*.05 engagement,sum(num_minutes) all_minutes,sum(CASE WHEN typ=1 THEN num_minutes ELSE 0 END) pgminutes FROM (SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE) event_date,page_id entity_id,num_events,num_minutes,1 typ FROM staging.stg_pendo__event UNION ALL SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE),feature_id,num_events,num_minutes,2 FROM staging.stg_pendo__feature_event UNION ALL SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE),page_id,count(*),sum(num_minutes),3 FROM staging.stg_pendo__page_event GROUP BY 1,2,3,4,5) GROUP BY 1,2,3,4) x WHERE x.account_id IS NOT DISTINCT FROM rates.account_id AND x.app_id IS NOT DISTINCT FROM rates.app_id AND x.event_date IS NOT DISTINCT FROM rates.event_date)::DOUBLE avg_pages_per_visitor",
+      "why": "仅恢复单个按visitor聚合的指标，daily主行集仍使用原agent来源。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "avg_features_per_user",
+      "old": "NULL::DOUBLE avg_features_per_user",
+      "new": "(SELECT avg(features) FILTER(WHERE ft=1) FROM (SELECT visitor_id,account_id,app_id,event_date,max(CASE WHEN typ=1 THEN 1 ELSE 0 END) pg,max(CASE WHEN typ=2 THEN 1 ELSE 0 END) ft,max(CASE WHEN typ=3 THEN 1 ELSE 0 END) dp,count(DISTINCT entity_id) FILTER(WHERE typ=1) pages,count(DISTINCT entity_id) FILTER(WHERE typ=2) features,sum(CASE WHEN typ=1 THEN num_events ELSE 0 END)*.1+sum(CASE WHEN typ=2 THEN num_events ELSE 0 END)*.3+sum(CASE WHEN typ=3 THEN num_events ELSE 0 END)*.6+sum(num_minutes)*.05 engagement,sum(num_minutes) all_minutes,sum(CASE WHEN typ=1 THEN num_minutes ELSE 0 END) pgminutes FROM (SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE) event_date,page_id entity_id,num_events,num_minutes,1 typ FROM staging.stg_pendo__event UNION ALL SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE),feature_id,num_events,num_minutes,2 FROM staging.stg_pendo__feature_event UNION ALL SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE),page_id,count(*),sum(num_minutes),3 FROM staging.stg_pendo__page_event GROUP BY 1,2,3,4,5) GROUP BY 1,2,3,4) x WHERE x.account_id IS NOT DISTINCT FROM rates.account_id AND x.app_id IS NOT DISTINCT FROM rates.app_id AND x.event_date IS NOT DISTINCT FROM rates.event_date)::DOUBLE avg_features_per_user",
+      "why": "仅恢复单个按visitor聚合的指标，daily主行集仍使用原agent来源。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "high_quality_session_rate",
+      "old": "NULL::FLOAT high_quality_session_rate",
+      "new": "(SELECT count(DISTINCT visitor_id) FILTER(WHERE all_minutes>=10 AND pages>=3 AND features>=2)::FLOAT/nullif(count(DISTINCT visitor_id),0) FROM (SELECT visitor_id,account_id,app_id,event_date,max(CASE WHEN typ=1 THEN 1 ELSE 0 END) pg,max(CASE WHEN typ=2 THEN 1 ELSE 0 END) ft,max(CASE WHEN typ=3 THEN 1 ELSE 0 END) dp,count(DISTINCT entity_id) FILTER(WHERE typ=1) pages,count(DISTINCT entity_id) FILTER(WHERE typ=2) features,sum(CASE WHEN typ=1 THEN num_events ELSE 0 END)*.1+sum(CASE WHEN typ=2 THEN num_events ELSE 0 END)*.3+sum(CASE WHEN typ=3 THEN num_events ELSE 0 END)*.6+sum(num_minutes)*.05 engagement,sum(num_minutes) all_minutes,sum(CASE WHEN typ=1 THEN num_minutes ELSE 0 END) pgminutes FROM (SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE) event_date,page_id entity_id,num_events,num_minutes,1 typ FROM staging.stg_pendo__event UNION ALL SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE),feature_id,num_events,num_minutes,2 FROM staging.stg_pendo__feature_event UNION ALL SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE),page_id,count(*),sum(num_minutes),3 FROM staging.stg_pendo__page_event GROUP BY 1,2,3,4,5) GROUP BY 1,2,3,4) x WHERE x.account_id IS NOT DISTINCT FROM rates.account_id AND x.app_id IS NOT DISTINCT FROM rates.app_id AND x.event_date IS NOT DISTINCT FROM rates.event_date)::FLOAT high_quality_session_rate",
+      "why": "仅恢复单个按visitor聚合的指标，daily主行集仍使用原agent来源。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "bounce_rate",
+      "old": "NULL::FLOAT bounce_rate",
+      "new": "(SELECT count(DISTINCT visitor_id) FILTER(WHERE NOT (all_minutes>=10 AND pages>=3 AND features>=2) AND NOT (all_minutes>=5 AND pages>=2) AND NOT (pgminutes>=1))::FLOAT/nullif(count(DISTINCT visitor_id),0) FROM (SELECT visitor_id,account_id,app_id,event_date,max(CASE WHEN typ=1 THEN 1 ELSE 0 END) pg,max(CASE WHEN typ=2 THEN 1 ELSE 0 END) ft,max(CASE WHEN typ=3 THEN 1 ELSE 0 END) dp,count(DISTINCT entity_id) FILTER(WHERE typ=1) pages,count(DISTINCT entity_id) FILTER(WHERE typ=2) features,sum(CASE WHEN typ=1 THEN num_events ELSE 0 END)*.1+sum(CASE WHEN typ=2 THEN num_events ELSE 0 END)*.3+sum(CASE WHEN typ=3 THEN num_events ELSE 0 END)*.6+sum(num_minutes)*.05 engagement,sum(num_minutes) all_minutes,sum(CASE WHEN typ=1 THEN num_minutes ELSE 0 END) pgminutes FROM (SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE) event_date,page_id entity_id,num_events,num_minutes,1 typ FROM staging.stg_pendo__event UNION ALL SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE),feature_id,num_events,num_minutes,2 FROM staging.stg_pendo__feature_event UNION ALL SELECT visitor_id,account_id,app_id,CAST(occurred_at AS DATE),page_id,count(*),sum(num_minutes),3 FROM staging.stg_pendo__page_event GROUP BY 1,2,3,4,5) GROUP BY 1,2,3,4) x WHERE x.account_id IS NOT DISTINCT FROM rates.account_id AND x.app_id IS NOT DISTINCT FROM rates.app_id AND x.event_date IS NOT DISTINCT FROM rates.event_date)::FLOAT bounce_rate",
+      "why": "仅恢复单个按visitor聚合的指标，daily主行集仍使用原agent来源。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "avg_30d_page_to_feature_rate",
+      "old": "avg(page_to_feature_conversion_rate) OVER(PARTITION BY account_id,app_id) avg_30d_page_to_feature_rate",
+      "new": "(SELECT avg(x.page_to_feature_conversion_rate) FROM rates x WHERE x.account_id=rates.account_id AND x.app_id=rates.app_id AND x.event_date>=current_date-INTERVAL 30 DAY) avg_30d_page_to_feature_rate",
+      "why": "按契约日期下界及cohort等值连接恢复一项30日指标。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "avg_30d_feature_to_deep_rate",
+      "old": "avg(feature_to_deep_conversion_rate) OVER(PARTITION BY account_id,app_id) avg_30d_feature_to_deep_rate",
+      "new": "(SELECT avg(x.feature_to_deep_conversion_rate) FROM rates x WHERE x.account_id=rates.account_id AND x.app_id=rates.app_id AND x.event_date>=current_date-INTERVAL 30 DAY) avg_30d_feature_to_deep_rate",
+      "why": "按契约日期下界及cohort等值连接恢复一项30日指标。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "avg_30d_overall_conversion_rate",
+      "old": "avg(overall_conversion_rate) OVER(PARTITION BY account_id,app_id) avg_30d_overall_conversion_rate",
+      "new": "(SELECT avg(x.overall_conversion_rate) FROM rates x WHERE x.account_id=rates.account_id AND x.app_id=rates.app_id AND x.event_date>=current_date-INTERVAL 30 DAY) avg_30d_overall_conversion_rate",
+      "why": "按契约日期下界及cohort等值连接恢复一项30日指标。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "funnel_health_rating",
+      "old": "'Poor' funnel_health_rating",
+      "new": "CASE WHEN avg_30d_overall_conversion_rate>=.3 THEN 'Excellent' WHEN avg_30d_overall_conversion_rate>=.2 THEN 'Good' WHEN avg_30d_overall_conversion_rate>=.1 THEN 'Fair' ELSE 'Poor' END funnel_health_rating",
+      "why": "恢复固定分类为规定阈值，不改其输入。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "optimization_recommendation",
+      "old": "'Focus on feature discovery and onboarding' optimization_recommendation",
+      "new": "CASE WHEN avg_30d_page_to_feature_rate<.2 THEN 'Focus on feature discovery and onboarding' WHEN avg_30d_feature_to_deep_rate<.3 THEN 'Improve feature engagement and user guidance' WHEN NULL::FLOAT>.6 THEN 'Reduce bounce rate through better landing experience' ELSE 'Maintain current optimization efforts' END optimization_recommendation",
+      "why": "恢复建议分支；bounce输入仍保留原NULL占位。",
+      "kind": "单改重跑"
+    }
+  ],
+  "impl-002_int_pendo__data_quality_checks": [
+    {
+      "label": "completeness_account",
+      "old": "current_timestamp calculated_at",
+      "new": "current_timestamp calculated_at UNION ALL SELECT 'Data Completeness Details','account_history',count(*)::FLOAT,count(*) FILTER(WHERE account_id IS NULL)::FLOAT,0::FLOAT,count(*) FILTER(WHERE first_visit_at IS NULL)::VARCHAR,current_timestamp FROM staging.stg_pendo__account_history",
+      "why": "只补一条缺失详情行；沿契约的UNION按位置映射，不改summary。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "completeness_visitor",
+      "old": "current_timestamp calculated_at",
+      "new": "current_timestamp calculated_at UNION ALL SELECT 'Data Completeness Details','visitor_history',count(*)::FLOAT,count(*) FILTER(WHERE visitor_id IS NULL)::FLOAT,0::FLOAT,'0',current_timestamp FROM staging.stg_pendo__visitor_history",
+      "why": "只补一条缺失详情行；沿契约的UNION按位置映射，不改summary。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "consistency_details",
+      "old": "current_timestamp calculated_at",
+      "new": "current_timestamp calculated_at UNION ALL SELECT 'Data Consistency Issues','timestamp_consistency',(SELECT count(*) FROM staging.stg_pendo__event WHERE occurred_at>current_timestamp)::FLOAT,NULL::FLOAT,NULL::FLOAT,'Events with future timestamps',current_timestamp UNION ALL SELECT 'Data Consistency Issues','account_visitor_relationship',(SELECT count(*) FROM staging.stg_pendo__visitor_history v WHERE v.account_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM staging.stg_pendo__account_history a WHERE a.account_id=v.account_id))::FLOAT,NULL::FLOAT,NULL::FLOAT,'Visitors without valid account references',current_timestamp UNION ALL SELECT 'Data Consistency Issues','event_visitor_relationship',(SELECT count(*) FROM staging.stg_pendo__event e WHERE NOT EXISTS(SELECT 1 FROM staging.stg_pendo__visitor_history v WHERE e.visitor_id=v.visitor_id))::FLOAT,NULL::FLOAT,NULL::FLOAT,'Events with invalid visitor references',current_timestamp UNION ALL SELECT 'Data Consistency Issues','negative_metrics',(SELECT count(*) FROM staging.stg_pendo__event WHERE num_minutes<0 OR num_events<0)::FLOAT,NULL::FLOAT,NULL::FLOAT,'Events with negative duration or counts',current_timestamp UNION ALL SELECT 'Data Consistency Issues','chronological_consistency',(SELECT count(*) FROM staging.stg_pendo__account_history WHERE first_visit_at>last_visit_at)::FLOAT,NULL::FLOAT,NULL::FLOAT,'Accounts with first_visit > last_visit',current_timestamp",
+      "why": "一处恢复整段缺失报告章节；只读原staging，不更改summary。未评分的说明文字只作可读表达。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "business_details",
+      "old": "current_timestamp calculated_at",
+      "new": "current_timestamp calculated_at UNION ALL SELECT 'Business Logic Violations','impossible_session_duration',(SELECT count(*) FROM staging.stg_pendo__event WHERE num_minutes>480)::FLOAT,NULL::FLOAT,NULL::FLOAT,'Sessions longer than 8 hours',current_timestamp UNION ALL SELECT 'Business Logic Violations','excessive_daily_events',(SELECT count(*) FROM (SELECT visitor_id,CAST(occurred_at AS DATE) d FROM staging.stg_pendo__event GROUP BY 1,2 HAVING sum(num_events)>10000))::FLOAT,NULL::FLOAT,NULL::FLOAT,'Excessive daily events',current_timestamp UNION ALL SELECT 'Business Logic Violations','duplicate_primary_keys',(SELECT count(*)-count(DISTINCT event_key) FROM staging.stg_pendo__event)::FLOAT,NULL::FLOAT,NULL::FLOAT,'Duplicate event keys',current_timestamp UNION ALL SELECT 'Business Logic Violations','inactive_paying_accounts',(SELECT count(*) FROM staging.stg_pendo__account_history a WHERE NOT EXISTS(SELECT 1 FROM staging.stg_pendo__event e WHERE e.account_id=a.account_id AND e.occurred_at>=current_timestamp-INTERVAL 90 DAY))::FLOAT,NULL::FLOAT,NULL::FLOAT,'Accounts without recent activity',current_timestamp",
+      "why": "一处恢复整段缺失报告章节；只读原staging，不更改summary。未评分的说明文字只作可读表达。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "consistency_score",
+      "old": "NULL::FLOAT consistency_score",
+      "new": "((1-((SELECT count(*) FROM staging.stg_pendo__event WHERE occurred_at>current_timestamp)+(SELECT count(*) FROM staging.stg_pendo__visitor_history v WHERE v.account_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM staging.stg_pendo__account_history a WHERE a.account_id=v.account_id))+(SELECT count(*) FROM staging.stg_pendo__event e WHERE NOT EXISTS(SELECT 1 FROM staging.stg_pendo__visitor_history v WHERE e.visitor_id=v.visitor_id))+(SELECT count(*) FROM staging.stg_pendo__event WHERE num_minutes<0 OR num_events<0)+(SELECT count(*) FROM staging.stg_pendo__account_history WHERE first_visit_at>last_visit_at))*12.0/nullif(((SELECT count(*) FROM staging.stg_pendo__account_history)+(SELECT count(*) FROM staging.stg_pendo__visitor_history)+(SELECT count(*) FROM staging.stg_pendo__event))*20,0))*100)::FLOAT consistency_score",
+      "why": "仅恢复一个summary聚合值；笛卡尔积权重按契约3×5×4，不改变其他NULL列。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "business_logic_score",
+      "old": "NULL::FLOAT business_logic_score",
+      "new": "((1-((SELECT count(*) FROM staging.stg_pendo__event WHERE num_minutes>480)+(SELECT count(*) FROM (SELECT visitor_id,CAST(occurred_at AS DATE) d FROM staging.stg_pendo__event GROUP BY 1,2 HAVING sum(num_events)>10000))+(SELECT count(*)-count(DISTINCT event_key) FROM staging.stg_pendo__event)+(SELECT count(*) FROM staging.stg_pendo__account_history a WHERE NOT EXISTS(SELECT 1 FROM staging.stg_pendo__event e WHERE e.account_id=a.account_id AND e.occurred_at>=current_timestamp-INTERVAL 90 DAY)))*15.0/nullif(((SELECT count(*) FROM staging.stg_pendo__account_history)+(SELECT count(*) FROM staging.stg_pendo__visitor_history)+(SELECT count(*) FROM staging.stg_pendo__event))*20,0))*100)::FLOAT business_logic_score",
+      "why": "仅恢复一个summary聚合值；笛卡尔积权重按契约3×5×4，不改变其他NULL列。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "completeness_score",
+      "old": "NULL::VARCHAR completeness_score",
+      "new": "((1-((SELECT count(*) FILTER(WHERE account_id IS NULL)+count(*) FILTER(WHERE first_visit_at IS NULL)+count(*) FILTER(WHERE last_visit_at IS NULL) FROM staging.stg_pendo__account_history)+(SELECT count(*) FILTER(WHERE visitor_id IS NULL) FROM staging.stg_pendo__visitor_history)+(SELECT count(*) FILTER(WHERE visitor_id IS NULL)+count(*) FILTER(WHERE account_id IS NULL)+count(*) FILTER(WHERE occurred_at IS NULL) FROM staging.stg_pendo__event))*1.0/nullif(((SELECT count(*) FROM staging.stg_pendo__account_history)+(SELECT count(*) FROM staging.stg_pendo__visitor_history)+(SELECT count(*) FROM staging.stg_pendo__event))*3,0))*100)::FLOAT::VARCHAR completeness_score",
+      "why": "恢复summary完整度公式；该列不在本表官方比较列中，须明确非原因。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "overall_quality_score",
+      "old": "NULL::FLOAT overall_quality_score",
+      "new": "((try_cast(completeness_score AS FLOAT)+consistency_score+business_logic_score)/3)::FLOAT overall_quality_score",
+      "why": "恢复三分数平均，其他列仍保留NULL；遮蔽下允许净改善0。",
+      "kind": "单改重跑"
+    },
+    {
+      "label": "quality_grade",
+      "old": "'Poor'::VARCHAR quality_grade",
+      "new": "CASE WHEN overall_quality_score>=95 THEN 'Excellent' WHEN overall_quality_score>=85 THEN 'Good' WHEN overall_quality_score>=70 THEN 'Fair' ELSE 'Poor' END quality_grade",
+      "why": "恢复等级分支，输入仍为原NULL；该列不在官方比较列中。",
+      "kind": "单改重跑"
+    }
+  ]
+}
