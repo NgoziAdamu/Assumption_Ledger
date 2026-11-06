@@ -1,0 +1,1962 @@
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Twitter Ads source system. This contract defines the WHAT of the transformations and validations, serving as the single source of truth for implementation."
+  author: "Data Engineering Team"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw Twitter Ads data into clean, validated, and standardized staging tables."
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as casing, whitespace trimming, and standardized date/timezone formats."
+      examples: ["UPPER(TRIM(status))", "standardize timezone values", "normalize language codes"]
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Invalid primary identifiers", "Corrupted timestamps outside allowed bounds", "Required enumerations not in allowed set"]
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and the record is still usable."
+      examples: ["unexpected language code in optional language field", "malformed optional URL components"]
+
+  tables:
+    - name: stg_twitter_ads__account_history
+      description: "Cleaned and standardized Twitter Ads account attributes with latest-version flag."
+      source_table: raw.twitter_account_history_data
+      columns:
+        - name: account_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: approval_status
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "approval_status IN ('ACCEPTED','PENDING','REJECTED')"
+              on_failure: delete_row
+        - name: business_id
+          data_type: VARCHAR
+        - name: business_name
+          data_type: VARCHAR
+        - name: created_timestamp
+          data_type: TIMESTAMP
+        - name: is_deleted
+          data_type: BOOLEAN
+        - name: industry_type
+          data_type: VARCHAR
+        - name: name
+          data_type: VARCHAR
+        - name: timezone
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "timezone IN ('America/Los_Angeles','America/New_York','Europe/London','Asia/Tokyo','Australia/Sydney','UTC')"
+              on_failure: correct
+        - name: timezone_switched_timestamp
+          data_type: TIMESTAMP
+        - name: updated_timestamp
+          data_type: TIMESTAMP
+        - name: is_latest_version
+          data_type: BOOLEAN
+          constraints: [not_null]
+
+    - name: stg_twitter_ads__campaign_history
+      description: "Cleaned campaign attributes with normalized status and budget amounts (micro to standard units) and latest-version flag."
+      source_table: raw.twitter_campaign_history_data
+      columns:
+        - name: account_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: created_timestamp
+          data_type: TIMESTAMP
+        - name: currency
+          data_type: VARCHAR
+        - name: daily_budget_amount_local_micro
+          data_type: BIGINT
+        - name: daily_budget_amount
+          data_type: DOUBLE
+          description: "ROUND(daily_budget_amount_local_micro / 1e6, 2)."
+        - name: is_deleted
+          data_type: BOOLEAN
+        - name: duration_in_days
+          data_type: BIGINT
+        - name: end_timestamp
+          data_type: TIMESTAMP
+        - name: entity_status
+          data_type: VARCHAR
+          description: "Normalized as UPPER(TRIM(entity_status)); only {ACTIVE, PAUSED, DELETED, DRAFT} retained."
+          validation_rules:
+            - rule: "entity_status = UPPER(TRIM(entity_status))"
+              on_failure: correct
+            - rule: "entity_status IN ('ACTIVE','PAUSED','DELETED','DRAFT')"
+              on_failure: delete_row
+        - name: frequency_cap
+          data_type: VARCHAR
+        - name: funding_instrument_id
+          data_type: VARCHAR
+        - name: campaign_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: campaign_name
+          data_type: VARCHAR
+        - name: is_servable
+          data_type: BOOLEAN
+        - name: is_standard_delivery
+          data_type: BOOLEAN
+        - name: start_timestamp
+          data_type: TIMESTAMP
+        - name: total_budget_amount_local_micro
+          data_type: BIGINT
+          description: "ROUND(total_budget_amount_local_micro / 1e6, 2)."
+        - name: total_budget_amount
+          data_type: DOUBLE
+        - name: updated_timestamp
+          data_type: TIMESTAMP
+        - name: is_latest_version
+          data_type: BOOLEAN
+          constraints: [not_null]
+          description: "ROW_NUMBER()=1 within (PARTITION BY campaign_id ORDER BY updated_timestamp DESC NULLS LAST)."
+
+    - name: stg_twitter_ads__campaign_locations_report
+      description: "Daily campaign performance by country and placement with spend normalized from micro-units."
+      source_table: raw.twitter_campaign_locations_report_data
+      columns:
+        - name: date_day
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: country
+          data_type: VARCHAR
+        - name: account_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: campaign_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: placement
+          data_type: VARCHAR
+        - name: clicks
+          data_type: BIGINT
+        - name: impressions
+          data_type: BIGINT
+        - name: spend_micro
+          data_type: BIGINT
+        - name: spend
+          data_type: DOUBLE
+          description: "Spend amount rounded to 2 decimal places in SQL."
+        - name: url_clicks
+          data_type: BIGINT
+        - name: conversion_purchases_metric
+          data_type: BIGINT
+        - name: conversion_custom_metric
+          data_type: BIGINT
+        - name: conversion_purchases_sale_amount
+          data_type: DOUBLE
+        - name: conversion_custom_sale_amount
+          data_type: DOUBLE
+
+    - name: stg_twitter_ads__campaign_regions_report
+      description: "Daily campaign performance by region within country and placement with normalized spend."
+      source_table: raw.twitter_campaign_regions_report_data
+      columns:
+        - name: date_day
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: region
+          data_type: VARCHAR
+        - name: country
+          data_type: VARCHAR
+        - name: account_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: campaign_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: placement
+          data_type: VARCHAR
+        - name: clicks
+          data_type: BIGINT
+        - name: impressions
+          data_type: BIGINT
+        - name: spend_micro
+          data_type: BIGINT
+        - name: spend
+          data_type: DOUBLE
+          description: "Spend amount rounded to 2 decimal places in SQL."
+        - name: url_clicks
+          data_type: BIGINT
+        - name: conversion_purchases_metric
+          data_type: BIGINT
+        - name: conversion_custom_metric
+          data_type: BIGINT
+        - name: conversion_purchases_sale_amount
+          data_type: DOUBLE
+        - name: conversion_custom_sale_amount
+          data_type: DOUBLE
+
+    - name: stg_twitter_ads__campaign_report
+      description: "Daily campaign performance aggregated by placement with normalized spend."
+      source_table: raw.twitter_campaign_report_data
+      columns:
+        - name: date_day
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: account_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: campaign_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: placement
+          data_type: VARCHAR
+        - name: clicks
+          data_type: BIGINT
+        - name: impressions
+          data_type: BIGINT
+        - name: spend_micro
+          data_type: BIGINT
+        - name: spend
+          data_type: DOUBLE
+          description: "Spend amount rounded to 2 decimal places in SQL."
+        - name: url_clicks
+          data_type: BIGINT
+        - name: conversion_purchases_metric
+          data_type: BIGINT
+        - name: conversion_custom_metric
+          data_type: BIGINT
+        - name: conversion_purchases_sale_amount
+          data_type: DOUBLE
+        - name: conversion_custom_sale_amount
+          data_type: DOUBLE
+
+    - name: stg_twitter_ads__line_item_history
+      description: "Cleaned line item attributes with monetary conversions and latest-version flag."
+      source_table: raw.twitter_line_item_history_data
+      columns:
+        - name: advertiser_domain
+          data_type: VARCHAR
+        - name: advertiser_user_id
+          data_type: BIGINT
+        - name: automatically_select_bid
+          data_type: BOOLEAN
+        - name: bid_amount_local_micro
+          data_type: BIGINT
+        - name: bid_amount
+          data_type: DECIMAL(18,2)
+        - name: bid_type
+          data_type: VARCHAR
+        - name: bid_unit
+          data_type: VARCHAR
+        - name: campaign_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: charge_by
+          data_type: VARCHAR
+        - name: created_timestamp
+          data_type: TIMESTAMP
+        - name: creative_source
+          data_type: VARCHAR
+        - name: currency
+          data_type: VARCHAR
+        - name: is_deleted
+          data_type: BOOLEAN
+        - name: end_timestamp
+          data_type: TIMESTAMP
+        - name: entity_status
+          data_type: VARCHAR
+        - name: line_item_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: name
+          data_type: VARCHAR
+        - name: objective
+          data_type: VARCHAR
+        - name: optimization
+          data_type: VARCHAR
+        - name: primary_web_event_tag
+          data_type: VARCHAR
+        - name: product_type
+          data_type: VARCHAR
+        - name: start_timestamp
+          data_type: TIMESTAMP
+        - name: target_cpa_local_micro
+          data_type: BIGINT
+        - name: target_cpa
+          data_type: DOUBLE
+        - name: total_budget_amount_local_micro
+          data_type: BIGINT
+        - name: total_budget_amount
+          data_type: DECIMAL(18,1)
+        - name: updated_timestamp
+          data_type: TIMESTAMP
+        - name: is_latest_version
+          data_type: BOOLEAN
+          constraints: [not_null]
+
+    - name: stg_twitter_ads__line_item_keywords_report
+      description: "Daily keyword performance per line item and placement with normalized spend and derived keyword_id."
+      source_table: raw.twitter_line_item_keywords_report_data
+      columns:
+        - name: date_day
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: account_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: line_item_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: keyword
+          data_type: VARCHAR
+        - name: keyword_id
+          data_type: VARCHAR
+        - name: placement
+          data_type: VARCHAR
+        - name: clicks
+          data_type: BIGINT
+        - name: impressions
+          data_type: BIGINT
+        - name: spend_micro
+          data_type: BIGINT
+        - name: spend
+          data_type: DOUBLE
+          description: "Spend amount rounded to 2 decimal places in SQL."
+        - name: url_clicks
+          data_type: BIGINT
+        - name: conversion_purchases_metric
+          data_type: BIGINT
+        - name: conversion_custom_metric
+          data_type: BIGINT
+        - name: conversion_purchases_sale_amount
+          data_type: DOUBLE
+        - name: conversion_custom_sale_amount
+          data_type: DOUBLE
+
+    - name: stg_twitter_ads__line_item_report
+      description: "Daily line item performance per placement with normalized spend."
+      source_table: raw.twitter_line_item_report_data
+      columns:
+        - name: date_day
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: account_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: line_item_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: placement
+          data_type: VARCHAR
+        - name: clicks
+          data_type: BIGINT
+        - name: impressions
+          data_type: BIGINT
+        - name: spend_micro
+          data_type: BIGINT
+        - name: spend
+          data_type: DOUBLE
+          description: "Spend amount rounded to 2 decimal places in SQL."
+        - name: url_clicks
+          data_type: BIGINT
+        - name: conversion_purchases_metric
+          data_type: BIGINT
+        - name: conversion_custom_metric
+          data_type: BIGINT
+        - name: conversion_purchases_sale_amount
+          data_type: DOUBLE
+        - name: conversion_custom_sale_amount
+          data_type: DOUBLE
+
+    - name: stg_twitter_ads__promoted_tweet_history
+      description: "Cleaned promoted tweet attributes with latest-version flag."
+      source_table: raw.twitter_promoted_tweet_history_data
+      columns:
+        - name: approval_status
+          data_type: VARCHAR
+        - name: created_timestamp
+          data_type: TIMESTAMP
+        - name: is_deleted
+          data_type: BOOLEAN
+        - name: entity_status
+          data_type: VARCHAR
+        - name: promoted_tweet_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: line_item_id
+          data_type: VARCHAR
+        - name: tweet_id
+          data_type: BIGINT
+        - name: updated_timestamp
+          data_type: TIMESTAMP
+        - name: is_latest_version
+          data_type: BOOLEAN
+          constraints: [not_null]
+
+    - name: stg_twitter_ads__promoted_tweet_report
+      description: "Daily promoted tweet performance per placement with normalized spend."
+      source_table: raw.twitter_promoted_tweet_report_data
+      columns:
+        - name: date_ts
+          data_type: TIMESTAMP
+        - name: date_day
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: account_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: promoted_tweet_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: placement
+          data_type: VARCHAR
+        - name: clicks
+          data_type: BIGINT
+        - name: impressions
+          data_type: BIGINT
+        - name: spend_micro
+          data_type: BIGINT
+        - name: spend
+          data_type: DOUBLE
+          description: "Spend amount rounded to 2 decimal places in SQL."
+        - name: url_clicks
+          data_type: BIGINT
+        - name: conversion_purchases_metric
+          data_type: BIGINT
+        - name: conversion_custom_metric
+          data_type: BIGINT
+        - name: conversion_purchases_sale_amount
+          data_type: DOUBLE
+        - name: conversion_custom_sale_amount
+          data_type: DOUBLE
+
+    - name: stg_twitter_ads__tweet
+      description: "Cleaned tweets with validated language and reasonable created_at bounds applied at staging filter."
+      source_table: raw.twitter_tweet_data
+      columns:
+        - name: account_id
+          data_type: VARCHAR
+        - name: tweet_id
+          data_type: VARCHAR
+        - name: name
+          data_type: VARCHAR
+        - name: full_text
+          data_type: VARCHAR
+        - name: language
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "language IN ('en','es','fr','de','ja','zh','ar','pt','ru','ko')"
+              on_failure: nullify_field
+
+    - name: stg_twitter_ads__tweet_url
+      description: "Parsed tweet URL entities with derived base_url, host, path, and UTM parameters."
+      source_table: raw.twitter_tweet_url_data
+      columns:
+        - name: display_url
+          data_type: VARCHAR
+        - name: expanded_url
+          data_type: VARCHAR
+        - name: index
+          data_type: BIGINT
+        - name: indices
+          data_type: VARCHAR
+        - name: tweet_id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: url
+          data_type: VARCHAR
+        - name: start_index
+          data_type: BIGINT
+        - name: end_index
+          data_type: BIGINT
+        - name: base_url
+          data_type: VARCHAR
+        - name: url_host
+          data_type: VARCHAR
+        - name: url_path
+          data_type: VARCHAR
+          description: "Path portion beginning with '/'."
+          validation_rules:
+            - rule: "url_path IS NULL OR url_path ~ '^/.*$'"
+              on_failure: nullify_field
+        - name: utm_source
+          data_type: VARCHAR
+        - name: utm_medium
+          data_type: VARCHAR
+        - name: utm_campaign
+          data_type: VARCHAR
+        - name: utm_content
+          data_type: VARCHAR
+        - name: utm_term
+          data_type: VARCHAR
+
+# --------------------------------------------------------------------------- #
+# PHASE 2: Defines the business logic from staging to analytical models.      #
+# --------------------------------------------------------------------------- #
+modeling_spec:
+  purpose: "Transform staging data into business-ready, analysis-ready models."
+  design_principles:
+    staging_layer: "References raw layer only."
+    intermediate_layer: "References staging layer only. Reusable, business-centric transformations."
+    marts_layer: "References intermediate layer only. Final analysis-ready models for BI."
+    dependency_rules: "No cross-layer or same-layer dependencies."
+    grain_requirement: "Each model must define a unique grain explicitly."
+
+  intermediate_models:
+    - name: int_twitter_ads__accounts
+      description: Rows from account history flagged as latest, with name renamed to account_name.
+      grain: One row per source record where is_latest_version = TRUE; multiple rows per account_id may exist.
+      source_models:
+      - staging.stg_twitter_ads__account_history
+      business_logic: '- Start from staging.stg_twitter_ads__account_history. - Filter to records where is_latest_version is TRUE. - Select pass-through columns: account_id, approval_status, business_id, business_name, created_timestamp, is_deleted, industry_type, timezone, timezone_switched_timestamp, updated_timestamp. - Rename column name to account_name. - No joins, aggregations, sorting, or extra de-duplication; if multiple latest records exist for an account_id, all are retained.'
+      columns:
+      - name: account_id
+        data_type: VARCHAR
+        description: Twitter Ads account identifier; passed through from source; not null.
+        tests:
+        - not_null
+      - name: approval_status
+        data_type: VARCHAR
+        description: Account approval status; passed through; NULLs kept.
+      - name: business_id
+        data_type: VARCHAR
+        description: Linked business identifier; passed through; NULLs kept.
+      - name: business_name
+        data_type: VARCHAR
+        description: Linked business name; casing preserved; NULLs kept.
+      - name: created_timestamp
+        data_type: TIMESTAMP
+        description: Account creation timestamp; preserved without conversion; NULLs kept.
+      - name: is_deleted
+        data_type: BOOLEAN
+        description: Soft-delete flag; boolean passed through; NULLs kept.
+      - name: industry_type
+        data_type: VARCHAR
+        description: Account industry category; passed through; NULLs kept.
+      - name: account_name
+        data_type: VARCHAR
+        description: Account name sourced from column name; casing preserved; NULLs kept.
+      - name: timezone
+        data_type: VARCHAR
+        description: Account timezone string; passed through as stored; NULLs kept.
+      - name: timezone_switched_timestamp
+        data_type: TIMESTAMP
+        description: Timestamp when the timezone changed; preserved without conversion; NULLs kept.
+      - name: updated_timestamp
+        data_type: TIMESTAMP
+        description: Last update timestamp for the account record; preserved without conversion; NULLs kept.
+    - name: int_twitter_ads__campaigns
+      description: Latest campaign attributes from stg_twitter_ads__campaign_history filtered to latest-version rows.
+      grain: 'One row per latest-version record (expected: one per campaign_id)'
+      source_models:
+      - staging.stg_twitter_ads__campaign_history
+      business_logic: '- Start from staging.stg_twitter_ads__campaign_history. - Keep only rows flagged as the latest version. - Select the listed columns without transformation; no joins, aggregations, ordering, or deduplication. - All values are pass-through from staging; NULLs are preserved; no scaling, rounding, or timezone conversion. - Grain is the set of latest-version rows from staging; if multiple latest rows exist for a campaign_id, all are retained.'
+      columns:
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Unique campaign identifier.
+        tests:
+        - not_null
+      - name: account_id
+        data_type: VARCHAR
+        description: Owning advertiser account identifier.
+        tests:
+        - not_null
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign name.
+      - name: currency
+        data_type: VARCHAR
+        description: Currency code (ISO 4217).
+      - name: is_deleted
+        data_type: BOOLEAN
+        description: Source soft-delete flag.
+      - name: entity_status
+        data_type: VARCHAR
+        description: Lifecycle status.
+      - name: is_servable
+        data_type: BOOLEAN
+        description: Servability flag.
+      - name: is_standard_delivery
+        data_type: BOOLEAN
+        description: Standard delivery flag.
+      - name: frequency_cap
+        data_type: DOUBLE
+        description: Frequency cap value.
+      - name: start_timestamp
+        data_type: TIMESTAMP
+        description: Campaign start timestamp.
+      - name: end_timestamp
+        data_type: TIMESTAMP
+        description: Campaign end timestamp.
+      - name: created_timestamp
+        data_type: TIMESTAMP
+        description: Record creation timestamp.
+      - name: updated_timestamp
+        data_type: TIMESTAMP
+        description: Last update timestamp.
+      - name: funding_instrument_id
+        data_type: VARCHAR
+        description: Funding instrument identifier.
+      - name: daily_budget_amount
+        data_type: DOUBLE
+        description: Daily budget amount.
+      - name: total_budget_amount
+        data_type: DOUBLE
+        description: Total budget amount.
+    - name: int_twitter_ads__line_items
+      description: Latest-version attributes per line_item_id from Twitter Ads line item history; direct pass-through with 'name' renamed to line_item_name.
+      grain: One row per line_item_id
+      source_models:
+      - staging.stg_twitter_ads__line_item_history
+      business_logic: '- Read all rows from staging.stg_twitter_ads__line_item_history. - Keep only rows where is_latest_version is true; no tie-breaking or de-duplication beyond this filter. - Select the listed fields; rename source field "name" to "line_item_name"; all other fields are passed through without casting, normalization, rounding, or defaulting. - Preserve NULLs and original values; timestamps are not converted or adjusted for timezone. - No aggregation, sorting, or additional filtering is applied. - Expected grain is one row per line_item_id when the source provides a single latest version per id.'
+      columns:
+      - name: line_item_id
+        data_type: VARCHAR
+        description: Unique line item identifier for the latest-version row.
+        tests:
+        - not_null
+        - unique
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Identifier of the owning campaign.
+        tests:
+        - not_null
+      - name: line_item_name
+        data_type: VARCHAR
+        description: Line item name renamed from source column 'name'.
+      - name: currency
+        data_type: VARCHAR
+        description: Currency code as provided by the source.
+      - name: is_deleted
+        data_type: BOOLEAN
+        description: Soft-delete flag as provided by the source.
+      - name: entity_status
+        data_type: VARCHAR
+        description: Current lifecycle status of the line item.
+      - name: advertiser_domain
+        data_type: VARCHAR
+        description: Advertiser's domain.
+      - name: advertiser_user_id
+        data_type: BIGINT
+        description: Advertiser user identifier.
+      - name: bid_type
+        data_type: VARCHAR
+        description: Bid type (e.g., CPC, CPM).
+      - name: bid_unit
+        data_type: VARCHAR
+        description: Unit for measuring the bid.
+      - name: charge_by
+        data_type: VARCHAR
+        description: Billing basis (e.g., IMPRESSIONS, CLICKS).
+      - name: objective
+        data_type: VARCHAR
+        description: Primary objective of the line item.
+      - name: optimization
+        data_type: VARCHAR
+        description: Optimization setting.
+      - name: product_type
+        data_type: VARCHAR
+        description: Product type associated with the line item.
+      - name: primary_web_event_tag
+        data_type: DOUBLE
+        description: Numeric identifier of the primary web event tag.
+      - name: start_timestamp
+        data_type: TIMESTAMP
+        description: Start timestamp as stored in the source.
+      - name: end_timestamp
+        data_type: TIMESTAMP
+        description: End timestamp as stored in the source.
+      - name: created_timestamp
+        data_type: TIMESTAMP
+        description: Creation timestamp as stored in the source.
+      - name: updated_timestamp
+        data_type: TIMESTAMP
+        description: Last update timestamp as stored in the source.
+      - name: bid_amount
+        data_type: DOUBLE
+        description: Bid amount; source units preserved.
+        tests:
+        - bid_amount >= 0
+      - name: total_budget_amount
+        data_type: DOUBLE
+        description: Total budget; source units preserved.
+        tests:
+        - total_budget_amount >= 0
+      - name: target_cpa
+        data_type: DOUBLE
+        description: Target cost per acquisition; source units preserved.
+        tests:
+        - target_cpa >= 0
+    - name: int_twitter_ads__promoted_tweets
+      description: Latest promoted tweet records where is_latest_version=true with entity_status renamed to promoted_tweet_status
+      grain: One row per source record with is_latest_version=true; multiple rows may share the same promoted_tweet_id if the source contains more than one latest row
+      source_models:
+      - staging.stg_twitter_ads__promoted_tweet_history
+      business_logic: '- Read from staging.stg_twitter_ads__promoted_tweet_history. - Keep only rows where is_latest_version is true. - Select promoted_tweet_id, line_item_id, tweet_id, approval_status, is_deleted, created_timestamp, updated_timestamp, and rename entity_status to promoted_tweet_status. - No aggregation, sorting, or deduplication; NULLs are preserved. - Emit one output row for each filtered source row.'
+      columns:
+      - name: promoted_tweet_id
+        data_type: VARCHAR
+        description: Primary identifier for the promoted tweet.
+        tests:
+        - not_null
+      - name: line_item_id
+        data_type: VARCHAR
+        description: Identifier of the associated line item.
+      - name: tweet_id
+        data_type: BIGINT
+        description: Identifier of the underlying tweet.
+      - name: approval_status
+        data_type: VARCHAR
+        description: Approval status of the promoted tweet.
+      - name: is_deleted
+        data_type: BOOLEAN
+        description: Soft-delete indicator.
+      - name: promoted_tweet_status
+        data_type: VARCHAR
+        description: Lifecycle status of the promoted tweet, sourced from entity_status.
+      - name: created_timestamp
+        data_type: TIMESTAMP
+        description: Timestamp when the record was created.
+      - name: updated_timestamp
+        data_type: TIMESTAMP
+        description: Timestamp when the record was last updated.
+    - name: int_twitter_ads__tweets
+      description: Selected tweet attributes passed through from staging with simple renaming; no filtering or aggregation
+      grain: One row per source row from staging.stg_twitter_ads__tweet
+      source_models:
+      - staging.stg_twitter_ads__tweet
+      business_logic: '- Read rows from staging.stg_twitter_ads__tweet - Select fields: account_id, tweet_id, name, full_text, language - Rename: name -> tweet_name; full_text -> tweet_full_text - No filters, joins, or aggregations; duplicates are allowed; ordering is not enforced - Pass through values as stored; casing, punctuation, and whitespace are preserved; NULLs are preserved'
+      columns:
+      - name: account_id
+        data_type: VARCHAR
+        description: Owning account ID from source; pass-through with NULLs preserved and no normalization
+      - name: tweet_id
+        data_type: BIGINT
+        description: Tweet identifier from source; pass-through with no uniqueness or not-null enforcement
+      - name: tweet_name
+        data_type: VARCHAR
+        description: Tweet name from source 'name' field; pass-through with casing/whitespace preserved and NULLs allowed
+      - name: tweet_full_text
+        data_type: VARCHAR
+        description: Full tweet text from source 'full_text'; pass-through with casing/whitespace preserved and NULLs allowed
+      - name: language
+        data_type: VARCHAR
+        description: Language value from source; pass-through with no validation or normalization; NULLs preserved
+    - name: int_twitter_ads__tweet_url_first
+      description: Selects the first URL per tweet using earliest start_index then index (NULLs treated as 999999), with host and path derived from expanded_url and UTM parameters passed through.
+      grain: One row per tweet_id
+      source_models:
+      - staging.stg_twitter_ads__tweet_url
+      business_logic: '- Partition rows by tweet_id. - Within each tweet_id, order ascending by start_index and then index, treating NULL as 999999 for both fields; select the first row. If multiple rows tie on both fields, the chosen row is non-deterministic. - For the selected row: - Pass through base_url, expanded_url, display_url, utm_source, utm_medium, utm_campaign, utm_content, utm_term without changes. - Derive url_host by taking the text after "://" up to the next "/" or "?" or "#"; if no such pattern exists, set NULL; the host may include a port. - Derive url_path: - If expanded_url contains "//", set url_path to "/" plus the substring between the first occurrence of "//" and the "?" (if present) or the end of the string. - This substring includes the hostname and any path; the query string is excluded, and a fragment (after "#") is kept if present. - If expanded_url does not contain "//", set url_path to NULL. - All derived and passed-through values preserve original casing and spacing.'
+      columns:
+      - name: tweet_id
+        data_type: BIGINT
+        description: Unique tweet identifier; exactly one output row per tweet_id.
+        tests:
+        - not_null
+        - unique
+      - name: base_url
+        data_type: VARCHAR
+        description: Value passed through from the source with no transformation; may be NULL.
+      - name: url_host
+        data_type: VARCHAR
+        description: Host extracted from expanded_url between '://' and the next '/' '?' or '#'; may include a port; NULL if no match.
+      - name: url_path
+        data_type: VARCHAR
+        description: If expanded_url contains '//', '/' plus the substring from after '//' up to before '?' or end (includes hostname and any path, excludes query, keeps fragment if present); otherwise NULL.
+      - name: utm_source
+        data_type: VARCHAR
+        description: UTM source passed through from the source as-is; may be NULL.
+      - name: utm_medium
+        data_type: VARCHAR
+        description: UTM medium passed through from the source as-is; may be NULL.
+      - name: utm_campaign
+        data_type: VARCHAR
+        description: UTM campaign passed through from the source as-is; may be NULL.
+      - name: utm_content
+        data_type: VARCHAR
+        description: UTM content passed through from the source as-is; may be NULL.
+      - name: utm_term
+        data_type: VARCHAR
+        description: UTM term passed through from the source as-is; may be NULL.
+      - name: expanded_url
+        data_type: VARCHAR
+        description: Full expanded URL passed through unmodified; may include query and fragment; casing and whitespace preserved.
+      - name: display_url
+        data_type: VARCHAR
+        description: Display-friendly URL passed through unmodified; casing and whitespace preserved.
+    - name: int_twitter_ads__campaign_report_base
+      description: Daily campaign metrics selected from staging with two deterministic conversion totals computed
+      grain: One row per input record from staging.stg_twitter_ads__campaign_report (typically per date_day, account_id, campaign_id, placement)
+      source_models:
+      - staging.stg_twitter_ads__campaign_report
+      business_logic: '- Read date_day, account_id, campaign_id, placement, clicks, impressions, spend, spend_micro, and url_clicks directly from staging without modification. - For total_conversions: take conversion_purchases_metric and conversion_custom_metric; convert each to a whole number by truncating any fractional part toward zero; treat NULL as 0; add the two values to produce a non-NULL integer. - For total_conversions_sale_amount: take conversion_purchases_sale_amount and conversion_custom_sale_amount; treat NULL as 0.0; add the two values to produce a non-NULL double-precision amount. - No filtering, grouping, deduplication, currency conversion, or additional rounding is performed; duplicate source rows (if any) are preserved; output ordering is not defined.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar date of the metrics from the source; passed through unchanged
+        tests:
+        - not_null
+      - name: account_id
+        data_type: VARCHAR
+        description: Twitter Ads account identifier; passed through unchanged
+        tests:
+        - not_null
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier; passed through unchanged
+        tests:
+        - not_null
+      - name: placement
+        data_type: VARCHAR
+        description: Ad inventory placement from the source; passed through unchanged and may be NULL
+      - name: clicks
+        data_type: BIGINT
+        description: Number of clicks from the source; passed through unchanged and may be NULL
+      - name: impressions
+        data_type: BIGINT
+        description: Number of impressions from the source; passed through unchanged and may be NULL
+      - name: spend
+        data_type: DOUBLE
+        description: Spend in major currency units from the source; passed through unchanged and may be NULL
+      - name: spend_micro
+        data_type: BIGINT
+        description: Spend in micro currency units (1e-6 of a unit) from the source; passed through unchanged and may be NULL
+      - name: url_clicks
+        data_type: BIGINT
+        description: Number of URL clicks from the source; passed through unchanged and may be NULL
+      - name: total_conversions
+        data_type: BIGINT
+        description: Sum of purchases and custom conversion counts after truncating decimals toward zero and treating NULL as 0; never NULL
+      - name: total_conversions_sale_amount
+        data_type: DOUBLE
+        description: Sum of purchases and custom conversion sale amounts with NULL treated as 0.0; never NULL
+    - name: int_twitter_ads__campaign_locations_report_base
+      description: Daily campaign location metrics with pass-through fields and derived total conversions and sale amounts
+      grain: Row-for-row projection of the source; one output row per source record (typically keyed by date_day, account_id, campaign_id, placement, country)
+      source_models:
+      - staging.stg_twitter_ads__campaign_locations_report
+      business_logic: '- Pass through date_day, country, account_id, campaign_id, placement, clicks, impressions, spend, spend_micro, and url_clicks exactly as in staging.stg_twitter_ads__campaign_locations_report with no filtering, aggregation, deduplication, type changes, rounding, or unit changes. - total_conversions: convert purchases and custom conversion metrics to integers, treat NULL as 0 for each, then sum them; result is an integer and never NULL. - total_conversions_sale_amount: convert purchases and custom conversion sale amounts to doubles, treat NULL as 0.0 for each, then sum them; result is a double and never NULL. - No grouping or sorting is applied; duplicates from the source are preserved.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar date of the metrics from the source; passed through with no transformation
+      - name: country
+        data_type: VARCHAR
+        description: Country or region from the source; casing and whitespace are preserved; may be NULL
+      - name: account_id
+        data_type: VARCHAR
+        description: Owning account identifier; passed through as-is from the source; may be NULL
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier; passed through as-is from the source; may be NULL
+      - name: placement
+        data_type: VARCHAR
+        description: Inventory placement label; passed through as-is from the source; may be NULL
+      - name: clicks
+        data_type: BIGINT
+        description: Click count from the source; integer value is passed through with no transformation; may be NULL
+      - name: impressions
+        data_type: BIGINT
+        description: Impression count from the source; integer value is passed through with no transformation; may be NULL
+      - name: spend
+        data_type: DOUBLE
+        description: Spend in standard currency units as provided by the source; decimal precision is preserved; may be NULL
+      - name: spend_micro
+        data_type: BIGINT
+        description: Spend in micro currency units (1e-6 of the standard unit) as provided by the source; integer value is passed through; may be NULL
+      - name: url_clicks
+        data_type: BIGINT
+        description: URL click count from the source; integer value is passed through with no transformation; may be NULL
+      - name: total_conversions
+        data_type: BIGINT
+        description: Sum of purchases and custom conversion metrics after converting to integers and replacing NULLs with 0; never NULL
+        tests:
+        - not_null
+      - name: total_conversions_sale_amount
+        data_type: DOUBLE
+        description: Sum of purchases and custom conversion sale amounts after converting to doubles and replacing NULLs with 0.0; never NULL
+        tests:
+        - not_null
+    - name: int_twitter_ads__campaign_regions_report_base
+      description: Daily campaign metrics by country and region with derived conversion totals; direct projection of the staging report without filtering or aggregation
+      grain: One row per source row, typically per date_day per account_id per campaign_id per placement per country per region
+      source_models:
+      - staging.stg_twitter_ads__campaign_regions_report
+      business_logic: '- Read all rows from staging.stg_twitter_ads__campaign_regions_report; no filtering, grouping, ordering, or deduplication. - Pass through these columns exactly as in the source: date_day, region, country, account_id, campaign_id, placement, clicks, impressions, spend, spend_micro, url_clicks. - Compute total_conversions by taking conversion_purchases_metric and conversion_custom_metric, treating each as an integer (truncate any fractional part), replacing NULLs with 0, then summing; result is a non-NULL integer. - Compute total_conversions_sale_amount by taking conversion_purchases_sale_amount and conversion_custom_sale_amount, treating each as double-precision numbers, replacing NULLs with 0, then summing; result is a non-NULL double. - Units: spend is in standard currency units from the source; spend_micro is in micro units; no conversion between them. - Grain/duplicates: rows mirror the source; any duplicates at the stated dimensions are preserved.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar date of the metrics (pass-through from source)
+      - name: region
+        data_type: VARCHAR
+        description: Region within the country (pass-through from source)
+      - name: country
+        data_type: VARCHAR
+        description: Country label (pass-through from source)
+      - name: account_id
+        data_type: VARCHAR
+        description: Owning account ID (pass-through from source)
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign ID (pass-through from source)
+      - name: placement
+        data_type: VARCHAR
+        description: Inventory placement (pass-through from source)
+      - name: clicks
+        data_type: BIGINT
+        description: Click count (pass-through; NULLs preserved)
+      - name: impressions
+        data_type: BIGINT
+        description: Impression count (pass-through; NULLs preserved)
+      - name: spend
+        data_type: DOUBLE
+        description: Spend amount in standard currency units (pass-through; NULLs preserved)
+      - name: spend_micro
+        data_type: BIGINT
+        description: Spend amount in micro currency units (pass-through; NULLs preserved)
+      - name: url_clicks
+        data_type: BIGINT
+        description: URL click count (pass-through; NULLs preserved)
+      - name: total_conversions
+        data_type: BIGINT
+        description: Sum of purchases and custom conversion metrics after treating inputs as integers and replacing NULLs with 0
+        tests:
+        - not_null
+      - name: total_conversions_sale_amount
+        data_type: DOUBLE
+        description: Sum of purchases and custom conversion sale amounts after treating inputs as doubles and replacing NULLs with 0
+        tests:
+        - not_null
+    - name: int_twitter_ads__line_item_report_base
+      description: Daily line item metrics per placement with pass-through fields and deterministic totals for conversions and sale amount
+      grain: One row per source row
+      source_models:
+      - staging.stg_twitter_ads__line_item_report
+      business_logic: 'Input: staging.stg_twitter_ads__line_item_report; fields used: date_day, account_id, line_item_id, placement, clicks, impressions, spend, spend_micro, url_clicks, conversion_purchases_metric, conversion_custom_metric, conversion_purchases_sale_amount, conversion_custom_sale_amount. Steps: - Produce one output row for each input row; no grouping or de-duplication; no explicit ordering is applied. - Pass through date_day, account_id, line_item_id, placement, clicks, impressions, spend, spend_micro, url_clicks unchanged; NULLs are kept as in the source. - Compute total_conversions by treating missing values as 0, converting purchases and custom conversion metrics to integers (fractional parts dropped toward zero), then summing; negative values are preserved; result is non-NULL. - Compute total_conversions_sale_amount by treating missing values as 0, converting purchases and custom sale amounts to double precision, then summing; negative values are preserved; result is non-NULL. - No unit conversions or additional rounding are performed.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: UTC calendar date of the reported metrics (pass-through; NULLs preserved)
+      - name: account_id
+        data_type: VARCHAR
+        description: Twitter Ads account identifier (pass-through; NULLs preserved)
+      - name: line_item_id
+        data_type: VARCHAR
+        description: Line item identifier (pass-through; NULLs preserved)
+      - name: placement
+        data_type: VARCHAR
+        description: Inventory placement for the line item (pass-through; NULLs preserved)
+      - name: clicks
+        data_type: BIGINT
+        description: 'Number of clicks (pass-through; unit: count; NULLs preserved)'
+      - name: impressions
+        data_type: BIGINT
+        description: 'Number of impressions (pass-through; unit: count; NULLs preserved)'
+      - name: spend
+        data_type: DOUBLE
+        description: Spend amount in standard currency units as provided by source (pass-through; NULLs preserved)
+      - name: spend_micro
+        data_type: BIGINT
+        description: Spend amount in micro currency units as provided by source (pass-through; NULLs preserved)
+      - name: url_clicks
+        data_type: BIGINT
+        description: 'Number of URL clicks (pass-through; unit: count; NULLs preserved)'
+      - name: total_conversions
+        data_type: BIGINT
+        description: Integer sum of purchases and custom conversion metrics with NULLs treated as 0; fractional parts dropped; negative values preserved; non-NULL
+      - name: total_conversions_sale_amount
+        data_type: DOUBLE
+        description: Sum of purchases and custom conversion sale amounts with NULLs treated as 0; double precision; negative values preserved; non-NULL
+    - name: int_twitter_ads__keyword_report_base
+      description: Daily keyword-level metrics per line item and placement with derived conversion totals
+      grain: One row per date_day per account_id per line_item_id per keyword_id per placement
+      source_models:
+      - staging.stg_twitter_ads__line_item_keywords_report
+      business_logic: '- Source: staging.stg_twitter_ads__line_item_keywords_report. - For each input row, output exactly one row (no filtering, deduplication, grouping, or ordering). - Pass-through fields: date_day, account_id, line_item_id, keyword_id, keyword, placement, clicks, impressions, spend, spend_micro, url_clicks. - Derived fields: - total_conversions: sum the purchases conversions metric and the custom conversions metric; convert non-null values to integers; if a value is missing, use 0; return an integer. - total_conversions_sale_amount: sum the purchases conversion sale amount and the custom conversion sale amount; convert non-null values to double-precision; if a value is missing, use 0; return a double. - Units: spend is in standard currency units; spend_micro is in micro units (one-millionth of the currency unit). - No additional rounding or transformations beyond the described conversions and sums.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: UTC calendar date of the metrics.
+        tests:
+        - not_null
+      - name: account_id
+        data_type: VARCHAR
+        description: Twitter Ads account identifier.
+        tests:
+        - not_null
+      - name: line_item_id
+        data_type: VARCHAR
+        description: Line item identifier.
+        tests:
+        - not_null
+      - name: keyword_id
+        data_type: VARCHAR
+        description: Keyword identifier scoped to the line item and placement.
+        tests:
+        - not_null
+      - name: keyword
+        data_type: VARCHAR
+        description: Keyword text; may be null.
+      - name: placement
+        data_type: VARCHAR
+        description: Inventory placement; may be null.
+      - name: clicks
+        data_type: BIGINT
+        description: Click count.
+        tests:
+        - clicks >= 0
+      - name: impressions
+        data_type: BIGINT
+        description: Impression count.
+        tests:
+        - impressions >= 0
+      - name: spend
+        data_type: DOUBLE
+        description: Spend in standard currency units.
+        tests:
+        - spend >= 0
+      - name: spend_micro
+        data_type: BIGINT
+        description: Spend in micro units (1e-6 of the currency unit).
+        tests:
+        - spend_micro >= 0
+      - name: url_clicks
+        data_type: BIGINT
+        description: URL click count.
+        tests:
+        - url_clicks >= 0
+      - name: total_conversions
+        data_type: BIGINT
+        description: Purchases conversions metric plus custom conversions metric, treating missing values as 0 and returned as an integer.
+        tests:
+        - total_conversions >= 0
+      - name: total_conversions_sale_amount
+        data_type: DOUBLE
+        description: Purchases conversion sale amount plus custom conversion sale amount, treating missing values as 0 and returned as a double.
+        tests:
+        - total_conversions_sale_amount >= 0
+    - name: int_twitter_ads__promoted_tweet_report_base
+      description: Daily performance metrics per promoted tweet and placement, with conversion totals derived from source metrics; direct pass-through otherwise
+      grain: One row per source row (date_day, account_id, promoted_tweet_id, placement)
+      source_models:
+      - staging.stg_twitter_ads__promoted_tweet_report
+      business_logic: '- Pass through date_day, account_id, promoted_tweet_id, placement, clicks, impressions, spend, spend_micro, and url_clicks exactly as provided by the source; NULLs, casing, and values are preserved. - Compute total_conversions by taking the purchases metric and the custom conversion metric from the source, converting each to an integer (fractional part discarded, truncation toward zero), replacing NULLs with zero, and summing the two. - Compute total_conversions_sale_amount by taking the purchases sale amount and the custom sale amount from the source, converting each to a double-precision number, replacing NULLs with zero, and summing the two. - No filtering, joins, deduplication, ordering, or aggregation is applied; one output row is produced for each source row.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar date for the metrics; passed through from source
+        tests:
+        - not_null
+      - name: account_id
+        data_type: VARCHAR
+        description: Twitter Ads account ID; passed through from source
+        tests:
+        - not_null
+      - name: promoted_tweet_id
+        data_type: VARCHAR
+        description: Promoted tweet ID; passed through from source
+        tests:
+        - not_null
+      - name: placement
+        data_type: VARCHAR
+        description: Inventory placement for the ad; passed through from source
+      - name: clicks
+        data_type: BIGINT
+        description: Number of clicks; passed through from source with NULLs preserved
+        tests:
+        - clicks >= 0
+      - name: impressions
+        data_type: BIGINT
+        description: Number of impressions; passed through from source with NULLs preserved
+        tests:
+        - impressions >= 0
+      - name: spend
+        data_type: DOUBLE
+        description: Spend in standard currency units; passed through from source with NULLs preserved
+        tests:
+        - spend >= 0
+      - name: spend_micro
+        data_type: BIGINT
+        description: Spend in micro currency units; passed through from source with NULLs preserved
+        tests:
+        - spend_micro >= 0
+      - name: url_clicks
+        data_type: BIGINT
+        description: Number of URL clicks; passed through from source with NULLs preserved
+        tests:
+        - url_clicks >= 0
+      - name: total_conversions
+        data_type: BIGINT
+        description: Sum of purchases and custom conversion metrics after integer conversion and treating NULLs as zero; fractional parts are discarded
+        tests:
+        - total_conversions >= 0
+      - name: total_conversions_sale_amount
+        data_type: DOUBLE
+        description: Sum of purchases and custom sale amounts after double conversion and treating NULLs as zero
+        tests:
+        - total_conversions_sale_amount >= 0
+  marts_models:
+    - name: twitter_ads__account_report
+      description: Daily account performance aggregated from promoted tweet activity and left-joined to account attributes
+      grain: One row per date_day x account_id x placement from intermediate.int_twitter_ads__promoted_tweet_report_base (duplicated if multiple matching account rows exist)
+      source_models:
+      - intermediate.int_twitter_ads__promoted_tweet_report_base
+      - intermediate.int_twitter_ads__accounts
+      business_logic: '- Aggregate rows from intermediate.int_twitter_ads__promoted_tweet_report_base by date_day, account_id, and placement. - For each group, compute totals for clicks, impressions, spend, spend_micro, url_clicks, total_conversions, and total_conversions_sale_amount by adding values in the group. - Null handling: NULL values are excluded from each total; if all values for a metric in a group are NULL, the total is NULL. - Numeric behavior: values are added without casting or rounding; spend and total_conversions_sale_amount retain double precision; spend_micro retains integer micro units. - Left join the aggregated result to intermediate.int_twitter_ads__accounts on account_id to enrich with account attributes; if no match, attributes are NULL; if multiple matches exist, the aggregated row repeats for each matching account. - No filters are applied; groups with NULL date_day or NULL account_id are included.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar date from the base data used for aggregation; carried through unchanged and may be NULL
+      - name: placement
+        data_type: VARCHAR
+        description: Inventory placement from the base data; aggregated by exact value; case and spacing preserved; may be NULL
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier from the base data used for aggregation and joining; may be NULL (attributes then remain NULL)
+      - name: account_name
+        data_type: VARCHAR
+        description: Account display name from accounts; NULL if no account match; duplicated if multiple account rows match
+      - name: is_deleted
+        data_type: BOOLEAN
+        description: Account soft-delete flag from accounts; NULL if no account match
+      - name: timezone
+        data_type: VARCHAR
+        description: Account timezone from accounts; NULL if no account match
+      - name: industry_type
+        data_type: VARCHAR
+        description: Account industry category from accounts; NULL if no account match
+      - name: approval_status
+        data_type: VARCHAR
+        description: Account approval status from accounts; NULL if no account match
+      - name: business_name
+        data_type: VARCHAR
+        description: Business name from accounts; NULL if no account match
+      - name: business_id
+        data_type: VARCHAR
+        description: Business identifier from accounts; NULL if no account match
+      - name: created_timestamp
+        data_type: TIMESTAMP
+        description: Account creation timestamp from accounts; NULL if no account match
+      - name: updated_timestamp
+        data_type: TIMESTAMP
+        description: Account last update timestamp from accounts; NULL if no account match
+      - name: timezone_switched_timestamp
+        data_type: TIMESTAMP
+        description: Timestamp when the account timezone was switched; NULL if no account match
+      - name: clicks
+        data_type: HUGEINT
+        description: 'Total clicks for the group; NULLs ignored; NULL if all inputs are NULL; unit: count'
+      - name: impressions
+        data_type: HUGEINT
+        description: 'Total impressions for the group; NULLs ignored; NULL if all inputs are NULL; unit: count'
+      - name: spend
+        data_type: DOUBLE
+        description: 'Total spend for the group; NULLs ignored; NULL if all inputs are NULL; unit: account currency (no rounding)'
+      - name: spend_micro
+        data_type: HUGEINT
+        description: 'Total spend in micro units for the group; NULLs ignored; NULL if all inputs are NULL; unit: micro currency (1e-6 of account currency)'
+      - name: url_clicks
+        data_type: HUGEINT
+        description: 'Total URL clicks for the group; NULLs ignored; NULL if all inputs are NULL; unit: count'
+      - name: total_conversions
+        data_type: HUGEINT
+        description: 'Total conversions for the group; NULLs ignored; NULL if all inputs are NULL; unit: count'
+      - name: total_conversions_sale_amount
+        data_type: DOUBLE
+        description: 'Total conversion sale amount for the group; NULLs ignored; NULL if all inputs are NULL; unit: account currency (double precision)'
+    - name: twitter_ads__campaign_country_report
+      description: Daily campaign-by-country performance aggregated by placement with summed metrics and joined campaign/account attributes
+      grain: One row per unique combination of date_day, country, placement, account_id, account_name, campaign_id, campaign_name, is_campaign_deleted, campaign_status, campaign_currency, is_campaign_servable, is_campaign_standard_delivery, campaign_frequency_cap, campaign_start_timestamp, campaign_end_timestamp, campaign_created_timestamp, campaign_updated_timestamp, campaign_funding_instrument_id, campaign_daily_budget_amount, campaign_total_budget_amount
+      source_models:
+      - intermediate.int_twitter_ads__campaign_locations_report_base
+      - intermediate.int_twitter_ads__campaigns
+      - intermediate.int_twitter_ads__accounts
+      business_logic: '- Start from the campaign locations performance base, using date_day, country, placement, account_id, campaign_id, and metric fields clicks, impressions, spend, spend_micro, url_clicks, total_conversions, total_conversions_sale_amount. - Left join campaigns by matching campaign_id to add campaign_name, is_deleted, entity_status, currency, is_servable, is_standard_delivery, frequency_cap, start_timestamp, end_timestamp, created_timestamp, updated_timestamp, funding_instrument_id, daily_budget_amount, total_budget_amount. - Left join accounts by matching account_id to add account_name. - Create one row per unique combination of date_day, country, placement, account_id, account_name, campaign_id and all listed campaign attributes. Nulls from left joins are allowed and form their own groups. - For each group, sum clicks, impressions, spend, spend_micro, url_clicks, total_conversions, total_conversions_sale_amount. Null inputs are ignored; if all inputs for a metric are null the result is null. No rounding, currency conversion, filtering, windowing, or de-duplication is applied; timestamps and currency codes are copied as provided.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar date of the metrics; included in grouping
+        tests:
+        - not_null
+      - name: country
+        data_type: VARCHAR
+        description: Country for the metrics; included in grouping
+      - name: placement
+        data_type: VARCHAR
+        description: Inventory placement; included in grouping
+      - name: account_id
+        data_type: VARCHAR
+        description: Twitter Ads account identifier; join key to accounts; included in grouping
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Account display name; may be NULL if no account match; included in grouping
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier; join key to campaigns; included in grouping
+        tests:
+        - not_null
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign name; may be NULL if no campaign match; included in grouping
+      - name: is_campaign_deleted
+        data_type: BOOLEAN
+        description: Campaign soft-delete flag; may be NULL if no campaign match; included in grouping
+      - name: campaign_status
+        data_type: VARCHAR
+        description: Campaign status (entity_status); may be NULL if no campaign match; included in grouping
+      - name: campaign_currency
+        data_type: VARCHAR
+        description: Campaign currency code; used to interpret spend; may be NULL; included in grouping
+      - name: is_campaign_servable
+        data_type: BOOLEAN
+        description: Campaign servable flag; may be NULL; included in grouping
+      - name: is_campaign_standard_delivery
+        data_type: BOOLEAN
+        description: Standard delivery flag; may be NULL; included in grouping
+      - name: campaign_frequency_cap
+        data_type: DOUBLE
+        description: Frequency cap as provided by source; may be NULL; included in grouping
+      - name: campaign_start_timestamp
+        data_type: TIMESTAMP
+        description: Campaign start timestamp; may be NULL; included in grouping
+      - name: campaign_end_timestamp
+        data_type: TIMESTAMP
+        description: Campaign end timestamp; may be NULL; included in grouping
+      - name: campaign_created_timestamp
+        data_type: TIMESTAMP
+        description: Campaign creation timestamp; may be NULL; included in grouping
+      - name: campaign_updated_timestamp
+        data_type: TIMESTAMP
+        description: Campaign last update timestamp; may be NULL; included in grouping
+      - name: campaign_funding_instrument_id
+        data_type: VARCHAR
+        description: Funding instrument identifier; may be NULL; included in grouping
+      - name: campaign_daily_budget_amount
+        data_type: DOUBLE
+        description: Daily budget amount in campaign currency; may be NULL; included in grouping
+      - name: campaign_total_budget_amount
+        data_type: DOUBLE
+        description: Total budget amount in campaign currency; may be NULL; included in grouping
+      - name: clicks
+        data_type: HUGEINT
+        description: Sum of clicks within the group; NULL inputs ignored; NULL if all inputs are NULL; no de-dup or rounding
+      - name: impressions
+        data_type: HUGEINT
+        description: Sum of impressions within the group; NULL inputs ignored; NULL if all inputs are NULL; no de-dup or rounding
+      - name: spend
+        data_type: DOUBLE
+        description: Sum of spend within the group; reported in provided currency; NULL inputs ignored; NULL if all inputs are NULL; no rounding
+      - name: spend_micro
+        data_type: HUGEINT
+        description: Sum of spend_micro within the group; micro-unit amount; NULL inputs ignored; NULL if all inputs are NULL; no rounding
+      - name: url_clicks
+        data_type: HUGEINT
+        description: Sum of url_clicks within the group; NULL inputs ignored; NULL if all inputs are NULL; no de-dup or rounding
+      - name: total_conversions
+        data_type: HUGEINT
+        description: Sum of total_conversions within the group; NULL inputs ignored; NULL if all inputs are NULL; no de-dup or rounding
+      - name: total_conversions_sale_amount
+        data_type: DOUBLE
+        description: Sum of sale amount from conversions within the group; NULL inputs ignored; NULL if all inputs are NULL; no rounding
+    - name: twitter_ads__campaign_region_report
+      description: Daily campaign performance aggregated by region, country, and placement with joined campaign and account attributes
+      grain: One row per unique combination of date_day, region, country, placement, account_id, account_name, campaign_id, campaign_name, is_campaign_deleted, campaign_status, campaign_currency, is_campaign_servable, is_campaign_standard_delivery, campaign_frequency_cap, campaign_start_timestamp, campaign_end_timestamp, campaign_created_timestamp, campaign_updated_timestamp, campaign_funding_instrument_id, campaign_daily_budget_amount, campaign_total_budget_amount
+      source_models:
+      - intermediate.int_twitter_ads__campaign_regions_report_base
+      - intermediate.int_twitter_ads__campaigns
+      - intermediate.int_twitter_ads__accounts
+      business_logic: '- Start from intermediate.int_twitter_ads__campaign_regions_report_base (r). - Left join intermediate.int_twitter_ads__campaigns (c) on r.campaign_id = c.campaign_id. - Left join intermediate.int_twitter_ads__accounts (a) on r.account_id = a.account_id. - Group by all non-aggregated fields: r.date_day, r.region, r.country, r.placement, r.account_id, a.account_name, r.campaign_id, c.campaign_name, c.is_deleted, c.entity_status, c.currency, c.is_servable, c.is_standard_delivery, c.frequency_cap, c.start_timestamp, c.end_timestamp, c.created_timestamp, c.updated_timestamp, c.funding_instrument_id, c.daily_budget_amount, c.total_budget_amount. - For each group, sum r.clicks, r.impressions, r.spend, r.spend_micro, r.url_clicks, r.total_conversions, and r.total_conversions_sale_amount. - Null handling and determinism: - Left joins may produce NULL joined attributes; these NULLs form distinct groups. - If multiple dimension rows match an id, results split by each distinct set of joined attribute values (included in grouping). - SUM ignores NULL inputs; the result is NULL only if all inputs are NULL; no rounding or filtering is applied. - No ordering is applied.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar date of the aggregated metrics
+        tests:
+        - not_null
+      - name: region
+        data_type: VARCHAR
+        description: Region from the base report
+      - name: country
+        data_type: VARCHAR
+        description: Country from the base report
+      - name: placement
+        data_type: VARCHAR
+        description: Inventory placement from the base report
+      - name: account_id
+        data_type: VARCHAR
+        description: Twitter Ads account identifier from the base report
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Account display name joined from accounts; NULL if no match
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier from the base report
+        tests:
+        - not_null
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign name joined from campaigns
+      - name: is_campaign_deleted
+        data_type: BOOLEAN
+        description: Campaign soft-delete flag joined from campaigns
+      - name: campaign_status
+        data_type: VARCHAR
+        description: Campaign status joined from campaigns
+      - name: campaign_currency
+        data_type: VARCHAR
+        description: Campaign currency code joined from campaigns
+      - name: is_campaign_servable
+        data_type: BOOLEAN
+        description: Whether the campaign is servable as joined from campaigns
+      - name: is_campaign_standard_delivery
+        data_type: BOOLEAN
+        description: Whether standard delivery is enabled as joined from campaigns
+      - name: campaign_frequency_cap
+        data_type: DOUBLE
+        description: Frequency cap joined from campaigns
+      - name: campaign_start_timestamp
+        data_type: TIMESTAMP
+        description: Campaign start timestamp joined from campaigns
+      - name: campaign_end_timestamp
+        data_type: TIMESTAMP
+        description: Campaign end timestamp joined from campaigns
+      - name: campaign_created_timestamp
+        data_type: TIMESTAMP
+        description: Campaign creation timestamp joined from campaigns
+      - name: campaign_updated_timestamp
+        data_type: TIMESTAMP
+        description: Campaign last update timestamp joined from campaigns
+      - name: campaign_funding_instrument_id
+        data_type: VARCHAR
+        description: Funding instrument identifier joined from campaigns
+      - name: campaign_daily_budget_amount
+        data_type: DOUBLE
+        description: Daily budget amount from campaigns
+      - name: campaign_total_budget_amount
+        data_type: DOUBLE
+        description: Total budget amount from campaigns
+      - name: clicks
+        data_type: HUGEINT
+        description: Sum of clicks over grouped rows; NULLs ignored; NULL if all inputs are NULL
+      - name: impressions
+        data_type: HUGEINT
+        description: Sum of impressions over grouped rows; NULLs ignored; NULL if all inputs are NULL
+      - name: spend
+        data_type: DOUBLE
+        description: Sum of spend in currency units over grouped rows; NULLs ignored; NULL if all inputs are NULL
+      - name: spend_micro
+        data_type: HUGEINT
+        description: Sum of spend in micro units over grouped rows; NULLs ignored; NULL if all inputs are NULL
+      - name: url_clicks
+        data_type: HUGEINT
+        description: Sum of URL clicks over grouped rows; NULLs ignored; NULL if all inputs are NULL
+      - name: total_conversions
+        data_type: HUGEINT
+        description: Sum of conversions over grouped rows; NULLs ignored; NULL if all inputs are NULL
+      - name: total_conversions_sale_amount
+        data_type: DOUBLE
+        description: Sum of conversion sale amounts over grouped rows; NULLs ignored; NULL if all inputs are NULL
+    - name: twitter_ads__campaign_report
+      description: Daily campaign performance aggregated by date, placement, account, and campaign with joined campaign and account attributes.
+      grain: One row per unique combination of date_day, placement, account_id, account_name, campaign_id, campaign_name, is_deleted, campaign_status, currency, is_servable, is_standard_delivery, frequency_cap, start_timestamp, end_timestamp, created_timestamp, updated_timestamp, funding_instrument_id, daily_budget_amount, total_budget_amount
+      source_models:
+      - intermediate.int_twitter_ads__campaign_report_base
+      - intermediate.int_twitter_ads__campaigns
+      - intermediate.int_twitter_ads__accounts
+      business_logic: '- Start from the base campaign report and left join campaigns on campaign_id and accounts on account_id; unmatched rows retain metrics with NULL attributes. - Produce one row for each unique combination of: date_day, placement, account_id, account_name, campaign_id, campaign_name, is_deleted, campaign_status, currency, is_servable, is_standard_delivery, frequency_cap, start_timestamp, end_timestamp, created_timestamp, updated_timestamp, funding_instrument_id, daily_budget_amount, total_budget_amount. - For each group, sum the metrics: clicks, impressions, spend, spend_micro, url_clicks, total_conversions, total_conversions_sale_amount. - Summation rules: NULL inputs are ignored; if all inputs in a group are NULL the result is NULL; no rounding or coercion is applied; duplicate base rows accumulate. - Because joined attributes are part of the grouping, multiple rows can appear for the same ids if the joined dimension tables contain multiple attribute records per id; if no match exists, attribute fields are NULL. - No explicit row ordering is applied.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar date of aggregation.
+        tests:
+        - not_null
+      - name: placement
+        data_type: VARCHAR
+        description: Inventory placement value used for grouping.
+      - name: account_id
+        data_type: VARCHAR
+        description: Twitter Ads account identifier used for grouping.
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Account display name from the accounts join; NULL if no matching account.
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier used for grouping.
+        tests:
+        - not_null
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign display name from the campaigns join; NULL if no matching campaign.
+      - name: is_deleted
+        data_type: BOOLEAN
+        description: Campaign soft-delete flag from the campaigns join; NULL if no matching campaign.
+      - name: campaign_status
+        data_type: VARCHAR
+        description: Campaign lifecycle status from the campaigns join; NULL if no matching campaign.
+      - name: currency
+        data_type: VARCHAR
+        description: ISO currency code from the campaigns join; determines spend and budget units.
+      - name: is_servable
+        data_type: BOOLEAN
+        description: Whether the campaign is servable from the campaigns join; NULL if no matching campaign.
+      - name: is_standard_delivery
+        data_type: BOOLEAN
+        description: Whether standard delivery is enabled from the campaigns join; NULL if no matching campaign.
+      - name: frequency_cap
+        data_type: DOUBLE
+        description: Frequency cap from the campaigns join; NULL if no matching campaign.
+      - name: start_timestamp
+        data_type: TIMESTAMP
+        description: Campaign start timestamp from the campaigns join; NULL if no matching campaign.
+      - name: end_timestamp
+        data_type: TIMESTAMP
+        description: Campaign end timestamp from the campaigns join; NULL if no matching campaign.
+      - name: created_timestamp
+        data_type: TIMESTAMP
+        description: Campaign creation timestamp from the campaigns join; NULL if no matching campaign.
+      - name: updated_timestamp
+        data_type: TIMESTAMP
+        description: Campaign last update timestamp from the campaigns join; NULL if no matching campaign.
+      - name: funding_instrument_id
+        data_type: VARCHAR
+        description: Funding instrument identifier from the campaigns join; NULL if no matching campaign.
+      - name: daily_budget_amount
+        data_type: DOUBLE
+        description: Daily budget from the campaigns join in currency units; NULL if no matching campaign.
+        tests:
+        - daily_budget_amount >= 0
+      - name: total_budget_amount
+        data_type: DOUBLE
+        description: Total budget from the campaigns join in currency units; NULL if no matching campaign.
+        tests:
+        - total_budget_amount >= 0
+      - name: clicks
+        data_type: HUGEINT
+        description: Sum of clicks within each group (NULLs ignored; all-NULL group returns NULL; duplicate base rows accumulate).
+        tests:
+        - clicks >= 0
+      - name: impressions
+        data_type: HUGEINT
+        description: Sum of impressions within each group (NULLs ignored; all-NULL group returns NULL; duplicate base rows accumulate).
+        tests:
+        - impressions >= 0
+      - name: spend
+        data_type: DOUBLE
+        description: Sum of spend within each group in currency units (NULLs ignored; all-NULL group returns NULL; duplicate base rows accumulate).
+        tests:
+        - spend >= 0
+      - name: spend_micro
+        data_type: HUGEINT
+        description: Sum of spend_micro within each group in micro currency units (1e-6 of currency; NULLs ignored; all-NULL group returns NULL; duplicate base rows accumulate).
+        tests:
+        - spend_micro >= 0
+      - name: url_clicks
+        data_type: HUGEINT
+        description: Sum of URL clicks within each group (NULLs ignored; all-NULL group returns NULL; duplicate base rows accumulate).
+        tests:
+        - url_clicks >= 0
+      - name: total_conversions
+        data_type: HUGEINT
+        description: Sum of total conversions within each group (NULLs ignored; all-NULL group returns NULL; duplicate base rows accumulate).
+        tests:
+        - total_conversions >= 0
+      - name: total_conversions_sale_amount
+        data_type: DOUBLE
+        description: Sum of total conversion sale amount within each group in currency units (NULLs ignored; all-NULL group returns NULL; duplicate base rows accumulate).
+        tests:
+        - total_conversions_sale_amount >= 0
+    - name: twitter_ads__keyword_report
+      description: Daily keyword performance aggregated by line item and keyword, enriched with campaign and account context
+      grain: One row per combination of date_day, placement, account_id, account_name, campaign_id, campaign_name, line_item_id, line_item_name, keyword_id, keyword, currency
+      source_models:
+      - intermediate.int_twitter_ads__keyword_report_base
+      - intermediate.int_twitter_ads__line_items
+      - intermediate.int_twitter_ads__campaigns
+      - intermediate.int_twitter_ads__accounts
+      business_logic: '- Use the keyword report base as the fact source, providing date_day, placement, account_id, line_item_id, keyword_id, keyword, and raw metrics (clicks, impressions, spend, spend_micro, url_clicks, total_conversions, total_conversions_sale_amount). - Left join line_items on line_item_id to add campaign_id, line_item_name, and currency. - Left join campaigns on campaign_id to add campaign_name. - Left join accounts on account_id to add account_name. - Aggregate by date_day, placement, account_id, account_name, campaign_id, campaign_name, line_item_id, line_item_name, keyword_id, keyword, and currency. - For each group, sum clicks, impressions, spend, spend_micro, url_clicks, total_conversions, and total_conversions_sale_amount; NULL inputs are excluded from sums, and if all inputs are NULL the result is NULL; no rounding or scaling is applied; spend and sale amounts are in standard currency units, spend_micro is in micro-units. - Joins are left; unmatched records retain NULL attributes and form their own groups; if joined tables contain duplicate keys, base rows may fan out prior to aggregation and sums reflect that multiplicity. - No filters, deduplication, or explicit ordering; text fields are passed through unchanged.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar date of reporting
+        tests:
+        - not_null
+      - name: placement
+        data_type: VARCHAR
+        description: Ad inventory placement from the base report
+      - name: account_id
+        data_type: VARCHAR
+        description: Twitter Ads account identifier from the base report
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Account name from the accounts join; may be NULL
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier from the line_items join; may be NULL
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign name from the campaigns join; may be NULL
+      - name: line_item_id
+        data_type: VARCHAR
+        description: Line item identifier from the base report
+        tests:
+        - not_null
+      - name: line_item_name
+        data_type: VARCHAR
+        description: Line item name from the line_items join; may be NULL
+      - name: keyword_id
+        data_type: VARCHAR
+        description: Keyword identifier from the base report
+        tests:
+        - not_null
+      - name: keyword
+        data_type: VARCHAR
+        description: Keyword text from the base report; may be NULL
+      - name: currency
+        data_type: VARCHAR
+        description: Currency code from the line_items join; may be NULL
+      - name: clicks
+        data_type: HUGEINT
+        description: Clicks summed within each group; excludes NULLs
+      - name: impressions
+        data_type: HUGEINT
+        description: Impressions summed within each group; excludes NULLs
+      - name: spend
+        data_type: DOUBLE
+        description: Spend summed within each group in standard currency units; excludes NULLs
+      - name: spend_micro
+        data_type: HUGEINT
+        description: Spend summed within each group in micro-units; excludes NULLs
+      - name: url_clicks
+        data_type: HUGEINT
+        description: URL clicks summed within each group; excludes NULLs
+      - name: total_conversions
+        data_type: HUGEINT
+        description: Total conversions summed within each group; excludes NULLs
+      - name: total_conversions_sale_amount
+        data_type: DOUBLE
+        description: Conversion sale amount summed within each group in standard currency units; excludes NULLs
+    - name: twitter_ads__line_item_report
+      description: Daily line item performance by placement with summed metrics and joined line item, campaign, and account attributes.
+      grain: One row per unique combination of date_day, placement, account_id, line_item_id, and all joined line item/campaign attributes.
+      source_models:
+      - intermediate.int_twitter_ads__line_item_report_base
+      - intermediate.int_twitter_ads__line_items
+      - intermediate.int_twitter_ads__campaigns
+      - intermediate.int_twitter_ads__accounts
+      business_logic: '- Start from intermediate.int_twitter_ads__line_item_report_base (r). - Left join line items (li) on line_item_id; left join campaigns (c) on li.campaign_id; left join accounts (a) on account_id. - Select reporting keys and all non-aggregated attributes from r, li, c, and a. - Group by every selected non-aggregated column to ensure deterministic aggregation. - Aggregate r metrics using SUM: clicks, impressions, spend, spend_micro, url_clicks, total_conversions, total_conversions_sale_amount. - SUM ignores NULLs; if all inputs are NULL the result is NULL; no rounding or casting is applied. - Units: spend and total_conversions_sale_amount are in standard currency units; spend_micro is in micro units (1e-6). - Left joins mean unmatched dimension records produce NULLs in joined attributes. - No filtering or ordering is applied. - Assumptions to prevent metric duplication: line_items is unique on line_item_id, campaigns on campaign_id, and accounts on account_id; otherwise, joined duplicates would split groups and multiply sums.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Reporting date for the aggregated metrics.
+        tests:
+        - not_null
+      - name: placement
+        data_type: VARCHAR
+        description: Inventory placement associated with the delivery.
+      - name: account_id
+        data_type: VARCHAR
+        description: Twitter Ads account ID from the base report.
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Account display name from the accounts join; NULL if no match.
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign ID from the line items join; NULL if no line item match.
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign name from the campaigns join; NULL if no campaign match.
+      - name: line_item_id
+        data_type: VARCHAR
+        description: Line item ID from the base report; grouping key.
+        tests:
+        - not_null
+      - name: line_item_name
+        data_type: VARCHAR
+        description: Line item name from the line items join; NULL if no line item match.
+      - name: is_deleted
+        data_type: BOOLEAN
+        description: Line item soft-delete flag from the line items join; NULL if no line item match.
+      - name: line_item_status
+        data_type: VARCHAR
+        description: Line item lifecycle status from the line items join; NULL if no line item match.
+      - name: campaign_status
+        data_type: VARCHAR
+        description: Campaign lifecycle status from the campaigns join; NULL if no campaign match.
+      - name: currency
+        data_type: VARCHAR
+        description: ISO currency code from the line items join; NULL if no line item match.
+      - name: advertiser_domain
+        data_type: VARCHAR
+        description: Advertiser domain from the line items join; NULL if no line item match.
+      - name: advertiser_user_id
+        data_type: BIGINT
+        description: Advertiser user ID from the line items join; NULL if no line item match.
+      - name: bid_type
+        data_type: VARCHAR
+        description: Bid type from the line items join; NULL if no line item match.
+      - name: bid_unit
+        data_type: VARCHAR
+        description: Bid unit from the line items join; NULL if no line item match.
+      - name: charge_by
+        data_type: VARCHAR
+        description: Charging unit from the line items join; NULL if no line item match.
+      - name: objective
+        data_type: VARCHAR
+        description: Optimization objective from the line items join; NULL if no line item match.
+      - name: optimization
+        data_type: VARCHAR
+        description: Optimization strategy from the line items join; NULL if no line item match.
+      - name: product_type
+        data_type: VARCHAR
+        description: Product type from the line items join; NULL if no line item match.
+      - name: primary_web_event_tag
+        data_type: DOUBLE
+        description: Primary web event tag identifier from the line items join; NULL if no line item match.
+      - name: start_timestamp
+        data_type: TIMESTAMP
+        description: Line item start timestamp from the line items join; NULL if no line item match.
+      - name: end_timestamp
+        data_type: TIMESTAMP
+        description: Line item end timestamp from the line items join; NULL if no line item match.
+      - name: created_timestamp
+        data_type: TIMESTAMP
+        description: Line item creation timestamp from the line items join; NULL if no line item match.
+      - name: updated_timestamp
+        data_type: TIMESTAMP
+        description: Line item last update timestamp from the line items join; NULL if no line item match.
+      - name: target_cpa
+        data_type: DOUBLE
+        description: Target cost per acquisition in standard currency units; NULL if no line item match.
+      - name: total_budget_amount
+        data_type: DOUBLE
+        description: Total budget in standard currency units; NULL if no line item match.
+      - name: bid_amount
+        data_type: DOUBLE
+        description: Bid amount in standard currency units; NULL if no line item match.
+      - name: clicks
+        data_type: HUGEINT
+        description: Sum of clicks over the group; NULLs ignored; NULL if all inputs are NULL.
+        tests:
+        - clicks >= 0
+      - name: impressions
+        data_type: HUGEINT
+        description: Sum of impressions over the group; NULLs ignored; NULL if all inputs are NULL.
+        tests:
+        - impressions >= 0
+      - name: spend
+        data_type: DOUBLE
+        description: Sum of spend over the group in standard currency units; NULLs ignored; NULL if all inputs are NULL.
+        tests:
+        - spend >= 0
+      - name: spend_micro
+        data_type: HUGEINT
+        description: Sum of spend_micro over the group in micro currency units (1e-6); NULLs ignored; NULL if all inputs are NULL.
+        tests:
+        - spend_micro >= 0
+      - name: url_clicks
+        data_type: HUGEINT
+        description: Sum of URL clicks over the group; NULLs ignored; NULL if all inputs are NULL.
+        tests:
+        - url_clicks >= 0
+      - name: total_conversions
+        data_type: HUGEINT
+        description: Sum of total conversions over the group; NULLs ignored; NULL if all inputs are NULL.
+        tests:
+        - total_conversions >= 0
+      - name: total_conversions_sale_amount
+        data_type: DOUBLE
+        description: Sum of conversion sale amount over the group in standard currency units; NULLs ignored; NULL if all inputs are NULL.
+        tests:
+        - total_conversions_sale_amount >= 0
+    - name: twitter_ads__promoted_tweet_report
+      description: Daily promoted tweet performance aggregated by placement and enriched with tweet, line item, campaign, and account attributes via left joins.
+      grain: One row per unique combination of date_day, placement, account_id, account_name, campaign_id, campaign_name, line_item_id, line_item_name, promoted_tweet_id, tweet_id, tweet_name, tweet_full_text, currency, is_deleted, promoted_tweet_status, campaign_status, line_item_status, approval_status, created_timestamp, updated_timestamp
+      source_models:
+      - intermediate.int_twitter_ads__promoted_tweet_report_base
+      - intermediate.int_twitter_ads__promoted_tweets
+      - intermediate.int_twitter_ads__tweets
+      - intermediate.int_twitter_ads__line_items
+      - intermediate.int_twitter_ads__campaigns
+      - intermediate.int_twitter_ads__accounts
+      business_logic: '- Start from the daily promoted tweet metrics base. - Left join promoted tweets by promoted_tweet_id. - Left join tweets by tweet_id from promoted tweets. - Left join line items by line_item_id from promoted tweets. - Left join campaigns by campaign_id from line items. - Left join accounts by account_id from the base. - Aggregate by these attributes: date_day, placement, account_id, account_name, campaign_id, campaign_name, line_item_id, line_item_name, promoted_tweet_id, tweet_id, tweet_name, tweet_full_text, currency, is_deleted, promoted_tweet_status, campaign_status, line_item_status, approval_status, created_timestamp, updated_timestamp. - For clicks, impressions, spend, spend_micro, url_clicks, total_conversions, and total_conversions_sale_amount: sum base values within each group; NULL inputs are ignored and a group of all NULLs yields NULL; numeric types are preserved with no rounding. - Left join behavior: if no match, the joined attributes are NULL; if multiple matches occur in a joined table, base rows are duplicated before aggregation, increasing summed metrics. - No explicit ordering is applied to the result.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar date from the base metrics; grouping key.
+        tests:
+        - not_null
+      - name: placement
+        data_type: VARCHAR
+        description: Inventory placement from the base metrics; grouping key.
+      - name: account_id
+        data_type: VARCHAR
+        description: Ads account ID from the base metrics; grouping key.
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Account name from accounts; NULL if no match.
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign ID from campaigns; NULL if no match.
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign name from campaigns; NULL if no match.
+      - name: line_item_id
+        data_type: VARCHAR
+        description: Line item ID from line items; NULL if no match.
+      - name: line_item_name
+        data_type: VARCHAR
+        description: Line item name from line items; NULL if no match.
+      - name: promoted_tweet_id
+        data_type: VARCHAR
+        description: Promoted tweet ID from the base metrics; grouping key.
+        tests:
+        - not_null
+      - name: tweet_id
+        data_type: BIGINT
+        description: Tweet ID from promoted tweets; NULL if no match.
+      - name: tweet_name
+        data_type: VARCHAR
+        description: Tweet name from tweets; NULL if no match.
+      - name: tweet_full_text
+        data_type: VARCHAR
+        description: Tweet full text from tweets; NULL if no match.
+      - name: currency
+        data_type: VARCHAR
+        description: ISO currency from campaigns; NULL if no match; unit for spend.
+      - name: is_deleted
+        data_type: BOOLEAN
+        description: Soft-delete flag from promoted tweets; NULL if no match.
+      - name: promoted_tweet_status
+        data_type: VARCHAR
+        description: Lifecycle status from promoted tweets; NULL if no match.
+      - name: campaign_status
+        data_type: VARCHAR
+        description: Lifecycle status from campaigns; NULL if no match.
+      - name: line_item_status
+        data_type: VARCHAR
+        description: Lifecycle status from line items; NULL if no match.
+      - name: approval_status
+        data_type: VARCHAR
+        description: Approval status from promoted tweets; NULL if no match.
+      - name: created_timestamp
+        data_type: TIMESTAMP
+        description: Creation timestamp from promoted tweets; NULL if no match.
+      - name: updated_timestamp
+        data_type: TIMESTAMP
+        description: Last update timestamp from promoted tweets; NULL if no match.
+      - name: clicks
+        data_type: HUGEINT
+        description: Sum of clicks within each group; ignores NULLs; NULL if all inputs are NULL.
+      - name: impressions
+        data_type: HUGEINT
+        description: Sum of impressions within each group; ignores NULLs; NULL if all inputs are NULL.
+      - name: spend
+        data_type: DOUBLE
+        description: Sum of spend within each group in currency units; ignores NULLs; NULL if all inputs are NULL; no rounding.
+      - name: spend_micro
+        data_type: HUGEINT
+        description: Sum of spend_micro within each group; ignores NULLs; NULL if all inputs are NULL.
+      - name: url_clicks
+        data_type: HUGEINT
+        description: Sum of URL clicks within each group; ignores NULLs; NULL if all inputs are NULL.
+      - name: total_conversions
+        data_type: HUGEINT
+        description: Sum of total conversions within each group; ignores NULLs; NULL if all inputs are NULL.
+      - name: total_conversions_sale_amount
+        data_type: DOUBLE
+        description: Sum of conversion sale amount within each group; ignores NULLs; NULL if all inputs are NULL; no rounding.
+    - name: twitter_ads__url_report
+      description: Daily placement-level metrics for promoted tweets that have a first expanded URL, enriched with URL components and campaign/account/tweet attributes; metrics are summed across the grouped dimensions.
+      grain: One row per unique combination of date_day, placement, account_id, account_name, campaign_id, campaign_name, line_item_id, line_item_name, promoted_tweet_id, tweet_id, tweet_name, tweet_full_text, base_url, url_host, url_path, utm_source, utm_medium, utm_campaign, utm_content, utm_term, expanded_url, display_url, currency
+      source_models:
+      - intermediate.int_twitter_ads__promoted_tweet_report_base
+      - intermediate.int_twitter_ads__promoted_tweets
+      - intermediate.int_twitter_ads__tweets
+      - intermediate.int_twitter_ads__tweet_url_first
+      - intermediate.int_twitter_ads__line_items
+      - intermediate.int_twitter_ads__campaigns
+      - intermediate.int_twitter_ads__accounts
+      business_logic: '- Start from intermediate.int_twitter_ads__promoted_tweet_report_base r (daily metrics by placement). - Join dimensions (LEFT JOINs in the query): • r.promoted_tweet_id → intermediate.int_twitter_ads__promoted_tweets pt • pt.tweet_id → intermediate.int_twitter_ads__tweets t • pt.tweet_id → intermediate.int_twitter_ads__tweet_url_first u (first URL per tweet) • pt.line_item_id → intermediate.int_twitter_ads__line_items li • li.campaign_id → intermediate.int_twitter_ads__campaigns c • r.account_id → intermediate.int_twitter_ads__accounts a - Apply filter: require u.expanded_url to be non-NULL, which effectively makes the join to u (and thus to pt) act as an inner join; other joins remain left and may yield NULL attributes. - Group by all selected dimensions exactly: date_day, placement, account_id, account_name, campaign_id, campaign_name, line_item_id, line_item_name, promoted_tweet_id, tweet_id, tweet_name, tweet_full_text, base_url, url_host, url_path, utm_source, utm_medium, utm_campaign, utm_content, utm_term, expanded_url, display_url, currency. - Aggregate using SUM over r.clicks, r.impressions, r.spend, r.spend_micro, r.url_clicks, r.total_conversions, r.total_conversions_sale_amount. • SUM ignores NULL inputs; if all values in a group are NULL, the result is NULL. • No rounding or unit conversion is applied; spend is in currency units and spend_micro in micro-units of the same currency. - No de-duplication is performed; multiple matches on joins replicate metric rows and are then aggregated within identical dimension sets.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar day from r.date_day; defines the daily aggregation period.
+        tests:
+        - not_null
+      - name: placement
+        data_type: VARCHAR
+        description: Inventory placement from r.placement; used as a grouping dimension.
+      - name: account_id
+        data_type: VARCHAR
+        description: Twitter Ads account ID from r.account_id; used as a grouping dimension.
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Account display name from a.account_name; grouped and carried as-is; may be NULL.
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign ID from c.campaign_id via line_item → campaign; used as a grouping dimension; may be NULL.
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign name from c.campaign_name; grouped and carried as-is; may be NULL.
+      - name: line_item_id
+        data_type: VARCHAR
+        description: Line item ID from li.line_item_id via pt.line_item_id; used as a grouping dimension; may be NULL.
+      - name: line_item_name
+        data_type: VARCHAR
+        description: Line item name from li.line_item_name; grouped and carried as-is; may be NULL.
+      - name: promoted_tweet_id
+        data_type: VARCHAR
+        description: Promoted tweet ID from r.promoted_tweet_id; used as a grouping dimension.
+        tests:
+        - not_null
+      - name: tweet_id
+        data_type: BIGINT
+        description: Underlying tweet ID from pt.tweet_id; non-NULL due to URL filter; used as a grouping dimension.
+        tests:
+        - not_null
+      - name: tweet_name
+        data_type: VARCHAR
+        description: Tweet name label from t.tweet_name; grouped and carried as-is; may be NULL.
+      - name: tweet_full_text
+        data_type: VARCHAR
+        description: Full tweet text from t.tweet_full_text; grouped and carried as-is; may be NULL.
+      - name: base_url
+        data_type: VARCHAR
+        description: Expanded URL without query string from u.base_url; grouped and carried as-is; may be NULL.
+      - name: url_host
+        data_type: VARCHAR
+        description: Host component of the expanded URL from u.url_host; grouped and carried as-is; may be NULL.
+      - name: url_path
+        data_type: VARCHAR
+        description: Path component of the expanded URL from u.url_path; grouped and carried as-is; may be NULL or empty.
+      - name: utm_source
+        data_type: VARCHAR
+        description: UTM source from u.utm_source; grouped and carried as-is; NULL if not present.
+      - name: utm_medium
+        data_type: VARCHAR
+        description: UTM medium from u.utm_medium; grouped and carried as-is; NULL if not present.
+      - name: utm_campaign
+        data_type: VARCHAR
+        description: UTM campaign from u.utm_campaign; grouped and carried as-is; NULL if not present.
+      - name: utm_content
+        data_type: VARCHAR
+        description: UTM content from u.utm_content; grouped and carried as-is; NULL if not present.
+      - name: utm_term
+        data_type: VARCHAR
+        description: UTM term from u.utm_term; grouped and carried as-is; NULL if not present.
+      - name: expanded_url
+        data_type: VARCHAR
+        description: Full expanded URL from u.expanded_url; non-NULL due to filter; used as a grouping dimension.
+        tests:
+        - not_null
+      - name: display_url
+        data_type: VARCHAR
+        description: Display-friendly URL from u.display_url; grouped and carried as-is; may be NULL.
+      - name: currency
+        data_type: VARCHAR
+        description: Campaign currency code from c.currency; grouped and carried as-is; may be NULL.
+      - name: clicks
+        data_type: HUGEINT
+        description: Sum of r.clicks within each dimension group; NULLs ignored; NULL if all values are NULL.
+      - name: impressions
+        data_type: HUGEINT
+        description: Sum of r.impressions within each dimension group; NULLs ignored; NULL if all values are NULL.
+      - name: spend
+        data_type: DOUBLE
+        description: Sum of r.spend within each dimension group in currency units; NULLs ignored; NULL if all values are NULL.
+      - name: spend_micro
+        data_type: HUGEINT
+        description: Sum of r.spend_micro within each dimension group in micro-units; NULLs ignored; NULL if all values are NULL.
+      - name: url_clicks
+        data_type: HUGEINT
+        description: Sum of r.url_clicks within each dimension group; NULLs ignored; NULL if all values are NULL.
+      - name: total_conversions
+        data_type: HUGEINT
+        description: Sum of r.total_conversions within each dimension group; NULLs ignored; NULL if all values are NULL.
+      - name: total_conversions_sale_amount
+        data_type: DOUBLE
+        description: Sum of r.total_conversions_sale_amount within each dimension group in currency units; NULLs ignored; NULL if all values are NULL.
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.

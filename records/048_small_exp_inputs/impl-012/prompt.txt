@@ -1,0 +1,2171 @@
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Marketo marketing automation platform data"
+  author: "Data Engineering Team"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+  last_updated: "2025-09-11"
+  source_system: "Marketo"
+  business_domain: "Marketing Automation & Lead Management"
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw Marketo data into clean, validated staging tables with standardized naming conventions, data types, and quality constraints. This phase focuses on data cleaning, validation, and standardization without applying business logic."
+  
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "standardize timezone formats", "normalize phone numbers"]
+    
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  data_governance:
+    naming_convention: "stg_marketo__[entity_name]"
+    timestamp_format: "TIMESTAMP"
+    id_format: "VARCHAR"
+    retention_policy: "Staging data retained for 90 days"
+
+  tables:
+    - name: stg_marketo__lead
+      description: "Cleaned and standardized lead (contact) records from Marketo with basic contact information and timestamps"
+      source_table: "raw.marketo_lead"
+      grain: "One row per unique lead in Marketo"
+      columns:
+        - name: lead_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: created_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: updated_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: email
+          data_type: VARCHAR
+          constraints: [not_null]
+          description: "Email address of the lead"
+          validation_rules:
+            - rule: "email = LOWER(TRIM(email))"
+              description: "Normalize email to lowercase and remove whitespace"
+              on_failure: delete_row
+            - rule: "email ~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'"
+              description: "Email must follow valid email format"
+              on_failure: delete_row
+        - name: first_name
+          data_type: VARCHAR
+          description: "First name of the lead"
+          validation_rules:
+            - rule: "first_name = TRIM(first_name)"
+              description: "Remove leading and trailing whitespace"
+              on_failure: delete_row
+            - rule: "LENGTH(first_name) <= 100"
+              description: "First name cannot exceed 100 characters"
+              on_failure: delete_row
+        - name: last_name
+          data_type: VARCHAR
+          description: "Last name of the lead"
+          validation_rules:
+            - rule: "last_name = TRIM(last_name)"
+              description: "Remove leading and trailing whitespace"
+              on_failure: delete_row
+            - rule: "LENGTH(last_name) <= 100"
+              description: "Last name cannot exceed 100 characters"
+              on_failure: delete_row
+
+    - name: stg_marketo__campaigns
+      description: "Cleaned campaign records with standardized attributes and campaign configuration details"
+      source_table: "raw.marketo_campaign"
+      grain: "One row per unique campaign in Marketo"
+      columns:
+        - name: campaign_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+          validation_rules:
+            - rule: "campaign_id IS NOT NULL"
+              on_failure: delete_row
+        - name: campaign_name
+          data_type: VARCHAR
+          constraints: [not_null]
+          description: "Human-readable name of the campaign"
+          validation_rules:
+            - rule: "campaign_name = TRIM(campaign_name)"
+              description: "Clean campaign name from source"
+              on_failure: correct
+            - rule: "campaign_name IS NOT NULL AND TRIM(campaign_name) <> ''"
+              description: "Campaign name must be present"
+              on_failure: delete_row
+            - rule: "LENGTH(campaign_name) <= 255"
+              description: "Campaign name cannot exceed 255 characters"
+              on_failure: delete_row
+        - name: program_id
+          data_type: VARCHAR
+          description: "ID of the parent program this campaign belongs to"
+          validation_rules:
+            - rule: "program_id IS NULL OR program_id ~ '^MAR[0-9]+$'"
+              description: "Program ID must follow Marketo format when present"
+              on_failure: nullify_field
+        - name: campaign_type
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "campaign_type IS NOT NULL"
+              on_failure: delete_row
+        - name: is_active
+          data_type: BOOLEAN
+          constraints: [not_null]
+          description: "Whether the campaign is currently active"
+          validation_rules:
+            - rule: "is_active = COALESCE(is_active, FALSE)"
+              description: "Default NULL active flag to FALSE"
+              on_failure: correct
+        - name: created_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "created_timestamp IS NOT NULL"
+              on_failure: delete_row
+        - name: updated_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "updated_timestamp IS NOT NULL"
+              on_failure: delete_row
+        - name: description
+          data_type: VARCHAR
+        - name: workspace_name
+          data_type: VARCHAR
+          description: "Marketo workspace where campaign resides"
+        - name: computed_url
+          data_type: VARCHAR
+          description: "Computed URL for the campaign"
+        - name: flow_id
+          data_type: VARCHAR
+          description: "Flow ID associated with the campaign"
+        - name: folder_id
+          data_type: VARCHAR
+          description: "Folder ID where campaign is stored"
+        - name: folder_type
+          data_type: VARCHAR
+          description: "Type of folder containing the campaign"
+        - name: is_communication_limit_enabled
+          data_type: BOOLEAN
+          description: "Whether communication limits are enabled"
+        - name: is_requestable
+          data_type: BOOLEAN
+          description: "Whether the campaign is requestable"
+        - name: is_system
+          data_type: BOOLEAN
+          description: "Whether this is a system campaign"
+        - name: max_members
+          data_type: BIGINT
+          description: "Maximum number of members allowed"
+        - name: qualification_rule_type
+          data_type: VARCHAR
+          description: "Type of qualification rule"
+        - name: qualification_rule_interval
+          data_type: BIGINT
+          description: "Qualification rule interval"
+        - name: qualification_rule_unit
+          data_type: VARCHAR
+          description: "Unit for qualification rule interval"
+        - name: recurrence_start_at
+          data_type: VARCHAR
+          description: "When recurrence starts (passed through as text per SQL)"
+        - name: recurrence_end_at
+          data_type: VARCHAR
+          description: "When recurrence ends (passed through as text per SQL)"
+        - name: recurrence_interval_type
+          data_type: VARCHAR
+          description: "Type of recurrence interval"
+        - name: recurrence_interval
+          data_type: BIGINT
+          description: "Recurrence interval value"
+        - name: recurrence_weekday_only
+          data_type: BOOLEAN
+          description: "Whether recurrence is weekdays only"
+        - name: recurrence_day_of_month
+          data_type: BIGINT
+          description: "Day of month for recurrence"
+        - name: recurrence_day_of_week
+          data_type: BIGINT
+          description: "Day of week for recurrence"
+        - name: recurrence_week_of_month
+          data_type: BIGINT
+          description: "Week of month for recurrence"
+        - name: smart_list_id
+          data_type: VARCHAR
+          description: "Associated smart list ID"
+        - name: status
+          data_type: VARCHAR
+          description: "Current status of the campaign"
+
+
+    - name: stg_marketo__program
+      description: "Cleaned program records that group related campaigns and assets"
+      source_table: "raw.marketo_program"
+      grain: "One row per unique program in Marketo"
+      columns:
+        - name: program_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: program_name
+          data_type: VARCHAR
+        - name: program_type
+          data_type: VARCHAR
+        - name: channel
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: program_status
+          data_type: VARCHAR
+        - name: created_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+          description: "When the program was created"
+        - name: updated_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+          description: "When the program was last updated"
+        - name: description
+          data_type: VARCHAR
+          description: "Program description"
+        - name: url
+          data_type: VARCHAR
+          description: "Program URL"
+        - name: workspace_name
+          data_type: VARCHAR
+          description: "Workspace where program resides"
+        - name: sfdc_id
+          data_type: VARCHAR
+          description: "Salesforce ID if connected"
+        - name: sfdc_name
+          data_type: VARCHAR
+          description: "Salesforce name if connected"
+        - name: start_date
+          data_type: DATE
+          description: "Program start date"
+        - name: end_date
+          data_type: DATE
+          description: "Program end date"
+
+    - name: stg_marketo__email_template_history
+      description: "Cleaned email template records with version history and template metadata"
+      source_table: "raw.marketo_email_template_history"
+      grain: "One row per email template version"
+      columns:
+        - name: email_template_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: email_template_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: version
+          data_type: DOUBLE
+          constraints: [not_null]
+        - name: created_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: updated_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: description
+          data_type: VARCHAR
+        - name: folder_id
+          data_type: VARCHAR
+        - name: folder_type
+          data_type: VARCHAR
+        - name: from_name
+          data_type: VARCHAR
+        - name: program_id
+          data_type: VARCHAR
+        - name: publish_to_msi
+          data_type: BOOLEAN
+        - name: reply_email
+          data_type: VARCHAR
+        - name: email_template_status
+          data_type: VARCHAR
+        - name: template
+          data_type: VARCHAR
+        - name: text_only
+          data_type: BOOLEAN
+        - name: url
+          data_type: VARCHAR
+        - name: web_view
+          data_type: BOOLEAN
+        - name: workspace
+          data_type: VARCHAR
+        - name: is_most_recent_version
+          data_type: BOOLEAN
+        - name: operational
+          data_type: BOOLEAN
+        - name: subject
+          data_type: VARCHAR
+          description: "Email subject line"
+        - name: from_email
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "from_email IS NULL OR from_email ~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'"
+              on_failure: nullify_field
+
+    - name: stg_marketo__activity_send_email
+      description: "Cleaned email send activity records showing when emails were sent to leads"
+      source_table: "raw.marketo_activity_send_email"
+      grain: "One row per email send event"
+      columns:
+        - name: activity_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: lead_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: campaign_id
+          data_type: VARCHAR
+        - name: email_template_id
+          data_type: VARCHAR
+        - name: activity_timestamp
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: activity_type_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: campaign_run_id
+          data_type: VARCHAR
+        - name: primary_attribute_value
+          data_type: VARCHAR
+        - name: primary_attribute_value_id
+          data_type: VARCHAR
+        - name: email_send_id
+          data_type: VARCHAR
+
+    - name: stg_marketo__activity_open_email
+      description: "Cleaned email open activity records"
+      source_table: "raw.marketo_activity_open_email"
+      grain: "One row per email open event"
+      columns:
+        - name: activity_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: lead_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: email_template_id
+          data_type: VARCHAR
+        - name: campaign_id
+          data_type: VARCHAR
+        - name: activity_timestamp
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: open_device
+          data_type: VARCHAR
+        - name: is_mobile_device
+          data_type: BOOLEAN
+        - name: open_platform
+          data_type: VARCHAR
+        - name: open_user_agent
+          data_type: VARCHAR
+        - name: activity_type_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: campaign_run_id
+          data_type: VARCHAR
+        - name: step_id
+          data_type: VARCHAR
+        - name: primary_attribute_value
+          data_type: VARCHAR
+        - name: primary_attribute_value_id
+          data_type: VARCHAR
+        - name: email_send_id
+          data_type: VARCHAR
+
+    - name: stg_marketo__activity_click_email
+      description: "Cleaned email click activity records"
+      source_table: "raw.marketo_activity_click_email"
+      grain: "One row per email click event"
+      columns:
+        - name: activity_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: lead_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: email_template_id
+          data_type: VARCHAR
+        - name: campaign_id
+          data_type: VARCHAR
+        - name: activity_timestamp
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: click_link_url
+          data_type: VARCHAR
+        - name: click_device
+          data_type: VARCHAR
+        - name: is_mobile_device
+          data_type: BOOLEAN
+        - name: click_platform
+          data_type: VARCHAR
+        - name: click_user_agent
+          data_type: VARCHAR
+        - name: activity_type_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: campaign_run_id
+          data_type: VARCHAR
+        - name: step_id
+          data_type: VARCHAR
+        - name: primary_attribute_value
+          data_type: VARCHAR
+        - name: primary_attribute_value_id
+          data_type: VARCHAR
+        - name: email_send_id
+          data_type: VARCHAR
+
+    - name: stg_marketo__activity_email_delivered
+      description: "Cleaned email delivery confirmation records"
+      source_table: "raw.marketo_activity_email_delivered"
+      grain: "One row per successful email delivery"
+      columns:
+        - name: activity_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: lead_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: email_template_id
+          data_type: VARCHAR
+        - name: campaign_id
+          data_type: VARCHAR
+        - name: activity_timestamp
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: activity_type_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: campaign_run_id
+          data_type: VARCHAR
+        - name: step_id
+          data_type: VARCHAR
+        - name: primary_attribute_value
+          data_type: VARCHAR
+        - name: primary_attribute_value_id
+          data_type: VARCHAR
+        - name: email_send_id
+          data_type: VARCHAR
+
+    - name: stg_marketo__activity_email_bounced
+      description: "Cleaned email bounce activity records"
+      source_table: "raw.marketo_activity_email_bounced"
+      grain: "One row per email bounce event"
+      columns:
+        - name: activity_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: lead_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: email_template_id
+          data_type: VARCHAR
+        - name: campaign_id
+          data_type: VARCHAR
+        - name: activity_timestamp
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: activity_type_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: campaign_run_id
+          data_type: VARCHAR
+        - name: step_id
+          data_type: VARCHAR
+        - name: primary_attribute_value
+          data_type: VARCHAR
+        - name: primary_attribute_value_id
+          data_type: VARCHAR
+        - name: email_send_id
+          data_type: VARCHAR
+
+    - name: stg_marketo__activity_unsubscribe_email
+      description: "Cleaned email unsubscribe activity records"
+      source_table: "raw.marketo_activity_unsubscribe_email"
+      grain: "One row per unsubscribe event"
+      columns:
+        - name: activity_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: lead_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: email_template_id
+          data_type: VARCHAR
+        - name: campaign_id
+          data_type: VARCHAR
+        - name: activity_timestamp
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: activity_type_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: primary_attribute_value
+          data_type: VARCHAR
+        - name: primary_attribute_value_id
+          data_type: VARCHAR
+        - name: campaign_run_id
+          data_type: VARCHAR
+        - name: email_send_id
+          data_type: VARCHAR
+
+    - name: stg_marketo__activity_change_data_value
+      description: "Cleaned change data value activity records showing field value changes"
+      source_table: "raw.marketo_activity_change_data_value"
+      grain: "One row per field value change event"
+      columns:
+        - name: activity_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: lead_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: activity_timestamp
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: activity_type_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: api_method_name
+          data_type: DOUBLE
+        - name: campaign_id
+          data_type: VARCHAR
+        - name: modifying_user
+          data_type: DOUBLE
+        - name: new_value
+          data_type: VARCHAR
+        - name: old_value
+          data_type: VARCHAR
+        - name: field_name
+          data_type: VARCHAR
+        - name: primary_attribute_value_id
+          data_type: BIGINT
+        - name: reason
+          data_type: VARCHAR
+        - name: request_id
+          data_type: VARCHAR
+        - name: source
+          data_type: VARCHAR
+
+    - name: stg_marketo__activity_merge_leads
+      description: "Cleaned merge leads activity records showing when leads are merged"
+      source_table: "raw.marketo_activity_merge_leads"
+      grain: "One row per lead merge event"
+      columns:
+        - name: activity_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: lead_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: activity_timestamp
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: activity_type_id
+          data_type: VARCHAR
+          constraints: [not_null]
+          description: "Type of activity"
+        - name: campaign_id
+          data_type: VARCHAR
+        - name: merged_lead_ids
+          data_type: VARCHAR
+        - name: primary_attribute_value
+          data_type: VARCHAR
+        - name: primary_attribute_value_id
+          data_type: VARCHAR
+
+    - name: stg_marketo__activity_delete_lead
+      description: "Cleaned delete lead activity records showing when leads are deleted"
+      source_table: "raw.marketo_activity_delete_lead"
+      grain: "One row per lead deletion event"
+      columns:
+        - name: activity_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: lead_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: activity_timestamp
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: activity_type_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: campaign_id
+          data_type: VARCHAR
+        - name: primary_attribute_value
+          data_type: VARCHAR
+        - name: primary_attribute_value_id
+          data_type: VARCHAR
+
+    - name: stg_marketo__lead_describe
+      description: "Lead field metadata describing available lead fields and their properties"
+      source_table: "raw.marketo_lead_describe"
+      grain: "One row per lead field definition"
+      columns:
+        - name: lead_describe_id
+          data_type: BIGINT
+          constraints: [not_null, unique]
+        - name: data_type
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: display_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: field_max_length
+          data_type: BIGINT
+        - name: rest_name
+          data_type: VARCHAR
+        - name: is_rest_readonly
+          data_type: BOOLEAN
+        - name: soap_name
+          data_type: VARCHAR
+        - name: is_soap_readonly
+          data_type: BOOLEAN
+        - name: rest_name_xf
+          data_type: VARCHAR
+
+# --------------------------------------------------------------------------- #
+# PHASE 2: Defines the business logic from staging tables to analytical models. #
+# --------------------------------------------------------------------------- #
+modeling_spec:
+  purpose: "Transform staging data into business-ready models that support marketing analytics, lead management, and campaign performance analysis. This phase applies complex business logic, creates reusable intermediate models, and produces final analytical marts."
+  
+  design_principles:
+    intermediate_purpose: "Create reusable, business-centric data models that implement complex logic and serve as building blocks for multiple downstream marts"
+    marts_purpose: "Produce analysis-ready fact and dimension tables optimized for BI tools and analytical queries"
+    grain_importance: "Every model must have an explicitly defined grain that determines the level of detail and uniqueness of each row"
+    naming_convention: "int_marketo__[business_concept] for intermediate models, marketo__[business_entity] for marts"
+
+  intermediate_models:
+    - name: int_marketo__lead
+      description: Lead dimension with merge/delete flags derived from activity tables; all leads from staging are retained (no filtering)
+      grain: One row per input row in staging.stg_marketo__lead; duplicates on lead_id are preserved
+      source_models:
+      - staging.stg_marketo__lead
+      - staging.stg_marketo__activity_merge_leads
+      - staging.stg_marketo__activity_delete_lead
+      business_logic: '- Start with all rows from staging.stg_marketo__lead (no filtering or deduping in this model). - Build deleted_leads as the distinct set of lead_id from staging.stg_marketo__activity_delete_lead. - Build unique_merges from staging.stg_marketo__activity_merge_leads by: - Grouping by lead_id and concatenating distinct merged_lead_ids separated by ", ". - Null policy: null merged_lead_ids are ignored; if no non-null values exist for a lead, the result is null. - Ordering: no explicit ordering is applied during concatenation, so the sequence is not guaranteed. - Left join deleted_leads and unique_merges to the lead base on lead_id. - Compute flags: - is_deleted = TRUE if a matching deleted_leads.lead_id exists, else FALSE. - is_merged = TRUE if merged_into_lead_id is not null, else FALSE. - Select all original lead attributes unchanged (formatting preserved), plus is_deleted, merged_into_lead_id, and is_merged.'
+      columns:
+      - name: lead_id
+        data_type: VARCHAR
+        description: Lead identifier from staging; grain follows source and duplicates (if any) are preserved.
+        tests:
+        - not_null
+        - unique
+      - name: email
+        data_type: VARCHAR
+        description: Email from staging; passed through unchanged
+        tests:
+        - not_null
+      - name: first_name
+        data_type: VARCHAR
+        description: First name from staging; passed through unchanged
+      - name: last_name
+        data_type: VARCHAR
+        description: Last name from staging; passed through unchanged
+      - name: created_timestamp
+        data_type: VARCHAR
+        description: Creation timestamp from staging; passed through as VARCHAR
+        tests:
+        - not_null
+      - name: updated_timestamp
+        data_type: VARCHAR
+        description: Last updated timestamp from staging; passed through as VARCHAR
+        tests:
+        - not_null
+      - name: is_deleted
+        data_type: BOOLEAN
+        description: TRUE if lead_id appears in staging.stg_marketo__activity_delete_lead, else FALSE (never NULL)
+        tests:
+        - not_null
+      - name: merged_into_lead_id
+        data_type: VARCHAR
+        description: Comma+space separated distinct merged_lead_ids per lead_id; nulls excluded; order not guaranteed; null when no non-null values exist.
+      - name: is_merged
+        data_type: BOOLEAN
+        description: TRUE if merged_into_lead_id is not null, else FALSE (never NULL)
+        tests:
+        - not_null
+    - name: marketo__email_sends_deduped
+      description: Deduplicates email send events by keeping the earliest activity_timestamp per email_send_id; NULL email_send_id values form one group with a single retained row.
+      grain: One row per email_send_id; rows with NULL email_send_id share a single retained row.
+      source_models:
+      - staging.stg_marketo__activity_send_email
+      business_logic: '- Begin with all rows from staging.stg_marketo__activity_send_email. - For each email_send_id, order rows by activity_timestamp ascending and assign a sequential position starting at 1 (activity_rank). - Retain only the row with activity_rank = 1 for each group. - Output all source columns from the retained row and include activity_rank. - Determinism: - Grouping key: email_send_id; all NULL email_send_id values are treated as a single group. - Ordering: ascending by activity_timestamp; rows with identical or NULL timestamps lack a secondary tie-breaker, so the retained row among ties is implementation-dependent. - Pass-through fields: values are taken exactly from the retained row; NULLs, casing, and whitespace are preserved.'
+      columns:
+      - name: activity_timestamp
+        data_type: TIMESTAMP
+        description: Timestamp used to select the earliest row within each email_send_id; ties or NULL timestamps can produce arbitrary selection.
+        tests:
+        - not_null
+      - name: activity_type_id
+        data_type: VARCHAR
+        description: Activity type identifier from the retained row.
+        tests:
+        - not_null
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier from the retained row.
+      - name: campaign_run_id
+        data_type: VARCHAR
+        description: Campaign run identifier from the retained row.
+      - name: email_template_id
+        data_type: VARCHAR
+        description: Email template identifier from the retained row.
+      - name: activity_id
+        data_type: VARCHAR
+        description: Source activity record identifier from the retained row.
+        tests:
+        - not_null
+      - name: lead_id
+        data_type: VARCHAR
+        description: Lead identifier from the retained row.
+        tests:
+        - not_null
+      - name: primary_attribute_value
+        data_type: VARCHAR
+        description: Primary attribute value from the retained row.
+      - name: primary_attribute_value_id
+        data_type: VARCHAR
+        description: Primary attribute value ID from the retained row.
+      - name: email_send_id
+        data_type: VARCHAR
+        description: Deduplication key; one retained row per non-null value and a single retained row across NULL values.
+        tests:
+        - not_null
+        - unique
+      - name: email_send_id
+        data_type: VARCHAR
+        description: Deduplication key; exactly one retained row per non-null value and a single retained row across NULL values.
+        tests:
+        - not_null
+        - unique
+      - name: activity_rank
+        data_type: BIGINT
+        description: Sequential position within each email_send_id ordered by activity_timestamp ascending; 1 marks the retained row.
+        tests:
+        - not_null
+    - name: marketo__opens__by_sent_email
+      description: Email open activities aggregated by email_send_id with total opens and distinct lead counts.
+      grain: One row per email_send_id present in staging.stg_marketo__activity_open_email
+      source_models:
+      - staging.stg_marketo__activity_open_email
+      business_logic: '- Read all rows from staging.stg_marketo__activity_open_email with no filters or sorting. - Group records by email_send_id to create one output row per value present. - For each group: - count_opens is the number of rows in the group (every open event counted; duplicates kept; NULL lead_id rows included). - count_unique_opens is the number of distinct lead_id values in the group (duplicates collapsed; NULL lead_id does not contribute). - If email_send_id is NULL in the source, those rows form a single NULL group. - Output only email_send_id, count_opens, and count_unique_opens.'
+      columns:
+      - name: email_send_id
+        data_type: VARCHAR
+        description: Identifier of the email send used as the grouping key; NULL values, if present, produce a single NULL group.
+        tests:
+        - unique
+      - name: count_opens
+        data_type: BIGINT
+        description: Total number of open activity rows in the email_send_id group; duplicates kept and rows with NULL lead_id included.
+        tests:
+        - not_null
+      - name: count_unique_opens
+        data_type: BIGINT
+        description: Distinct count of lead_id values in the email_send_id group; duplicates collapsed and NULL lead_id excluded.
+        tests:
+        - not_null
+    - name: marketo__clicks__by_sent_email
+      description: Counts click activity rows per email_send_id from staging.stg_marketo__activity_click_email.
+      grain: One row per distinct email_send_id present in stg_marketo__activity_click_email
+      source_models:
+      - staging.stg_marketo__activity_click_email
+      business_logic: '- Read all rows from staging.stg_marketo__activity_click_email with no filters. - Group rows by email_send_id; all NULL values form a single group. - For each group, set count_clicks to the number of rows in that group; each source row adds 1 and duplicates are not removed. - No deduplication, time-windowing, or ordering is applied. - Output one row per distinct email_send_id present in the source; email sends with no click rows are not included.'
+      columns:
+      - name: email_send_id
+        data_type: VARCHAR
+        description: Email send identifier; exactly one output row per distinct value; NULL allowed and aggregated into a single NULL group.
+        tests:
+        - unique
+      - name: count_clicks
+        data_type: BIGINT
+        description: Number of click activity rows for the email_send_id; duplicates kept; no filtering; integer >= 1 for present groups; never NULL.
+        tests:
+        - not_null
+    - name: marketo__deliveries__by_sent_email
+      description: Counts delivery activity rows per email_send_id from staging.stg_marketo__activity_email_delivered.
+      grain: One row per distinct email_send_id present in staging.stg_marketo__activity_email_delivered.
+      source_models:
+      - staging.stg_marketo__activity_email_delivered
+      business_logic: '- Read all delivery activity records from staging.stg_marketo__activity_email_delivered (no filtering or ordering). - Group records by email_send_id. - For each group, set count_deliveries to the total number of rows in that group (non-distinct count; duplicates included). - Output includes only email_send_id values observed in the source; no joins are performed. - If any records have NULL email_send_id, they are grouped together and produce one output row.'
+      columns:
+      - name: email_send_id
+        data_type: VARCHAR
+        description: Grouping key from the delivery activity source; one row per distinct value; may be NULL; values are not transformed.
+        tests:
+        - unique
+      - name: count_deliveries
+        data_type: BIGINT
+        description: Total number of delivery activity rows for the email_send_id; counts all rows in the group and is always at least 1.
+        tests:
+        - not_null
+    - name: marketo__bounces__by_sent_email
+      description: Counts bounced email activities per email_send_id from staging.stg_marketo__activity_email_bounced
+      grain: One row per distinct email_send_id in staging.stg_marketo__activity_email_bounced
+      source_models:
+      - staging.stg_marketo__activity_email_bounced
+      business_logic: '- Read all rows from staging.stg_marketo__activity_email_bounced with no filtering. - Group rows by email_send_id; emit one row per distinct value, including a single NULL group if present. - For each group, set count_bounces to the number of rows in that group; include all rows without de-duplication. - No joins, sorting, or additional categorization are performed; casing and whitespace in email_send_id are preserved; empty strings are treated as normal distinct values. - Email sends with no bounce activity do not appear in the output.'
+      columns:
+      - name: email_send_id
+        data_type: VARCHAR
+        description: Grouping key from bounce activity; one row per distinct value; NULL values form a single group; casing and whitespace preserved
+        tests:
+        - unique
+      - name: count_bounces
+        data_type: BIGINT
+        description: Number of bounced activity rows for the email_send_id; includes all rows; no de-duplication; never null; at least 1 for present keys
+        tests:
+        - not_null
+    - name: marketo__unsubscribes__by_sent_email
+      description: Count of unsubscribe activity rows per email_send_id from staging.stg_marketo__activity_unsubscribe_email
+      grain: One row per email_send_id present in staging.stg_marketo__activity_unsubscribe_email
+      source_models:
+      - staging.stg_marketo__activity_unsubscribe_email
+      business_logic: '- Read all rows from staging.stg_marketo__activity_unsubscribe_email. - Group rows by email_send_id; NULL values form a single group if present. - For each group, set count_unsubscribes to the total number of rows in that group; every record contributes one; no joins, filters, or deduplication are applied. - Emit one row per email_send_id present in the source; rows are returned without an enforced order.'
+      columns:
+      - name: email_send_id
+        data_type: VARCHAR
+        description: Identifier of the email send from unsubscribe activity; exactly one output row per value present in the source; may be NULL if the source contains NULL.
+        tests:
+        - unique
+      - name: count_unsubscribes
+        data_type: BIGINT
+        description: Total unsubscribe activity records per email_send_id; duplicates are counted; no filters or deduplication; minimum is 1 for any output row; includes rows where email_send_id is NULL.
+        tests:
+        - not_null
+    - name: marketo__change_data_details
+      description: Daily flags per lead indicating which tracked Marketo lead fields changed based on change data value activities before today.
+      grain: One row per lead_id and date_day for any day before today with at least one change data value activity.
+      source_models:
+      - staging.stg_marketo__activity_change_data_value
+      - staging.stg_marketo__lead_describe
+      business_logic: '- Read change events (lead_id, activity_timestamp, primary_attribute_value_id) from staging.stg_marketo__activity_change_data_value. - Read field metadata (lead_describe_id, rest_name_xf) from staging.stg_marketo__lead_describe. - Left join events to metadata on primary_attribute_value_id = lead_describe_id to get primary_attribute_column (unmatched rows have it null). - Keep only events whose activity date is earlier than the current date (exclude today and future). - Derive date_day as the calendar date of activity_timestamp. - Group by lead_id and date_day. - For each tracked field, set the flag to TRUE if any event in the group has primary_attribute_column equal to the token, compared case-insensitively; otherwise FALSE. Tokens → columns: - ''email'' → email_c - ''firstname'' → first_name_c - ''lastname'' → last_name_c - ''company'' → company_c - ''title'' → title_c - ''phone'' → phone_c - ''industry'' → industry_c - ''country'' → country_c - ''state'' → state_c - ''city'' → city_c - ''leadsource'' → lead_source_c - ''leadstatus'' → lead_status_c - ''rating'' → rating_c - ''leadscore'' → lead_score_c - ''unsubscribed'' → unsubscribed_c - ''donotcall'' → do_not_call_c - ''emailinvalid'' → email_invalid_c - Boolean aggregation is an OR across events within the day; duplicates do not change the result; NULL primary_attribute_column never matches; groups may have all flags FALSE. - Compute lead_day_id as a deterministic MD5 hash of the concatenation: lead_id, an underscore, and date_day; treat NULLs as empty strings and use the default date-to-string format.'
+      columns:
+      - name: lead_id
+        data_type: VARCHAR
+        description: Marketo lead identifier; grouping key for aggregation.
+        tests:
+        - not_null
+      - name: date_day
+        data_type: DATE
+        description: Calendar date derived from activity_timestamp for events dated before today.
+        tests:
+        - not_null
+      - name: email_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'email' field (case-insensitive); else false.
+      - name: first_name_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'firstname' field (case-insensitive); else false.
+      - name: last_name_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'lastname' field (case-insensitive); else false.
+      - name: company_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'company' field (case-insensitive); else false.
+      - name: title_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'title' field (case-insensitive); else false.
+      - name: phone_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'phone' field (case-insensitive); else false.
+      - name: industry_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'industry' field (case-insensitive); else false.
+      - name: country_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'country' field (case-insensitive); else false.
+      - name: state_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'state' field (case-insensitive); else false.
+      - name: city_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'city' field (case-insensitive); else false.
+      - name: lead_source_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'leadsource' field (case-insensitive); else false.
+      - name: lead_status_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'leadstatus' field (case-insensitive); else false.
+      - name: rating_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'rating' field (case-insensitive); else false.
+      - name: lead_score_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'leadscore' field (case-insensitive); else false.
+      - name: unsubscribed_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'unsubscribed' field (case-insensitive); else false.
+      - name: do_not_call_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'donotcall' field (case-insensitive); else false.
+      - name: email_invalid_c
+        data_type: BOOLEAN
+        description: True if any event for this lead on date_day referenced the 'emailinvalid' field (case-insensitive); else false.
+      - name: lead_day_id
+        data_type: VARCHAR
+        description: Deterministic MD5 hash of lead_id + '_' + date_day with NULLs treated as empty strings.
+        tests:
+        - not_null
+        - unique
+    - name: marketo__change_data_pivot
+      description: Daily pivot of the earliest per-day old_value for selected lead attributes from Marketo change data (prior days only)
+      grain: One row per lead_id per date_day (dates < CURRENT_DATE)
+      source_models:
+      - staging.stg_marketo__activity_change_data_value
+      - staging.stg_marketo__lead_describe
+      business_logic: '- Start from the activity change events table. - Left join to the lead describe table on primary_attribute_value_id to bring the REST attribute name (primary_attribute_column). - For each combination of calendar date (from activity_timestamp), lead_id, and attribute id, order events by earliest timestamp; if timestamps tie, choose the event with the larger activity_id. Keep only the first event to represent the earliest change for that attribute on that day. - Exclude events occurring on the current day or in the future. - Pivot to one row per lead_id and event date: - For each target attribute (email, firstname, lastname, company, title, phone, industry, country, state, city, leadsource, leadstatus, rating, leadscore, unsubscribed, donotcall, emailinvalid), match the attribute name case-insensitively to primary_attribute_column. - Set the column to the old_value from the selected event for that attribute and day; if no matching change or the attribute name is missing, set NULL. - Preserve string values exactly as recorded. - Create lead_day_id as the MD5 hash of the string built from lead_id, an underscore, and date_day; replace NULL inputs with empty strings before hashing. - Output one row per (lead_id, date_day) with pivoted attributes for dates earlier than today.'
+      columns:
+      - name: lead_id
+        data_type: VARCHAR
+        description: Marketo lead identifier; one row per lead_id per date_day for prior days
+        tests:
+        - not_null
+      - name: date_day
+        data_type: DATE
+        description: Calendar date from activity_timestamp; only dates earlier than today
+        tests:
+        - not_null
+      - name: email_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'email'; NULL if no change that day
+      - name: first_name_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'firstname'; NULL if no change that day
+      - name: last_name_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'lastname'; NULL if no change that day
+      - name: company_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'company'; NULL if no change that day
+      - name: title_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'title'; NULL if no change that day
+      - name: phone_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'phone'; NULL if no change that day
+      - name: industry_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'industry'; NULL if no change that day
+      - name: country_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'country'; NULL if no change that day
+      - name: state_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'state'; NULL if no change that day
+      - name: city_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'city'; NULL if no change that day
+      - name: lead_source_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'leadsource'; NULL if no change that day
+      - name: lead_status_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'leadstatus'; NULL if no change that day
+      - name: rating_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'rating'; NULL if no change that day
+      - name: lead_score_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'leadscore'; NULL if no change that day
+      - name: unsubscribed_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'unsubscribed'; NULL if no change that day
+      - name: do_not_call_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'donotcall'; NULL if no change that day
+      - name: email_invalid_c
+        data_type: VARCHAR
+        description: Old_value from the earliest same-day change to 'emailinvalid'; NULL if no change that day
+      - name: lead_day_id
+        data_type: VARCHAR
+        description: MD5 hash of lead_id + '_' + date_day (YYYY-MM-DD), substituting empty strings for NULLs; unique per (lead_id, date_day)
+        tests:
+        - not_null
+        - unique
+    - name: marketo__change_data_scd
+      description: Type 2 SCD of lead attributes with daily versions, backfilling email/first/last via field-level flags, row-only values for company/lead_status, and a deterministic surrogate key.
+      grain: Rows per lead_id per valid_to date from the unioned snapshot and change data; no enforced uniqueness.
+      source_models:
+      - intermediate.marketo__change_data_pivot
+      - intermediate.int_marketo__lead
+      - intermediate.marketo__change_data_details
+      business_logic: '- Read sources: - leads: current lead snapshot (one row per lead as of today). - change_data: historical daily changes by lead and date. - details: field-level boolean flags by lead and date indicating whether a field change boundary exists. - Build the unioned set: - From leads: emit one row per lead with date_day = today; populate email/first_name/last_name; set other fields (e.g., company, lead_status) to null. - Union all rows from change_data (one per lead_id and date_day) with their recorded values. - Prepare partitions for backfill: - valid_to equals the row’s date_day (today for snapshot rows; change date for change_data rows). - Join details on lead_id and date_day. - For each of email, first_name, and last_name, compute a descending-date group number per lead that increases on every row except when both conditions hold: the field value is null and the corresponding details flag is false. These groups define contiguous runs across which missing values should be carried backward. - Backfill fields: - For email, first_name, and last_name: within each lead and group, carry the most recent non-null value (from the later date in that group) backward to earlier dates; if a group has no non-null value, the field remains null. - Non-backfilled fields: - company and lead_status take only the value present on that specific row/date; values are not carried across dates and nulls remain null. - Surrogate key: - lead_day_id is the MD5 hash of lead_id and valid_to concatenated with an underscore; nulls are treated as empty strings. - Output columns: valid_to, lead_id, email_c, first_name_c, last_name_c, company_c, lead_status_c, lead_day_id. No de-duplication is applied; multiple rows may exist for a lead and date if both sources supply that date.'
+      columns:
+      - name: valid_to
+        data_type: DATE
+        description: Version date equal to the row’s date_day (today for snapshot rows; the change date for historical rows).
+      - name: lead_id
+        data_type: VARCHAR
+        description: Lead identifier carried through from the unioned inputs.
+        tests:
+        - not_null
+      - name: email_c
+        data_type: VARCHAR
+        description: Email after carrying the latest available value backward within groups that continue only when the field is null and the details flag is false; otherwise the group breaks; remains null if no later non-null exists.
+      - name: first_name_c
+        data_type: VARCHAR
+        description: First name after carrying the latest available value backward within groups that continue only when the field is null and the details flag is false; otherwise the group breaks; remains null if no later non-null exists.
+      - name: last_name_c
+        data_type: VARCHAR
+        description: Last name after carrying the latest available value backward within groups that continue only when the field is null and the details flag is false; otherwise the group breaks; remains null if no later non-null exists.
+      - name: company_c
+        data_type: VARCHAR
+        description: Company value taken only from the same row/date; no cross-date fill; nulls preserved.
+      - name: lead_status_c
+        data_type: VARCHAR
+        description: Lead status taken only from the same row/date; no cross-date fill; nulls preserved.
+      - name: lead_day_id
+        data_type: VARCHAR
+        description: Deterministic MD5 hash of lead_id and valid_to joined by '_' with nulls treated as empty strings.
+        tests:
+        - not_null
+    - name: marketo__lead_calendar_spine
+      description: Calendar spine per lead with one row per lead_id per calendar date from the lead's created date onward.
+      grain: One row per lead_id per date_day from the lead's created date onward for all dates present in the calendar spine.
+      source_models:
+      - utils.marketo__calendar_spine
+      - intermediate.int_marketo__lead
+      business_logic: '- Read calendar dates from utils.marketo__calendar_spine (use date_day as provided). - Read leads from intermediate.int_marketo__lead (use lead_id and created_timestamp only). - Join rows where the calendar date is on or after the lead''s created date (using the date portion of created_timestamp). - If created_timestamp is null, the lead contributes no rows. - The upper bound of dates is defined only by the calendar spine; no additional end-date filter is applied. - No de-duplication is performed; duplicates from either source are preserved. - Create lead_day_id by converting date_day and lead_id to text, replacing nulls with empty strings, concatenating them with an underscore, then hashing the result with MD5. - Output columns: date_day, lead_id, lead_day_id; no explicit ordering.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar date kept only when on or after the lead's created date.
+        tests:
+        - not_null
+      - name: lead_id
+        data_type: VARCHAR
+        description: Lead identifier from intermediate.int_marketo__lead, repeated across eligible calendar dates.
+        tests:
+        - not_null
+      - name: lead_day_id
+        data_type: VARCHAR
+        description: MD5 hash of date_day and lead_id joined by an underscore after converting to text and replacing nulls with empty strings.
+        tests:
+        - not_null
+        - unique
+  marts_models:
+    - name: marketo__email_sends
+      description: Email sends fact table with engagement counts and flags plus campaign and template attributes (one row per email_send_id)
+      grain: One row per email_send_id
+      source_models:
+      - intermediate.marketo__email_sends_deduped
+      - intermediate.marketo__opens__by_sent_email
+      - intermediate.marketo__bounces__by_sent_email
+      - intermediate.marketo__clicks__by_sent_email
+      - intermediate.marketo__deliveries__by_sent_email
+      - intermediate.marketo__unsubscribes__by_sent_email
+      - staging.stg_marketo__campaigns
+      - staging.stg_marketo__email_template_history
+      business_logic: '- Begin with intermediate.marketo__email_sends_deduped, which has one row per email_send_id and all original send fields. - Left join the aggregated opens, bounces, clicks, deliveries, and unsubscribes models by email_send_id; if any count is missing, use 0. - Set flags: was_opened is true when count_opens is greater than zero; was_bounced when count_bounces is greater than zero; was_clicked when count_clicks is greater than zero; was_delivered when count_deliveries is greater than zero; was_unsubscribed when count_unsubscribes is greater than zero. These flags are never null. - Left join campaigns (staging.stg_marketo__campaigns) on campaign_id to add campaign_type and program_id; if no match, these remain null. - Left join email templates (staging.stg_marketo__email_template_history) on email_template_id to add operational as is_operational; if no match, is_operational remains null. - Output includes all base send columns unchanged, the five count_* fields with missing values defaulted to 0, the five was_* flags, and the three joined attributes; no additional filtering, ordering, or deduplication is performed.'
+      columns:
+      - name: activity_timestamp
+        data_type: TIMESTAMP
+        description: Timestamp of the send activity.
+      - name: activity_type_id
+        data_type: VARCHAR
+        description: Marketo activity type identifier for the send.
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign ID associated with the send; join key to campaigns.
+      - name: campaign_run_id
+        data_type: VARCHAR
+        description: Campaign run identifier for the send.
+      - name: email_template_id
+        data_type: VARCHAR
+        description: Email template ID used for the send; join key to email template history.
+      - name: activity_id
+        data_type: VARCHAR
+        description: Underlying Marketo activity ID for this send.
+      - name: lead_id
+        data_type: VARCHAR
+        description: Lead (person) ID who was sent the email.
+      - name: primary_attribute_value
+        data_type: VARCHAR
+        description: Primary attribute value from the send activity payload.
+      - name: primary_attribute_value_id
+        data_type: VARCHAR
+        description: Primary attribute value ID from the send activity payload.
+      - name: email_send_id
+        data_type: VARCHAR
+        description: Unique identifier of a deduplicated email send event; exactly one output row per value.
+        tests:
+        - not_null
+        - unique
+      - name: activity_rank
+        data_type: BIGINT
+        description: Rank used upstream for deduplication; passed through unchanged.
+      - name: count_opens
+        data_type: BIGINT
+        description: Aggregated opens for this email_send_id; defaults to 0 when no opens are found.
+        tests:
+        - not_null
+      - name: count_bounces
+        data_type: BIGINT
+        description: Aggregated bounces for this email_send_id; defaults to 0 when no bounces are found.
+        tests:
+        - not_null
+      - name: count_clicks
+        data_type: BIGINT
+        description: Aggregated clicks for this email_send_id; defaults to 0 when no clicks are found.
+        tests:
+        - not_null
+      - name: count_deliveries
+        data_type: BIGINT
+        description: Aggregated deliveries for this email_send_id; defaults to 0 when no deliveries are found.
+        tests:
+        - not_null
+      - name: count_unsubscribes
+        data_type: BIGINT
+        description: Aggregated unsubscribes for this email_send_id; defaults to 0 when none are found.
+        tests:
+        - not_null
+      - name: was_opened
+        data_type: BOOLEAN
+        description: True when count_opens is greater than zero; otherwise false; never null.
+        tests:
+        - not_null
+      - name: was_bounced
+        data_type: BOOLEAN
+        description: True when count_bounces is greater than zero; otherwise false; never null.
+        tests:
+        - not_null
+      - name: was_clicked
+        data_type: BOOLEAN
+        description: True when count_clicks is greater than zero; otherwise false; never null.
+        tests:
+        - not_null
+      - name: was_delivered
+        data_type: BOOLEAN
+        description: True when count_deliveries is greater than zero; otherwise false; never null.
+        tests:
+        - not_null
+      - name: was_unsubscribed
+        data_type: BOOLEAN
+        description: True when count_unsubscribes is greater than zero; otherwise false; never null.
+        tests:
+        - not_null
+      - name: campaign_type
+        data_type: VARCHAR
+        description: Campaign type from campaigns; may be null if no matching campaign.
+      - name: program_id
+        data_type: VARCHAR
+        description: Program ID from campaigns; may be null if no matching campaign.
+      - name: is_operational
+        data_type: BOOLEAN
+        description: Operational flag from email template history joined by email_template_id; may be null if no match.
+    - name: marketo__leads
+      description: Lead dimension combining base Marketo profile with merge/delete flags and aggregated email engagement metrics.
+      grain: One row per lead_id
+      source_models:
+      - staging.stg_marketo__lead
+      - staging.stg_marketo__activity_merge_leads
+      - staging.stg_marketo__activity_delete_lead
+      - marts.marketo__email_sends
+      business_logic: '- Start from staging.stg_marketo__lead (one row per lead_id). - From staging.stg_marketo__activity_merge_leads, for each lead_id, combine merged_lead_ids into a single string separated by ", " after removing duplicates; missing values are ignored and ordering is not enforced. - Identify deleted leads as the set of lead_ids appearing in staging.stg_marketo__activity_delete_lead. - Enrich the base leads via left joins: - is_deleted is true when the lead_id appears in the deleted set; otherwise false. - merged_into_lead_id is the combined string of merged IDs for the lead; null when none exist. - is_merged is true when merged_into_lead_id is populated; otherwise false. - Compute email engagement metrics from marts.marketo__email_sends grouped by lead_id: - count_sends equals the total number of send records for the lead. - count_opens, count_bounces, count_clicks, count_deliveries, count_unsubscribes are the sums of their respective per-send counters; missing values in those counters do not contribute. - count_unique_opens equals the number of unique email_send_id values with an open event. - count_unique_clicks equals the number of unique email_send_id values with a click event. - Records without email_send_id do not contribute to the unique counts. - Left join the email metrics to the enriched leads by lead_id and set all email metrics to 0 when no send records exist or the aggregate is missing. - Emit all base lead fields plus the flags and email metrics; exactly one row per lead_id.'
+      columns:
+      - name: lead_id
+        data_type: VARCHAR
+        description: Unique lead identifier from stg_marketo__lead; one row per lead_id.
+        tests:
+        - not_null
+        - unique
+      - name: created_timestamp
+        data_type: VARCHAR
+        description: Creation timestamp from stg_marketo__lead, passed through as a string.
+        tests:
+        - not_null
+      - name: updated_timestamp
+        data_type: VARCHAR
+        description: Last update timestamp from stg_marketo__lead, passed through as a string.
+        tests:
+        - not_null
+      - name: email
+        data_type: VARCHAR
+        description: Email address from stg_marketo__lead, passed through as-is.
+        tests:
+        - not_null
+      - name: first_name
+        data_type: VARCHAR
+        description: First name from stg_marketo__lead; may be NULL.
+      - name: last_name
+        data_type: VARCHAR
+        description: Last name from stg_marketo__lead; may be NULL.
+      - name: is_deleted
+        data_type: BOOLEAN
+        description: True if the lead_id appears in stg_marketo__activity_delete_lead; otherwise false.
+        tests:
+        - not_null
+      - name: merged_into_lead_id
+        data_type: VARCHAR
+        description: Comma-separated merged_lead_ids per lead after removing duplicates; missing values ignored; NULL when none; ordering unspecified.
+      - name: is_merged
+        data_type: BOOLEAN
+        description: True when merged_into_lead_id is populated; otherwise false.
+        tests:
+        - not_null
+      - name: count_sends
+        data_type: BIGINT
+        description: Total email send records for the lead; 0 when none.
+        tests:
+        - not_null
+        - count_sends >= 0
+      - name: count_opens
+        data_type: HUGEINT
+        description: Sum of per-send opens for the lead; missing values ignored; 0 when none.
+        tests:
+        - not_null
+        - count_opens >= 0
+      - name: count_bounces
+        data_type: HUGEINT
+        description: Sum of per-send bounces for the lead; missing values ignored; 0 when none.
+        tests:
+        - not_null
+        - count_bounces >= 0
+      - name: count_clicks
+        data_type: HUGEINT
+        description: Sum of per-send clicks for the lead; missing values ignored; 0 when none.
+        tests:
+        - not_null
+        - count_clicks >= 0
+      - name: count_deliveries
+        data_type: HUGEINT
+        description: Sum of per-send deliveries for the lead; missing values ignored; 0 when none.
+        tests:
+        - not_null
+        - count_deliveries >= 0
+      - name: count_unsubscribes
+        data_type: HUGEINT
+        description: Sum of per-send unsubscribes for the lead; missing values ignored; 0 when none.
+        tests:
+        - not_null
+        - count_unsubscribes >= 0
+      - name: count_unique_opens
+        data_type: BIGINT
+        description: Number of unique email_send_id values with an open event; records without identifiers ignored; 0 when none.
+        tests:
+        - not_null
+        - count_unique_opens >= 0
+      - name: count_unique_clicks
+        data_type: BIGINT
+        description: Number of unique email_send_id values with a click event; records without identifiers ignored; 0 when none.
+        tests:
+        - not_null
+        - count_unique_clicks >= 0
+    - name: marketo__campaigns
+      description: Campaign dimension enriched with email performance metrics aggregated by campaign_id.
+      grain: One row per input row in staging.stg_marketo__campaigns
+      source_models:
+      - staging.stg_marketo__campaigns
+      - marts.marketo__email_sends
+      business_logic: '- Begin with all rows and columns from staging.stg_marketo__campaigns; no filtering or deduplication is applied. - From marts.marketo__email_sends, keep only rows where campaign_id is present and aggregate by campaign_id: - count_sends: number of email_sends rows. - count_opens, count_bounces, count_clicks, count_deliveries, count_unsubscribes: total each metric across rows; null values in these fields are ignored in the totals. - count_unique_opens: number of distinct email_send_id where was_opened is true; null email_send_id are excluded. - count_unique_clicks: number of distinct email_send_id where was_clicked is true; null email_send_id are excluded. - Left join these aggregates to the campaigns on campaign_id; if no matching aggregate exists, set all metrics to 0. - Output one row for every input row in staging; if multiple rows share the same campaign_id, they all receive the same aggregated metrics.'
+      columns:
+      - name: is_active
+        data_type: BOOLEAN
+        description: Whether the campaign is currently active.
+      - name: created_timestamp
+        data_type: VARCHAR
+        description: Campaign creation timestamp as a string from the source.
+      - name: description
+        data_type: VARCHAR
+        description: Campaign description text from the source.
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier used to join email performance aggregates; rows sharing the same campaign_id receive the same metrics.
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign display name from the source.
+      - name: program_id
+        data_type: VARCHAR
+        description: Owning program identifier from the source.
+      - name: campaign_type
+        data_type: VARCHAR
+        description: Campaign type classification from the source.
+      - name: updated_timestamp
+        data_type: VARCHAR
+        description: Last update timestamp as a string from the source.
+      - name: workspace_name
+        data_type: VARCHAR
+        description: Marketo workspace name of the campaign.
+      - name: computed_url
+        data_type: VARCHAR
+        description: Source-provided URL for the campaign record.
+      - name: flow_id
+        data_type: VARCHAR
+        description: Associated flow identifier from the source.
+      - name: folder_id
+        data_type: VARCHAR
+        description: Folder identifier containing the campaign.
+      - name: folder_type
+        data_type: VARCHAR
+        description: Type of the folder containing the campaign.
+      - name: is_communication_limit_enabled
+        data_type: BOOLEAN
+        description: Whether communication limits are enabled for the campaign.
+      - name: is_requestable
+        data_type: BOOLEAN
+        description: Whether the campaign can be requested.
+      - name: is_system
+        data_type: BOOLEAN
+        description: Whether the campaign is a system campaign.
+      - name: max_members
+        data_type: BIGINT
+        description: Maximum allowed campaign members.
+      - name: qualification_rule_type
+        data_type: VARCHAR
+        description: Qualification rule type for campaign membership.
+      - name: qualification_rule_interval
+        data_type: BIGINT
+        description: Numeric interval used in qualification rules.
+      - name: qualification_rule_unit
+        data_type: VARCHAR
+        description: Time unit for the qualification rule interval.
+      - name: recurrence_start_at
+        data_type: VARCHAR
+        description: Recurrence start timestamp as a string.
+      - name: recurrence_end_at
+        data_type: VARCHAR
+        description: Recurrence end timestamp as a string.
+      - name: recurrence_interval_type
+        data_type: VARCHAR
+        description: Type of recurrence interval (e.g., daily, weekly).
+      - name: recurrence_interval
+        data_type: BIGINT
+        description: Numeric recurrence interval value.
+      - name: recurrence_weekday_only
+        data_type: BOOLEAN
+        description: Whether recurrence occurs only on weekdays.
+      - name: recurrence_day_of_month
+        data_type: BIGINT
+        description: Day of month used for recurrence.
+      - name: recurrence_day_of_week
+        data_type: BIGINT
+        description: Day of week used for recurrence.
+      - name: recurrence_week_of_month
+        data_type: BIGINT
+        description: Week of month used for recurrence.
+      - name: smart_list_id
+        data_type: VARCHAR
+        description: Identifier of the smart list associated with the campaign.
+      - name: status
+        data_type: VARCHAR
+        description: Campaign operational status from the source.
+      - name: count_sends
+        data_type: BIGINT
+        description: Number of email_sends rows linked to this campaign_id; zero when no matching rows.
+      - name: count_opens
+        data_type: HUGEINT
+        description: Total opens across email_sends rows for this campaign_id; null values are ignored; zero when no matches.
+      - name: count_bounces
+        data_type: HUGEINT
+        description: Total bounces across email_sends rows for this campaign_id; null values are ignored; zero when no matches.
+      - name: count_clicks
+        data_type: HUGEINT
+        description: Total clicks across email_sends rows for this campaign_id; null values are ignored; zero when no matches.
+      - name: count_deliveries
+        data_type: HUGEINT
+        description: Total deliveries across email_sends rows for this campaign_id; null values are ignored; zero when no matches.
+      - name: count_unsubscribes
+        data_type: HUGEINT
+        description: Total unsubscribes across email_sends rows for this campaign_id; null values are ignored; zero when no matches.
+      - name: count_unique_opens
+        data_type: BIGINT
+        description: Distinct email_send_id that were opened for this campaign_id; null ids excluded; zero when none.
+      - name: count_unique_clicks
+        data_type: BIGINT
+        description: Distinct email_send_id that were clicked for this campaign_id; null ids excluded; zero when none.
+    - name: marketo__email_funnel_dashboard
+      description: Time-series email funnel with daily (date+campaign+template) and weekly (week+campaign) rows, including counts, unique recipients, engagement actions, rates, and week-over-week opened comparisons.
+      grain: 'Daily: one row per send_date, campaign_id, email_template_id; Weekly: one row per week_start, campaign_id'
+      source_models:
+      - marts.marketo__email_sends
+      business_logic: '- Filter input to email sends with a non-null email_send_id; use email_send_id, lead_id, campaign_id, email_template_id, activity_timestamp, flags (delivered/opened/clicked/bounced/unsubscribed), and per-email action counts (opens, clicks, bounces, deliveries, unsubscribes). - Build daily metrics by grouping on the send date (from activity_timestamp), campaign_id, and email_template_id: - Volumes: total sends, plus counts of sends where each flag is true; missing or false flags do not count. - Unique recipients: distinct lead_ids overall, and distinct lead_ids where each flag is true. - Action totals: sum per-email opens and clicks; NULL values are ignored in the sum; the sum is NULL only if all inputs are NULL. - Build weekly metrics by grouping daily results by the calendar week start (Monday) of send_date and campaign_id: - Weekly totals are sums of the daily metrics; weekly unique recipient metrics are sums of daily distinct counts (no re-deduplication across the week). - Compute previous-week benchmarks using the prior weekly totals per campaign ordered by week start. - Final output is a UNION ALL of: - Daily rows: analysis_type=''daily''; period_identifier is the string form of send_date; campaign_id and email_template_id populated; open/click action totals populated; prev_period_comparison=NULL; actual_date=send_date. - Weekly rows: analysis_type=''weekly''; period_identifier is the string form of week_start; email_template_id=NULL; open/click action totals NULL; prev_period_comparison is the percent change in opened vs the previous week within the same campaign, rounded to 2 decimals; actual_date=week_start. - Per-row rates: - Delivery rate is the percentage of delivered among sent; 0 when sent is 0. - Open rate is the percentage of opened among delivered; 0 when delivered is 0. - Click-through rate is the percentage of clicked among opened; 0 when opened is 0. - All rates are DOUBLE percentages rounded to 2 decimals. - Nulls and determinism: - Counts exclude NULLs; sums ignore NULLs and return NULL only if all inputs are NULL. - Week starts Monday; period_identifier is the default string cast of the DATE.'
+      columns:
+      - name: analysis_type
+        data_type: VARCHAR
+        description: 'Indicates aggregation level: ''daily'' for daily rows and ''weekly'' for weekly rows.'
+      - name: period_identifier
+        data_type: VARCHAR
+        description: String form of actual_date (send_date or week_start) using DuckDB’s default DATE-to-VARCHAR cast.
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign for the period grouping; carried from source and may be NULL.
+      - name: email_template_id
+        data_type: VARCHAR
+        description: Template for daily rows; NULL for weekly rows.
+      - name: period_emails_sent
+        data_type: HUGEINT
+        description: Total emails sent in the period; weekly rows sum daily totals.
+      - name: period_emails_delivered
+        data_type: HUGEINT
+        description: Emails marked delivered in the period; weekly rows sum daily delivered counts.
+      - name: period_emails_opened
+        data_type: HUGEINT
+        description: Emails with an open event in the period; weekly rows sum daily opened counts.
+      - name: period_emails_clicked
+        data_type: HUGEINT
+        description: Emails with a click event in the period; weekly rows sum daily clicked counts.
+      - name: period_emails_bounced
+        data_type: HUGEINT
+        description: Emails with a bounce event in the period; weekly rows sum daily bounced counts.
+      - name: period_emails_unsubscribed
+        data_type: HUGEINT
+        description: Emails with an unsubscribe event in the period; weekly rows sum daily unsubscribe counts.
+      - name: period_unique_recipients
+        data_type: HUGEINT
+        description: Distinct recipients in the period; weekly rows add daily distinct counts without re-deduplication.
+      - name: period_unique_opened
+        data_type: HUGEINT
+        description: Distinct recipients who opened in the period; weekly rows add daily distinct counts without re-deduplication.
+      - name: period_unique_clicked
+        data_type: HUGEINT
+        description: Distinct recipients who clicked in the period; weekly rows add daily distinct counts without re-deduplication.
+      - name: total_open_actions
+        data_type: HUGEINT
+        description: Total opens across emails in the period; daily rows sum per-email opens; weekly rows are NULL; may be NULL if all inputs are NULL.
+      - name: total_click_actions
+        data_type: HUGEINT
+        description: Total clicks across emails in the period; daily rows sum per-email clicks; weekly rows are NULL; may be NULL if all inputs are NULL.
+      - name: period_delivery_rate
+        data_type: DOUBLE
+        description: Percent of delivered among sent, rounded to 2 decimals; 0 when sent is 0.
+      - name: period_open_rate
+        data_type: DOUBLE
+        description: Percent of opened among delivered, rounded to 2 decimals; 0 when delivered is 0.
+      - name: period_click_through_rate
+        data_type: DOUBLE
+        description: Percent of clicked among opened, rounded to 2 decimals; 0 when opened is 0.
+      - name: prev_period_comparison
+        data_type: DOUBLE
+        description: Weekly-only percent change in opened vs previous week within the same campaign, rounded to 2 decimals; NULL for daily rows or when previous week is missing or either week has zero opens.
+      - name: actual_date
+        data_type: DATE
+        description: 'Date of the period: send_date for daily rows or week_start for weekly rows (week starts Monday).'
+    - name: marketo__lead_intelligence_simple
+      description: Simplified lead intelligence metrics and segments for non-deleted, non-merged leads with email engagement-derived scores and recommendations
+      grain: One row per lead_id from intermediate.int_marketo__lead where NOT is_deleted AND NOT is_merged
+      source_models:
+      - intermediate.int_marketo__lead
+      - marts.marketo__email_sends
+      business_logic: '- Build lead_base from intermediate.int_marketo__lead with lead_id, email, first_name, last_name, created_timestamp, updated_timestamp, filtering out deleted and merged leads. - Aggregate marts.marketo__email_sends by lead_id for records with a non-null lead_id: - total_emails_sent: count of all send records. - total_emails_opened: count of records flagged as opened. - total_emails_clicked: count of records flagged as clicked. - total_emails_bounced: count of records flagged as bounced. - total_unsubscribes: count of records flagged as unsubscribed. - unique_campaigns_participated: count of distinct non-null campaign_id. - first_email_sent_at: earliest activity_timestamp. - last_email_sent_at: latest activity_timestamp. - last_email_opened_at: latest activity_timestamp among records flagged as opened. - last_email_clicked_at: latest activity_timestamp among records flagged as clicked. - email_open_rate_pct: opens divided by sends, multiplied by 100, rounded to two decimals; set to 0 if sends are 0. - email_click_rate_pct: clicks divided by sends, multiplied by 100, rounded to two decimals; set to 0 if sends are 0. - total_lead_score: opens*5 plus clicks*10. - Derive segmentation per lead_id from the aggregated metrics: - rfm_segment by total_lead_score: Champion (>=100), Loyal Customer (>=50), Potential Loyalist (>=25), Regular Subscriber (>=10), At Risk (>=5), else Inactive. - value_tier by total_lead_score: Platinum (>=80), Gold (>=50), Silver (>=25), Bronze (>=10), else Basic. - lead_quality_tier by rates: A-Tier (open>=50 and click>=10), B-Tier (open>=30 and click>=5), C-Tier (open>=15), D-Tier (open>=5), else Unqualified. - Join lead_base to email_engagement and lead_segmentation with left joins on lead_id. - Default handling: - Counts, distincts, rates, and score are set to 0 if no engagement data is found. - rfm_segment defaults to "Unknown", value_tier to "Basic", and lead_quality_tier to "Unqualified" when segmentation is missing. - first/last timestamps remain null if the event never occurred. - days_since_last_* are the calendar days between the date of the last event and today; set to 9999 if the last event is missing. - lead_tenure_days is the calendar days between the lead''s created date and today. - lead_health_status (in order): Healthy if score>=50 and last open within 30 days; Good if score>=25 and within 60 days; Fair if score>=10 and within 90 days; Poor if score>=5; else Critical. - next_best_action (in order): Schedule Sales Call if click rate>=10 and last click within 7 days; Send Product Demo if open rate>=30; Re-engagement Campaign if last open is over 60 days ago and there has been at least one open; Welcome Series if there have been no opens; else Standard Campaign Flow. - last_updated_at is set to the current timestamp at query execution with time zone.'
+      columns:
+      - name: lead_id
+        data_type: VARCHAR
+        description: Unique Marketo lead identifier; one output row per lead_id
+        tests:
+        - not_null
+        - unique
+      - name: email
+        data_type: VARCHAR
+        description: Lead email address from intermediate.int_marketo__lead
+        tests:
+        - not_null
+      - name: first_name
+        data_type: VARCHAR
+        description: Lead first name from intermediate.int_marketo__lead
+      - name: last_name
+        data_type: VARCHAR
+        description: Lead last name from intermediate.int_marketo__lead
+      - name: lead_created_at
+        data_type: VARCHAR
+        description: Original created_timestamp from the lead source passed through as text
+      - name: total_emails_sent
+        data_type: BIGINT
+        description: Number of email sends for the lead; 0 if none
+        tests:
+        - total_emails_sent >= 0
+      - name: total_emails_opened
+        data_type: BIGINT
+        description: Number of sends flagged as opened; 0 if none
+        tests:
+        - total_emails_opened >= 0
+      - name: total_emails_clicked
+        data_type: BIGINT
+        description: Number of sends flagged as clicked; 0 if none
+        tests:
+        - total_emails_clicked >= 0
+      - name: total_emails_bounced
+        data_type: BIGINT
+        description: Number of sends flagged as bounced; 0 if none
+        tests:
+        - total_emails_bounced >= 0
+      - name: total_unsubscribes
+        data_type: BIGINT
+        description: Number of sends flagged as unsubscribed; 0 if none
+        tests:
+        - total_unsubscribes >= 0
+      - name: unique_campaigns_participated
+        data_type: BIGINT
+        description: Distinct non-null campaigns the lead participated in; 0 if none
+        tests:
+        - unique_campaigns_participated >= 0
+      - name: email_open_rate_pct
+        data_type: DOUBLE
+        description: Opens divided by sends times 100 rounded to two decimals; 0 when sends are 0
+        tests:
+        - email_open_rate_pct BETWEEN 0 AND 100
+      - name: email_click_rate_pct
+        data_type: DOUBLE
+        description: Clicks divided by sends times 100 rounded to two decimals; 0 when sends are 0
+        tests:
+        - email_click_rate_pct BETWEEN 0 AND 100
+      - name: total_lead_score
+        data_type: BIGINT
+        description: Engagement score computed as opens*5 plus clicks*10; 0 if no engagement
+        tests:
+        - total_lead_score >= 0
+      - name: first_email_sent_at
+        data_type: TIMESTAMP
+        description: Earliest email send timestamp; null if never sent
+      - name: last_email_sent_at
+        data_type: TIMESTAMP
+        description: Most recent email send timestamp; null if never sent
+      - name: last_email_opened_at
+        data_type: TIMESTAMP
+        description: Most recent open timestamp among send records flagged as opened; null if never opened
+      - name: last_email_clicked_at
+        data_type: TIMESTAMP
+        description: Most recent click timestamp among send records flagged as clicked; null if never clicked
+      - name: days_since_last_email
+        data_type: BIGINT
+        description: Calendar days between the date of last_email_sent_at and today; 9999 if missing
+        tests:
+        - days_since_last_email >= 0
+      - name: days_since_last_open
+        data_type: BIGINT
+        description: Calendar days between the date of last_email_opened_at and today; 9999 if missing
+        tests:
+        - days_since_last_open >= 0
+      - name: days_since_last_click
+        data_type: BIGINT
+        description: Calendar days between the date of last_email_clicked_at and today; 9999 if missing
+        tests:
+        - days_since_last_click >= 0
+      - name: rfm_segment
+        data_type: VARCHAR
+        description: Segment assigned by total_lead_score thresholds with default 'Unknown' when segmentation is missing
+      - name: value_tier
+        data_type: VARCHAR
+        description: Tier assigned by total_lead_score thresholds with default 'Basic' when segmentation is missing
+      - name: lead_quality_tier
+        data_type: VARCHAR
+        description: Quality tier assigned by open and click rate thresholds with default 'Unqualified' when segmentation is missing
+      - name: lead_tenure_days
+        data_type: BIGINT
+        description: Calendar days between the lead's created date and today
+        tests:
+        - lead_tenure_days >= 0
+      - name: lead_health_status
+        data_type: VARCHAR
+        description: 'Status determined by ordered rules on score and recency of last open: Healthy, Good, Fair, Poor, or Critical'
+      - name: next_best_action
+        data_type: VARCHAR
+        description: Recommended action determined by ordered rules using click/open rates and recency
+      - name: last_updated_at
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Timestamp set at query execution time with time zone
+    - name: marketo__operational_health_simple
+      description: Simplified marketing operations health snapshot with deliverability, lead, campaign, and stability metrics
+      grain: Single-row snapshot at query time
+      source_models:
+      - marts.marketo__email_sends
+      - intermediate.int_marketo__lead
+      business_logic: '- Build daily_email_volume from marts.marketo__email_sends where activity_timestamp is present, grouped by the calendar date of activity_timestamp: - Per-day counts: total emails sent, unique recipients, active campaigns, unique templates, delivered, opened, clicked, bounced, unsubscribes. - Daily rates as percentages rounded to 2 decimals: - daily_delivery_rate_pct = delivered / total * 100; if total = 0 then 0. - daily_open_rate_pct = opened / delivered * 100; if delivered = 0 then 0. - daily_bounce_rate_pct = bounced / total * 100; if total = 0 then 0. - Compute system_health_indicators over daily_email_volume: - system_volume_classification from the average daily_emails_sent: ≥1000 High Volume System; ≥500 Medium Volume System; ≥100 Low Volume System; else Minimal Volume System. - delivery_rate_volatility, open_rate_volatility, bounce_rate_volatility are the standard deviations of the corresponding daily percentage metrics. - delivery_stability from the standard deviation of daily_delivery_rate_pct: ≤5 Stable; ≤10 Moderate Variance; else High Variance. - days_of_data = number of daily rows; earliest_activity_date = minimum activity_date; latest_activity_date = maximum activity_date. - Compute deliverability_health across all marts.marketo__email_sends: - Totals: total_email_attempts (all sends), successful_deliveries (delivery true), total_bounces (bounce true). - overall_delivery_rate_pct = delivered / attempts * 100 (2 decimals); overall_bounce_rate_pct = bounces / attempts * 100 (2 decimals). - recent_delivery_rate_pct over the last 30 days: deliveries in last 30 days / total activity in last 30 days * 100 (2 decimals); if no activity in last 30 days then 0. - Compute campaign_health by first aggregating per non-null campaign_id in marts.marketo__email_sends: - Per-campaign averages: open rate = average of opened (as percent); bounce rate = average of bounced (as percent). - Summaries: total_campaigns = distinct campaign_ids; healthy_campaigns = distinct campaigns with open rate ≥25%; critical_campaigns = distinct campaigns with open rate <5%; campaigns_with_bounce_issues = distinct campaigns with bounce rate >10%. - Compute lead_database_health from intermediate.int_marketo__lead l left joined to marts.marketo__email_sends es on lead_id, filtering out deleted or merged leads: - Counts are over the joined rows (not distinct leads): engaged_leads = rows with a match and a click; moderately_engaged_leads = rows with a match and opened but not clicked; low_engaged_leads = rows with a match and not opened; inactive_leads = rows with no matching send; total_leads = total joined rows. - engaged_leads_pct = engaged_leads divided by total joined rows * 100 (2 decimals). - at_risk_leads_pct = rows with no match or with delivery false divided by total joined rows * 100 (2 decimals). - avg_lead_score = average of (count_opens*5 + count_clicks*10) for matched rows, using 0 for no-activity leads; rounded to 2 decimals in the final output. - Final output produces a single-row snapshot with: - health_check_date and health_check_timestamp taken at query time. - deliverability_health_status from overall_delivery_rate_pct: ≥95 Excellent; ≥90 Good; ≥85 Fair; ≥80 Poor; else Critical. - lead_database_health_status from engaged_leads_pct and at_risk_leads_pct: ≥40% engaged and ≤20% at-risk = Excellent; ≥25% and ≤30% = Good; ≥15% and ≤40% = Fair; ≥5% = Poor; else Critical. - healthy_campaigns_pct = healthy_campaigns / total_campaigns * 100 (2 decimals); if total_campaigns = 0 then 0. - Recent 7-day trends as averages of daily_email_volume where activity_date is within the last 7 days; returns NULL if no such days exist. - Volatility metrics are rounded to 2 decimals. - overall_health_score is the sum of four point components based on thresholds (deliverability, engagement, campaign mix, stability); the sum is rounded and stored as an integer (range ~35–100). - primary_recommendation chosen in order: if overall_delivery_rate_pct < 85 then focus on deliverability; else if at_risk_leads_pct > 30 then re-engage leads; else if critical_campaigns > 3 then optimize campaigns; else if delivery_stability is High Variance then stabilize sending; otherwise continue current efforts.'
+      columns:
+      - name: health_check_date
+        data_type: DATE
+        description: Current date at query time for this snapshot
+        tests:
+        - not_null
+      - name: health_check_timestamp
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Current timestamp at query time for this snapshot
+        tests:
+        - not_null
+      - name: system_volume_classification
+        data_type: VARCHAR
+        description: Classification from average daily_emails_sent (≥1000 High, ≥500 Medium, ≥100 Low, else Minimal)
+      - name: delivery_stability
+        data_type: VARCHAR
+        description: Stability based on standard deviation of daily_delivery_rate_pct (≤5 Stable, ≤10 Moderate Variance, else High Variance)
+      - name: days_of_data
+        data_type: BIGINT
+        description: Number of daily_email_volume rows included in analysis
+      - name: earliest_activity_date
+        data_type: DATE
+        description: Minimum activity_date present in daily_email_volume
+      - name: latest_activity_date
+        data_type: DATE
+        description: Maximum activity_date present in daily_email_volume
+      - name: total_email_attempts
+        data_type: BIGINT
+        description: Total email send records counted across all time
+      - name: successful_deliveries
+        data_type: BIGINT
+        description: Count of sends where delivery was true
+      - name: total_bounces
+        data_type: BIGINT
+        description: Count of sends where bounce was true
+      - name: overall_delivery_rate_pct
+        data_type: DOUBLE
+        description: Delivered divided by attempts times 100, rounded to 2 decimals over all sends
+      - name: overall_bounce_rate_pct
+        data_type: DOUBLE
+        description: Bounces divided by attempts times 100, rounded to 2 decimals over all sends
+      - name: recent_delivery_rate_pct
+        data_type: DOUBLE
+        description: Deliveries divided by total activity in the last 30 days times 100, rounded to 2 decimals; 0 if no activity
+      - name: deliverability_health_status
+        data_type: VARCHAR
+        description: Status from overall_delivery_rate_pct thresholds (≥95 Excellent, ≥90 Good, ≥85 Fair, ≥80 Poor, else Critical)
+      - name: total_leads
+        data_type: BIGINT
+        description: Total joined row count after excluding deleted or merged leads
+      - name: engaged_leads
+        data_type: BIGINT
+        description: Joined row count with a matched lead and a click
+      - name: moderately_engaged_leads
+        data_type: BIGINT
+        description: Joined row count with a matched lead and opened but not clicked
+      - name: low_engaged_leads
+        data_type: BIGINT
+        description: Joined row count with a matched lead and not opened
+      - name: inactive_leads
+        data_type: BIGINT
+        description: Joined row count where no matching email_sends row exists
+      - name: engaged_leads_pct
+        data_type: DOUBLE
+        description: Engaged_leads divided by total joined rows times 100, rounded to 2 decimals
+      - name: at_risk_leads_pct
+        data_type: DOUBLE
+        description: Rows with no match or delivery false divided by total joined rows times 100, rounded to 2 decimals
+      - name: avg_lead_score
+        data_type: DOUBLE
+        description: Average of (count_opens*5 + count_clicks*10) using 0 for no-activity leads, rounded to 2 decimals
+      - name: lead_database_health_status
+        data_type: VARCHAR
+        description: Status from engaged_leads_pct and at_risk_leads_pct thresholds (Excellent, Good, Fair, Poor, Critical)
+      - name: total_campaigns
+        data_type: BIGINT
+        description: Count of distinct campaign_id with activity
+      - name: healthy_campaigns
+        data_type: BIGINT
+        description: Count of distinct campaigns with average open rate ≥25%
+      - name: critical_campaigns
+        data_type: BIGINT
+        description: Count of distinct campaigns with average open rate <5%
+      - name: campaigns_with_bounce_issues
+        data_type: BIGINT
+        description: Count of distinct campaigns with average bounce rate >10%
+      - name: healthy_campaigns_pct
+        data_type: DOUBLE
+        description: Healthy_campaigns divided by total_campaigns times 100, rounded to 2 decimals; 0 if total_campaigns = 0
+      - name: avg_daily_volume_last_7_days
+        data_type: DOUBLE
+        description: Average daily_emails_sent for activity_date in the last 7 days; NULL if none
+      - name: avg_delivery_rate_last_7_days
+        data_type: DOUBLE
+        description: Average daily_delivery_rate_pct for activity_date in the last 7 days; NULL if none
+      - name: avg_open_rate_last_7_days
+        data_type: DOUBLE
+        description: Average daily_open_rate_pct for activity_date in the last 7 days; NULL if none
+      - name: delivery_rate_volatility
+        data_type: DOUBLE
+        description: Standard deviation of daily_delivery_rate_pct rounded to 2 decimals; may be NULL if insufficient days
+      - name: open_rate_volatility
+        data_type: DOUBLE
+        description: Standard deviation of daily_open_rate_pct rounded to 2 decimals; may be NULL if insufficient days
+      - name: bounce_rate_volatility
+        data_type: DOUBLE
+        description: Standard deviation of daily_bounce_rate_pct rounded to 2 decimals; may be NULL if insufficient days
+      - name: overall_health_score
+        data_type: INTEGER
+        description: Weighted composite score (integer 35–100) from deliverability, engagement, campaign mix, and stability thresholds
+      - name: primary_recommendation
+        data_type: VARCHAR
+        description: Recommendation selected by precedence on deliverability, at-risk leads, critical campaigns, stability, else continue current efforts
+    - name: marketo__email_stats__by_campaign
+      description: Email engagement metrics aggregated per campaign_id from marts.marketo__email_sends.
+      grain: One row per non-null campaign_id
+      source_models:
+      - marts.marketo__email_sends
+      business_logic: '- Start from marts.marketo__email_sends and keep only rows where campaign_id is not null. - Group rows by campaign_id. - Metrics: - count_sends: number of rows in the group (every row counts). - count_opens, count_bounces, count_clicks, count_deliveries, count_unsubscribes: total of the respective field across rows; null values are ignored; if all values are null within a group, the result is null. - count_unique_opens: number of distinct email_send_id values where was_opened is true; null email_send_id are ignored; the same id is counted once; returns 0 if none qualify. - count_unique_clicks: number of distinct email_send_id values where was_clicked is true; same null and deduplication rules as unique opens; returns 0 if none qualify. - Output is one row per campaign_id with no additional filtering, ordering, or deduplication.'
+      columns:
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier used as the grouping key; non-null and unique per row in this output.
+        tests:
+        - not_null
+        - unique
+      - name: count_sends
+        data_type: BIGINT
+        description: Total number of email_sends rows for the campaign after excluding null campaign_id.
+      - name: count_opens
+        data_type: HUGEINT
+        description: Total of count_opens across rows in the campaign; nulls are ignored; returns null if all values are null.
+      - name: count_bounces
+        data_type: HUGEINT
+        description: Total of count_bounces across rows in the campaign; nulls are ignored; returns null if all values are null.
+      - name: count_clicks
+        data_type: HUGEINT
+        description: Total of count_clicks across rows in the campaign; nulls are ignored; returns null if all values are null.
+      - name: count_deliveries
+        data_type: HUGEINT
+        description: Total of count_deliveries across rows in the campaign; nulls are ignored; returns null if all values are null.
+      - name: count_unsubscribes
+        data_type: HUGEINT
+        description: Total of count_unsubscribes across rows in the campaign; nulls are ignored; returns null if all values are null.
+      - name: count_unique_opens
+        data_type: BIGINT
+        description: Distinct count of email_send_id with was_opened true within the campaign; null ids ignored; duplicates counted once; returns 0 if none qualify.
+      - name: count_unique_clicks
+        data_type: BIGINT
+        description: Distinct count of email_send_id with was_clicked true within the campaign; null ids ignored; duplicates counted once; returns 0 if none qualify.
+    - name: marketo__email_stats__by_email_template
+      description: Email engagement statistics aggregated per email_template_id from marts.marketo__email_sends
+      grain: One row per email_template_id
+      source_models:
+      - marts.marketo__email_sends
+      business_logic: '- Use all rows from marts.marketo__email_sends and discard any with a null email_template_id. - Group by email_template_id; output exactly one row per unique email_template_id. - For each group: - count_sends: total number of rows. - count_opens / count_bounces / count_clicks / count_deliveries / count_unsubscribes: add up the respective per-row values; nulls do not contribute; if every input is null, the result is null. - count_unique_opens: number of distinct email_send_id where was_opened is true; rows where was_opened is false or null do not contribute; null email_send_id are ignored; result is 0 if none qualify. - count_unique_clicks: number of distinct email_send_id where was_clicked is true; rows where was_clicked is false or null do not contribute; null email_send_id are ignored; result is 0 if none qualify.'
+      columns:
+      - name: email_template_id
+        data_type: VARCHAR
+        description: Template identifier for the group; rows with null are excluded and one output row is produced per unique value
+        tests:
+        - not_null
+        - unique
+      - name: count_sends
+        data_type: BIGINT
+        description: Total rows in the group; always non-null and counts all rows regardless of other column values
+        tests:
+        - not_null
+      - name: count_opens
+        data_type: HUGEINT
+        description: Group total of count_opens; ignores nulls and is null only if all inputs are null
+      - name: count_bounces
+        data_type: HUGEINT
+        description: Group total of count_bounces; ignores nulls and is null only if all inputs are null
+      - name: count_clicks
+        data_type: HUGEINT
+        description: Group total of count_clicks; ignores nulls and is null only if all inputs are null
+      - name: count_deliveries
+        data_type: HUGEINT
+        description: Group total of count_deliveries; ignores nulls and is null only if all inputs are null
+      - name: count_unsubscribes
+        data_type: HUGEINT
+        description: Group total of count_unsubscribes; ignores nulls and is null only if all inputs are null
+      - name: count_unique_opens
+        data_type: BIGINT
+        description: Distinct email_send_id count in the group where was_opened is true; excludes null ids and non-true rows; returns 0 if none
+        tests:
+        - not_null
+      - name: count_unique_clicks
+        data_type: BIGINT
+        description: Distinct email_send_id count in the group where was_clicked is true; excludes null ids and non-true rows; returns 0 if none
+        tests:
+        - not_null
+    - name: marketo__email_stats__by_lead
+      description: Email engagement metrics aggregated per lead from marts.marketo__email_sends.
+      grain: One row per lead_id
+      source_models:
+      - marts.marketo__email_sends
+      business_logic: '- Read input rows from marts.marketo__email_sends using: lead_id, email_send_id, count_opens, count_bounces, count_clicks, count_deliveries, count_unsubscribes, was_opened, was_clicked. - Exclude rows with NULL lead_id; group remaining rows by lead_id to produce one row per lead_id. - Metrics per group: - count_sends: number of rows in the group (no filtering; duplicates remain). - count_opens / count_bounces / count_clicks / count_deliveries / count_unsubscribes: add the respective values across the group; NULLs are ignored; if every value is NULL the result is NULL; duplicates remain. - count_unique_opens: number of distinct email_send_id among rows where was_opened is TRUE; rows where was_opened is not TRUE or is NULL are ignored; NULL email_send_id are not counted; returns 0 if none. - count_unique_clicks: number of distinct email_send_id among rows where was_clicked is TRUE; rows where was_clicked is not TRUE or is NULL are ignored; NULL email_send_id are not counted; returns 0 if none. - No joins, sorting, or additional filters beyond the lead_id IS NOT NULL predicate.'
+      columns:
+      - name: lead_id
+        data_type: VARCHAR
+        description: Lead identifier used for grouping; rows with NULL lead_id are excluded, yielding exactly one row per lead_id.
+        tests:
+        - not_null
+        - unique
+      - name: count_sends
+        data_type: BIGINT
+        description: Number of email_send rows for the lead; duplicates counted; always ≥ 1 and never NULL.
+        tests:
+        - not_null
+      - name: count_opens
+        data_type: HUGEINT
+        description: Total opens across sends; NULLs ignored in the sum; returns NULL only if all values are NULL.
+      - name: count_bounces
+        data_type: HUGEINT
+        description: Total bounces across sends; NULLs ignored in the sum; returns NULL only if all values are NULL.
+      - name: count_clicks
+        data_type: HUGEINT
+        description: Total clicks across sends; NULLs ignored in the sum; returns NULL only if all values are NULL.
+      - name: count_deliveries
+        data_type: HUGEINT
+        description: Total deliveries across sends; NULLs ignored in the sum; returns NULL only if all values are NULL.
+      - name: count_unsubscribes
+        data_type: HUGEINT
+        description: Total unsubscribes across sends; NULLs ignored in the sum; returns NULL only if all values are NULL.
+      - name: count_unique_opens
+        data_type: BIGINT
+        description: Distinct sends opened where was_opened is TRUE; NULL email_send_id excluded; returns 0 if none; never NULL.
+        tests:
+        - not_null
+      - name: count_unique_clicks
+        data_type: BIGINT
+        description: Distinct sends clicked where was_clicked is TRUE; NULL email_send_id excluded; returns 0 if none; never NULL.
+        tests:
+        - not_null
+    - name: marketo__email_stats__by_program
+      description: Email engagement metrics aggregated per non-null program_id from marts.marketo__email_sends
+      grain: One row per non-null program_id present in marts.marketo__email_sends
+      source_models:
+      - marts.marketo__email_sends
+      business_logic: '- Start from marts.marketo__email_sends and keep only rows where program_id is not null. - Group rows by program_id to produce one output row per program. - count_sends: number of rows in the group (at least 1). - count_opens, count_bounces, count_clicks, count_deliveries, count_unsubscribes: add the respective column values across rows in the group; null inputs are ignored; if every value is null, the result is null. - count_unique_opens: number of distinct email_send_id in the group where was_opened is true; false or null flags are not counted; null email_send_id are excluded; duplicates count once. - count_unique_clicks: number of distinct email_send_id in the group where was_clicked is true; false or null flags are not counted; null email_send_id are excluded; duplicates count once. - No explicit ordering is applied to the final result.'
+      columns:
+      - name: program_id
+        data_type: VARCHAR
+        description: Non-null program identifier used for grouping; one row per program_id
+        tests:
+        - not_null
+        - unique
+      - name: count_sends
+        data_type: BIGINT
+        description: Number of email_send rows in the program (at least 1)
+        tests:
+        - not_null
+      - name: count_opens
+        data_type: HUGEINT
+        description: Total opens across rows in the program; null inputs ignored; null if all values are null
+      - name: count_bounces
+        data_type: HUGEINT
+        description: Total bounces across rows in the program; null inputs ignored; null if all values are null
+      - name: count_clicks
+        data_type: HUGEINT
+        description: Total clicks across rows in the program; null inputs ignored; null if all values are null
+      - name: count_deliveries
+        data_type: HUGEINT
+        description: Total deliveries across rows in the program; null inputs ignored; null if all values are null
+      - name: count_unsubscribes
+        data_type: HUGEINT
+        description: Total unsubscribes across rows in the program; null inputs ignored; null if all values are null
+      - name: count_unique_opens
+        data_type: BIGINT
+        description: Distinct email_send_id with was_opened true in the program; null ids excluded; duplicates count once
+        tests:
+        - not_null
+      - name: count_unique_clicks
+        data_type: BIGINT
+        description: Distinct email_send_id with was_clicked true in the program; null ids excluded; duplicates count once
+        tests:
+        - not_null
+    - name: marketo__email_templates
+      description: Email template dimension (most recent version) joined to aggregated send engagement metrics
+      grain: One row per email_template_id (most recent version only)
+      source_models:
+      - staging.stg_marketo__email_template_history
+      - marts.marketo__email_sends
+      business_logic: '- From staging.stg_marketo__email_template_history, keep only rows marked as the most recent version; these provide template metadata. - From marts.marketo__email_sends, exclude rows where email_template_id is null and aggregate by email_template_id: - count_sends: number of send rows. - count_opens, count_bounces, count_clicks, count_deliveries, count_unsubscribes: sum of the respective per-send counts; null values in those fields are ignored by the summation. - count_unique_opens: number of distinct email_send_id where was_opened is true. - count_unique_clicks: number of distinct email_send_id where was_clicked is true. - Left join the template metadata to the aggregated stats on email_template_id. - If a template has no matching sends, output 0 for all metrics; there is exactly one row per email_template_id from the most recent-version metadata.'
+      columns:
+      - name: created_timestamp
+        data_type: VARCHAR
+        description: Template creation timestamp from the most recent version record (raw string)
+      - name: description
+        data_type: VARCHAR
+        description: Template description text from Marketo
+      - name: folder_id
+        data_type: VARCHAR
+        description: ID of the Marketo folder containing the template
+      - name: folder_type
+        data_type: VARCHAR
+        description: Type of folder containing the template
+      - name: from_email
+        data_type: VARCHAR
+        description: Configured sender email address for the template
+      - name: from_name
+        data_type: VARCHAR
+        description: Configured sender name for the template
+      - name: email_template_id
+        data_type: VARCHAR
+        description: Template identifier; primary grouping and join key; exactly one output row per value
+        tests:
+        - not_null
+        - unique
+      - name: email_template_name
+        data_type: VARCHAR
+        description: Display name of the email template
+      - name: operational
+        data_type: BOOLEAN
+        description: Operational email flag as stored in Marketo
+      - name: program_id
+        data_type: VARCHAR
+        description: Associated Marketo program ID for the template
+      - name: publish_to_msi
+        data_type: BOOLEAN
+        description: Flag indicating publish to MSI
+      - name: reply_email
+        data_type: VARCHAR
+        description: Configured reply-to email address
+      - name: email_template_status
+        data_type: VARCHAR
+        description: Template status string from Marketo
+      - name: subject
+        data_type: VARCHAR
+        description: Configured email subject line
+      - name: template
+        data_type: VARCHAR
+        description: Template content/type reference as stored (raw string)
+      - name: text_only
+        data_type: BOOLEAN
+        description: Flag indicating the template is text-only
+      - name: updated_timestamp
+        data_type: VARCHAR
+        description: Last update timestamp from the most recent version record (raw string)
+      - name: url
+        data_type: VARCHAR
+        description: URL or path for the template asset
+      - name: version
+        data_type: DOUBLE
+        description: Numeric version of the template record
+      - name: web_view
+        data_type: BOOLEAN
+        description: Flag indicating web view availability
+      - name: workspace
+        data_type: VARCHAR
+        description: Workspace name associated with the template
+      - name: is_most_recent_version
+        data_type: BOOLEAN
+        description: Always TRUE; rows are filtered to the most recent template version
+      - name: count_sends
+        data_type: BIGINT
+        description: Number of send records for this template; 0 if none
+        tests:
+        - not_null
+      - name: count_opens
+        data_type: HUGEINT
+        description: Sum of open counts across sends for this template; nulls ignored; 0 if none
+        tests:
+        - not_null
+      - name: count_bounces
+        data_type: HUGEINT
+        description: Sum of bounce counts across sends for this template; nulls ignored; 0 if none
+        tests:
+        - not_null
+      - name: count_clicks
+        data_type: HUGEINT
+        description: Sum of click counts across sends for this template; nulls ignored; 0 if none
+        tests:
+        - not_null
+      - name: count_deliveries
+        data_type: HUGEINT
+        description: Sum of delivery counts across sends for this template; nulls ignored; 0 if none
+        tests:
+        - not_null
+      - name: count_unsubscribes
+        data_type: HUGEINT
+        description: Sum of unsubscribe counts across sends for this template; nulls ignored; 0 if none
+        tests:
+        - not_null
+      - name: count_unique_opens
+        data_type: BIGINT
+        description: Distinct send count where was_opened is true for this template; 0 if none
+        tests:
+        - not_null
+      - name: count_unique_clicks
+        data_type: BIGINT
+        description: Distinct send count where was_clicked is true for this template; 0 if none
+        tests:
+        - not_null
+    - name: marketo__lead_history
+      description: Daily lead field history built from a calendar spine joined to change data at valid_to, with values carried backward from change days.
+      grain: One row per lead_id per date_day
+      source_models:
+      - intermediate.marketo__change_data_scd
+      - intermediate.marketo__lead_calendar_spine
+      business_logic: '- Build a daily spine of (lead_id, date_day) from intermediate.marketo__lead_calendar_spine and keep dates up to today. - Left join the spine to intermediate.marketo__change_data_scd on lead_id and date_day equals the change record''s valid_to; mark whether a change row exists for that date. - For each lead_id, traverse dates in descending order and count change occurrences cumulatively; this count defines contiguous partitions that start on a change day and extend backward to the prior change. - For each field (email_c, first_name_c, last_name_c, company_c, lead_status_c), assign the value recorded on the partition’s starting change day to all dates within that partition (i.e., carried backward until the previous change). - Null handling: if the change day’s field value is NULL, NULL persists throughout that partition; dates after the most recent change remain NULL until a change occurs. - Create a deterministic surrogate key by hashing the concatenation of date_day and lead_id, using "_" as a separator and empty strings for any missing components. - Output columns: date_day, lead_id, email_c, first_name_c, last_name_c, company_c, lead_status_c, lead_history_id.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar date from the spine restricted to today and earlier; used to build the surrogate key.
+        tests:
+        - not_null
+      - name: lead_id
+        data_type: VARCHAR
+        description: Lead identifier from the calendar spine; used to build the surrogate key.
+        tests:
+        - not_null
+      - name: email_c
+        data_type: VARCHAR
+        description: Email value set on the change day and carried backward to earlier dates until the previous change; NULLs propagate and dates after the latest change remain NULL.
+      - name: first_name_c
+        data_type: VARCHAR
+        description: First name set on the change day and carried backward to earlier dates until the previous change; NULLs propagate and dates after the latest change remain NULL.
+      - name: last_name_c
+        data_type: VARCHAR
+        description: Last name set on the change day and carried backward to earlier dates until the previous change; NULLs propagate and dates after the latest change remain NULL.
+      - name: company_c
+        data_type: VARCHAR
+        description: Company set on the change day and carried backward to earlier dates until the previous change; NULLs propagate and dates after the latest change remain NULL.
+      - name: lead_status_c
+        data_type: VARCHAR
+        description: Lead status set on the change day and carried backward to earlier dates until the previous change; NULLs propagate and dates after the latest change remain NULL.
+      - name: lead_history_id
+        data_type: VARCHAR
+        description: Deterministic surrogate key created by hashing date_day and lead_id joined with '_' and replacing any NULLs with empty strings.
+        tests:
+        - not_null
+        - unique
+    - name: marketo__programs
+      description: Marketo program dimension enriched with aggregated email send statistics
+      grain: One row per program record from staging.stg_marketo__program
+      source_models:
+      - staging.stg_marketo__program
+      - marts.marketo__email_sends
+      business_logic: '- Start with all rows and columns from staging.stg_marketo__program as the program base. - From marts.marketo__email_sends, exclude rows where program_id is null, then aggregate by program_id: - count_sends: number of email_sends rows. - count_opens: sum of per-row count_opens; nulls in that field are ignored. - count_bounces: sum of per-row count_bounces; nulls ignored. - count_clicks: sum of per-row count_clicks; nulls ignored. - count_deliveries: sum of per-row count_deliveries; nulls ignored. - count_unsubscribes: sum of per-row count_unsubscribes; nulls ignored. - count_unique_opens: number of distinct email_send_id with was_opened true; null ids not counted. - count_unique_clicks: number of distinct email_send_id with was_clicked true; null ids not counted. - Left join the aggregated statistics to the programs on program_id. - For each aggregated metric, if no matching stats exist, output 0. - Output all program columns plus the eight aggregated metrics; no additional filtering or ordering is applied.'
+      columns:
+      - name: program_id
+        data_type: VARCHAR
+        description: Primary key from Marketo and join key to email statistics
+        tests:
+        - not_null
+        - unique
+      - name: created_timestamp
+        data_type: VARCHAR
+        description: Creation timestamp from source; no transformation
+      - name: description
+        data_type: VARCHAR
+        description: Program description from source; no transformation
+      - name: program_name
+        data_type: VARCHAR
+        description: Program name from source; no transformation
+      - name: program_status
+        data_type: VARCHAR
+        description: Program status from source; no transformation
+      - name: program_type
+        data_type: VARCHAR
+        description: Program type from source; no transformation
+      - name: updated_timestamp
+        data_type: VARCHAR
+        description: Last updated timestamp from source; no transformation
+      - name: workspace_name
+        data_type: VARCHAR
+        description: Workspace name from source; no transformation
+      - name: channel
+        data_type: VARCHAR
+        description: Program channel from source; no transformation
+      - name: sfdc_id
+        data_type: VARCHAR
+        description: Associated Salesforce ID from source; no transformation
+      - name: sfdc_name
+        data_type: VARCHAR
+        description: Associated Salesforce name from source; no transformation
+      - name: start_date
+        data_type: DATE
+        description: Program start date from source; no transformation
+      - name: end_date
+        data_type: DATE
+        description: Program end date from source; no transformation
+      - name: url
+        data_type: VARCHAR
+        description: Program URL from source; no transformation
+      - name: count_sends
+        data_type: BIGINT
+        description: Number of email_sends rows linked to the program; each row counts; 0 when none
+      - name: count_opens
+        data_type: HUGEINT
+        description: Sum of count_opens across email_sends for the program; nulls ignored; 0 when none
+      - name: count_bounces
+        data_type: HUGEINT
+        description: Sum of count_bounces across email_sends for the program; nulls ignored; 0 when none
+      - name: count_clicks
+        data_type: HUGEINT
+        description: Sum of count_clicks across email_sends for the program; nulls ignored; 0 when none
+      - name: count_deliveries
+        data_type: HUGEINT
+        description: Sum of count_deliveries across email_sends for the program; nulls ignored; 0 when none
+      - name: count_unsubscribes
+        data_type: HUGEINT
+        description: Sum of count_unsubscribes across email_sends for the program; nulls ignored; 0 when none
+      - name: count_unique_opens
+        data_type: BIGINT
+        description: Distinct email_send_id count with was_opened true for the program; null ids excluded; 0 when none
+      - name: count_unique_clicks
+        data_type: BIGINT
+        description: Distinct email_send_id count with was_clicked true for the program; null ids excluded; 0 when none
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.

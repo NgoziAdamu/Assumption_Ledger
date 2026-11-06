@@ -1,0 +1,2026 @@
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+
+
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Google Ads advertising data transformations"
+  author: "Data Engineering Team"
+  created_date: "2025-09-08"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+  source_system: "Google Ads API"
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw Google Ads data into clean, validated, and standardized staging tables suitable for analytical processing. This phase handles data quality issues, standardizes formats, and ensures referential integrity across the hierarchical Google Ads data structure."
+
+  # IMPLEMENTATION NOTES:
+  # Due to raw data source limitations and complexity, tables are implemented using two approaches:
+  # 1. SIMPLIFIED 2-CTE structure: base -> validated (for basic config tables and performance metrics with limited source columns)
+  # 2. FULL 3-CTE structure: base -> validated -> metrics_calculated (for advanced analytics with comprehensive performance data)
+  #
+  # SIMPLIFIED Tables (2-CTE): account_history, campaign_history, campaign_stats, ad_history, ad_group_stats, ad_stats, ad_group_criterion_history, search_term_keyword_stats
+  # FULL Tables (3-CTE): account_stats, keyword_stats (these include complex calculated performance metrics)
+
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "CAST(date_field AS DATE)", "normalize phone numbers"]
+
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+    filter_row:
+      description: "Filter entire row when fields don't meet validation criteria, mainly used in simplified 2-CTE tables"
+      examples: ["WHERE ad_network_type IS NULL OR ad_network_type IN (...)"]
+
+  tables:
+    - name: stg_google_ads__account_history
+      description: "Cleaned and validated Google Ads account configuration data with current state tracking"
+      source_table: "raw.account_history_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: updated_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+          validation_rules:
+            - rule: "updated_at <= CURRENT_TIMESTAMP"
+              on_failure: delete_row
+        - name: currency_code
+          data_type: VARCHAR(3)
+          constraints: [not_null]
+        - name: auto_tagging_enabled
+          data_type: BOOLEAN
+        - name: time_zone
+          data_type: VARCHAR(50)
+        - name: account_name
+          data_type: VARCHAR(255)
+          constraints: [not_null]
+        - name: is_most_recent_record
+          data_type: BOOLEAN
+          constraints: [not_null]
+
+    - name: stg_google_ads__campaign_history
+      description: "Cleaned and validated Google Ads campaign configuration data with hierarchical relationships"
+      source_table: "raw.campaign_history_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: campaign_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: updated_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: campaign_name
+          data_type: VARCHAR(255)
+          constraints: [not_null]
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: advertising_channel_type
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "advertising_channel_type IN ('SEARCH', 'DISPLAY', 'SHOPPING', 'VIDEO', 'MULTI_CHANNEL')"
+              on_failure: nullify_field
+        - name: advertising_channel_subtype
+          data_type: VARCHAR(100)
+        - name: start_date
+          data_type: DATE
+          validation_rules:
+            - rule: "start_date <= CURRENT_DATE"
+              on_failure: delete_row
+        - name: end_date
+          data_type: DATE
+          validation_rules:
+            - rule: "end_date IS NULL OR end_date >= start_date"
+              on_failure: delete_row
+        - name: serving_status
+          data_type: VARCHAR(20)
+        - name: status
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: tracking_url_template
+          data_type: VARCHAR(500)
+        - name: is_most_recent_record
+          data_type: BOOLEAN
+          constraints: [not_null]
+
+    - name: stg_google_ads__campaign_stats
+      description: "Cleaned and validated daily campaign performance metrics with computed cost conversions"
+      source_table: "raw.campaign_stats_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+          validation_rules:
+            - rule: "date_day <= CURRENT_DATE"
+              on_failure: delete_row
+            - rule: "date_day >= '2020-01-01'"
+              on_failure: delete_row
+        - name: campaign_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: ad_network_type
+          data_type: VARCHAR(20)
+        - name: device
+          data_type: VARCHAR(20)
+        - name: clicks
+          data_type: BIGINT
+        - name: spend
+          data_type: DECIMAL(15,2)
+        - name: impressions
+          data_type: BIGINT
+        - name: conversions
+          data_type: DECIMAL(10,2)
+        - name: conversions_value
+          data_type: DECIMAL(15,2)
+        - name: view_through_conversions
+          data_type: BIGINT
+
+    - name: stg_google_ads__ad_group_history
+      description: "Cleaned and validated ad group configuration data maintaining campaign hierarchy"
+      source_table: "raw.ad_group_history_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: ad_group_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: updated_at
+          data_type: TIMESTAMP
+        - name: ad_group_name
+          data_type: VARCHAR(255)
+        - name: campaign_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: ad_group_type
+          data_type: VARCHAR(50)
+        - name: status
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: is_most_recent_record
+          data_type: BOOLEAN
+          constraints: [not_null]
+
+    - name: stg_google_ads__keyword_stats
+      description: "Cleaned and validated keyword-level performance metrics with match type standardization"
+      source_table: "raw.keyword_stats_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+          validation_rules:
+            - rule: "date_day <= CURRENT_DATE"
+              on_failure: delete_row
+            - rule: "date_day >= '2020-01-01'"
+              on_failure: delete_row
+        - name: ad_group_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: campaign_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: criterion_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: ad_network_type
+          data_type: VARCHAR(20)
+        - name: device
+          data_type: VARCHAR(20)
+        - name: clicks
+          data_type: BIGINT
+        - name: spend
+          data_type: DECIMAL(15,2)
+        - name: impressions
+          data_type: BIGINT
+        - name: conversions
+          data_type: DECIMAL(10,2)
+        - name: conversions_value
+          data_type: DECIMAL(15,2)
+        - name: view_through_conversions
+          data_type: BIGINT
+
+    - name: stg_google_ads__search_term_keyword_stats
+      description: "Cleaned and validated search term performance data with query-keyword matching using 2-CTE structure with field validations"
+      source_table: "raw.search_term_keyword_stats_data"
+      implementation: "2-CTE structure: base -> validated (with field-level CASE validations)"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+          generation: "source_relation || '-' || platform final concatenation"
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "customer_id"
+          casting: "CAST(customer_id AS VARCHAR(20))"
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+          source: "date"
+          casting: "CAST(date AS DATE)"
+        - name: ad_group_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "ad_group_id"
+          casting: "CAST(ad_group_id AS VARCHAR(20))"
+        - name: campaign_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "campaign_id"
+          casting: "CAST(campaign_id AS VARCHAR(20))"
+        - name: criterion_id
+          data_type: VARCHAR(20)
+          source: "keyword_ad_group_criterion"
+          casting: "CASE WHEN keyword_ad_group_criterion IS NOT NULL AND keyword_ad_group_criterion != '' THEN CAST(keyword_ad_group_criterion AS VARCHAR(20)) ELSE NULL END"
+        - name: search_term_match_type
+          data_type: VARCHAR(30)
+          source: "search_term_match_type"
+          validation_rules:
+            - rule: "search_term_match_type IN ('EXACT', 'PHRASE', 'BROAD', 'NEAR_EXACT', 'NEAR_PHRASE')"
+              implementation: "CASE WHEN search_term_match_type IN (...) THEN search_term_match_type ELSE NULL END"
+        - name: search_term
+          data_type: VARCHAR(500)
+          source: "search_term"
+          validation: "CASE WHEN search_term != '' THEN search_term ELSE NULL END"
+        - name: ad_network_type
+          data_type: VARCHAR(20)
+          source: "ad_network_type"
+          default: "'SEARCH' (forced for search term data)"
+          validation_rules:
+            - rule: "ad_network_type IN ('SEARCH', 'DISPLAY', 'MIXED', 'YOUTUBE')"
+              implementation: "CASE WHEN ad_network_type IN (...) THEN ad_network_type ELSE 'SEARCH' END"
+        - name: device
+          data_type: VARCHAR(20)
+          source: "device"
+          default: "'UNKNOWN' (default due to missing raw data)"
+          validation: "CASE WHEN device IN ('DESKTOP', 'MOBILE', 'TABLET') THEN device ELSE 'UNKNOWN' END"
+        - name: clicks
+          data_type: BIGINT
+          source: "clicks"
+          quality_action: "coalesce(try_cast(clicks AS BIGINT), 0)"
+        - name: spend
+          data_type: DECIMAL(15,2)
+          source: "cost_micros"
+          calculation: "cost_micros / 1000000.0"
+        - name: impressions
+          data_type: BIGINT
+          source: "impressions"
+          quality_action: "coalesce(try_cast(impressions AS BIGINT), 0)"
+        - name: conversions
+          data_type: DECIMAL(10,2)
+          source: "conversions"
+          quality_action: "coalesce(try_cast(conversions AS DOUBLE), 0.0)"
+        - name: conversions_value
+          data_type: DECIMAL(15,2)
+          source: "conversions_value"
+          quality_action: "coalesce(try_cast(conversions_value AS DOUBLE), 0.0)"
+        - name: view_through_conversions
+          data_type: BIGINT
+          source: "view_through_conversions"
+          quality_action: "coalesce(try_cast(view_through_conversions AS BIGINT), 0)"
+
+    - name: stg_google_ads__account_stats
+      description: "Cleaned and validated account-level performance statistics"
+      source_table: "raw.account_stats_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: ad_network_type
+          data_type: VARCHAR(20)
+        - name: device
+          data_type: VARCHAR(20)
+        - name: clicks
+          data_type: BIGINT
+        - name: spend
+          data_type: DECIMAL(15,2)
+        - name: impressions
+          data_type: BIGINT
+        - name: conversions
+          data_type: DECIMAL(10,2)
+        - name: conversions_value
+          data_type: DECIMAL(15,2)
+        - name: view_through_conversions
+          data_type: BIGINT
+
+    - name: stg_google_ads__ad_history
+      description: "Cleaned and validated ad configuration data"
+      source_table: "raw.ad_history_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: ad_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: updated_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+          validation_rules:
+            - rule: "updated_at <= CURRENT_TIMESTAMP"
+              on_failure: delete_row
+        - name: ad_group_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: ad_name
+          data_type: VARCHAR(255)
+        - name: status
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "status IN ('ENABLED', 'PAUSED', 'REMOVED')"
+              on_failure: nullify_field
+        - name: ad_type
+          data_type: VARCHAR(50)
+        - name: display_url
+          data_type: VARCHAR(500)
+        - name: final_urls
+          data_type: VARCHAR(1000)
+        - name: is_most_recent_record
+          data_type: BOOLEAN
+          constraints: [not_null]
+
+    - name: stg_google_ads__ad_stats
+      description: "Cleaned and validated ad-level performance statistics using simplified 2-CTE structure due to limited raw data columns"
+      source_table: "raw.ad_stats_data"
+      implementation: "2-CTE structure: base -> validated (no metrics_calculated due to limited source columns)"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+          generation: "'google_ads' as platform and source_relation"
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "customer_id"
+          casting: "CAST(customer_id AS VARCHAR(20))"
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+          source: "date"
+          casting: "CAST(date AS DATE)"
+          validation_rules:
+            - rule: "date_day <= CURRENT_DATE"
+              on_failure: delete_row
+            - rule: "date_day >= '2020-01-01'"
+              on_failure: delete_row
+        - name: ad_group_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "ad_group_id"
+          casting: "CAST(ad_group_id AS VARCHAR(20))"
+        - name: ad_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "ad_id"
+          casting: "CAST(ad_id AS VARCHAR(20))"
+        - name: campaign_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "campaign_id"
+          casting: "CAST(campaign_id AS VARCHAR(20))"
+        - name: ad_network_type
+          data_type: VARCHAR(20)
+          validation_rules:
+            - rule: "ad_network_type IN ('SEARCH', 'DISPLAY', 'MIXED', 'YOUTUBE') OR ad_network_type IS NULL"
+              on_failure: delete_row  # Current implementation uses WHERE clause filtering
+        - name: device
+          data_type: VARCHAR(20)
+          source: "device"
+          casting: "CAST(device AS VARCHAR(20))"
+          default: "from validated: no transformation"
+        - name: clicks
+          data_type: BIGINT
+          source: "clicks"
+          quality_action: "coalesce(try_cast(clicks AS BIGINT), 0)"
+        - name: spend
+          data_type: DECIMAL(15,2)
+          source: "cost_micros"
+          calculation: "cost_micros / 1000000.0"
+          casting: "CAST(cost AS DECIMAL(15,2))"
+        - name: impressions
+          data_type: BIGINT
+          source: "impressions"
+          quality_action: "coalesce(try_cast(impressions AS BIGINT), 0)"
+        - name: conversions
+          data_type: DECIMAL(10,2)
+          notes: "Missing from source data - generated as NULL/0.0"
+          default: "CAST(0.0 AS DECIMAL(10,2)) as conversions"
+        - name: conversions_value
+          data_type: DECIMAL(15,2)
+          notes: "Missing from source data - generated as NULL/0.0"
+          default: "CAST(0.0 AS DECIMAL(15,2)) as conversions_value"
+        - name: view_through_conversions
+          data_type: BIGINT
+          notes: "Missing from source data - generated as NULL/0"
+          default: "CAST(0 AS BIGINT) as view_through_conversions"
+
+    - name: stg_google_ads__ad_group_stats
+      description: "Cleaned and validated ad group performance statistics"
+      source_table: "raw.ad_group_stats_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: ad_group_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: campaign_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: ad_network_type
+          data_type: VARCHAR(20)
+          validation_rules:
+            - rule: "ad_network_type IN ('SEARCH', 'DISPLAY', 'MIXED', 'YOUTUBE')"
+              on_failure: nullify_field
+        - name: device
+          data_type: VARCHAR(20)
+        - name: clicks
+          data_type: BIGINT
+        - name: spend
+          data_type: DECIMAL(15,2)
+        - name: impressions
+          data_type: BIGINT
+        - name: conversions
+          data_type: DECIMAL(10,2)
+        - name: conversions_value
+          data_type: DECIMAL(15,2)
+        - name: view_through_conversions
+          data_type: BIGINT
+
+    - name: stg_google_ads__ad_group_criterion_history
+      description: "Cleaned and validated ad group criterion configuration data"
+      source_table: "raw.ad_group_criterion_history_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: criterion_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: updated_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: ad_group_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: type
+          data_type: VARCHAR(50)
+        - name: status
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: keyword_match_type
+          data_type: VARCHAR(30)
+        - name: keyword_text
+          data_type: VARCHAR(500)
+        - name: is_most_recent_record
+          data_type: BOOLEAN
+          constraints: [not_null]
+
+  
+# --------------------------------------------------------------------------- #
+# PHASE 2: Defines the business logic from staging tables to analytical models. #
+# --------------------------------------------------------------------------- #
+modeling_spec:
+  purpose: "Transform clean staging data into business-ready analytical models that support Google Ads performance analysis, optimization decisions, and executive reporting. This phase applies business logic to create reusable intermediate models and final analytical marts."
+  
+  design_principles:
+    intermediate_purpose: "Create reusable, business-centric data models that implement complex business logic and serve as building blocks for multiple marts."
+    mart_purpose: "Provide analysis-ready models optimized for specific business questions and reporting requirements."
+    grain_importance: "Every model must have an explicitly defined grain to ensure data consumers understand the level of aggregation and prevent misinterpretation."
+    performance_optimization: "Models should be designed for efficient querying with appropriate pre-aggregations and denormalization where beneficial."
+
+  intermediate_models:
+    - name: int_google_ads__account_performance_metrics
+      description: Account-level daily KPIs with rolling averages, efficiency metrics, 30-day trend deltas, scoring, maturity, and data-quality flags joined to most-recent account info
+      grain: One row per account_id, source_relation, date_day
+      source_models:
+      - staging.stg_google_ads__account_stats
+      - staging.stg_google_ads__account_history (filtered to is_most_recent_record = true)
+      business_logic: '- Start from staging.stg_google_ads__account_stats as daily_stats (no filtering). - From staging.stg_google_ads__account_history, keep only rows where is_most_recent_record = true (account_info). - Compute rolling_metrics per (account_id, source_relation), ordered by date_day: - 7-day rolling averages: for each day, average spend, clicks, and impressions across the current day and up to six prior days; averages ignore NULLs and use smaller windows at the start. - 30-day lags: prior 30th-day values for spend and conversions for month-over-month comparisons. - Efficiency metrics (rounded to 4 decimals): - CTR: percentage of impressions that resulted in clicks; 0 when impressions <= 0. - CPC: spend per click; 0 when clicks <= 0. - CPM: spend per 1,000 impressions; 0 when impressions <= 0. - Cost per conversion: spend per conversion; NULL when conversions <= 0. - ROAS: conversion value divided by spend; 0 when spend <= 0 or conversions_value <= 0. - Compute account_scoring: - days_since_first_activity: days since the earliest date_day for the account_id (partitioned by account_id only); non-negative. - performance_score: clamp to 0–100 for the sum of: CTR*10; ROAS*10 capped at 50; +20 if cost_per_conversion < 50; and either +10 if clicks_7d_avg > 100 else + (clicks_7d_avg / 10); may be NULL if clicks_7d_avg is NULL. - spend_mom_change_pct: percent change vs the 30-day lag of spend when the lag > 0; rounded to 2 decimals; else NULL. - conversions_mom_change_pct: percent change vs the 30-day lag of conversions when the lag > 0; rounded to 2 decimals; else NULL. - account_maturity_stage by days_since_first_activity: <30 → "New Account"; <90 → "Growing Account"; <365 → "Established Account"; else "Mature Account". - performance_tier by performance_score: ≥80 → "Excellent"; ≥60 → "Good"; ≥40 → "Average"; ≥20 → "Below Average"; else "Poor". - Final select joins account_scoring to account_info on (account_id, source_relation) with a left join; account_name, currency_code, and time_zone may be NULL if no match. - Apply final filters: keep rows where spend >= 0, clicks >= 0, impressions >= 0, conversions >= 0, date_day IS NOT NULL, and account_id IS NOT NULL. - Output is ordered by account_id, date_day (ordering does not affect computed values).'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Identifier for the source dataset; used for window partitioning and joining to account_info
+      - name: account_id
+        data_type: VARCHAR
+        description: Google Ads account ID; with source_relation and date_day defines the row grain
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Account name from the most-recent history; NULL when no matching record
+      - name: currency_code
+        data_type: VARCHAR
+        description: Account currency from the most-recent history; may be NULL
+      - name: time_zone
+        data_type: VARCHAR
+        description: Account time zone from the most-recent history; may be NULL
+      - name: date_day
+        data_type: DATE
+        description: Date of the daily metrics from stats; required for window ordering and lag calculations
+        tests:
+        - not_null
+      - name: spend
+        data_type: DOUBLE
+        description: Daily cost in account currency; constrained to non-negative values
+      - name: clicks
+        data_type: BIGINT
+        description: Daily clicks count; constrained to non-negative values
+      - name: impressions
+        data_type: BIGINT
+        description: Daily impressions count; constrained to non-negative values
+      - name: conversions
+        data_type: DOUBLE
+        description: Daily conversions; constrained to non-negative values
+      - name: conversions_value
+        data_type: DOUBLE
+        description: Daily conversion value in account currency; used in ROAS; may be zero or NULL
+      - name: ctr
+        data_type: FLOAT
+        description: Percentage of impressions that resulted in clicks, rounded to 4 decimals; 0 when impressions <= 0
+      - name: cpc
+        data_type: DOUBLE
+        description: Spend per click in account currency, rounded to 4 decimals; 0 when clicks <= 0
+      - name: cpm
+        data_type: DOUBLE
+        description: Spend per 1,000 impressions in account currency, rounded to 4 decimals; 0 when impressions <= 0
+      - name: cost_per_conversion
+        data_type: DOUBLE
+        description: Spend per conversion in account currency, rounded to 4 decimals; NULL when conversions <= 0
+      - name: roas
+        data_type: DOUBLE
+        description: Conversion value divided by spend, rounded to 4 decimals; 0 when spend <= 0 or conversions_value <= 0
+      - name: spend_7d_avg
+        data_type: DOUBLE
+        description: Rolling 7-day average of spend per (account_id, source_relation) ordered by date_day; uses up to 7 days and ignores NULLs
+      - name: clicks_7d_avg
+        data_type: DOUBLE
+        description: Rolling 7-day average of clicks per (account_id, source_relation) ordered by date_day; uses up to 7 days and ignores NULLs
+      - name: impressions_7d_avg
+        data_type: DOUBLE
+        description: Rolling 7-day average of impressions per (account_id, source_relation) ordered by date_day; uses up to 7 days and ignores NULLs
+      - name: spend_mom_change_pct
+        data_type: DOUBLE
+        description: Percent change vs the 30-day lag of spend, rounded to 2 decimals; NULL when the lag is NULL or <= 0
+      - name: conversions_mom_change_pct
+        data_type: DOUBLE
+        description: Percent change vs the 30-day lag of conversions, rounded to 2 decimals; NULL when the lag is NULL or <= 0
+      - name: days_since_first_activity
+        data_type: BIGINT
+        description: Days since the earliest date_day for the account_id (partitioned by account_id only); non-negative
+      - name: account_maturity_stage
+        data_type: VARCHAR
+        description: 'Based on days_since_first_activity: <30 New; <90 Growing; <365 Established; else Mature'
+      - name: performance_score
+        data_type: DOUBLE
+        description: Composite score clamped to 0–100 from CTR (x10), ROAS (x10 capped at 50), cost-per-conversion bonus (20 if <50), and clicks_7d_avg bonus (10 if >100 else clicks_7d_avg/10); may be NULL if clicks_7d_avg is NULL
+      - name: performance_tier
+        data_type: VARCHAR
+        description: 'Tier by performance_score: ≥80 Excellent; ≥60 Good; ≥40 Average; ≥20 Below Average; else Poor'
+      - name: has_spend_no_clicks_flag
+        data_type: BOOLEAN
+        description: True when spend > 0 and clicks = 0; else false
+        tests:
+        - not_null
+      - name: invalid_metrics_flag
+        data_type: BOOLEAN
+        description: True when clicks exceed impressions; else false
+        tests:
+        - not_null
+      - name: high_spend_alert_flag
+        data_type: BOOLEAN
+        description: True when daily spend > 10000; else false
+        tests:
+        - not_null
+    - name: int_google_ads__campaign_cohort_analysis
+      description: Daily Google Ads campaign cohort and lifecycle analysis with cumulative metrics, cohort benchmarks, ranks, and quality flags
+      grain: One row per source_relation, campaign_id, and date_day
+      source_models:
+      - staging.stg_google_ads__campaign_stats
+      - staging.stg_google_ads__campaign_history
+      business_logic: '- Inputs: - Use the most recent campaign_history records (is_most_recent_record = true) providing campaign_id, source_relation, campaign_name, advertising_channel_type, advertising_channel_subtype, status, start_date, end_date. - Use all rows from campaign_stats providing campaign_id, source_relation, date_day, spend, clicks, impressions, conversions, conversions_value. - Join and row set: - Join stats to latest history on campaign_id and source_relation; keep only matched rows (effective inner join). - Grain is per source_relation, campaign_id, and date_day from stats with a matching history record. - Cohort and lifecycle: - campaign_launch_cohort is the first day of the month of start_date; NULL if start_date is missing. - days_since_launch is the whole-day difference between start_date and date_day; may be negative; NULL if start_date is missing. - lifecycle_stage is bucketed by days_since_launch: <=7 Launch Phase; <=30 Optimization Phase; <=90 Growth Phase; <=365 Maturity Phase; otherwise Legacy Phase. When days_since_launch is NULL, assign Legacy Phase. - Daily performance metrics: - spend, clicks, impressions, conversions, conversions_value are taken as-is from stats. - ctr is 100 * clicks / impressions rounded to 4 decimals; 0 when impressions = 0. - cpc is spend / clicks rounded to 4 decimals; 0 when clicks = 0. - cost_per_conversion is spend / conversions rounded to 4 decimals; NULL when conversions = 0. - roas is conversions_value / spend rounded to 4 decimals when both spend and conversions_value are > 0; otherwise 0. - Cumulative metrics: - For each campaign_id and source_relation, ordered by date_day ascending, compute running totals for spend, clicks, conversions, and conversions_value including the current day; NULL inputs are ignored in the sums. - Cohort benchmarks and ranks: - cohort averages (spend, ctr, roas) are computed across all rows sharing the same campaign_launch_cohort and lifecycle_stage, including the current row; NULLs are ignored. - roas_rank_in_cohort is the position of a row when ROAS is sorted high to low within its cohort-stage; 1 is highest; ties are resolved arbitrarily; rows without ROAS are placed after those with ROAS. - total_campaigns_in_cohort_stage is the count of rows within the same cohort-stage, including the current row. - Performance vs cohort (percent deltas): - spend_vs_cohort_pct is the percent difference from cohort_avg_spend rounded to 2 decimals; NULL when cohort_avg_spend is not positive. - ctr_vs_cohort_pct is the percent difference from cohort_avg_ctr rounded to 2 decimals; NULL when cohort_avg_ctr is not positive. - roas_vs_cohort_pct is the percent difference from cohort_avg_roas rounded to 2 decimals; NULL when cohort_avg_roas is not positive. - Composite indicators: - campaign_health_score combines: CTR contributes 5× its value; ROAS contributes 20× its value capped at 60; cost_per_conversion contributes 20 if below 100, otherwise decreases linearly and does not go below 0; cumulative_conversions contributes 20 if at least 10, otherwise 2 points per conversion. The sum is bounded between 0 and 100. If cost_per_conversion is missing, the score is NULL. - performance_tier_in_cohort is assigned by ROAS rank thresholds within cohort-stage: Top 20% if rank is within the top 20% of rows (rounded up), Top 50% if within 50%, Bottom 50% if within 80%, else Bottom 20%. - investment_tier by cumulative_spend: <1000 Low Investment; <5000 Medium Investment; <20000 High Investment; otherwise Premium Investment. - momentum_indicator: High Momentum in Launch/Optimization when ROAS exceeds the cohort average; High Momentum in Growth/Maturity when ROAS is at least 20% above the cohort average; Low Momentum when ROAS is at least 20% below the cohort average; otherwise Stable Momentum. - Quality flags: - data_quality_issue is true when clicks > impressions. - underperforming_flag is true when spend > 0, conversions = 0, and days_since_launch > 30; NULL days_since_launch evaluates to false. - exceptional_performance_flag is true when roas > 10. - Final row filter and ordering: - Keep only rows with spend, clicks, impressions, and conversions all >= 0, and with non-null date_day and campaign_id. - Output is ordered by campaign_id then date_day; ordering does not change computed values.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source identifier used in the join and window partitions
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Google Ads campaign ID; join and grouping key
+        tests:
+        - not_null
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign name from the most recent history record
+      - name: advertising_channel_type
+        data_type: VARCHAR
+        description: Advertising channel type from campaign history
+      - name: advertising_channel_subtype
+        data_type: VARCHAR
+        description: Advertising channel subtype from campaign history
+      - name: campaign_status
+        data_type: VARCHAR
+        description: Campaign status from the most recent history record
+      - name: date_day
+        data_type: DATE
+        description: Statistical date from campaign_stats
+        tests:
+        - not_null
+      - name: campaign_launch_cohort
+        data_type: DATE
+        description: First day of the month of start_date for cohort grouping; NULL if start_date is missing
+      - name: days_since_launch
+        data_type: BIGINT
+        description: Whole-day difference between start_date and date_day; may be negative; NULL when start_date is missing
+      - name: lifecycle_stage
+        data_type: VARCHAR
+        description: 'Lifecycle bucket: <=7 Launch, <=30 Optimization, <=90 Growth, <=365 Maturity, else Legacy'
+        tests:
+        - lifecycle_stage IN ('Launch Phase','Optimization Phase','Growth Phase','Maturity Phase','Legacy Phase')
+      - name: spend
+        data_type: DOUBLE
+        description: Daily spend; rows with spend < 0 are excluded
+        tests:
+        - spend >= 0
+      - name: clicks
+        data_type: BIGINT
+        description: Daily clicks; rows with clicks < 0 are excluded
+        tests:
+        - clicks >= 0
+      - name: impressions
+        data_type: BIGINT
+        description: Daily impressions; rows with impressions < 0 are excluded
+        tests:
+        - impressions >= 0
+      - name: conversions
+        data_type: DOUBLE
+        description: Daily conversions; rows with conversions < 0 are excluded
+        tests:
+        - conversions >= 0
+      - name: conversions_value
+        data_type: DOUBLE
+        description: Daily conversion value from stats
+      - name: ctr
+        data_type: FLOAT
+        description: CTR percent rounded to 4 decimals; 0 when impressions = 0
+      - name: cpc
+        data_type: DOUBLE
+        description: Cost per click rounded to 4 decimals; 0 when clicks = 0
+      - name: cost_per_conversion
+        data_type: DOUBLE
+        description: Spend per conversion rounded to 4 decimals; NULL when conversions = 0
+      - name: roas
+        data_type: DOUBLE
+        description: Return on ad spend rounded to 4 decimals; 0 when spend <= 0 or conversions_value <= 0
+      - name: cumulative_spend
+        data_type: DOUBLE
+        description: Running total of spend by campaign and source including the current day
+      - name: cumulative_clicks
+        data_type: HUGEINT
+        description: Running total of clicks by campaign and source including the current day
+      - name: cumulative_conversions
+        data_type: DOUBLE
+        description: Running total of conversions by campaign and source including the current day
+      - name: cumulative_conversions_value
+        data_type: DOUBLE
+        description: Running total of conversion value by campaign and source including the current day
+      - name: cohort_avg_spend
+        data_type: DOUBLE
+        description: Average spend within the same launch cohort and lifecycle stage
+      - name: cohort_avg_ctr
+        data_type: DOUBLE
+        description: Average CTR percent within the same launch cohort and lifecycle stage
+      - name: cohort_avg_roas
+        data_type: DOUBLE
+        description: Average ROAS within the same launch cohort and lifecycle stage
+      - name: spend_vs_cohort_pct
+        data_type: DOUBLE
+        description: Percent difference from cohort average spend rounded to 2 decimals; NULL when the cohort average is not positive
+      - name: ctr_vs_cohort_pct
+        data_type: DOUBLE
+        description: Percent difference from cohort average CTR rounded to 2 decimals; NULL when the cohort average is not positive
+      - name: roas_vs_cohort_pct
+        data_type: DOUBLE
+        description: Percent difference from cohort average ROAS rounded to 2 decimals; NULL when the cohort average is not positive
+      - name: campaign_health_score
+        data_type: DOUBLE
+        description: Composite score from CTR, ROAS, cost_per_conversion, and cumulative_conversions; bounded 0–100; NULL when cost_per_conversion is NULL
+      - name: performance_tier_in_cohort
+        data_type: VARCHAR
+        description: 'Tier by ROAS rank within cohort-stage: Top 20%, Top 50%, Bottom 50%, or Bottom 20%'
+        tests:
+        - performance_tier_in_cohort IN ('Top 20%','Top 50%','Bottom 50%','Bottom 20%')
+      - name: investment_tier
+        data_type: VARCHAR
+        description: 'Investment tier by cumulative_spend: Low, Medium, High, or Premium'
+        tests:
+        - investment_tier IN ('Low Investment','Medium Investment','High Investment','Premium Investment')
+      - name: momentum_indicator
+        data_type: VARCHAR
+        description: 'Momentum classification: High Momentum, Low Momentum, or Stable Momentum'
+        tests:
+        - momentum_indicator IN ('High Momentum','Low Momentum','Stable Momentum')
+      - name: roas_rank_in_cohort
+        data_type: BIGINT
+        description: Position of ROAS in descending order within the cohort-stage; 1 is highest; ties arbitrary
+        tests:
+        - roas_rank_in_cohort >= 1
+      - name: total_campaigns_in_cohort_stage
+        data_type: BIGINT
+        description: Count of rows within the same launch cohort and lifecycle stage
+        tests:
+        - total_campaigns_in_cohort_stage >= 1
+      - name: data_quality_issue
+        data_type: BOOLEAN
+        description: True when clicks exceed impressions, else false
+        tests:
+        - not_null
+      - name: underperforming_flag
+        data_type: BOOLEAN
+        description: True when spend > 0, conversions = 0, and days_since_launch > 30; else false
+        tests:
+        - not_null
+      - name: exceptional_performance_flag
+        data_type: BOOLEAN
+        description: True when ROAS > 10, else false
+        tests:
+        - not_null
+    - name: int_google_ads__keyword_performance_segmentation
+      description: Daily keyword performance with campaign benchmarks, segmentation tiers, bid recommendations, and quality/optimization flags
+      grain: One row per source_relation, keyword_id, ad_group_id, campaign_id, date_day
+      source_models:
+      - staging.stg_google_ads__keyword_stats
+      - staging.stg_google_ads__ad_group_history
+      - staging.stg_google_ads__campaign_history
+      business_logic: '- Load all rows from staging.stg_google_ads__keyword_stats (ks). - Join dimensional data: - Join to staging.stg_google_ads__ad_group_history (agi) filtered to is_most_recent_record = true on ad_group_id and source_relation. - Join to staging.stg_google_ads__campaign_history (ci) filtered to is_most_recent_record = true on campaign_id and source_relation. - Compute per-row performance metrics (rounding to 4 decimals unless noted; NULL policies explicit): - ctr: if impressions > 0 → (clicks / impressions) * 100; else 0; rounded 4 decimals; unit = percentage (0+). - cpc: if clicks > 0 → spend / clicks; else 0; rounded 4 decimals. - cpm: if impressions > 0 → spend / impressions * 1000; else 0; rounded 4 decimals. - cost_per_conversion: if conversions > 0 → spend / conversions; else NULL; rounded 4 decimals. - roas: if spend > 0 and conversions_value > 0 → conversions_value / spend; else 0; rounded 4 decimals. - conversion_rate: if clicks > 0 → (conversions / clicks) * 100; else 0; rounded 4 decimals; unit = percentage (0+). - Compute lifetime cumulative metrics using window sums partitioned by (keyword_id = ks.criterion_id, ad_group_id) ordered by date_day, rows unbounded preceding: - lifetime_spend, lifetime_clicks, lifetime_conversions, lifetime_conversions_value. - Compute days_since_first_activity: number of days between the first date in the (keyword_id, ad_group_id) partition and the current date_day; non-negative integer. - Compute campaign-level benchmarks over (partition by campaign_id, date_day): - campaign_avg_ctr, campaign_avg_cpc, campaign_avg_conversion_rate, campaign_avg_roas (simple averages of per-row metrics). - Percentile ranks: ctr_percentile_in_campaign = percent_rank ordered by ctr ascending; conv_rate_percentile_in_campaign = percent_rank ordered by conversion_rate ascending; roas_percentile_in_campaign = percent_rank ordered by roas descending; range [0,1]. - Derive segmentation and recommendations: - ctr_vs_campaign_pct: if campaign_avg_ctr > 0 → ((ctr - campaign_avg_ctr) / campaign_avg_ctr) * 100; else NULL; rounded 2 decimals. - roas_vs_campaign_pct: if campaign_avg_roas > 0 → ((roas - campaign_avg_roas) / campaign_avg_roas) * 100; else NULL; rounded 2 decimals. - keyword_maturity_stage by days_since_first_activity: <7 → "New Keyword"; <30 → "Testing Phase"; <90 → "Optimization Phase"; <365 → "Mature Keyword"; else "Legacy Keyword". - performance_tier based on percentiles (evaluated in listed order; first match wins): ctr_pct >= 0.8 and conv_pct >= 0.8 → "Star Performer"; ctr_pct >= 0.6 and conv_pct >= 0.6 → "Strong Performer"; ctr_pct >= 0.4 and conv_pct >= 0.4 → "Average Performer"; ctr_pct >= 0.2 or conv_pct >= 0.2 → "Weak Performer"; else "Poor Performer". - bid_recommendation: roas > campaign_avg_roas*1.5 and ctr > campaign_avg_ctr*1.2 → "Increase Bid (+20%)"; roas > campaign_avg_roas*1.2 and ctr > campaign_avg_ctr → "Increase Bid (+10%)"; roas < campaign_avg_roas*0.7 and ctr < campaign_avg_ctr*0.8 → "Decrease Bid (-20%)"; roas < campaign_avg_roas*0.8 and ctr < campaign_avg_ctr → "Decrease Bid (-10%)"; conversions = 0 and days_since_first_activity > 30 → "Consider Pausing"; else "Maintain Bid". - efficiency_score: treat any missing percentile as 0, weight (ctr 30, conv_rate 40, roas 30), clamp to [0,100]; final output rounded to 1 decimal. - volume_tier by lifetime_spend: <100 → "Low Volume"; <1000 → "Medium Volume"; <5000 → "High Volume"; else "Premium Volume". - value_tier by lifetime_conversions_value: <500 → "Low Value"; <2500 → "Medium Value"; <10000 → "High Value"; else "Premium Value". - Derive quality/ops flags (always non-NULL booleans): - data_quality_flag: clicks > impressions. - optimization_needed_flag: spend > 100 and conversions = 0 and days_since_first_activity > 14. - scale_opportunity_flag: roas > 5 and ctr > campaign_avg_ctr * 1.5. - pause_candidate_flag: efficiency_score < 20 and days_since_first_activity > 30. - Final filter (rows must satisfy): spend >= 0, clicks >= 0, impressions >= 0, conversions >= 0, and date_day, keyword_id, ad_group_id, campaign_id are NOT NULL. - Output rows are ordered by keyword_id, ad_group_id, date_day; no de-duplication beyond the final filter.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source system relation identifier used for dimensional joins and lineage
+      - name: keyword_id
+        data_type: VARCHAR
+        description: Keyword criterion_id from keyword_stats; grouping key for lifetime windows and grain
+        tests:
+        - not_null
+      - name: ad_group_id
+        data_type: VARCHAR
+        description: Ad group identifier; part of grain and lifetime window partition
+        tests:
+        - not_null
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier used for benchmark partitions and joins
+        tests:
+        - not_null
+      - name: ad_group_name
+        data_type: VARCHAR
+        description: Most recent ad group name from ad_group_history; may be NULL if no match
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Most recent campaign name from campaign_history; may be NULL if no match
+      - name: advertising_channel_type
+        data_type: VARCHAR
+        description: Campaign advertising channel type from campaign_history; values as stored by source
+      - name: date_day
+        data_type: DATE
+        description: Activity date; part of grain and window ordering
+        tests:
+        - not_null
+      - name: spend
+        data_type: DOUBLE
+        description: Daily cost for the keyword; non-negative per final filter; used in CPC/CPM/ROAS calculations
+        tests:
+        - spend >= 0
+      - name: clicks
+        data_type: BIGINT
+        description: Daily clicks; non-negative per final filter; used in CTR/CPC/conversion_rate calculations
+        tests:
+        - clicks >= 0
+      - name: impressions
+        data_type: BIGINT
+        description: Daily impressions; non-negative per final filter; used in CTR/CPM calculations
+        tests:
+        - impressions >= 0
+      - name: conversions
+        data_type: DOUBLE
+        description: Daily conversions; non-negative per final filter; used in cost_per_conversion and conversion_rate
+        tests:
+        - conversions >= 0
+      - name: conversions_value
+        data_type: DOUBLE
+        description: Daily conversion value; used in ROAS; if spend <= 0 or conversions_value <= 0 then ROAS = 0
+      - name: ctr
+        data_type: FLOAT
+        description: 'Click-through rate in percentage: if impressions > 0 then (clicks/impressions)*100 else 0; rounded to 4 decimals; not capped'
+      - name: cpc
+        data_type: DOUBLE
+        description: 'Cost per click: if clicks > 0 then spend/clicks else 0; rounded to 4 decimals'
+      - name: cpm
+        data_type: DOUBLE
+        description: 'Cost per thousand impressions: if impressions > 0 then spend/impressions*1000 else 0; rounded to 4 decimals'
+      - name: cost_per_conversion
+        data_type: DOUBLE
+        description: 'Cost per conversion: if conversions > 0 then spend/conversions else NULL; rounded to 4 decimals'
+      - name: roas
+        data_type: DOUBLE
+        description: 'Return on ad spend: if spend > 0 and conversions_value > 0 then conversions_value/spend else 0; rounded to 4 decimals'
+      - name: conversion_rate
+        data_type: DOUBLE
+        description: 'Conversion rate in percentage: if clicks > 0 then (conversions/clicks)*100 else 0; rounded to 4 decimals'
+      - name: lifetime_spend
+        data_type: DOUBLE
+        description: Cumulative spend up to date_day over partition (keyword_id, ad_group_id); window ordered by date_day
+      - name: lifetime_clicks
+        data_type: HUGEINT
+        description: Cumulative clicks up to date_day over partition (keyword_id, ad_group_id); window ordered by date_day
+      - name: lifetime_conversions
+        data_type: DOUBLE
+        description: Cumulative conversions up to date_day over partition (keyword_id, ad_group_id); window ordered by date_day
+      - name: lifetime_conversions_value
+        data_type: DOUBLE
+        description: Cumulative conversion value up to date_day over partition (keyword_id, ad_group_id); window ordered by date_day
+      - name: days_since_first_activity
+        data_type: BIGINT
+        description: 'Days since first activity: current date_day minus the first date in the (keyword_id, ad_group_id) partition; non-negative'
+      - name: campaign_avg_ctr
+        data_type: DOUBLE
+        description: Average CTR within (campaign_id, date_day) across keywords; unit = percentage; simple mean of per-row CTR
+      - name: campaign_avg_cpc
+        data_type: DOUBLE
+        description: Average CPC within (campaign_id, date_day); simple mean of per-row CPC
+      - name: campaign_avg_conversion_rate
+        data_type: DOUBLE
+        description: Average conversion rate within (campaign_id, date_day); unit = percentage; simple mean of per-row rate
+      - name: campaign_avg_roas
+        data_type: DOUBLE
+        description: Average ROAS within (campaign_id, date_day); simple mean of per-row ROAS
+      - name: ctr_vs_campaign_pct
+        data_type: DOUBLE
+        description: 'CTR vs campaign average: if campaign_avg_ctr > 0 then ((ctr - campaign_avg_ctr)/campaign_avg_ctr)*100 rounded to 2 decimals else NULL'
+      - name: roas_vs_campaign_pct
+        data_type: DOUBLE
+        description: 'ROAS vs campaign average: if campaign_avg_roas > 0 then ((roas - campaign_avg_roas)/campaign_avg_roas)*100 rounded to 2 decimals else NULL'
+      - name: ctr_percentile_in_campaign
+        data_type: DOUBLE
+        description: Percent_rank of CTR within (campaign_id, date_day) ordered ascending; range [0,1]
+        tests:
+        - ctr_percentile_in_campaign >= 0
+        - ctr_percentile_in_campaign <= 1
+      - name: conv_rate_percentile_in_campaign
+        data_type: DOUBLE
+        description: Percent_rank of conversion_rate within (campaign_id, date_day) ordered ascending; range [0,1]
+        tests:
+        - conv_rate_percentile_in_campaign >= 0
+        - conv_rate_percentile_in_campaign <= 1
+      - name: roas_percentile_in_campaign
+        data_type: DOUBLE
+        description: Percent_rank of ROAS within (campaign_id, date_day) ordered descending; range [0,1]
+        tests:
+        - roas_percentile_in_campaign >= 0
+        - roas_percentile_in_campaign <= 1
+      - name: keyword_maturity_stage
+        data_type: VARCHAR
+        description: 'Stage derived from days_since_first_activity: New Keyword, Testing Phase, Optimization Phase, Mature Keyword, Legacy Keyword'
+        tests:
+        - keyword_maturity_stage IN ('New Keyword','Testing Phase','Optimization Phase','Mature Keyword','Legacy Keyword')
+      - name: performance_tier
+        data_type: VARCHAR
+        description: 'Tier based on CTR and conversion rate percentiles: Star/Strong/Average/Weak/Poor Performer'
+        tests:
+        - performance_tier IN ('Star Performer','Strong Performer','Average Performer','Weak Performer','Poor Performer')
+      - name: bid_recommendation
+        data_type: VARCHAR
+        description: 'Recommendation based on ROAS/CTR versus campaign benchmarks and activity: Increase/Decrease with percent, Consider Pausing, or Maintain Bid'
+        tests:
+        - bid_recommendation IN ('Increase Bid (+20%)','Increase Bid (+10%)','Decrease Bid (-20%)','Decrease Bid (-10%)','Consider Pausing','Maintain Bid')
+      - name: efficiency_score
+        data_type: DOUBLE
+        description: Weighted score from percentiles (30/40/30), missing percentiles treated as 0, clamped to [0,100] and rounded to 1 decimal
+        tests:
+        - efficiency_score >= 0
+        - efficiency_score <= 100
+      - name: volume_tier
+        data_type: VARCHAR
+        description: 'Volume classification by lifetime_spend: Low/Medium/High/Premium Volume'
+        tests:
+        - volume_tier IN ('Low Volume','Medium Volume','High Volume','Premium Volume')
+      - name: value_tier
+        data_type: VARCHAR
+        description: 'Value classification by lifetime_conversions_value: Low/Medium/High/Premium Value'
+        tests:
+        - value_tier IN ('Low Value','Medium Value','High Value','Premium Value')
+      - name: data_quality_flag
+        data_type: BOOLEAN
+        description: True when clicks > impressions; flags anomalous CTR
+        tests:
+        - not_null
+      - name: optimization_needed_flag
+        data_type: BOOLEAN
+        description: True when spend > 100, conversions = 0, and days_since_first_activity > 14
+        tests:
+        - not_null
+      - name: scale_opportunity_flag
+        data_type: BOOLEAN
+        description: True when roas > 5 and ctr > 1.5 × campaign_avg_ctr
+        tests:
+        - not_null
+      - name: pause_candidate_flag
+        data_type: BOOLEAN
+        description: True when efficiency_score < 20 and days_since_first_activity > 30
+        tests:
+        - not_null
+  marts_models:
+    - name: google_ads__account_report
+      description: Daily account-level aggregation of Google Ads stats joined to the most recent account attributes with summed performance metrics
+      grain: One row per distinct combination of source_relation, date_day, account_id, account_name, currency_code, auto_tagging_enabled, time_zone
+      source_models:
+      - staging.stg_google_ads__account_stats
+      - staging.stg_google_ads__account_history
+      business_logic: '- Load all rows from staging.stg_google_ads__account_stats (stats). - Load rows from staging.stg_google_ads__account_history (accounts) flagged as the most recent record. - Left join stats to accounts by matching account_id and source_relation. - Group by source_relation, date_day, account_name, account_id, currency_code, auto_tagging_enabled, and time_zone. - For each group, sum spend, clicks, impressions, conversions, conversions_value, and view_through_conversions from stats. - Aggregation behavior: - Sums ignore NULL inputs; if all inputs for a metric in a group are NULL, the result is NULL. - No additional filters, rounding, casting, or currency conversion are applied; numeric types follow engine defaults (DOUBLE for monetary/fractional metrics, HUGEINT for count metrics). - If multiple “most recent” account rows exist for the same account_id and source_relation, the join duplicates stats rows and those duplicates are included in the sums. - Account attributes (account_name, currency_code, auto_tagging_enabled, time_zone) come from the joined accounts record and are NULL when no match exists; values are preserved as stored.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source relation identifier from stats; part of the grouping key; preserved as stored
+      - name: date_day
+        data_type: DATE
+        description: Calendar date from stats; part of the grouping key; no timezone transformation
+      - name: account_name
+        data_type: VARCHAR
+        description: Account name from the most recent accounts record; may be NULL if no match
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier from stats; part of the join and grouping key; preserved as stored
+      - name: currency_code
+        data_type: VARCHAR
+        description: Account currency code from accounts; may be NULL; spend and conversions_value are reported in this currency when present
+      - name: auto_tagging_enabled
+        data_type: BOOLEAN
+        description: Boolean flag from accounts indicating auto-tagging; may be NULL if no match
+      - name: time_zone
+        data_type: VARCHAR
+        description: Account time zone from accounts; may be NULL; value preserved as stored
+      - name: spend
+        data_type: DOUBLE
+        description: Sum of spend per group from stats; unit is account currency; NULLs ignored; result is NULL if all inputs are NULL; no rounding
+      - name: clicks
+        data_type: HUGEINT
+        description: Sum of clicks per group from stats; NULLs ignored; result is NULL if all inputs are NULL
+      - name: impressions
+        data_type: HUGEINT
+        description: Sum of impressions per group from stats; NULLs ignored; result is NULL if all inputs are NULL
+      - name: conversions
+        data_type: DOUBLE
+        description: Sum of conversions per group from stats (fractional supported); NULLs ignored; result is NULL if all inputs are NULL
+      - name: conversions_value
+        data_type: DOUBLE
+        description: Sum of conversions_value per group from stats; unit is account currency; NULLs ignored; result is NULL if all inputs are NULL
+      - name: view_through_conversions
+        data_type: HUGEINT
+        description: Sum of view_through_conversions per group from stats; NULLs ignored; result is NULL if all inputs are NULL
+    - name: google_ads__campaign_report
+      description: Daily campaign performance aggregated from stats with current campaign/account attributes
+      grain: One row per combination of source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, advertising_channel_type, advertising_channel_subtype, status
+      source_models:
+      - staging.stg_google_ads__campaign_stats
+      - staging.stg_google_ads__campaign_history
+      - staging.stg_google_ads__account_history
+      business_logic: '- Base: use all rows from staging.stg_google_ads__campaign_stats as the fact table (stats). - Dimension scoping: use only records flagged as most recent in staging.stg_google_ads__campaign_history and staging.stg_google_ads__account_history. - Joins: - Left join campaigns by matching source_relation and campaign_id to bring in campaign attributes. - Left join accounts by matching the joined campaign''s source_relation and account_id to bring in account attributes. - Account attributes populate only when a campaign match exists and that campaign links to a matching most recent account; otherwise they remain NULL. - No deduplication beyond the most-recent filters; if multiple "most recent" rows exist per key, stats rows will repeat per join semantics. - Grouping: group by these 10 fields to form the row grain: source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, advertising_channel_type, advertising_channel_subtype, status. - Aggregations over stats: - For each group, spend, clicks, impressions, conversions, conversion value, and view-through conversions are calculated by adding values from all contributing stats rows; rows are not deduplicated; NULL inputs are ignored, and if all inputs are NULL the result is NULL; no rounding is applied. - Currency: spend and conversion value are expressed in the account currency_code; no currency conversion is performed. - Output: return exactly the grouped dimensions and aggregated measures, one row per group.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source system identifier carried through from stats and used for joins and grouping
+        tests:
+        - not_null
+      - name: date_day
+        data_type: DATE
+        description: Date of performance attribution from stats
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Account name from the most recent account linked via the joined campaign; NULL if no matching campaign or account
+      - name: account_id
+        data_type: VARCHAR
+        description: Account ID from the most recent account linked via the joined campaign; NULL if no matching campaign or account
+      - name: currency_code
+        data_type: VARCHAR
+        description: ISO-4217 currency code from the most recent account linked via the joined campaign; units for spend and conversions_value; NULL if no matching campaign or account
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign name from the most recent campaign record; NULL if no matching campaign
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier from stats used for joins and grouping
+        tests:
+        - not_null
+      - name: advertising_channel_type
+        data_type: VARCHAR
+        description: Advertising channel type from the most recent campaign record; NULL if no matching campaign
+      - name: advertising_channel_subtype
+        data_type: VARCHAR
+        description: Advertising channel subtype from the most recent campaign record; NULL if no matching campaign
+      - name: status
+        data_type: VARCHAR
+        description: Campaign status from the most recent campaign record; NULL if no matching campaign
+      - name: spend
+        data_type: DOUBLE
+        description: Total spend for the group from stats; NULLs ignored; returns NULL if all NULL; units in currency_code; no rounding
+      - name: clicks
+        data_type: HUGEINT
+        description: Total clicks for the group from stats; NULLs ignored; returns NULL if all NULL
+      - name: impressions
+        data_type: HUGEINT
+        description: Total impressions for the group from stats; NULLs ignored; returns NULL if all NULL
+      - name: conversions
+        data_type: DOUBLE
+        description: Total conversions for the group from stats; NULLs ignored; returns NULL if all NULL
+      - name: conversions_value
+        data_type: DOUBLE
+        description: Total conversion value for the group from stats; NULLs ignored; returns NULL if all NULL; units in currency_code; no rounding
+      - name: view_through_conversions
+        data_type: HUGEINT
+        description: Total view-through conversions for the group from stats; NULLs ignored; returns NULL if all NULL
+    - name: google_ads__ad_group_report
+      description: Daily ad group performance aggregated with the latest account, campaign, and ad group attributes
+      grain: One row per unique combination of source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, ad_group_name, ad_group_id, ad_group_type, status
+      source_models:
+      - staging.stg_google_ads__ad_group_stats
+      - staging.stg_google_ads__account_history
+      - staging.stg_google_ads__campaign_history
+      - staging.stg_google_ads__ad_group_history
+      business_logic: '- Use daily ad group metrics from staging.stg_google_ads__ad_group_stats. - From each history table, keep only rows flagged as the most recent (is_most_recent_record = true). - Left join stats to: • Ad group history by matching ad_group_id and source_relation. • Campaign history by matching campaign_id and source_relation. • Account history by matching account_id and source_relation. If a match is missing, the joined attributes remain NULL; no defaults are applied. - Group by these 11 dimensions: source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, ad_group_name, ad_group_id, ad_group_type, status. - For each group, sum spend, clicks, impressions, conversions, conversions_value, and view_through_conversions across all rows in stats; NULL inputs are ignored, and an all-NULL group yields NULL. No rounding or currency conversion is performed. - Duplicates in stats contribute to the sums. If a history table has multiple "most recent" rows for the same ID and source, joins may fan out and inflate aggregates; no deduplication is performed.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source identifier used for joins; part of the grain
+        tests:
+        - not_null
+      - name: date_day
+        data_type: DATE
+        description: Stats date for daily aggregation; part of the grain
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Latest account name; NULL if no account match
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier from stats; part of the grain
+        tests:
+        - not_null
+      - name: currency_code
+        data_type: VARCHAR
+        description: Latest account currency; sets currency for spend and conversions_value; NULL if no account match
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Latest campaign name; NULL if no campaign match
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier from stats; part of the grain
+        tests:
+        - not_null
+      - name: ad_group_name
+        data_type: VARCHAR
+        description: Latest ad group name; NULL if no ad group match
+      - name: ad_group_id
+        data_type: VARCHAR
+        description: Ad group identifier from stats; part of the grain
+        tests:
+        - not_null
+      - name: ad_group_type
+        data_type: VARCHAR
+        description: Latest ad group type; NULL if no ad group match
+      - name: status
+        data_type: VARCHAR
+        description: Latest ad group status; NULL if no ad group match
+      - name: spend
+        data_type: DOUBLE
+        description: Sum of spend over grouped rows; NULLs ignored; currency is currency_code; no rounding
+      - name: clicks
+        data_type: HUGEINT
+        description: Sum of clicks over grouped rows; NULLs ignored; integer count
+      - name: impressions
+        data_type: HUGEINT
+        description: Sum of impressions over grouped rows; NULLs ignored; integer count
+      - name: conversions
+        data_type: DOUBLE
+        description: Sum of conversions over grouped rows; NULLs ignored; no rounding
+      - name: conversions_value
+        data_type: DOUBLE
+        description: Sum of conversion value over grouped rows; NULLs ignored; currency is currency_code; no rounding
+      - name: view_through_conversions
+        data_type: HUGEINT
+        description: Sum of view-through conversions over grouped rows; NULLs ignored; integer count
+    - name: google_ads__ad_report
+      description: Ad-level daily performance with latest creative and hierarchy attributes
+      grain: One row per source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, ad_group_name, ad_group_id, ad_name, ad_id, ad_type, status, display_url
+      source_models:
+      - staging.stg_google_ads__ad_stats
+      - staging.stg_google_ads__account_history
+      - staging.stg_google_ads__campaign_history
+      - staging.stg_google_ads__ad_group_history
+      - staging.stg_google_ads__ad_history
+      business_logic: '- Read ad performance from staging.stg_google_ads__ad_stats (stats). - From each history table (accounts, campaigns, ad_groups, ads), restrict to is_most_recent_record = TRUE. - Left join stats to: - ads on (ad_id, source_relation) - ad_groups on (ad_group_id, source_relation) - campaigns on (campaign_id, source_relation) - accounts on (account_id, source_relation) - Group by source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, ad_group_name, ad_group_id, ad_name, ad_id, ad_type, status, display_url. - Aggregate metrics as SUM over grouped rows: spend, clicks, impressions, conversions, conversions_value, view_through_conversions. - SUM skips NULL inputs; if all inputs are NULL, the result is NULL; no defaulting to zero. - Descriptive attributes (names, ad_type, status, display_url, currency_code) are taken from the most recent history record and remain NULL if no match exists. - Monetary fields (spend, conversions_value) are in the account currency indicated by currency_code and retain scale 2. - Assumes each history table returns a single most recent row per (source_relation, entity_id); otherwise, joins may duplicate stats prior to aggregation.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source relation identifier used to disambiguate records across sources; propagated from stats
+      - name: date_day
+        data_type: DATE
+        description: Calendar date of the performance metrics from stats
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Account name from the most recent account_history; NULL if no match
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier from stats used for joining to account attributes
+      - name: currency_code
+        data_type: VARCHAR
+        description: Account currency from the most recent account_history; used for spend and value; may be NULL
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign name from the most recent campaign_history; NULL if no match
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier from stats used for joining to campaign attributes
+      - name: ad_group_name
+        data_type: VARCHAR
+        description: Ad group name from the most recent ad_group_history; NULL if no match
+      - name: ad_group_id
+        data_type: VARCHAR
+        description: Ad group identifier from stats used for joining to ad group attributes
+      - name: ad_name
+        data_type: VARCHAR
+        description: Ad name from the most recent ad_history; NULL if no match
+      - name: ad_id
+        data_type: VARCHAR
+        description: Ad identifier from stats; primary ad key within the grain
+        tests:
+        - not_null
+      - name: ad_type
+        data_type: VARCHAR
+        description: Ad type from the most recent ad_history; NULL if no match
+      - name: status
+        data_type: VARCHAR
+        description: Ad status from the most recent ad_history; NULL if no match
+      - name: display_url
+        data_type: VARCHAR
+        description: Display URL from the most recent ad_history; NULL if no match
+      - name: spend
+        data_type: DECIMAL(38,2)
+        description: Sum of spend across grouped stats rows in account currency; NULL if all inputs are NULL
+      - name: clicks
+        data_type: HUGEINT
+        description: Sum of clicks across grouped stats rows; NULL if all inputs are NULL
+      - name: impressions
+        data_type: HUGEINT
+        description: Sum of impressions across grouped stats rows; NULL if all inputs are NULL
+      - name: conversions
+        data_type: DECIMAL(38,2)
+        description: Sum of conversions across grouped stats rows; may be fractional; NULL if all inputs are NULL
+      - name: conversions_value
+        data_type: DECIMAL(38,2)
+        description: Sum of conversion value across grouped stats rows in account currency; NULL if all inputs are NULL
+      - name: view_through_conversions
+        data_type: HUGEINT
+        description: Sum of view-through conversions across grouped stats rows; NULL if all inputs are NULL
+    - name: google_ads__keyword_report
+      description: Daily keyword performance aggregated and enriched with most-recent account, campaign, ad group, and keyword attributes
+      grain: One row per unique combination of source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, ad_group_name, ad_group_id, criterion_id, type, status, keyword_match_type, keyword_text
+      source_models:
+      - staging.stg_google_ads__keyword_stats
+      - staging.stg_google_ads__account_history
+      - staging.stg_google_ads__campaign_history
+      - staging.stg_google_ads__ad_group_history
+      - staging.stg_google_ads__ad_group_criterion_history
+      business_logic: '- Load stats from staging.stg_google_ads__keyword_stats (no filters). - Restrict each history table to is_most_recent_record = true to represent current attributes. - Left join stats to: - criterions on (criterion_id, source_relation), - ad_groups on (ad_group_id, source_relation), - campaigns on (campaign_id, source_relation), - accounts on (account_id, source_relation). - Group by the 14 attribute columns: source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, ad_group_name, ad_group_id, criterion_id, type, status, keyword_match_type, keyword_text. - Aggregate metrics with SUM: spend, clicks, impressions, conversions, conversions_value, view_through_conversions. Determinism: - SUM ignores NULL inputs; if all inputs in a group are NULL the result is NULL. - If a history table has multiple most-recent rows for the same id and source_relation, joins will duplicate stats rows and sums will inflate accordingly. - Attributes (names, status, match type, text, currency) come from the most recent history records; if a join does not find a match, those attributes are NULL but the stats group remains. - No ordering is applied in the final output; one row is returned per grouped attribute set with summed metrics; original casing and spacing are preserved.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Upstream source relation identifier used to disambiguate IDs across sources
+        tests:
+        - not_null
+      - name: date_day
+        data_type: DATE
+        description: Statistical date for the keyword performance (UTC day)
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Most-recent account name from account_history joined by account_id and source_relation; NULL if no match
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier from stats used to join to the most-recent account record
+        tests:
+        - not_null
+      - name: currency_code
+        data_type: VARCHAR
+        description: Account currency code from the most-recent account record; NULL if no match
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Most-recent campaign name from campaign_history joined by campaign_id and source_relation; NULL if no match
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier from stats used to join to the most-recent campaign record
+        tests:
+        - not_null
+      - name: ad_group_name
+        data_type: VARCHAR
+        description: Most-recent ad group name from ad_group_history joined by ad_group_id and source_relation; NULL if no match
+      - name: ad_group_id
+        data_type: VARCHAR
+        description: Ad group identifier from stats used to join to the most-recent ad group record
+        tests:
+        - not_null
+      - name: criterion_id
+        data_type: VARCHAR
+        description: Keyword criterion identifier from stats used to join to the most-recent criterion record
+        tests:
+        - not_null
+      - name: type
+        data_type: VARCHAR
+        description: Most-recent criterion type from ad_group_criterion_history; NULL if no match
+      - name: status
+        data_type: VARCHAR
+        description: Most-recent keyword status from ad_group_criterion_history; NULL if no match
+      - name: keyword_match_type
+        data_type: VARCHAR
+        description: Most-recent keyword match type from ad_group_criterion_history; NULL if no match
+      - name: keyword_text
+        data_type: VARCHAR
+        description: Most-recent keyword text from ad_group_criterion_history; original casing and spacing; NULL if no match
+      - name: spend
+        data_type: DOUBLE
+        description: Sum of spend for the group in account currency; NULL if all inputs are NULL
+        tests:
+        - spend >= 0
+      - name: clicks
+        data_type: HUGEINT
+        description: Sum of clicks for the group; NULL if all inputs are NULL
+        tests:
+        - clicks >= 0
+      - name: impressions
+        data_type: HUGEINT
+        description: Sum of impressions for the group; NULL if all inputs are NULL
+        tests:
+        - impressions >= 0
+      - name: conversions
+        data_type: DOUBLE
+        description: Sum of conversions for the group; NULL if all inputs are NULL
+        tests:
+        - conversions >= 0
+      - name: conversions_value
+        data_type: DOUBLE
+        description: Sum of conversion value for the group in account currency; NULL if all inputs are NULL
+        tests:
+        - conversions_value >= 0
+      - name: view_through_conversions
+        data_type: HUGEINT
+        description: Sum of view-through conversions for the group; NULL if all inputs are NULL
+        tests:
+        - view_through_conversions >= 0
+    - name: google_ads__search_term_report
+      description: Search term performance aggregated by day with latest entity attributes joined.
+      grain: One row per unique combination of source_relation, date_day, account_id, campaign_id, ad_group_id, criterion_id, search_term, search_term_match_type, account_name, currency_code, campaign_name, ad_group_name, keyword_text, keyword_match_type
+      source_models:
+      - staging.stg_google_ads__search_term_keyword_stats
+      - staging.stg_google_ads__account_history
+      - staging.stg_google_ads__campaign_history
+      - staging.stg_google_ads__ad_group_history
+      - staging.stg_google_ads__ad_group_criterion_history
+      business_logic: '- Read daily search term keyword stats. - From each history table (accounts, campaigns, ad_groups, criterions), keep only rows marked as the most recent snapshot. - Left join stats to the latest snapshots using source_relation plus the respective IDs: - criterion_id to load keyword_text and keyword_match_type, - ad_group_id to load ad_group_name, - campaign_id to load campaign_name, - account_id to load account_name and currency_code. - Aggregate by the full combination of: source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, ad_group_name, ad_group_id, criterion_id, keyword_text, keyword_match_type, search_term, search_term_match_type. - For each group, add up spend, clicks, impressions, conversions, conversion value, and view-through conversions. Null inputs are ignored; if all values are null the result is null. Decimal scales are preserved per column definitions. No additional deduplication beyond the aggregation keys.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source system identifier used to scope joins and aggregation.
+      - name: date_day
+        data_type: DATE
+        description: Calendar date of the stats; used as part of the aggregation key.
+      - name: account_name
+        data_type: VARCHAR
+        description: Latest account name from the accounts snapshot; may be null if no match.
+      - name: account_id
+        data_type: VARCHAR
+        description: Account ID from stats; join key to the accounts snapshot and part of the aggregation key.
+      - name: currency_code
+        data_type: VARCHAR
+        description: Latest account currency code from the accounts snapshot; may be null if no match.
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Latest campaign name from the campaigns snapshot; may be null if no match.
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign ID from stats; join key to the campaigns snapshot and part of the aggregation key.
+      - name: ad_group_name
+        data_type: VARCHAR
+        description: Latest ad group name from the ad_groups snapshot; may be null if no match.
+      - name: ad_group_id
+        data_type: VARCHAR
+        description: Ad group ID from stats; join key to the ad_groups snapshot and part of the aggregation key.
+      - name: criterion_id
+        data_type: VARCHAR
+        description: Keyword criterion ID from stats; join key to the criterions snapshot and part of the aggregation key.
+      - name: keyword_text
+        data_type: VARCHAR
+        description: Latest keyword text from the criterions snapshot; may be null if no match.
+      - name: keyword_match_type
+        data_type: VARCHAR
+        description: Latest keyword match type from the criterions snapshot; may be null if no match.
+      - name: search_term
+        data_type: VARCHAR
+        description: User query string from stats; part of the aggregation key; value preserved as provided.
+      - name: search_term_match_type
+        data_type: VARCHAR
+        description: Search term match type from stats; part of the aggregation key; value preserved as provided.
+      - name: spend
+        data_type: DECIMAL(38,2)
+        description: Total spend per group; null inputs ignored; null if all inputs are null; denominated by currency_code.
+      - name: clicks
+        data_type: HUGEINT
+        description: Total clicks per group; null inputs ignored; null if all inputs are null.
+      - name: impressions
+        data_type: HUGEINT
+        description: Total impressions per group; null inputs ignored; null if all inputs are null.
+      - name: conversions
+        data_type: DECIMAL(38,2)
+        description: Total conversions per group; null inputs ignored; null if all inputs are null.
+      - name: conversions_value
+        data_type: DECIMAL(38,2)
+        description: Total conversion value per group; null inputs ignored; null if all inputs are null; denominated by currency_code.
+      - name: view_through_conversions
+        data_type: HUGEINT
+        description: Total view-through conversions per group; null inputs ignored; null if all inputs are null.
+    - name: google_ads__url_report
+      description: Daily URL performance aggregated from ad stats with denormalized account, campaign, and ad group context.
+      grain: One row per source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, ad_group_name, ad_group_id, ad_id, base_url, url_host, url_path, utm_source, utm_medium, utm_campaign, utm_content, utm_term
+      source_models:
+      - staging.stg_google_ads__ad_stats
+      - staging.stg_google_ads__ad_history (is_most_recent_record = true)
+      - staging.stg_google_ads__ad_group_history (is_most_recent_record = true)
+      - staging.stg_google_ads__campaign_history (is_most_recent_record = true)
+      - staging.stg_google_ads__account_history (is_most_recent_record = true)
+      business_logic: '- Use ad stats as the base. - Limit each history table (ads, ad groups, campaigns, accounts) to its most recent record. - Join ads to stats on matching ad_id, ad_group_id, and source_relation from stats. - Join ad groups to ads on matching ad_group_id and source_relation. - Join campaigns to ad groups on matching campaign_id and source_relation. - Join accounts to campaigns on matching account_id and source_relation. - Keep only rows where the joined ad has a non-null final URL. - Set dimensions: - base_url from the ad’s final_urls; url_host and url_path as the literal "unknown". - utm_source = "google"; utm_medium = "cpc"; utm_term = "unknown". - utm_campaign from campaign_name; utm_content from ad_group_name. - For each unique combination of the listed grain fields, aggregate metrics by summing spend, clicks, impressions, conversions, conversions_value, and view_through_conversions from ad stats. - Summations skip null inputs and return null if all inputs in the group are null; no ordering or de-duplication beyond the grouping keys; numeric precision follows the column types.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source identifier from ad stats used to align joins across tables.
+      - name: date_day
+        data_type: DATE
+        description: Stats date that defines the daily grouping key.
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Account name from the most recent account record; may be NULL if the join does not match.
+      - name: account_id
+        data_type: VARCHAR
+        description: Account ID from the most recent account record; may be NULL if the join does not match.
+      - name: currency_code
+        data_type: VARCHAR
+        description: Account currency code from the most recent account record; may be NULL if the join does not match.
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign name from the most recent campaign record; may be NULL if the join does not match.
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign ID from the most recent campaign record; may be NULL if the join does not match.
+      - name: ad_group_name
+        data_type: VARCHAR
+        description: Ad group name from the most recent ad group record; may be NULL if the join does not match.
+      - name: ad_group_id
+        data_type: VARCHAR
+        description: Ad group ID from ad stats used in joins and as a grouping key.
+      - name: ad_id
+        data_type: VARCHAR
+        description: Ad ID from ad stats used in joins and as a grouping key.
+      - name: base_url
+        data_type: VARCHAR
+        description: Final URL from the most recent ad record; always non-NULL due to the filter.
+        tests:
+        - not_null
+      - name: url_host
+        data_type: VARCHAR
+        description: Static placeholder set to 'unknown'.
+      - name: url_path
+        data_type: VARCHAR
+        description: Static placeholder set to 'unknown'.
+      - name: utm_source
+        data_type: VARCHAR
+        description: Static UTM source set to 'google'.
+      - name: utm_medium
+        data_type: VARCHAR
+        description: Static UTM medium set to 'cpc'.
+      - name: utm_campaign
+        data_type: VARCHAR
+        description: UTM campaign mirrored from campaign_name; may be NULL.
+      - name: utm_content
+        data_type: VARCHAR
+        description: UTM content mirrored from ad_group_name; may be NULL.
+      - name: utm_term
+        data_type: VARCHAR
+        description: Static UTM term set to 'unknown'.
+      - name: spend
+        data_type: DECIMAL(38,2)
+        description: Total spend summed across stats rows within the grouping keys.
+      - name: clicks
+        data_type: HUGEINT
+        description: Total clicks summed across stats rows within the grouping keys.
+      - name: impressions
+        data_type: HUGEINT
+        description: Total impressions summed across stats rows within the grouping keys.
+      - name: conversions
+        data_type: DECIMAL(38,2)
+        description: Total conversions summed across stats rows within the grouping keys.
+      - name: conversions_value
+        data_type: DECIMAL(38,2)
+        description: Total conversion value summed across stats rows within the grouping keys.
+      - name: view_through_conversions
+        data_type: HUGEINT
+        description: Total view-through conversions summed across stats rows within the grouping keys.
+    - name: google_ads__channel_performance_analysis
+      description: Daily performance by channel, subtype, network, and device with aggregates, efficiency metrics, benchmarks, portfolio analytics, classifications, and alerts.
+      grain: One row per source_relation + date_day + advertising_channel_type + advertising_channel_subtype + ad_network_type + device (filtered to total_spend > 0, date_day not null, advertising_channel_type not null)
+      source_models:
+      - intermediate.int_google_ads__campaign_cohort_analysis
+      - staging.stg_google_ads__account_stats
+      business_logic: '- Inputs: - campaign_performance (cp): intermediate.int_google_ads__campaign_cohort_analysis - account_stats (ast): staging.stg_google_ads__account_stats - Join: - Left join ast to cp on campaign_id (cast to varchar) = account_id, with matching source_relation and date_day. - ad_network_type and device come from ast and can be NULL when no match exists. - Aggregation (channel_device_performance): - Group by source_relation, date_day, advertising_channel_type, advertising_channel_subtype, ad_network_type, device. - Sums: spend → total_spend; clicks → total_clicks; impressions → total_impressions; conversions → total_conversions; conversions_value → total_conversions_value. - Distinct counts of campaigns: active_campaigns; conditional counts for lifecycle stages (Launch Phase, Growth Phase), momentum (High Momentum), performance tiers (Top 20%, Bottom 20%), and underperforming_flag = true. - Investment sums: premium_spend for investment_tier = Premium Investment; high_investment_spend for investment_tier = High Investment. - Averages: avg_campaign_health_score from campaign_health_score; avg_roas from roas. - Efficiency and benchmarks (efficiency_analysis): - CTR (%): clicks divided by impressions, expressed as percent; rounded to 4 decimals; set to 0 when impressions are 0. - CPC: spend divided by clicks; rounded to 4 decimals; set to 0 when clicks are 0. - CPM: spend per thousand impressions; rounded to 4 decimals; set to 0 when impressions are 0. - Cost per conversion (CPA): spend divided by conversions; rounded to 4 decimals; NULL when conversions are 0. - ROAS: conversions_value divided by spend; rounded to 4 decimals; 0 when spend or conversions_value is 0. - Conversion rate (%): conversions divided by clicks; rounded to 4 decimals; 0 when clicks are 0. - Daily share metrics by date_day: each group''s spend, clicks, and conversions divided by the total for that date, expressed as percent and rounded to 2 decimals; zero totals are treated as missing to avoid division by zero. - Channel benchmarks by date_day: - channel_benchmark_ctr: average CTR percent within the same advertising_channel_type; uses 0 when impressions are 0; not rounded. - channel_benchmark_roas: average ROAS within the same advertising_channel_type; uses 0 when spend or conversions_value is 0; not rounded. - Device benchmarks by date_day: - device_benchmark_ctr: average CTR percent within the same device; uses 0 when impressions are 0; not rounded. - device_benchmark_cpa: average CPA within the same device using only rows with conversions; NULLs are ignored; not rounded. - Performance insights: - Deltas vs benchmarks (rounded to 2 decimals; NULL when the benchmark is <= 0): - ctr_vs_channel_benchmark_pct, roas_vs_channel_benchmark_pct, ctr_vs_device_benchmark_pct, cpa_vs_device_benchmark_pct (CPA delta is also NULL when cost_per_conversion is NULL). - Channel investment tier by total_spend: <500 → Emerging Channel; <2000 → Developing Channel; <10000 → Established Channel; otherwise Major Channel. - Performance classification (first match applies): - Star Channel: ROAS ≥ 3.0, CTR ≥ channel benchmark, and spend_share_pct ≥ 5. - Strong Channel: ROAS ≥ 2.0 and CTR ≥ 80% of channel benchmark. - Stable Channel: ROAS ≥ 1.0 and CTR ≥ 60% of channel benchmark. - Developing Channel: ROAS ≥ 0.5. - Otherwise: Optimization Needed. - Portfolio percentages (%): high_momentum_pct, top_tier_pct, underperforming_pct each computed as count divided by active_campaigns, expressed as percent and rounded to 1 decimal; set to 0 when active_campaigns is 0. - Channel efficiency score (0–100): weighted blend of CTR delta (30%), ROAS delta (40%), and avg_campaign_health_score (30%); missing inputs default to 50; the score is capped between 0 and 100. - Final processing: - premium_spend_pct: premium_spend divided by total_spend, expressed as percent and rounded to 2 decimals. - Rounding: avg_campaign_health_score to 1 decimal; avg_roas to 4 decimals; channel_efficiency_score to 1 decimal. - Alerts: roi_alert when ROAS < 0.5 and total_spend > 1000; portfolio_health_alert when underperforming_pct > 50; strategic_review_needed when spend_share_pct > 30 and performance_classification is Optimization Needed; growth_opportunity when high_momentum_pct > 50 and channel_efficiency_score > 80. - Filter rows: keep only total_spend > 0, date_day not null, and advertising_channel_type not null; sort by date_day descending, then total_spend descending.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source system identifier from campaign data; used for grouping; may be NULL.
+      - name: date_day
+        data_type: DATE
+        description: Report date; rows with NULL are excluded in the final output.
+        tests:
+        - not_null
+      - name: advertising_channel_type
+        data_type: VARCHAR
+        description: Advertising channel type from campaign data; rows with NULL are excluded in the final output.
+        tests:
+        - not_null
+      - name: advertising_channel_subtype
+        data_type: VARCHAR
+        description: Advertising channel subtype from campaign data; may be NULL.
+      - name: ad_network_type
+        data_type: VARCHAR
+        description: Ad network type sourced from account stats via left join; may be NULL.
+      - name: device
+        data_type: VARCHAR
+        description: Device sourced from account stats via left join; may be NULL.
+      - name: total_spend
+        data_type: DOUBLE
+        description: Total spend summed over the group; positive due to final filter; units follow campaign spend.
+      - name: total_clicks
+        data_type: HUGEINT
+        description: Total clicks summed over the group; non-negative integer.
+      - name: total_impressions
+        data_type: HUGEINT
+        description: Total impressions summed over the group; non-negative integer.
+      - name: total_conversions
+        data_type: DOUBLE
+        description: Total conversions summed over the group; non-negative and may be fractional.
+      - name: total_conversions_value
+        data_type: DOUBLE
+        description: Total conversion value summed over the group; non-negative monetary amount.
+      - name: ctr
+        data_type: FLOAT
+        description: Click-through rate as percent from clicks over impressions; rounded to 4 decimals; 0 when impressions are 0.
+      - name: cpc
+        data_type: DOUBLE
+        description: Average cost per click; rounded to 4 decimals; 0 when clicks are 0.
+      - name: cpm
+        data_type: DOUBLE
+        description: Cost per thousand impressions; rounded to 4 decimals; 0 when impressions are 0.
+      - name: cost_per_conversion
+        data_type: DOUBLE
+        description: Cost per conversion; rounded to 4 decimals; NULL when conversions are 0.
+      - name: roas
+        data_type: DOUBLE
+        description: Return on ad spend; rounded to 4 decimals; 0 when spend or conversion value is 0.
+      - name: conversion_rate
+        data_type: DOUBLE
+        description: Conversion rate as percent from conversions over clicks; rounded to 4 decimals; 0 when clicks are 0.
+      - name: spend_share_pct
+        data_type: DOUBLE
+        description: Share of spend within the same date_day, as percent rounded to 2 decimals; NULL only if the daily total is 0.
+      - name: clicks_share_pct
+        data_type: FLOAT
+        description: Share of clicks within the same date_day, as percent rounded to 2 decimals; NULL only if the daily total is 0.
+      - name: conversions_share_pct
+        data_type: DOUBLE
+        description: Share of conversions within the same date_day, as percent rounded to 2 decimals; NULL only if the daily total is 0.
+      - name: channel_investment_tier
+        data_type: VARCHAR
+        description: 'Spend tier by total_spend: Emerging (<500), Developing (<2000), Established (<10000), else Major.'
+      - name: channel_benchmark_ctr
+        data_type: DOUBLE
+        description: Average CTR percent for the same advertising_channel_type and date_day; uses 0 when impressions are 0; not rounded.
+      - name: channel_benchmark_roas
+        data_type: DOUBLE
+        description: Average ROAS for the same advertising_channel_type and date_day; uses 0 when spend or conversion value is 0; not rounded.
+      - name: device_benchmark_ctr
+        data_type: DOUBLE
+        description: Average CTR percent for the same device and date_day; uses 0 when impressions are 0; not rounded.
+      - name: device_benchmark_cpa
+        data_type: DOUBLE
+        description: Average CPA for the same device and date_day using rows with conversions; ignores NULLs; not rounded.
+      - name: ctr_vs_channel_benchmark_pct
+        data_type: DOUBLE
+        description: Percent difference versus the channel CTR benchmark; rounded to 2 decimals; NULL when the benchmark is ≤ 0.
+      - name: roas_vs_channel_benchmark_pct
+        data_type: DOUBLE
+        description: Percent difference versus the channel ROAS benchmark; rounded to 2 decimals; NULL when the benchmark is ≤ 0.
+      - name: ctr_vs_device_benchmark_pct
+        data_type: DOUBLE
+        description: Percent difference versus the device CTR benchmark; rounded to 2 decimals; NULL when the benchmark is ≤ 0.
+      - name: cpa_vs_device_benchmark_pct
+        data_type: DOUBLE
+        description: Percent difference versus the device CPA benchmark; rounded to 2 decimals; NULL when the benchmark is ≤ 0 or cost_per_conversion is NULL.
+      - name: active_campaigns
+        data_type: BIGINT
+        description: Distinct campaign count within the group.
+      - name: launch_phase_campaigns
+        data_type: BIGINT
+        description: Distinct campaign count in Launch Phase.
+      - name: growth_phase_campaigns
+        data_type: BIGINT
+        description: Distinct campaign count in Growth Phase.
+      - name: high_momentum_campaigns
+        data_type: BIGINT
+        description: Distinct campaign count flagged as High Momentum.
+      - name: top_tier_campaigns
+        data_type: BIGINT
+        description: Distinct campaign count in the Top 20% performance tier.
+      - name: bottom_tier_campaigns
+        data_type: BIGINT
+        description: Distinct campaign count in the Bottom 20% performance tier.
+      - name: underperforming_campaigns
+        data_type: BIGINT
+        description: Distinct campaign count with underperforming_flag = true.
+      - name: high_momentum_pct
+        data_type: FLOAT
+        description: High Momentum campaigns as percent of active_campaigns; rounded to 1 decimal; 0 when active_campaigns is 0.
+      - name: top_tier_pct
+        data_type: FLOAT
+        description: Top-tier campaigns as percent of active_campaigns; rounded to 1 decimal; 0 when active_campaigns is 0.
+      - name: underperforming_pct
+        data_type: FLOAT
+        description: Underperforming campaigns as percent of active_campaigns; rounded to 1 decimal; 0 when active_campaigns is 0.
+      - name: premium_spend
+        data_type: DOUBLE
+        description: Spend summed where investment_tier = Premium Investment.
+      - name: high_investment_spend
+        data_type: DOUBLE
+        description: Spend summed where investment_tier = High Investment.
+      - name: premium_spend_pct
+        data_type: DOUBLE
+        description: Percent of spend classified as Premium Investment; rounded to 2 decimals; denominator is total_spend (>0).
+      - name: avg_campaign_health_score
+        data_type: DOUBLE
+        description: Average campaign health score across the group; rounded to 1 decimal; NULL if no values.
+      - name: avg_roas
+        data_type: DOUBLE
+        description: Average ROAS across the group; rounded to 4 decimals; NULL if no values.
+      - name: performance_classification
+        data_type: VARCHAR
+        description: Performance label based on ROAS, CTR relative to the channel benchmark, and spend share; first matching rule is applied.
+      - name: channel_efficiency_score
+        data_type: DOUBLE
+        description: Weighted composite score (0–100) combining CTR delta (30%), ROAS delta (40%), and average health score (30%); missing inputs default to 50; capped and rounded to 1 decimal.
+      - name: strategic_recommendation
+        data_type: VARCHAR
+        description: Recommendation chosen by priority using ROAS vs channel benchmark, spend share, top-tier share, underperforming share, momentum, and health score.
+      - name: roi_alert
+        data_type: BOOLEAN
+        description: True when ROAS < 0.5 and total_spend > 1000; otherwise false.
+        tests:
+        - not_null
+      - name: portfolio_health_alert
+        data_type: BOOLEAN
+        description: True when underperforming_pct > 50; otherwise false.
+        tests:
+        - not_null
+      - name: strategic_review_needed
+        data_type: BOOLEAN
+        description: True when spend_share_pct > 30 and performance_classification is Optimization Needed; otherwise false.
+        tests:
+        - not_null
+      - name: growth_opportunity
+        data_type: BOOLEAN
+        description: True when high_momentum_pct > 50 and channel_efficiency_score > 80; otherwise false.
+        tests:
+        - not_null
+    - name: google_ads__customer_acquisition_analysis
+      description: Customer acquisition analysis by account and date with matched campaign context, cohort-based CAC/LTV, running totals, cohort benchmarks, segmentation, recommendations, and alert flags
+      grain: One row per source_relation, account_id, date_day, and matched campaign cohort row (joined on source_relation, account_id=campaign_id, and date_day); if no match, one row with NULL campaign fields
+      source_models:
+      - intermediate.int_google_ads__account_performance_metrics (source_relation, account_id, account_name, date_day, account_maturity_stage, spend, clicks, impressions, conversions, conversions_value, ctr, cpc, cost_per_conversion, roas)
+      - intermediate.int_google_ads__campaign_cohort_analysis (source_relation, campaign_id, date_day, advertising_channel_type, advertising_channel_subtype, lifecycle_stage)
+      business_logic: '- Begin with account_performance (ap); left join campaign_cohorts (cc) on source_relation, account_id=campaign_id, and date_day. - Keep only ap rows where conversions > 0 or spend > 0. - Acquisition cohort: for each account_id, find the earliest date_day with conversions > 0 and use the first day of that month; set to NULL if the account has no conversions. - Days since first conversion: calendar days between the account’s first conversion date and the current date_day; NULL if no first conversion date. - Channel and lifecycle: take advertising_channel_type, advertising_channel_subtype, and lifecycle_stage (as campaign_lifecycle_stage) from cc; these may be NULL. - Running totals within each account_id ordered by date_day from earliest to current: - cumulative_acquisition_cost: running sum of spend. - cumulative_conversions: running sum of conversions. - cumulative_ltv: running sum of conversions_value. - If multiple rows share the same date_day, accumulation follows the row order. - Daily portfolio counts per account_id and date_day (based on joined cc rows; NULLs ignored): - active_campaigns_count: distinct campaign_id count. - channel_diversity_count: distinct advertising_channel_type count. - Derived economics per row: - customer_acquisition_cost (CAC): cumulative_acquisition_cost divided by cumulative_conversions, rounded to 2 decimals when cumulative_conversions > 0; otherwise NULL. - average_customer_ltv: cumulative_ltv divided by cumulative_conversions, rounded to 2 decimals when cumulative_conversions > 0; otherwise 0. - ltv_cac_ratio: average_customer_ltv divided by customer_acquisition_cost, rounded to 2 decimals when cumulative_acquisition_cost > 0 and cumulative_conversions > 0; otherwise 0. - estimated_payback_days: cost_per_conversion divided by average conversion value on the row (conversions_value divided by conversions), scaled to 30 days and rounded to a whole number when cost_per_conversion > 0 and conversions_value > 0; otherwise NULL. - Cohort benchmarks: - cohort_avg_cac: average of (cumulative_acquisition_cost / cumulative_conversions) across rows sharing acquisition_cohort and advertising_channel_type; rows with cumulative_conversions <= 0 are excluded; not rounded. - cohort_avg_ltv: average of (cumulative_ltv / cumulative_conversions) across the same cohort/channel; rows with cumulative_conversions <= 0 are excluded; not rounded. - Percentile ranks within acquisition_cohort: - cac_efficiency_percentile: percentile (0–1) based on customer_acquisition_cost with lower values ranked higher. - ltv_cac_performance_percentile: percentile (0–1) based on ltv_cac_ratio with higher values ranked higher. - Segmentation and insights: - acquisition_efficiency_tier by ltv_cac_ratio: ≥3.0 Excellent; ≥2.0 Good; ≥1.0 Break-even; ≥0.5 Negative; else Poor. - cac_performance_tier by cac_efficiency_percentile: ≥0.8 Top CAC Efficiency; ≥0.6 Above Average CAC; ≥0.4 Average CAC; ≥0.2 Below Average CAC; else High CAC. - customer_maturity_stage from days_since_first_conversion: Not Acquired (NULL), ≤30 New Customer, ≤90 Early Stage, ≤365 Developing Customer, ≤1095 Mature Customer, else Long-term Customer. - acquisition_sophistication_score: clamp to [0,100] of (channel_diversity_count*15 + active_campaigns_count*5 + up to 30 from average_customer_ltv, and up to 25 from ltv_cac_ratio); rounded to 1 decimal in the final output. - cac_vs_cohort_pct: ((customer_acquisition_cost − cohort_avg_cac) / cohort_avg_cac) * 100 rounded to 2 decimals when cohort_avg_cac > 0; otherwise NULL. - ltv_vs_cohort_pct: ((average_customer_ltv − cohort_avg_ltv) / cohort_avg_ltv) * 100 rounded to 2 decimals when cohort_avg_ltv > 0; otherwise NULL. - strategic_customer_segment selected by ordered rules using ltv_cac_ratio, average_customer_ltv, days_since_first_conversion, and CAC vs cohort comparisons. - acquisition_recommendation selected by ordered rules using ltv_cac_ratio, cac_efficiency_percentile, channel_diversity_count, days_since_first_conversion, CAC vs cohort, and active_campaigns_count. - Alerts in the final projection: - negative_roi_alert: true when ltv_cac_ratio < 0.5 and cumulative_acquisition_cost > 1000; else false. - high_cac_alert: true when customer_acquisition_cost > 2× cohort_avg_cac; else false. - scale_opportunity: true when ltv_cac_ratio ≥ 4.0 and cac_efficiency_percentile ≥ 0.9; else false. - retention_risk: true when days_since_first_conversion > 365 and ltv_cac_ratio < 1.5; else false. - Final filter: keep rows where cumulative_conversions > 0 or spend > 0, and date_day and account_id are not NULL; ordered by account_id ascending and date_day descending.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Upstream source identifier from account performance and join key to campaign cohorts
+      - name: account_id
+        data_type: VARCHAR
+        description: Ads account identifier from account performance; non-null in the final result
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Ads account name from account performance
+      - name: date_day
+        data_type: DATE
+        description: Metric date used for joining and for ordering running totals; non-null in the final result
+        tests:
+        - not_null
+      - name: acquisition_cohort
+        data_type: DATE
+        description: Month start of the account’s first conversion date; NULL if the account has never converted
+      - name: days_since_first_conversion
+        data_type: BIGINT
+        description: Calendar days from the account’s first conversion date to the current date_day; NULL if no first conversion date
+      - name: advertising_channel_type
+        data_type: VARCHAR
+        description: Channel type from the matched campaign cohort row; may be NULL
+      - name: advertising_channel_subtype
+        data_type: VARCHAR
+        description: Channel subtype from the matched campaign cohort row; may be NULL
+      - name: account_maturity_stage
+        data_type: VARCHAR
+        description: Account maturity stage from account performance
+      - name: customer_maturity_stage
+        data_type: VARCHAR
+        description: Customer stage derived from days_since_first_conversion
+      - name: campaign_lifecycle_stage
+        data_type: VARCHAR
+        description: Lifecycle stage from the matched campaign cohort row; may be NULL
+      - name: spend
+        data_type: DOUBLE
+        description: Daily spend from account performance; rows exist only when spend > 0 or conversions > 0
+      - name: clicks
+        data_type: BIGINT
+        description: Daily clicks from account performance
+      - name: impressions
+        data_type: BIGINT
+        description: Daily impressions from account performance
+      - name: conversions
+        data_type: DOUBLE
+        description: Daily conversions from account performance; used in running totals and payback calculation
+      - name: conversions_value
+        data_type: DOUBLE
+        description: Daily conversion value from account performance; used in running LTV and payback calculation
+      - name: ctr
+        data_type: FLOAT
+        description: Click-through rate from account performance
+      - name: cpc
+        data_type: DOUBLE
+        description: Cost per click from account performance
+      - name: cost_per_conversion
+        data_type: DOUBLE
+        description: Cost per conversion from account performance; used in payback calculation
+      - name: roas
+        data_type: DOUBLE
+        description: Return on ad spend from account performance
+      - name: customer_acquisition_cost
+        data_type: DOUBLE
+        description: 'Running CAC: cumulative_acquisition_cost divided by cumulative_conversions, rounded to 2 decimals when cumulative_conversions > 0; otherwise NULL'
+      - name: average_customer_ltv
+        data_type: DOUBLE
+        description: 'Running average conversion value: cumulative_ltv divided by cumulative_conversions, rounded to 2 decimals when cumulative_conversions > 0; otherwise 0'
+      - name: ltv_cac_ratio
+        data_type: DOUBLE
+        description: Ratio of average_customer_ltv to customer_acquisition_cost, rounded to 2 decimals when both are defined; otherwise 0
+      - name: estimated_payback_days
+        data_type: DOUBLE
+        description: 'Estimated days to recover CAC: cost_per_conversion divided by average conversion value, scaled to 30 days and rounded when applicable; otherwise NULL'
+      - name: cumulative_acquisition_cost
+        data_type: DOUBLE
+        description: Running total of spend within each account ordered by date_day; same-day ties accumulate in row order
+      - name: cumulative_conversions
+        data_type: DOUBLE
+        description: Running total of conversions within each account ordered by date_day; same-day ties accumulate in row order
+      - name: cumulative_ltv
+        data_type: DOUBLE
+        description: Running total of conversion value within each account ordered by date_day; same-day ties accumulate in row order
+      - name: cohort_avg_cac
+        data_type: DOUBLE
+        description: Average running CAC within the same acquisition_cohort and advertising_channel_type; rows with zero cumulative_conversions are excluded; not rounded
+      - name: cohort_avg_ltv
+        data_type: DOUBLE
+        description: Average running LTV per conversion within the same acquisition_cohort and advertising_channel_type; rows with zero cumulative_conversions are excluded; not rounded
+      - name: cac_vs_cohort_pct
+        data_type: DOUBLE
+        description: Percent difference vs cohort CAC, rounded to 2 decimals; NULL when cohort_avg_cac is missing or not positive
+      - name: ltv_vs_cohort_pct
+        data_type: DOUBLE
+        description: Percent difference vs cohort LTV, rounded to 2 decimals; NULL when cohort_avg_ltv is missing or not positive
+      - name: cac_efficiency_percentile
+        data_type: DOUBLE
+        description: Percentile rank (0–1) of CAC within the acquisition_cohort, with lower CAC ranked higher; ties share rank
+      - name: ltv_cac_performance_percentile
+        data_type: DOUBLE
+        description: Percentile rank (0–1) of LTV:CAC within the acquisition_cohort, with higher ratios ranked higher; ties share rank
+      - name: acquisition_efficiency_tier
+        data_type: VARCHAR
+        description: 'Tier by ltv_cac_ratio thresholds: Excellent (≥3.0), Good (≥2.0), Break-even (≥1.0), Negative (≥0.5), else Poor'
+      - name: cac_performance_tier
+        data_type: VARCHAR
+        description: 'Tier by cac_efficiency_percentile: Top CAC Efficiency (≥0.8), Above Average CAC (≥0.6), Average CAC (≥0.4), Below Average CAC (≥0.2), else High CAC'
+      - name: strategic_customer_segment
+        data_type: VARCHAR
+        description: Strategic segment chosen by ordered rules using ltv_cac_ratio, average_customer_ltv, days_since_first_conversion, and CAC vs cohort
+      - name: acquisition_sophistication_score
+        data_type: DOUBLE
+        description: Score clamped to [0,100] using channel diversity, active campaigns, LTV, and LTV:CAC; rounded to 1 decimal in the final output
+      - name: active_campaigns_count
+        data_type: BIGINT
+        description: Distinct campaign count per account_id and date_day from matched cohort rows; NULLs ignored
+      - name: channel_diversity_count
+        data_type: BIGINT
+        description: Distinct advertising_channel_type count per account_id and date_day from matched cohort rows; NULLs ignored
+      - name: acquisition_recommendation
+        data_type: VARCHAR
+        description: Recommendation selected by ordered rules using LTV:CAC, CAC percentile, channel diversity, days since first conversion, CAC vs cohort, and active campaigns
+      - name: negative_roi_alert
+        data_type: BOOLEAN
+        description: True when ltv_cac_ratio < 0.5 and cumulative_acquisition_cost > 1000; else false
+        tests:
+        - not_null
+      - name: high_cac_alert
+        data_type: BOOLEAN
+        description: True when customer_acquisition_cost > cohort_avg_cac × 2; else false
+        tests:
+        - not_null
+      - name: scale_opportunity
+        data_type: BOOLEAN
+        description: True when ltv_cac_ratio ≥ 4.0 and cac_efficiency_percentile ≥ 0.9; else false
+        tests:
+        - not_null
+      - name: retention_risk
+        data_type: BOOLEAN
+        description: True when days_since_first_conversion > 365 and ltv_cac_ratio < 1.5; else false
+        tests:
+        - not_null
+    - name: google_ads__executive_dashboard
+      description: Executive summary of Google Ads performance with daily account KPIs, trends, portfolio composition, and prescriptive flags
+      grain: One row per account_id per date_day (only days with total_spend > 0; account_id and date_day not null)
+      source_models:
+      - intermediate.int_google_ads__account_performance_metrics (source_relation, account_id, account_name, currency_code, date_day, account_maturity_stage, performance_score, performance_tier, spend_mom_change_pct, conversions_mom_change_pct, spend, clicks, impressions, conversions, conversions_value, ctr, cpc, cost_per_conversion, roas)
+      - intermediate.int_google_ads__campaign_cohort_analysis (date_day, campaign_id, lifecycle_stage, momentum_indicator, performance_tier_in_cohort, investment_tier, underperforming_flag, spend)
+      - intermediate.int_google_ads__keyword_performance_segmentation (date_day, campaign_id, keyword_id, performance_tier, bid_recommendation, efficiency_score, pause_candidate_flag)
+      business_logic: '1) Start from intermediate.int_google_ads__account_performance_metrics and rename core metrics to account-level totals: total_spend=spend; total_clicks=clicks; total_impressions=impressions; total_conversions=conversions; total_conversions_value=conversions_value; overall_ctr=ctr; overall_cpc=cpc; overall_cost_per_conversion=cost_per_conversion; overall_roas=roas. Also carry: source_relation, account_id, account_name, currency_code, date_day, account_maturity_stage, performance_score, performance_tier, spend_mom_change_pct, conversions_mom_change_pct. 2) Build campaign_aggregates by date_day (global scope) from intermediate.int_google_ads__campaign_cohort_analysis: active_campaigns=count of distinct campaigns; campaigns_in_launch/growth/maturity=count of distinct campaigns in each lifecycle stage; high_momentum_campaigns=count with momentum_indicator=''High Momentum''; underperforming_campaigns=count with underperforming_flag=true; premium_investment_campaigns=count with investment_tier=''Premium Investment''; premium_investment_spend=sum of spend for ''Premium Investment''. Null campaign/category values are not counted; missing dates yield no records. 3) Build keyword_aggregates by date_day (global scope) from intermediate.int_google_ads__keyword_performance_segmentation: active_keywords=count of distinct keywords; star_performer_keywords=count with performance_tier=''Star Performer''; bid_increase_opportunities=count where bid_recommendation starts with ''Increase''; pause_candidate_keywords=count with pause_candidate_flag=true; avg_keyword_efficiency_score=average efficiency_score. Missing dates yield no records. 4) Join account-level metrics to campaign_aggregates and keyword_aggregates on date_day; replace missing aggregate counts and premium_investment_spend with 0; set avg_keyword_efficiency_score to 0 when missing. 5) Compute trends per account_id ordered by date_day: - spend_wow_growth_pct: percent change in total_spend vs the value 7 days prior; round to 2 decimals; set to null if the prior value is missing or <= 0. - conversions_wow_growth_pct: percent change in total_conversions vs the value 7 days prior; round to 2 decimals; set to null if the prior value is missing or <= 0. - spend_30d_avg: rolling average of total_spend over the current day and the 29 preceding rows for the same account; rounded in final to 2 decimals. - roas_30d_avg: rolling average of overall_roas over the current day and the 29 preceding rows for the same account; rounded in final to 4 decimals. - performance_score_30d_avg: rolling average of performance_score over the current day and the 29 preceding rows for the same account; rounded in final to 1 decimal. Window partition: by account_id; order: date_day ascending. 6) Derive classifications and flags: - premium_investment_pct: premium_investment_spend/total_spend*100; round to 2 decimals; if total_spend=0 then null (rows with 0 spend are excluded by filter). - performance_alert (first match wins): spend_wow_growth_pct > 50 → ''High Spend Growth Alert''; spend_wow_growth_pct < -30 → ''Spend Decline Alert''; conversions_wow_growth_pct > 50 → ''Conversion Growth Opportunity''; conversions_wow_growth_pct < -30 → ''Conversion Decline Alert''; overall_roas < 1.0 and total_spend > 1000 → ''ROI Optimization Needed''; underperforming_campaigns/active_campaigns > 0.3 using safe divide → ''Portfolio Health Issue''; else ''Normal Performance''. - strategic_recommendation (first match wins): star_performer_keywords/active_keywords > 0.2 and bid_increase_opportunities > 10 using safe divide → ''Scale High Performers''; pause_candidate_keywords/active_keywords > 0.2 using safe divide → ''Portfolio Optimization Needed''; high_momentum_campaigns/active_campaigns > 0.3 using safe divide → ''Invest in Growth''; avg_keyword_efficiency_score < 40 → ''Keyword Strategy Review''; premium_investment_spend/total_spend < 0.1 using safe divide → ''Consider Premium Investments''; else ''Maintain Current Strategy''. - budget_efficiency_tier: ''Highly Efficient'' if overall_roas >= 4.0; ''Efficient'' if >= 2.0; ''Break-even'' if >= 1.0; ''Underperforming'' if >= 0.5; else ''Poor Performance''. - overall_account_health_score: cap to [0,100] after combining performance_score*0.6 and avg_keyword_efficiency_score*0.4; treat missing inputs as 0. - immediate_attention_required: true if overall_roas < 1.0 and total_spend > 1000; else false. - trending_alert: true if spend_wow_growth_pct > 50 or conversions_wow_growth_pct < -30; else false. - scale_opportunity: true if star_performer_keywords/active_keywords > 0.15 using safe divide; else false. - top_performer_account: true if performance_score*0.6 + avg_keyword_efficiency_score*0.4 >= 80; else false. 7) Filter to executive-relevant rows: total_spend > 0, account_id present, date_day present. Order by account_id ascending and date_day descending.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Upstream relation identifier for the account metrics row
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier; join and window partition key for trends
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Human-readable account name from source
+      - name: currency_code
+        data_type: VARCHAR
+        description: Three-letter currency code associated with the account
+      - name: date_day
+        data_type: DATE
+        description: Metric date; window order key; exactly one row per account_id per date_day post-filter
+        tests:
+        - not_null
+      - name: total_spend
+        data_type: DOUBLE
+        description: Account daily spend (from source); rows with total_spend <= 0 are excluded; used as denominator for premium_investment_pct
+      - name: total_clicks
+        data_type: BIGINT
+        description: Account daily clicks (from source) without rounding or imputation
+      - name: total_impressions
+        data_type: BIGINT
+        description: Account daily impressions (from source) without rounding or imputation
+      - name: total_conversions
+        data_type: DOUBLE
+        description: Account daily conversions (from source) used in WoW trend calculations
+      - name: total_conversions_value
+        data_type: DOUBLE
+        description: Account daily conversion value/revenue (from source)
+      - name: overall_ctr
+        data_type: FLOAT
+        description: Account click-through rate ratio (0–1) as provided by source (no re-scaling)
+      - name: overall_cpc
+        data_type: DOUBLE
+        description: Account average cost-per-click as provided by source
+      - name: overall_cost_per_conversion
+        data_type: DOUBLE
+        description: Account cost per conversion as provided by source
+      - name: overall_roas
+        data_type: DOUBLE
+        description: Account return on ad spend (revenue/spend) as provided by source
+      - name: spend_wow_growth_pct
+        data_type: DOUBLE
+        description: Percent change in total_spend vs value 7 days prior for same account; rounded to 2 decimals; NULL if prior <= 0 or missing
+      - name: conversions_wow_growth_pct
+        data_type: DOUBLE
+        description: Percent change in total_conversions vs value 7 days prior for same account; rounded to 2 decimals; NULL if prior <= 0 or missing
+      - name: spend_mom_change_pct
+        data_type: DOUBLE
+        description: Month-over-month spend change percentage as provided by source (no recomputation or rounding here)
+      - name: conversions_mom_change_pct
+        data_type: DOUBLE
+        description: Month-over-month conversions change percentage as provided by source (no recomputation or rounding here)
+      - name: active_campaigns
+        data_type: BIGINT
+        description: Global count of distinct campaigns active on date_day; COALESCE to 0 when missing
+      - name: campaigns_in_launch
+        data_type: BIGINT
+        description: Global count of distinct campaigns with lifecycle_stage='Launch Phase' on date_day; COALESCE to 0
+      - name: campaigns_in_growth
+        data_type: BIGINT
+        description: Global count of distinct campaigns with lifecycle_stage='Growth Phase' on date_day; COALESCE to 0
+      - name: campaigns_in_maturity
+        data_type: BIGINT
+        description: Global count of distinct campaigns with lifecycle_stage='Maturity Phase' on date_day; COALESCE to 0
+      - name: high_momentum_campaigns
+        data_type: BIGINT
+        description: Global count of distinct campaigns with momentum_indicator='High Momentum' on date_day; COALESCE to 0
+      - name: underperforming_campaigns
+        data_type: BIGINT
+        description: Global count of distinct campaigns with underperforming_flag=true on date_day; COALESCE to 0
+      - name: premium_investment_campaigns
+        data_type: BIGINT
+        description: Global count of distinct campaigns with investment_tier='Premium Investment' on date_day; COALESCE to 0
+      - name: premium_investment_spend
+        data_type: DOUBLE
+        description: Global spend sum for campaigns with investment_tier='Premium Investment' on date_day; COALESCE to 0
+      - name: premium_investment_pct
+        data_type: DOUBLE
+        description: Premium investment share of total_spend as a percentage (0–100), computed as premium_investment_spend/total_spend*100 and rounded to 2 decimals; NULL if total_spend=0 (rows with 0 spend are filtered out)
+      - name: active_keywords
+        data_type: BIGINT
+        description: Global count of distinct keywords on date_day; COALESCE to 0
+      - name: star_performer_keywords
+        data_type: BIGINT
+        description: Global count of distinct keywords with performance_tier='Star Performer' on date_day; COALESCE to 0
+      - name: bid_increase_opportunities
+        data_type: BIGINT
+        description: Global count of distinct keywords with bid_recommendation starting with 'Increase' on date_day; COALESCE to 0
+      - name: pause_candidate_keywords
+        data_type: BIGINT
+        description: Global count of distinct keywords with pause_candidate_flag=true on date_day; COALESCE to 0
+      - name: avg_keyword_efficiency_score
+        data_type: DOUBLE
+        description: Global average of efficiency_score on date_day rounded to 1 decimal in final; COALESCE to 0 before rounding when missing
+      - name: performance_score
+        data_type: DOUBLE
+        description: Account performance score from source used in health score and top_performer_account logic
+      - name: performance_tier
+        data_type: VARCHAR
+        description: Account performance tier label from source (passed through unchanged)
+      - name: account_maturity_stage
+        data_type: VARCHAR
+        description: Account maturity stage label from source (passed through unchanged)
+      - name: spend_30d_avg
+        data_type: DOUBLE
+        description: Rolling average of total_spend over the last 30 rows per account_id (max 30 days), rounded to 2 decimals
+      - name: roas_30d_avg
+        data_type: DOUBLE
+        description: Rolling average of overall_roas over the last 30 rows per account_id (max 30 days), rounded to 4 decimals
+      - name: performance_score_30d_avg
+        data_type: DOUBLE
+        description: Rolling average of performance_score over the last 30 rows per account_id (max 30 days), rounded to 1 decimal
+      - name: performance_alert
+        data_type: VARCHAR
+        description: 'Categorical alert derived by ordered CASE (see business logic); emits one of: High Spend Growth Alert, Spend Decline Alert, Conversion Growth Opportunity, Conversion Decline Alert, ROI Optimization Needed, Portfolio Health Issue, Normal Performance'
+      - name: strategic_recommendation
+        data_type: VARCHAR
+        description: 'Categorical recommendation derived by ordered CASE (see business logic); emits one of: Scale High Performers, Portfolio Optimization Needed, Invest in Growth, Keyword Strategy Review, Consider Premium Investments, Maintain Current Strategy'
+      - name: budget_efficiency_tier
+        data_type: VARCHAR
+        description: 'Budget efficiency classification: Highly Efficient, Efficient, Break-even, Underperforming, or Poor Performance'
+      - name: overall_account_health_score
+        data_type: DOUBLE
+        description: Composite health score capped to [0,100] = performance_score*0.6 + avg_keyword_efficiency_score*0.4 with bounding via least/greatest
+      - name: immediate_attention_required
+        data_type: BOOLEAN
+        description: True if overall_roas < 1.0 and total_spend > 1000, else false
+        tests:
+        - not_null
+      - name: trending_alert
+        data_type: BOOLEAN
+        description: True if spend_wow_growth_pct > 50 or conversions_wow_growth_pct < -30, else false
+        tests:
+        - not_null
+      - name: scale_opportunity
+        data_type: BOOLEAN
+        description: True if star_performer_keywords/active_keywords > 0.15 (safe-divide), else false
+        tests:
+        - not_null
+      - name: top_performer_account
+        data_type: BOOLEAN
+        description: True if performance_score*0.6 + avg_keyword_efficiency_score*0.4 >= 80, else false
+        tests:
+        - not_null
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.

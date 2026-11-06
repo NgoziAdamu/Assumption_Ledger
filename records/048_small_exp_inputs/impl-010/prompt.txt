@@ -1,0 +1,2289 @@
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+
+
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for HubSpot CRM analytics platform"
+  author: "Data Engineering Team"
+  created_date: "2025-09-11"
+  last_updated: "2025-09-11"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+  business_domain: "Customer Relationship Management (CRM)"
+  source_system: "HubSpot"
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw HubSpot data into clean, validated staging tables with standardized data types, consistent formatting, and data quality validation. This phase ensures data integrity and prepares datasets for business logic application."
+
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "standardize timezone formats", "normalize phone numbers"]
+    
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  tables:
+    - name: stg_hubspot__contact
+      description: "Cleaned and standardized contact records with validated email addresses and normalized personal information"
+      source_table: raw.contact_data
+      columns:
+        - name: contact_id
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "contact_id RLIKE '^[A-Za-z0-9_-]{1,128}$'"
+              on_failure: delete_row
+            - rule: "LENGTH(contact_id) BETWEEN 3 AND 50"
+              on_failure: delete_row
+        - name: calculated_merged_vids
+          data_type: VARCHAR
+        - name: email
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: first_name
+          data_type: VARCHAR
+        - name: last_name
+          data_type: VARCHAR
+        - name: contact_company
+          data_type: VARCHAR
+        - name: job_title
+          data_type: VARCHAR
+        - name: company_annual_revenue
+          data_type: DECIMAL(18,2)
+        - name: created_date
+          data_type: TIMESTAMP
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: first_conversion_date
+          data_type: TIMESTAMP
+        - name: is_contact_deleted
+          data_type: BOOLEAN
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__deal
+      description: "Cleaned deal records with validated amounts and standardized pipeline references"
+      source_table: raw.deal_data
+      columns:
+        - name: deal_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: deal_pipeline_id
+          data_type: VARCHAR
+        - name: deal_pipeline_stage_id
+          data_type: VARCHAR
+        - name: owner_id
+          data_type: VARCHAR
+        - name: portal_id
+          data_type: BIGINT
+        - name: deal_name
+          data_type: VARCHAR
+        - name: description
+          data_type: VARCHAR
+        - name: amount
+          data_type: DECIMAL(18,2)
+        - name: closed_date
+          data_type: TIMESTAMP
+        - name: created_date
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: is_deal_deleted
+          data_type: BOOLEAN
+          validation_rules:
+            - rule: "is_deal_deleted IN (TRUE, FALSE)"
+              on_failure: correct
+            - rule: "is_deal_deleted IS NOT NULL"
+              on_failure: correct
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__company
+      description: "Cleaned company records with validated revenue data and standardized industry classifications"
+      source_table: raw.company_data
+      columns:
+        - name: company_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: company_name
+          data_type: VARCHAR
+        - name: description
+          data_type: VARCHAR
+        - name: industry
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "industry IS NULL OR industry IN ('Technology','Healthcare','Finance','Manufacturing','Retail','Education','Government','Other','Consulting','Real Estate','Hospitality')"
+              on_failure: nullify_field
+        - name: address
+          data_type: VARCHAR
+        - name: address_2
+          data_type: VARCHAR
+        - name: city
+          data_type: VARCHAR
+        - name: state
+          data_type: VARCHAR
+        - name: country
+          data_type: VARCHAR
+        - name: annual_revenue
+          data_type: DECIMAL(18,2)
+          validation_rules:
+            - rule: "annual_revenue IS NULL OR annual_revenue >= 0"
+              on_failure: correct
+            - rule: "annual_revenue IS NULL OR annual_revenue <= 9999999999999.99"
+              on_failure: nullify_field
+            - rule: "CASE WHEN annual_revenue IS NOT NULL AND annual_revenue > 0 THEN annual_revenue BETWEEN 1000 AND 9999999999999.99 ELSE TRUE END"
+              on_failure: nullify_field
+        - name: created_date
+          data_type: TIMESTAMP
+          constraints: [not_null]
+          validation_rules:
+            - rule: "created_date <= CURRENT_TIMESTAMP"
+              on_failure: delete_row
+            - rule: "created_date >= '2000-01-01'"
+              on_failure: delete_row
+        - name: is_company_deleted
+          data_type: BOOLEAN
+          validation_rules:
+            - rule: "is_company_deleted IN (TRUE, FALSE)"
+              on_failure: correct
+            - rule: "is_company_deleted IS NOT NULL"
+              on_failure: correct
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__ticket
+      description: "Cleaned support ticket records with validated priority levels and standardized status classifications"
+      source_table: raw.ticket_data
+      columns:
+        - name: ticket_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: owner_id
+          data_type: VARCHAR
+        - name: ticket_subject
+          data_type: VARCHAR
+        - name: ticket_content
+          data_type: VARCHAR
+        - name: ticket_category
+          data_type: VARCHAR
+        - name: ticket_priority
+          data_type: BIGINT
+        - name: ticket_pipeline_id
+          data_type: VARCHAR
+        - name: ticket_pipeline_stage_id
+          data_type: VARCHAR
+        - name: created_date
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: closed_date
+          data_type: TIMESTAMP
+        - name: first_agent_reply_date
+          data_type: TIMESTAMP
+        - name: is_ticket_deleted
+          data_type: BOOLEAN
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__owner
+      description: "Cleaned sales representative and owner records with validated contact information"
+      source_table: raw.owner_data
+      columns:
+        - name: owner_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: portal_id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: active_user_id
+          data_type: VARCHAR
+        - name: email_address
+          data_type: VARCHAR
+        - name: first_name
+          data_type: VARCHAR
+        - name: last_name
+          data_type: VARCHAR
+        - name: full_name
+          data_type: VARCHAR
+        - name: owner_type
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: created_timestamp
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: updated_timestamp
+          data_type: TIMESTAMP
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__deal_contact
+      description: "Junction table linking deals to associated contacts"
+      source_table: raw.deal_contact_data
+      columns:
+        - name: deal_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: contact_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: association_type_id
+          data_type: VARCHAR
+        - name: association_category
+          data_type: VARCHAR
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__deal_pipeline
+      description: "Deal pipeline configuration and metadata"
+      source_table: raw.deal_pipeline_data
+      columns:
+        - name: deal_pipeline_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: pipeline_label
+          data_type: VARCHAR
+        - name: pipeline_display_order
+          data_type: BIGINT
+        - name: is_pipeline_active
+          data_type: BOOLEAN
+        - name: created_timestamp
+          data_type: TIMESTAMP
+        - name: updated_timestamp
+          data_type: TIMESTAMP
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__deal_pipeline_stage
+      description: "Deal pipeline stage definitions and ordering"
+      source_table: raw.deal_pipeline_stage_data
+      columns:
+        - name: deal_pipeline_stage_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: deal_pipeline_id
+          data_type: VARCHAR
+        - name: pipeline_stage_label
+          data_type: VARCHAR
+        - name: stage_display_order
+          data_type: BIGINT
+        - name: stage_probability
+          data_type: DECIMAL(5,4)
+        - name: is_stage_active
+          data_type: BOOLEAN
+        - name: is_stage_closed
+          data_type: BOOLEAN
+        - name: is_closed_won
+          data_type: BOOLEAN
+        - name: is_deal_pipeline_stage_deleted
+          data_type: BOOLEAN
+        - name: created_timestamp
+          data_type: TIMESTAMP
+        - name: updated_timestamp
+          data_type: TIMESTAMP
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__email_event
+      description: "Base email event tracking for all email interactions"
+      source_table: raw.email_event_data
+      columns:
+        - name: email_event_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: app_id
+          data_type: VARCHAR
+        - name: email_campaign_id
+          data_type: VARCHAR
+        - name: portal_id
+          data_type: BIGINT
+        - name: email_event_type
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: recipient_email_address
+          data_type: VARCHAR
+        - name: email_event_filtered
+          data_type: BOOLEAN
+        - name: created_timestamp
+          data_type: TIMESTAMP
+        - name: caused_by_created_timestamp
+          data_type: TIMESTAMP
+          validation_rules:
+            - rule: "caused_by_created_timestamp IS NULL OR caused_by_created_timestamp <= created_timestamp"
+              on_failure: correct
+        - name: obsoleted_by_created_timestamp
+          data_type: TIMESTAMP
+        - name: sent_by_created_timestamp
+          data_type: TIMESTAMP
+          validation_rules:
+            - rule: "sent_by_created_timestamp IS NULL OR sent_by_created_timestamp >= created_timestamp"
+              on_failure: correct
+        - name: caused_by_id
+          data_type: VARCHAR
+        - name: obsoleted_by_id
+          data_type: VARCHAR
+        - name: sent_by_id
+          data_type: VARCHAR
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__email_event_click
+      description: "Email click event tracking with URL and engagement details"
+      source_table: raw.email_event_click_data
+      columns:
+        - name: email_event_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: click_referer
+          data_type: BIGINT
+        - name: click_browser
+          data_type: VARCHAR
+        - name: click_location
+          data_type: VARCHAR
+        - name: click_ip_address
+          data_type: BIGINT
+        - name: clicked_url
+          data_type: VARCHAR
+        - name: click_user_agent
+          data_type: VARCHAR
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__email_event_open
+      description: "Email open event tracking with engagement metrics"
+      source_table: raw.email_event_open_data
+      columns:
+        - name: email_event_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: open_duration
+          data_type: BIGINT
+        - name: open_browser
+          data_type: VARCHAR
+        - name: open_ip_address
+          data_type: BIGINT
+        - name: open_location
+          data_type: VARCHAR
+        - name: open_user_agent
+          data_type: VARCHAR
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__email_event_sent
+      description: "Email send event tracking with delivery confirmation"
+      source_table: raw.email_event_sent_data
+      columns:
+        - name: email_event_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: email_bcc
+          data_type: VARCHAR
+        - name: email_cc
+          data_type: VARCHAR
+        - name: email_from
+          data_type: VARCHAR
+        - name: email_reply_to
+          data_type: VARCHAR
+        - name: email_subject
+          data_type: VARCHAR
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__email_event_status_change
+      description: "Email status change events including bounces and unsubscribes"
+      source_table: raw.email_event_status_change_data
+      columns:
+        - name: email_event_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: is_bounced
+          data_type: BOOLEAN
+        - name: subscription_status
+          data_type: VARCHAR
+        - name: status_change_requested_by
+          data_type: BIGINT
+        - name: status_change_source
+          data_type: VARCHAR
+        - name: subscription_changes
+          data_type: VARCHAR
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__engagement
+      description: "Base engagement tracking for all HubSpot interactions"
+      source_table: raw.engagement_data
+      columns:
+        - name: engagement_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: portal_id
+          data_type: BIGINT
+        - name: engagement_type
+          data_type: VARCHAR
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__engagement_email
+      description: "Email-specific engagement details and metadata"
+      source_table: raw.engagement_email_data
+      columns:
+        - name: engagement_id
+          data_type: VARCHAR
+          constraints: [unique]
+        - name: engagement_type
+          data_type: VARCHAR
+        - name: email_subject
+          data_type: VARCHAR
+        - name: email_text
+          data_type: VARCHAR
+        - name: owner_id
+          data_type: VARCHAR
+        - name: team_id
+          data_type: VARCHAR
+        - name: all_owner_ids
+          data_type: BIGINT
+        - name: all_team_ids
+          data_type: BIGINT
+        - name: modified_by
+          data_type: VARCHAR
+        - name: created_date
+          data_type: TIMESTAMP
+        - name: engagement_timestamp
+          data_type: TIMESTAMP
+        - name: last_modified_date
+          data_type: TIMESTAMP
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__form
+      description: "HubSpot form definitions and submission tracking"
+      source_table: raw.form_data
+      columns:
+        - name: form_id
+          data_type: VARCHAR
+          constraints: [unique]
+        - name: portal_id
+          data_type: BIGINT
+        - name: form_name
+          data_type: VARCHAR
+        - name: form_type
+          data_type: VARCHAR
+        - name: form_method
+          data_type: VARCHAR
+        - name: form_action
+          data_type: VARCHAR
+        - name: form_css_class
+          data_type: VARCHAR
+        - name: form_submit_text
+          data_type: VARCHAR
+        - name: form_redirect
+          data_type: VARCHAR
+        - name: lead_nurturing_campaign_id
+          data_type: VARCHAR
+        - name: follow_up_id
+          data_type: VARCHAR
+        - name: notify_recipients
+          data_type: VARCHAR
+        - name: created_timestamp
+          data_type: TIMESTAMP
+        - name: updated_timestamp
+          data_type: TIMESTAMP
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__ticket_company
+      description: "Junction table linking tickets to associated companies"
+      source_table: raw.ticket_company_data
+      columns:
+        - name: ticket_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: company_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: association_category
+          data_type: VARCHAR
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__ticket_contact
+      description: "Junction table linking tickets to associated contacts"
+      source_table: raw.ticket_contact_data
+      columns:
+        - name: ticket_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: contact_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: association_category
+          data_type: VARCHAR
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__ticket_pipeline
+      description: "Ticket pipeline configuration and workflow definitions"
+      source_table: raw.ticket_pipeline_data
+      columns:
+        - name: ticket_pipeline_id
+          data_type: VARCHAR
+          constraints: [unique]
+        - name: object_type_id
+          data_type: VARCHAR
+        - name: pipeline_label
+          data_type: VARCHAR
+        - name: pipeline_display_order
+          data_type: BIGINT
+        - name: is_pipeline_active
+          data_type: BOOLEAN
+        - name: is_ticket_pipeline_deleted
+          data_type: BOOLEAN
+        - name: created_timestamp
+          data_type: TIMESTAMP
+        - name: updated_timestamp
+          data_type: TIMESTAMP
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+    - name: stg_hubspot__ticket_pipeline_stage
+      description: "Ticket pipeline stage definitions and progression rules"
+      source_table: raw.ticket_pipeline_stage_data
+      columns:
+        - name: ticket_pipeline_stage_id
+          data_type: VARCHAR
+          constraints: [unique]
+        - name: ticket_pipeline_id
+          data_type: VARCHAR
+        - name: pipeline_stage_label
+          data_type: VARCHAR
+        - name: ticket_state
+          data_type: VARCHAR
+        - name: stage_display_order
+          data_type: BIGINT
+        - name: is_stage_active
+          data_type: BOOLEAN
+        - name: is_closed
+          data_type: BOOLEAN
+        - name: is_ticket_pipeline_stage_deleted
+          data_type: BOOLEAN
+        - name: created_timestamp
+          data_type: TIMESTAMP
+        - name: updated_timestamp
+          data_type: TIMESTAMP
+        - name: _fivetran_synced
+          data_type: TIMESTAMP WITH TIME ZONE
+
+# --------------------------------------------------------------------------- #
+# PHASE 2: Defines the business logic from staging tables to analytical models. #
+# --------------------------------------------------------------------------- #
+modeling_spec:
+  purpose: "Transform staging data into business-ready models that support marketing analytics, sales performance management, and customer service operations. Apply sophisticated business logic including customer lifecycle analysis, sales forecasting, and marketing attribution."
+
+  design_principles:
+    intermediate_purpose: "Create reusable, business-centric data models that encapsulate complex calculations and serve as building blocks for multiple downstream marts"
+    sales_purpose: "Provide sales analysis-ready tables optimized for deal tracking, sales performance, and revenue forecasting"
+    service_purpose: "Provide service analysis-ready tables for support operations, SLA tracking, and customer satisfaction"
+    marketing_purpose: "Provide marketing analysis-ready tables for campaign performance, lead scoring, and attribution"
+    grain_importance: "Every model must have an explicitly defined grain (one row per X) to ensure data integrity and proper aggregation"
+    modularity: "Models should be designed for reusability across multiple business domains"
+    performance: "Complex calculations should be materialized in intermediate models to optimize mart performance"
+
+  intermediate_models:
+    - name: int_hubspot__contact_merge_adjust
+      schema: intermediate
+      description: Pass-through of stg_hubspot__contact excluding rows whose contact_id appears as vid_to_merge in raw.contact_merge_audit_data
+      grain: One row per stg_hubspot__contact row that is not present as vid_to_merge in raw.contact_merge_audit_data; duplicates from the source are preserved
+      source_models:
+      - staging.stg_hubspot__contact
+      - raw.contact_merge_audit_data
+      business_logic: '- Load all columns from staging.stg_hubspot__contact as the contacts dataset. - Load raw.contact_merge_audit_data, treating vid_to_merge and canonical_vid as text (VARCHAR). - For each contact, compare contact_id to vid_to_merge using exact string equality; casing and whitespace are preserved and not trimmed. - Keep a contact only when its contact_id does not match any vid_to_merge; canonical_vid is ignored and no remapping occurs. - Rows with NULL contact_id are kept because they do not match any vid_to_merge. - No aggregation, grouping, de-duplication, or ordering is applied; all source duplicates remain. - All columns are passed through unchanged; nulls are preserved.'
+      columns:
+      - name: contact_id
+        data_type: VARCHAR
+        description: Identifier from staging; row included only when it does not exactly match any vid_to_merge; NULLs retained; casing and spacing preserved
+      - name: calculated_merged_vids
+        data_type: VARCHAR
+        description: Pass-through from staging; not used in filtering
+      - name: email
+        data_type: VARCHAR
+        description: Pass-through from staging
+      - name: first_name
+        data_type: VARCHAR
+        description: Pass-through from staging
+      - name: last_name
+        data_type: VARCHAR
+        description: Pass-through from staging
+      - name: contact_company
+        data_type: VARCHAR
+        description: Pass-through from staging
+      - name: job_title
+        data_type: VARCHAR
+        description: Pass-through from staging
+      - name: company_annual_revenue
+        data_type: DECIMAL(18,2)
+        description: Pass-through from staging; no additional rounding
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Pass-through from staging
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Pass-through from staging
+      - name: first_conversion_date
+        data_type: TIMESTAMP
+        description: Pass-through from staging
+      - name: is_contact_deleted
+        data_type: BOOLEAN
+        description: Pass-through from staging
+      - name: _fivetran_synced
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Pass-through from staging
+    - name: int_hubspot__contact_lifecycle_metrics
+      schema: intermediate
+      description: Contact-level lifecycle, email engagement, deal association, and composite engagement scoring
+      grain: One row per contact_id
+      source_models:
+      - intermediate.int_hubspot__contact_merge_adjust (contact_id, email, created_date, first_conversion_date)
+      - raw.email_event_data (recipient, type, created)
+      - raw.deal_contact_data (contact_id, deal_id)
+      - raw.deal_data (deal_id, property_createdate, property_closedate, property_amount)
+      business_logic: '- Start from intermediate.int_hubspot__contact_merge_adjust as the contact universe (one row per contact_id). - Lifecycle metrics: - contact_age_days = whole days from created_date to today. - days_to_conversion = whole days from created_date to first_conversion_date; if never converted, use today. - contact_maturity_segment by age: <30 days = "New Contact"; <90 = "Recent Contact"; <365 = "Established Contact"; otherwise "Mature Contact". - conversion_status = "Converted" if first_conversion_date exists, else "Not Converted". - conversion_velocity_score: if no conversion → 0; else map days-to-first-conversion: ≤1→100; ≤7→80; ≤30→60; ≤90→40; otherwise→20. - Email engagement (left join on email = recipient): - Count events per contact_id: SENT, OPEN, CLICK, BOUNCE (one per matching row); if no matches, counts are 0. - email_open_rate = (OPEN ÷ SENT) × 100 if SENT > 0, else 0; email_click_through_rate = (CLICK ÷ OPEN) × 100 if OPEN > 0, else 0; rates are not rounded or capped and can exceed 100. - last_engagement_date = latest timestamp of OPEN or CLICK events, parsing created from "YYYY-MM-DD HH:MM:SS"; NULL if none. - Deal association (left join deal_contact_data on contact_id, then deal_data on deal_id): - total_associated_deals = distinct count of linked deals. - total_closed_deals = distinct count of linked deals with a close date. - total_deal_value = sum of amount over closed deals, treating missing amounts as 0; 0 if none. - avg_deal_value = average amount over closed deals, treating missing amounts as 0; NULL if no closed deals. - first_deal_date = earliest deal create timestamp parsed from "YYYY-MM-DD HH:MM:SS"; NULL if none. - last_deal_closed_date = latest deal close timestamp parsed from "YYYY-MM-DD HH:MM:SS"; NULL if none. - overall_engagement_score (no rounding): - 0.3 × conversion_velocity_score - + if total_emails_sent > 0 then min(email_open_rate × 0.4, 40) else 0 - + if email_open_rate > 0 then min(email_click_through_rate × 0.2, 20) else 0 - + if total_associated_deals > 0 then min(total_associated_deals × 5, 10) else 0 - engagement_tier: "High Engagement" if score ≥ 80; "Medium Engagement" if score ≥ 50; otherwise "Low Engagement". - All joins are left joins from the contact universe; counts and sums default to 0 where specified; averages may be NULL if no qualifying rows; timestamps are parsed from "YYYY-MM-DD HH:MM:SS".'
+      columns:
+      - name: contact_id
+        data_type: VARCHAR
+        description: Unique contact identifier; exactly one row per contact_id
+        tests:
+        - not_null
+        - unique
+      - name: email
+        data_type: VARCHAR
+        description: Contact email used to join to email events by exact match; original casing and spacing preserved
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Contact creation timestamp used as the lifecycle anchor; no timezone adjustments applied
+      - name: first_conversion_date
+        data_type: TIMESTAMP
+        description: First recorded conversion timestamp if present; NULL if never converted
+      - name: contact_age_days
+        data_type: BIGINT
+        description: Whole days from created_date to today at query time
+      - name: days_to_conversion
+        data_type: BIGINT
+        description: Whole days from created_date to first_conversion_date; if never converted, to today; equals contact_age_days when not converted
+      - name: contact_maturity_segment
+        data_type: VARCHAR
+        description: 'Age band: <30 New; <90 Recent; <365 Established; otherwise Mature'
+      - name: conversion_status
+        data_type: VARCHAR
+        description: Converted if first_conversion_date exists; otherwise Not Converted
+      - name: conversion_velocity_score
+        data_type: INTEGER
+        description: 'Days-to-first-conversion score: no conversion→0; ≤1→100; ≤7→80; ≤30→60; ≤90→40; otherwise→20'
+      - name: total_emails_sent
+        data_type: HUGEINT
+        description: Count of email events with type SENT matched by email; duplicates preserved; 0 if none
+      - name: total_emails_opened
+        data_type: HUGEINT
+        description: Count of email events with type OPEN matched by email; duplicates preserved; 0 if none
+      - name: total_emails_clicked
+        data_type: HUGEINT
+        description: Count of email events with type CLICK matched by email; duplicates preserved; 0 if none
+      - name: total_emails_bounced
+        data_type: HUGEINT
+        description: Count of email events with type BOUNCE matched by email; duplicates preserved; 0 if none
+      - name: email_open_rate
+        data_type: DOUBLE
+        description: OPEN ÷ SENT × 100 if SENT > 0, else 0; not rounded or capped and may exceed 100
+      - name: email_click_through_rate
+        data_type: DOUBLE
+        description: CLICK ÷ OPEN × 100 if OPEN > 0, else 0; not rounded or capped and may exceed 100
+      - name: last_engagement_date
+        data_type: TIMESTAMP
+        description: Latest OPEN or CLICK event timestamp parsed from 'YYYY-MM-DD HH:MM:SS'; NULL if none
+      - name: total_associated_deals
+        data_type: BIGINT
+        description: Distinct count of deals linked to the contact; 0 if none
+      - name: total_closed_deals
+        data_type: BIGINT
+        description: Distinct count of associated deals with a close date; 0 if none
+      - name: total_deal_value
+        data_type: DOUBLE
+        description: Sum of amounts over closed deals, treating missing amounts as 0; 0 if none
+      - name: avg_deal_value
+        data_type: DOUBLE
+        description: Average amount over closed deals, treating missing amounts as 0; NULL if no closed deals
+      - name: first_deal_date
+        data_type: TIMESTAMP
+        description: Earliest associated deal create timestamp parsed from 'YYYY-MM-DD HH:MM:SS'; NULL if none
+      - name: last_deal_closed_date
+        data_type: TIMESTAMP
+        description: Latest associated deal close timestamp parsed from 'YYYY-MM-DD HH:MM:SS'; NULL if none
+      - name: overall_engagement_score
+        data_type: DOUBLE
+        description: 'Composite score: 0.3×velocity + min(open rate×0.4, 40) if sent>0 + min(CTR×0.2, 20) if open_rate>0 + min(deals×5, 10) if deals>0; no rounding'
+      - name: engagement_tier
+        data_type: VARCHAR
+        description: High Engagement if score ≥ 80; Medium Engagement if ≥ 50; otherwise Low Engagement
+    - name: int_hubspot__deal_performance_metrics
+      schema: intermediate
+      description: Deal-level metrics enriched with pipeline stage aggregates and created-quarter trends; one row per deal with stage and quarterly performance.
+      grain: One row per deal_id
+      source_models:
+      - intermediate.int_hubspot__deals_enhanced
+      business_logic: '- Build base from intermediate.int_hubspot__deals_enhanced: - Select deal, pipeline, owner, and timestamp fields; rename amount to deal_amount and closed_date to close_date. - deal_cycle_time_days: number of whole days from created_date to close_date when both exist; otherwise NULL. - deal_status: - Won: closed_date present and amount > 0 - Lost: closed_date present and amount = 0 - Open: closed_date absent - Unknown: any other case (e.g., closed with negative or NULL amount) - deal_size_category: - Enterprise (100K+): amount >= 100000 - Large (50K-100K): 50000–<100000 - Medium (10K-50K): 10000–<50000 - Small (<10K): >0–<10000 - No Value: amount <= 0 or NULL - created_year/created_quarter are extracted from created_date; closed_year/closed_quarter are extracted only when close_date exists. - Compute pipeline_stage_analysis grouped by (deal_pipeline, deal_pipeline_stage), excluding NULL stage IDs: - deals_in_stage: number of deals in the group. - won_from_stage / lost_from_stage: counts where status is Won / Lost. - stage_win_rate: percentage of group deals that are Won (0–100); 0 when the denominator would be zero. - total_stage_value: sum of deal_amount; averages computed over non-NULL amounts. - avg_stage_cycle_time: average cycle time for Won deals only. - median_stage_cycle_time: continuous median (50th percentile) of non-NULL cycle times in the group. - Compute quarterly_performance_trends grouped by (created_year, created_quarter), including only rows with both present: - quarterly_deals_created: number of deals created in the cohort. - quarterly_deal_value_created: sum of deal_amount (NULL if all amounts are NULL). - same_quarter_wins: count of deals that were created and closed Won in the same year-quarter. - same_quarter_revenue: sum of deal_amount for those same-quarter Wins (0 when none in the cohort). - same_quarter_conversion_rate: percentage of cohort deals that closed Won in the same quarter (0–100); 0 when the cohort size is zero. - Left join stage metrics on (deal_pipeline, deal_pipeline_stage) and quarterly metrics on (created_year, created_quarter). - If a join has no match (e.g., stage ID or created_date is NULL), all joined metrics from that source are NULL. - Output one row per deal_id with base fields plus matched stage and quarterly metrics; percentages are 0–100 with no rounding; standard aggregates ignore NULL inputs.'
+      columns:
+      - name: deal_id
+        data_type: VARCHAR
+        description: Unique deal identifier; exactly one output row per deal_id.
+        tests:
+        - not_null
+        - unique
+      - name: deal_name
+        data_type: VARCHAR
+        description: Deal name from source; may be NULL.
+      - name: deal_amount
+        data_type: DECIMAL(18,2)
+        description: Deal monetary amount from source; used in stage and quarterly aggregates; NULLs are ignored by aggregates.
+      - name: deal_stage
+        data_type: VARCHAR
+        description: Pipeline stage label from source; may be NULL; aggregations use the stage ID.
+      - name: deal_pipeline
+        data_type: VARCHAR
+        description: Pipeline label from source; used with stage ID to join stage-level aggregates; may be NULL.
+      - name: deal_pipeline_stage
+        data_type: VARCHAR
+        description: Pipeline stage ID; groups and joins stage-level aggregates; NULL excludes the deal from stage metrics.
+      - name: owner_id
+        data_type: VARCHAR
+        description: Owner identifier from source; may be NULL.
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Deal creation timestamp; drives created_year/quarter and quarterly joins; may be NULL.
+      - name: close_date
+        data_type: TIMESTAMP
+        description: Deal closed timestamp; may be NULL; used in cycle time and status.
+      - name: deal_cycle_time_days
+        data_type: BIGINT
+        description: Whole days between created_date and close_date; NULL if either date is NULL.
+      - name: deal_status
+        data_type: VARCHAR
+        description: Won (closed and amount > 0), Lost (closed and amount = 0), Open (not closed), or Unknown otherwise.
+      - name: deal_size_category
+        data_type: VARCHAR
+        description: Enterprise (>=100000), Large (>=50000 and <100000), Medium (>=10000 and <50000), Small (>0 and <10000), or No Value (<=0 or NULL).
+      - name: created_year
+        data_type: BIGINT
+        description: Year extracted from created_date; NULL when created_date is NULL.
+      - name: created_quarter
+        data_type: BIGINT
+        description: Quarter number (1–4) extracted from created_date; NULL when created_date is NULL.
+      - name: closed_year
+        data_type: BIGINT
+        description: Year extracted from close_date when present; else NULL.
+      - name: closed_quarter
+        data_type: BIGINT
+        description: Quarter number (1–4) extracted from close_date when present; else NULL.
+      - name: deals_in_stage
+        data_type: BIGINT
+        description: Number of deals in the joined (deal_pipeline, deal_pipeline_stage) group; NULL when no stage match.
+      - name: won_from_stage
+        data_type: BIGINT
+        description: Number of Won deals in the joined stage group; NULL when no stage match.
+      - name: lost_from_stage
+        data_type: BIGINT
+        description: Number of Lost deals in the joined stage group; NULL when no stage match.
+      - name: stage_win_rate
+        data_type: DOUBLE
+        description: Percentage of stage deals that are Won (0–100); 0 when the denominator would be zero; NULL when no stage match.
+      - name: total_stage_value
+        data_type: DECIMAL(38,2)
+        description: Sum of deal_amount across the joined stage group; NULL when no stage match or all amounts are NULL.
+      - name: avg_stage_deal_size
+        data_type: DOUBLE
+        description: Average deal_amount across the joined stage group; NULL when no stage match or no non-NULL amounts.
+      - name: avg_stage_cycle_time
+        data_type: DOUBLE
+        description: Average cycle time (days) for Won deals in the joined stage group; NULL when none or no stage match.
+      - name: median_stage_cycle_time
+        data_type: DOUBLE
+        description: Continuous median (50th percentile) of non-NULL cycle times in the joined stage group; NULL when none or no stage match.
+      - name: quarterly_deals_created
+        data_type: BIGINT
+        description: Number of deals created in the deal's (created_year, created_quarter); NULL when no quarterly match.
+      - name: quarterly_deal_value_created
+        data_type: DECIMAL(38,2)
+        description: Sum of deal_amount for deals created in the deal's quarter; NULL when no quarterly match or all amounts are NULL.
+      - name: same_quarter_wins
+        data_type: BIGINT
+        description: Count of deals that were created and closed Won in the same year-quarter; NULL when no quarterly match.
+      - name: same_quarter_revenue
+        data_type: DECIMAL(38,2)
+        description: Sum of deal_amount for same-quarter Won deals in the created cohort; 0 when none in the cohort; NULL when no quarterly match.
+      - name: same_quarter_conversion_rate
+        data_type: DOUBLE
+        description: Percentage of deals created in the quarter that closed Won in the same quarter (0–100); 0 when cohort size is zero; NULL when no quarterly match.
+    - name: int_hubspot__deals_enhanced
+      schema: intermediate
+      description: Deals enriched with pipeline, stage, and owner details via left joins; no filtering or aggregation
+      grain: One row per stg_hubspot__deal record; rows may multiply if joined tables have multiple matches
+      source_models:
+      - staging.stg_hubspot__deal
+      - staging.stg_hubspot__deal_pipeline
+      - staging.stg_hubspot__deal_pipeline_stage
+      - intermediate.int_hubspot__owners_enhanced
+      business_logic: '- Start with all columns from staging.stg_hubspot__deal (no filtering or deduplication). - Left join staging.stg_hubspot__deal_pipeline on deal_pipeline_id to add: - pipeline_label, is_pipeline_active. - created_timestamp renamed to deal_pipeline_created_at; updated_timestamp renamed to deal_pipeline_updated_at. - is_deal_pipeline_deleted is set to false for all rows; if there is no matching pipeline, the flag remains false while other pipeline fields are NULL. - Left join staging.stg_hubspot__deal_pipeline_stage on deal_pipeline_stage_id to add: - pipeline_stage_label and is_deal_pipeline_stage_deleted, defaulting the deletion flag to false when missing or when there is no matching stage. - Left join intermediate.int_hubspot__owners_enhanced on owner_id to add owner_active_user_id, owner_email_address, and owner_full_name (NULL when no match). - All joins are LEFT JOINs; unmatched keys yield NULLs (or false where defaults are specified). - If any joined source has multiple rows per key, the output includes one row per match (no deduplication or tie-breaking).'
+      columns:
+      - name: deal_id
+        data_type: VARCHAR
+        description: Primary deal identifier from stg_hubspot__deal; duplicates (if present) are preserved; NULLs pass through
+      - name: deal_pipeline_id
+        data_type: VARCHAR
+        description: Pipeline identifier from stg_hubspot__deal; used to left join pipeline attributes; NULLs pass through
+      - name: deal_pipeline_stage_id
+        data_type: VARCHAR
+        description: Pipeline stage identifier from stg_hubspot__deal; used to left join stage attributes; NULLs pass through
+      - name: owner_id
+        data_type: VARCHAR
+        description: Owner identifier from stg_hubspot__deal; used to left join owner details; NULLs pass through
+      - name: portal_id
+        data_type: BIGINT
+        description: HubSpot portal/account identifier from stg_hubspot__deal; NULLs pass through
+      - name: deal_name
+        data_type: VARCHAR
+        description: Deal name/title from stg_hubspot__deal; original casing and spacing preserved; NULLs pass through
+      - name: description
+        data_type: VARCHAR
+        description: Free-text deal description from stg_hubspot__deal; no trimming or normalization; NULLs pass through
+      - name: amount
+        data_type: DECIMAL(18,2)
+        description: Deal amount from stg_hubspot__deal; precision/scale preserved; no re-aggregation or rounding; NULLs pass through
+      - name: closed_date
+        data_type: TIMESTAMP
+        description: Deal closed timestamp from stg_hubspot__deal; passed through as-is; NULLs pass through
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Deal created timestamp from stg_hubspot__deal; passed through as-is; NULLs pass through
+      - name: is_deal_deleted
+        data_type: BOOLEAN
+        description: Deletion flag from stg_hubspot__deal; passed through without modification; NULLs pass through
+      - name: _fivetran_synced
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Last sync timestamp from stg_hubspot__deal; timezone preserved; NULLs pass through
+      - name: is_deal_pipeline_deleted
+        data_type: BOOLEAN
+        description: Pipeline deletion flag set to false for all rows; remains false even when no pipeline match
+      - name: pipeline_label
+        data_type: VARCHAR
+        description: Pipeline label from stg_hubspot__deal_pipeline (joined on deal_pipeline_id); NULL if no match; duplicates propagate
+      - name: is_pipeline_active
+        data_type: BOOLEAN
+        description: Pipeline active flag from stg_hubspot__deal_pipeline (joined on deal_pipeline_id); NULL if no match; duplicates propagate
+      - name: deal_pipeline_created_at
+        data_type: TIMESTAMP
+        description: Pipeline created timestamp sourced from stg_hubspot__deal_pipeline.created_timestamp; NULL if no match; duplicates propagate
+      - name: deal_pipeline_updated_at
+        data_type: TIMESTAMP
+        description: Pipeline updated timestamp sourced from stg_hubspot__deal_pipeline.updated_timestamp; NULL if no match; duplicates propagate
+      - name: is_deal_pipeline_stage_deleted
+        data_type: BOOLEAN
+        description: Stage deletion flag from stg_hubspot__deal_pipeline_stage; defaults to false when missing or when there is no matching stage
+      - name: pipeline_stage_label
+        data_type: VARCHAR
+        description: Stage label from stg_hubspot__deal_pipeline_stage (joined on deal_pipeline_stage_id); NULL if no match; duplicates propagate
+      - name: owner_active_user_id
+        data_type: VARCHAR
+        description: Owner active user identifier from intermediate.int_hubspot__owners_enhanced (joined on owner_id); NULL if no match; duplicates propagate
+      - name: owner_email_address
+        data_type: VARCHAR
+        description: Owner email from intermediate.int_hubspot__owners_enhanced (joined on owner_id); NULL if no match; duplicates propagate
+      - name: owner_full_name
+        data_type: VARCHAR
+        description: Owner full name from intermediate.int_hubspot__owners_enhanced (joined on owner_id); NULL if no match; duplicates propagate
+    - name: int_hubspot__email_aggregate_status_change
+      schema: intermediate
+      description: Counts of 'UNSUBSCRIBED' status changes per email_send_id and email_campaign_id from joined HubSpot event/status tables
+      grain: One row per (email_campaign_id, email_send_id) where email_send_id is not null
+      source_models:
+      - staging.stg_hubspot__email_event
+      - staging.stg_hubspot__email_event_status_change
+      business_logic: '- Inner join staging.stg_hubspot__email_event to staging.stg_hubspot__email_event_status_change on email_event_id (matched rows only). - Select events.sent_by_id as email_send_id, events.email_campaign_id, and status.subscription_status from the join. - Exclude rows with NULL email_send_id prior to aggregation. - Group by email_campaign_id and email_send_id; output one row per group. - Compute unsubscribes as the number of rows in the group whose subscription_status equals the literal UNSUBSCRIBED. Determinism: - Exact literal match ''UNSUBSCRIBED'' (case-sensitive); no trimming or normalization. - Duplicates preserved; every qualifying row counts. - Non-qualifying rows contribute 0; result is an integer ≥ 0 and never NULL.'
+      columns:
+      - name: email_campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier from events used for grouping; may be NULL; duplicates allowed
+      - name: email_send_id
+        data_type: VARCHAR
+        description: Identifier from events.sent_by_id used for grouping; NULLs removed before aggregation so output is always non-null
+        tests:
+        - not_null
+      - name: unsubscribes
+        data_type: BIGINT
+        description: Number of rows in the group with subscription_status equal to UNSUBSCRIBED; integer ≥ 0; never NULL; duplicates preserved; case-sensitive match
+        tests:
+        - not_null
+    - name: int_hubspot__email_event_aggregates
+      schema: intermediate
+      description: Aggregates email events into per-send counts by event type.
+      grain: One row per email_send_id
+      source_models:
+      - staging.stg_hubspot__email_event
+      business_logic: '- Source: staging.stg_hubspot__email_event. - Include only rows where sent_by_id is not null. - Group by sent_by_id and output one row per distinct value as email_send_id. - For each group, count events separately for these types: OPEN, SENT, DELIVERED, DROPPED, CLICK, FORWARD, DEFERRED, BOUNCE, SPAMREPORT, PRINT. - Only rows with non-null email_event_id contribute to counts; if a type has no qualifying rows, its count is 0. - Event type matching is exact; no case normalization or trimming is applied. - Duplicates are not removed; each qualifying row adds 1 to its type’s count. - No joins, ordering, windowing, or additional filtering is applied beyond the above.'
+      columns:
+      - name: email_send_id
+        data_type: VARCHAR
+        description: Identifier from sent_by_id; one row per non-null sent_by_id.
+        tests:
+        - not_null
+        - unique
+      - name: opens
+        data_type: BIGINT
+        description: Number of OPEN events with a non-null email_event_id for this send.
+      - name: sends
+        data_type: BIGINT
+        description: Number of SENT events with a non-null email_event_id for this send.
+      - name: deliveries
+        data_type: BIGINT
+        description: Number of DELIVERED events with a non-null email_event_id for this send.
+      - name: drops
+        data_type: BIGINT
+        description: Number of DROPPED events with a non-null email_event_id for this send.
+      - name: clicks
+        data_type: BIGINT
+        description: Number of CLICK events with a non-null email_event_id for this send.
+      - name: forwards
+        data_type: BIGINT
+        description: Number of FORWARD events with a non-null email_event_id for this send.
+      - name: deferrals
+        data_type: BIGINT
+        description: Number of DEFERRED events with a non-null email_event_id for this send.
+      - name: bounces
+        data_type: BIGINT
+        description: Number of BOUNCE events with a non-null email_event_id for this send.
+      - name: spam_reports
+        data_type: BIGINT
+        description: Number of SPAMREPORT events with a non-null email_event_id for this send.
+      - name: prints
+        data_type: BIGINT
+        description: Number of PRINT events with a non-null email_event_id for this send.
+    - name: int_hubspot__email_marketing_attribution
+      schema: intermediate
+      description: Email campaign-level attribution metrics and ROI tiers derived from recipient engagement and associated deals
+      grain: One row per email_campaign_id
+      source_models:
+      - raw.email_event_data
+      - staging.stg_hubspot__contact
+      - raw.deal_contact_data
+      - raw.deal_data
+      business_logic: '- Build email_events_enhanced from raw.email_event_data: - Keep rows with a recipient present; set event type flags (sent, delivered, open, click, bounce, unsubscribe) to 1 when matched, else 0. - Derive event_timestamp by parsing the created field as a datetime from the first 19 characters when created is present, not equal to ''almost'', and its length is at least 19; otherwise set to NULL. - Aggregate campaign_performance_base per non-null email_campaign_id: - unique_recipients = count of distinct recipient. - total_sends, total_deliveries, total_opens, total_clicks = sums of corresponding flags. - open_rate = (total_opens ÷ total_deliveries) × 100 when total_deliveries > 0, else 0. - click_through_rate = (total_clicks ÷ total_opens) × 100 when total_opens > 0, else 0. - Build recipient_engagement_journey per (recipient, email_campaign_id) where both are non-null: - first_send_time/open_time/click_time = earliest event_timestamp for SENT/OPEN/CLICK; last_open_time/last_click_time = latest for OPEN/CLICK. - minutes_to_first_open = minutes between first_send_time and first_open_time; minutes_from_open_to_click = minutes between first_open_time and first_click_time. - engagement_level: Highly Engaged if any click; Moderately Engaged if opens ≥ 3; Lightly Engaged if opens ≥ 1; else No Engagement. - Attribute deals (email_to_deal_attribution): - Join recipient_engagement_journey to contacts by recipient email, then to deal-contact links by contact_id, then to deal details by deal_id. - attribution_type priority: Click Attribution if deal creation is within 30 days after first_click_time; else Open Attribution within 30 days after first_open_time; else Send Attribution within 30 days after first_send_time; else No Attribution. - days_from_click_to_deal = whole days from first_click_time to deal creation when both exist; else NULL. - Compute campaign_roi_metrics by left joining campaign_performance_base to email_to_deal_attribution and grouping per campaign: - attributed_deals = distinct count of deals with attribution_type other than No Attribution. - attributed_revenue = sum of deal_amount for attributed deals that have a close date; if no matches, 0; duplicates from joins are not de-duplicated. - revenue_per_send = attributed_revenue ÷ total_sends when total_sends > 0, else 0. - revenue_per_recipient = attributed_revenue ÷ unique_recipients when unique_recipients > 0, else 0. - lead_conversion_rate = (attributed_deals ÷ unique_recipients) × 100 when unique_recipients > 0, else 0. - avg_days_to_conversion = average of days_from_click_to_deal for rows with attribution (NULLs excluded); if none, NULL. - Final derive tiers and result set: - campaign_performance_tier: High Performing if open_rate ≥ 25 and click_through_rate ≥ 5 and lead_conversion_rate ≥ 2; else Good Performing if open_rate ≥ 15 and click_through_rate ≥ 2 and lead_conversion_rate ≥ 1; else Average Performing if open_rate ≥ 10 and click_through_rate ≥ 1; else Underperforming. - roi_tier: Excellent ROI if revenue_per_send ≥ 50; Good ROI if ≥ 20; Moderate ROI if ≥ 5; else Low ROI. - Filter to non-null email_campaign_id and order rows by attributed_revenue descending.'
+      columns:
+      - name: email_campaign_id
+        data_type: BIGINT
+        description: Unique identifier of the email campaign; grouping key; exactly one output row per value
+        tests:
+        - not_null
+        - unique
+      - name: unique_recipients
+        data_type: BIGINT
+        description: Distinct count of recipient emails in the campaign; duplicates removed; NULL recipients excluded
+      - name: total_sends
+        data_type: HUGEINT
+        description: Total SENT events for the campaign; sum of is_sent flags across all event rows; recipients may have multiple sends
+      - name: open_rate
+        data_type: DOUBLE
+        description: Percentage = total_opens ÷ total_deliveries × 100; if total_deliveries = 0 → 0; no rounding
+      - name: click_through_rate
+        data_type: DOUBLE
+        description: Percentage = total_clicks ÷ total_opens × 100; if total_opens = 0 → 0; no rounding
+      - name: attributed_deals
+        data_type: BIGINT
+        description: 'Distinct count of deals attributed within 30 days of first click/open/send (priority: click > open > send); excludes No Attribution; 0 if none'
+      - name: attributed_revenue
+        data_type: DOUBLE
+        description: Sum of deal_amount for attributed deals with a close date; duplicates from joins are preserved; if none → 0
+      - name: revenue_per_send
+        data_type: DOUBLE
+        description: Attributed revenue divided by total_sends; if total_sends = 0 → 0; no rounding
+      - name: revenue_per_recipient
+        data_type: DOUBLE
+        description: Attributed revenue divided by unique_recipients; if unique_recipients = 0 → 0; no rounding
+      - name: lead_conversion_rate
+        data_type: DOUBLE
+        description: Percentage = attributed_deals ÷ unique_recipients × 100; if unique_recipients = 0 → 0; no rounding
+      - name: avg_days_to_conversion
+        data_type: DOUBLE
+        description: Average days from first click to deal creation for attributed rows; NULLs excluded; if none → NULL
+      - name: campaign_performance_tier
+        data_type: VARCHAR
+        description: 'Tier label based on thresholds: High (open_rate ≥ 25, click_through_rate ≥ 5, lead_conversion_rate ≥ 2); Good (open_rate ≥ 15, click_through_rate ≥ 2, lead_conversion_rate ≥ 1); Average (open_rate ≥ 10, click_through_rate ≥ 1); else Underperforming'
+      - name: roi_tier
+        data_type: VARCHAR
+        description: 'Tier label based on revenue_per_send: Excellent (≥ 50), Good (≥ 20), Moderate (≥ 5), else Low'
+    - name: int_hubspot__owner_performance_metrics
+      schema: intermediate
+      description: Sales owner performance metrics with counts, revenue, cycle times, rankings, percentiles, and rule-based classifications
+      grain: One row per owner_id with at least one deal
+      source_models:
+      - intermediate.int_hubspot__deals_enhanced (owner_id, amount, pipeline_stage_label, pipeline_label, deal_pipeline_stage_id, created_date, closed_date)
+      - intermediate.int_hubspot__owners_enhanced (owner_id, owner_full_name, owner_email_address)
+      business_logic: '- Start from intermediate.int_hubspot__deals_enhanced, keeping only deals with a non-NULL owner_id. - For each deal, derive: - deal_status: Won if closed_date is present and amount > 0; Lost if closed_date is present and amount = 0; Open if closed_date is missing; otherwise Unknown. - deal_size_category: Enterprise (100K+) if amount >= 100000; Large (50K-100K) if amount >= 50000; Medium (10K-50K) if amount >= 10000; Small (<10K) if amount > 0; else No Value. - deal_cycle_time_days: number of days between created_date and closed_date when both exist; otherwise NULL. - Left join to intermediate.int_hubspot__owners_enhanced on owner_id to bring owner_full_name and owner_email_address. - Aggregate by owner_id, owner_name, owner_email: - Counts: total_deals (all deals); won_deals (status Won); lost_deals (status Lost); open_deals (status Open). - Win rate: wins divided by (wins + losses) times 100; if there are no closed (Won/Lost) deals then 0. - Revenue: total_won_revenue = sum of amounts from Won deals (non-won contribute 0; NULL amounts are ignored); avg_won_deal_size = average amount for Won deals (NULL if none); pipeline_value = sum of amounts from Open deals (non-open contribute 0; NULL amounts are ignored). - Velocity: avg_won_cycle_time = average cycle days for Won; avg_lost_cycle_time = average cycle days for Lost (both NULL if none). - Dates: first_deal_date = earliest created_date; latest_deal_date = latest created_date; last_won_date = latest close_date among Won. - Size distribution: counts of Enterprise, Large, Medium, and Small as defined above. - Size-specific win rates: within Enterprise and Large respectively, wins divided by (wins + losses) times 100; if no closed deals in that size then 0. - Keep only owners with total_deals > 0. - Compute window metrics across all remaining owners (no partitions): - revenue_rank: position when ordering by total_won_revenue descending (1 = highest; ties break arbitrarily). - win_rate_rank: position when ordering by win_rate_percentage descending (1 = highest; ties break arbitrarily). - deals_won_rank: position when ordering by won_deals descending (1 = highest; ties break arbitrarily). - cycle_time_rank: position when ordering by average won cycle time ascending; missing averages are treated as 999 days (1 = shortest). - revenue_percentile: percentile rank scaled 0–100 by total_won_revenue (lowest = 0, highest = 100). - win_rate_percentile: percentile rank scaled 0–100 by win_rate_percentage (lowest = 0, highest = 100). - volume_percentile: percentile rank scaled 0–100 by won_deals (lowest = 0, highest = 100). - efficiency_percentile: percentile rank scaled 0–100 by average won cycle time in descending order with missing treated as 999 (0 = slowest or NULL, 100 = fastest). - overall_performance_score: take the percentile ranks (0–1) for revenue, win rate, won deals, and cycle time (faster = higher), weight them 40/25/20/15 respectively, sum them, then multiply by 100; the score ranges from 0 to 10000. - Classifications: - performance_tier: Top Performer if score >= 80; High Performer if >= 60; Core Performer if >= 40; Developing Performer if >= 20; else Needs Improvement. - sales_specialization: Enterprise Specialist if enterprise_deals > (large_deals + medium_deals + small_deals); Large Deal Specialist if large_deals > (enterprise_deals + medium_deals + small_deals); Generalist if the total across size categories >= 3; else Focused Seller. - development_focus (first match applies): if win_rate_percentage < 15 and avg_won_cycle_time > 90 then Focus on Qualification and Process; else if win_rate_percentage < 15 then Improve Win Rate; else if avg_won_cycle_time > 120 then Accelerate Sales Cycle; else if won_deals < 5 then Increase Activity Volume; else Maintain Current Performance. - pipeline_health_status (evaluated in order): Strong Pipeline if pipeline_value >= 2 × total_won_revenue; Healthy Pipeline if >= total_won_revenue; Adequate Pipeline if >= 0.5 × total_won_revenue; else Weak Pipeline.'
+      columns:
+      - name: owner_id
+        data_type: VARCHAR
+        description: Sales owner identifier and grouping key; one row per owner with at least one deal
+        tests:
+        - not_null
+        - unique
+      - name: owner_name
+        data_type: VARCHAR
+        description: Owner full name from owners_enhanced; may be NULL if no match
+      - name: owner_email
+        data_type: VARCHAR
+        description: Owner email from owners_enhanced; may be NULL if no match
+      - name: total_deals
+        data_type: BIGINT
+        description: Total number of the owner's deals across all statuses
+      - name: won_deals
+        data_type: BIGINT
+        description: Number of closed deals with amount > 0
+      - name: lost_deals
+        data_type: BIGINT
+        description: Number of closed deals with amount = 0
+      - name: open_deals
+        data_type: BIGINT
+        description: Number of deals with no closed_date
+      - name: win_rate_percentage
+        data_type: DOUBLE
+        description: Wins divided by (wins + losses) times 100; returns 0 if there are no closed deals; no rounding
+      - name: total_won_revenue
+        data_type: DECIMAL(38,2)
+        description: Total amount from won deals; non-won contribute 0 and NULL amounts are ignored; 2-decimal scale
+      - name: avg_won_deal_size
+        data_type: DOUBLE
+        description: Average amount for won deals; excludes NULLs; NULL if no won deals
+      - name: pipeline_value
+        data_type: DECIMAL(38,2)
+        description: Total amount from open deals; non-open contribute 0 and NULL amounts are ignored; 2-decimal scale
+      - name: avg_won_cycle_time
+        data_type: DOUBLE
+        description: Average days from created to closed for won deals; NULL if none
+      - name: avg_lost_cycle_time
+        data_type: DOUBLE
+        description: Average days from created to closed for lost deals; NULL if none
+      - name: first_deal_date
+        data_type: TIMESTAMP
+        description: Earliest created_date across the owner's deals; NULL if all created_date values are NULL
+      - name: latest_deal_date
+        data_type: TIMESTAMP
+        description: Latest created_date across the owner's deals; NULL if all created_date values are NULL
+      - name: last_won_date
+        data_type: TIMESTAMP
+        description: Most recent close_date among won deals; NULL if no won deals
+      - name: enterprise_deals
+        data_type: BIGINT
+        description: Number of deals with amount >= 100000
+      - name: large_deals
+        data_type: BIGINT
+        description: Number of deals with 50000 <= amount < 100000
+      - name: medium_deals
+        data_type: BIGINT
+        description: Number of deals with 10000 <= amount < 50000
+      - name: small_deals
+        data_type: BIGINT
+        description: Number of deals with 0 < amount < 10000
+      - name: enterprise_win_rate
+        data_type: DOUBLE
+        description: Within Enterprise size, wins divided by (wins + losses) times 100; returns 0 if no closed Enterprise deals
+      - name: large_deal_win_rate
+        data_type: DOUBLE
+        description: Within Large size, wins divided by (wins + losses) times 100; returns 0 if no closed Large deals
+      - name: revenue_rank
+        data_type: BIGINT
+        description: Position when ordering all owners by total won revenue descending; 1 is highest; ties break arbitrarily
+      - name: win_rate_rank
+        data_type: BIGINT
+        description: Position when ordering all owners by win rate percentage descending; 1 is highest; ties break arbitrarily
+      - name: deals_won_rank
+        data_type: BIGINT
+        description: Position when ordering all owners by number of won deals descending; 1 is highest; ties break arbitrarily
+      - name: cycle_time_rank
+        data_type: BIGINT
+        description: Position when ordering by average won cycle time ascending; 1 is shortest; missing averages treated as 999 days; ties break arbitrarily
+      - name: revenue_percentile
+        data_type: DOUBLE
+        description: Percentile rank scaled 0–100 by total won revenue; 0 = lowest, 100 = highest
+      - name: win_rate_percentile
+        data_type: DOUBLE
+        description: Percentile rank scaled 0–100 by win rate percentage; 0 = lowest, 100 = highest
+      - name: volume_percentile
+        data_type: DOUBLE
+        description: Percentile rank scaled 0–100 by number of won deals; 0 = lowest, 100 = highest
+      - name: efficiency_percentile
+        data_type: DOUBLE
+        description: Percentile rank scaled 0–100 by average won cycle time in descending order with missing treated as 999; 0 = slowest/NULL, 100 = fastest
+      - name: overall_performance_score
+        data_type: DOUBLE
+        description: Weighted sum of percentile ranks (0–1) for revenue, win rate, won deals, and cycle time (faster is higher) with weights 40/25/20/15, multiplied by 100; range 0–10000
+      - name: performance_tier
+        data_type: VARCHAR
+        description: 'Tier from overall_performance_score: >=80 Top Performer; >=60 High Performer; >=40 Core Performer; >=20 Developing Performer; else Needs Improvement'
+      - name: sales_specialization
+        data_type: VARCHAR
+        description: Enterprise Specialist if enterprise_deals > (large+medium+small); Large Deal Specialist if large_deals > (enterprise+medium+small); Generalist if total size-deal count >= 3; else Focused Seller
+      - name: development_focus
+        data_type: VARCHAR
+        description: 'Priority rules: if win_rate_percentage < 15 and avg_won_cycle_time > 90 then Focus on Qualification and Process; else if win_rate_percentage < 15 then Improve Win Rate; else if avg_won_cycle_time > 120 then Accelerate Sales Cycle; else if won_deals < 5 then Increase Activity Volume; else Maintain Current Performance'
+      - name: pipeline_health_status
+        data_type: VARCHAR
+        description: 'Pipeline status by comparing pipeline_value to total_won_revenue: >=2x Strong; >=1x Healthy; >=0.5x Adequate; else Weak'
+    - name: int_hubspot__owners_enhanced
+      schema: intermediate
+      description: Owner records selecting and renaming core fields from staging.stg_hubspot__owner
+      grain: One row per source row in staging.stg_hubspot__owner
+      source_models:
+      - staging.stg_hubspot__owner
+      business_logic: '- For each row in staging.stg_hubspot__owner, output a single row (no filtering, joins, DISTINCT, or aggregation). - Select and rename fields: - owner_id ← owner_id - owner_active_user_id ← active_user_id - owner_email_address ← email_address - owner_full_name ← full_name - Preserve values exactly as in the source: no trimming, case changes, formatting, or de-duplication. - NULL values pass through unchanged; duplicates (including duplicate owner_id) are preserved. - No ordering is applied; output row order is not guaranteed.'
+      columns:
+      - name: owner_id
+        data_type: VARCHAR
+        description: Owner identifier from owner_id; pass-through; NULLs and duplicates preserved; casing and whitespace unchanged
+      - name: owner_active_user_id
+        data_type: VARCHAR
+        description: Active user identifier linked to the owner; pass-through from active_user_id; NULLs and duplicates preserved; casing and whitespace unchanged
+      - name: owner_email_address
+        data_type: VARCHAR
+        description: Owner email address from email_address; pass-through; not lowercased or trimmed; NULLs and duplicates preserved
+      - name: owner_full_name
+        data_type: VARCHAR
+        description: Owner full name from full_name; pass-through; not trimmed or case-normalized; NULLs and duplicates preserved
+  marketing_models:
+    - name: hubspot__contacts
+      schema: marketing
+      description: Contacts from int_hubspot__contact_merge_adjust enriched with email engagement aggregates from hubspot__email_sends joined by exact email match.
+      grain: One row per contact_id
+      source_models:
+      - intermediate.int_hubspot__contact_merge_adjust
+      - marketing.hubspot__email_sends
+      business_logic: '- Load all columns from intermediate.int_hubspot__contact_merge_adjust as the contacts base. - From marketing.hubspot__email_sends, aggregate by recipient_email_address after excluding NULL addresses: - Totals: sum bounces, clicks, deferrals, deliveries, drops, forwards, opens, prints, spam_reports, unsubscribes; source NULL metric values do not contribute. - Unique sends: count distinct email_send_id where the corresponding metric value is strictly greater than 0; NULL metric values do not contribute. - Left join aggregated metrics to contacts on contacts.email = recipient_email_address using exact, case-sensitive equality; no trimming or normalization. - For contacts with no matching email metrics, set all aggregated outputs to 0. - If multiple contacts share the same email address, they receive the same aggregated metrics. - No additional filters or ordering are applied; output includes contacts.* plus the aggregated metric fields.'
+      columns:
+      - name: contact_id
+        data_type: VARCHAR
+        description: Primary contact identifier from the source; one output row per contact_id.
+      - name: calculated_merged_vids
+        data_type: VARCHAR
+        description: Merged contact identifiers from the source passed through unchanged.
+      - name: email
+        data_type: VARCHAR
+        description: Contact email used to join metrics by exact, case-sensitive match to recipient_email_address.
+      - name: first_name
+        data_type: VARCHAR
+        description: First name passed through unchanged from the source.
+      - name: last_name
+        data_type: VARCHAR
+        description: Last name passed through unchanged from the source.
+      - name: contact_company
+        data_type: VARCHAR
+        description: Company name associated with the contact passed through unchanged.
+      - name: job_title
+        data_type: VARCHAR
+        description: Job title passed through unchanged from the source.
+      - name: company_annual_revenue
+        data_type: DECIMAL(18,2)
+        description: Company annual revenue passed through unchanged as a decimal value.
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Contact creation date passed through unchanged.
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Contact creation timestamp passed through unchanged.
+      - name: first_conversion_date
+        data_type: TIMESTAMP
+        description: First conversion timestamp passed through unchanged.
+      - name: is_contact_deleted
+        data_type: BOOLEAN
+        description: Deletion flag passed through unchanged.
+      - name: _fivetran_synced
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Fivetran sync timestamp passed through unchanged.
+      - name: total_email_opens
+        data_type: HUGEINT
+        description: Total opens across all email sends for the contact's email.
+      - name: total_email_clicks
+        data_type: HUGEINT
+        description: Total clicks across all email sends for the contact's email.
+      - name: total_email_bounces
+        data_type: HUGEINT
+        description: Total bounces across all email sends for the contact's email.
+      - name: total_unique_email_prints
+        data_type: BIGINT
+        description: Distinct email sends with prints greater than 0 for the contact's email.
+      - name: total_unique_email_drops
+        data_type: BIGINT
+        description: Distinct email sends with drops greater than 0 for the contact's email.
+      - name: total_email_deliveries
+        data_type: HUGEINT
+        description: Total deliveries across all email sends for the contact's email.
+      - name: total_email_drops
+        data_type: HUGEINT
+        description: Total drops across all email sends for the contact's email.
+      - name: total_email_forwards
+        data_type: HUGEINT
+        description: Total forwards across all email sends for the contact's email.
+      - name: total_unique_email_opens
+        data_type: BIGINT
+        description: Distinct email sends with opens greater than 0 for the contact's email.
+      - name: total_unique_email_deliveries
+        data_type: BIGINT
+        description: Distinct email sends with deliveries greater than 0 for the contact's email.
+      - name: total_unique_email_deferrals
+        data_type: BIGINT
+        description: Distinct email sends with deferrals greater than 0 for the contact's email.
+      - name: total_email_spam_reports
+        data_type: HUGEINT
+        description: Total spam reports across all email sends for the contact's email.
+      - name: total_unique_email_clicks
+        data_type: BIGINT
+        description: Distinct email sends with clicks greater than 0 for the contact's email.
+      - name: total_email_deferrals
+        data_type: HUGEINT
+        description: Total deferrals across all email sends for the contact's email.
+      - name: total_unique_email_bounces
+        data_type: BIGINT
+        description: Distinct email sends with bounces greater than 0 for the contact's email.
+      - name: total_unique_email_spam_reports
+        data_type: BIGINT
+        description: Distinct email sends with spam reports greater than 0 for the contact's email.
+      - name: total_email_unsubscribes
+        data_type: HUGEINT
+        description: Total unsubscribes across all email sends for the contact's email.
+      - name: total_unique_email_unsubscribes
+        data_type: BIGINT
+        description: Distinct email sends with unsubscribes greater than 0 for the contact's email.
+      - name: total_email_prints
+        data_type: HUGEINT
+        description: Total prints across all email sends for the contact's email.
+      - name: total_unique_email_forwards
+        data_type: BIGINT
+        description: Distinct email sends with forwards greater than 0 for the contact's email.
+    - name: hubspot__email_sends
+      description: Email send events enriched with aggregated delivery, engagement, and unsubscribe counts plus boolean status flags derived from those counts
+      grain: One row per source send event in marketing.hubspot__email_event_sent
+      source_models:
+      - marketing.hubspot__email_event_sent
+      - intermediate.int_hubspot__email_event_aggregates
+      - intermediate.int_hubspot__email_aggregate_status_change
+      business_logic: '- Start with every row and all columns from marketing.hubspot__email_event_sent; no filtering or transformations are applied to these source fields. - Left join intermediate.int_hubspot__email_event_aggregates on email_send_id to add the pre-aggregated counts: bounces, clicks, deferrals, deliveries, drops, forwards, opens, prints, spam_reports. Replace any missing counts with 0; counts represent totals per email_send_id. - For each count, create a boolean that is True when the count is greater than zero and False otherwise: was_bounced from bounces, was_clicked from clicks, was_deferred from deferrals, was_delivered from deliveries, was_forwarded from forwards, was_opened from opens, was_printed from prints, was_spam_reported from spam_reports. These flags are never NULL. - Left join intermediate.int_hubspot__email_aggregate_status_change on email_send_id to add unsubscribes; replace missing values with 0. Set was_unsubscribed to True when unsubscribes is greater than zero and False otherwise. - Output includes all original send fields plus the coalesced counts, unsubscribes, and derived boolean flags; joins are left-sided and do not change the number of rows. - Grain and determinism: The result retains the exact row granularity of marketing.hubspot__email_event_sent; one output row per source row with no deduplication, sorting, or timezone changes.'
+      columns:
+      - name: email_send_id
+        data_type: VARCHAR
+        description: Unique identifier of the email send used for joins and defining table grain
+        tests:
+        - not_null
+        - unique
+      - name: email_event_id
+        data_type: VARCHAR
+        description: Identifier of the specific HubSpot send event; passed through from source (NULLs preserved)
+      - name: email_campaign_id
+        data_type: VARCHAR
+        description: HubSpot email campaign identifier for the send; passed through from source (NULLs preserved)
+      - name: contact_id
+        data_type: VARCHAR
+        description: HubSpot contact identifier targeted by the send; passed through from source (NULLs preserved)
+      - name: recipient_email_address
+        data_type: VARCHAR
+        description: Recipient email address at time of send; exact string as stored (NULLs preserved; no trimming/casing changes)
+      - name: email_send_timestamp
+        data_type: TIMESTAMP
+        description: Timestamp the send event occurred; passed through from source (no timezone conversion; NULLs preserved)
+      - name: created_timestamp
+        data_type: TIMESTAMP
+        description: Record creation timestamp from source; passed through (no timezone conversion; NULLs preserved)
+      - name: email_from
+        data_type: VARCHAR
+        description: From address used for the send; passed through verbatim (NULLs preserved)
+      - name: email_reply_to
+        data_type: VARCHAR
+        description: Reply-To address configured for the email; passed through verbatim (NULLs preserved)
+      - name: email_subject
+        data_type: VARCHAR
+        description: Email subject line; passed through verbatim (NULLs preserved)
+      - name: email_bcc
+        data_type: VARCHAR
+        description: BCC addresses string as stored in source; passed through verbatim (NULLs preserved)
+      - name: email_cc
+        data_type: VARCHAR
+        description: CC addresses string as stored in source; passed through verbatim (NULLs preserved)
+      - name: was_delivered
+        data_type: BOOLEAN
+        description: True when deliveries is greater than 0 after replacing NULL with 0; otherwise False
+      - name: was_opened
+        data_type: BOOLEAN
+        description: True when opens is greater than 0 after replacing NULL with 0; otherwise False
+      - name: was_clicked
+        data_type: BOOLEAN
+        description: True when clicks is greater than 0 after replacing NULL with 0; otherwise False
+      - name: was_bounced
+        data_type: BOOLEAN
+        description: True when bounces is greater than 0 after replacing NULL with 0; otherwise False
+      - name: was_deferred
+        data_type: BOOLEAN
+        description: True when deferrals is greater than 0 after replacing NULL with 0; otherwise False
+      - name: was_spam_reported
+        data_type: BOOLEAN
+        description: True when spam_reports is greater than 0 after replacing NULL with 0; otherwise False
+      - name: was_unsubscribed
+        data_type: BOOLEAN
+        description: True when unsubscribes is greater than 0 after replacing NULL with 0; otherwise False
+      - name: was_forwarded
+        data_type: BOOLEAN
+        description: True when forwards is greater than 0 after replacing NULL with 0; otherwise False
+      - name: was_printed
+        data_type: BOOLEAN
+        description: True when prints is greater than 0 after replacing NULL with 0; otherwise False
+      - name: opens
+        data_type: BIGINT
+        description: Total open events per email_send_id with NULL treated as 0; non-negative integer
+      - name: clicks
+        data_type: BIGINT
+        description: Total click events per email_send_id with NULL treated as 0; non-negative integer
+      - name: deliveries
+        data_type: BIGINT
+        description: Total delivery events per email_send_id with NULL treated as 0; non-negative integer
+      - name: bounces
+        data_type: BIGINT
+        description: Total bounce events per email_send_id with NULL treated as 0; non-negative integer
+      - name: deferrals
+        data_type: BIGINT
+        description: Total deferral events per email_send_id with NULL treated as 0; non-negative integer
+      - name: drops
+        data_type: BIGINT
+        description: Total drop events per email_send_id with NULL treated as 0; non-negative integer
+      - name: forwards
+        data_type: BIGINT
+        description: Total forward events per email_send_id with NULL treated as 0; non-negative integer
+      - name: prints
+        data_type: BIGINT
+        description: Total print events per email_send_id with NULL treated as 0; non-negative integer
+      - name: spam_reports
+        data_type: BIGINT
+        description: Total spam report events per email_send_id with NULL treated as 0; non-negative integer
+      - name: unsubscribes
+        data_type: BIGINT
+        description: Total unsubscribe status changes per email_send_id with NULL treated as 0; non-negative integer
+      - name: is_contact_deleted
+        data_type: BOOLEAN
+        description: Flag indicating if the HubSpot contact was deleted; passed through from source (NULLs preserved)
+      - name: _fivetran_synced
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Fivetran sync timestamp from source; passed through verbatim (time zone preserved; NULLs preserved)
+    - name: hubspot__contact_engagement_analysis
+      schema: marketing
+      description: Comprehensive contact engagement metrics, lifecycle analysis, and email attribution-derived scoring
+      grain: One row per contact_id
+      source_models:
+      - intermediate.int_hubspot__contact_lifecycle_metrics
+      - staging.stg_hubspot__contact
+      - raw.email_event_data
+      business_logic: '1) Base: bring all lifecycle and deal metrics from intermediate.int_hubspot__contact_lifecycle_metrics (one row per contact_id). 2) Email attribution (per email): join contacts to email events on email=recipient; include only events where a campaign_id exists; aggregate by email to compute: - campaigns_engaged_with = distinct campaigns count - attributed_deals_count = 0; total_attributed_revenue = 0 (placeholders) - primary_attribution_type = ''Email''; avg_attribution_window_days = 30 (defaults) Only emails with at least one qualifying campaign event appear. 3) Final assembly: left join the email attribution dataset to the base on email; pass through all base fields; set: - email_campaigns_engaged = campaigns_engaged_with when present, else 0 - email_attributed_deals = attributed_deals_count when present, else 0 - email_attributed_revenue = total_attributed_revenue when present, else 0 - primary_attribution_type and avg_attribution_window_days are null when no attribution row exists. 4) Derived fields: - engagement_recency_status: compare last_engagement_date to today; in order: within 30 days → ''Recently Active''; within 90 → ''Moderately Active''; within 180 → ''Somewhat Active''; if a past date exists but older → ''Inactive''; if no engagement date → ''Never Engaged''. - customer_value_segment: evaluate in order by total_deal_value and then total_associated_deals: ≥50,000 → ''High Value Customer''; ≥10,000 → ''Medium Value Customer''; >0 → ''Low Value Customer''; else if any deals exist → ''Prospect with Opportunity''; else ''Lead Only''. - comprehensive_engagement_score: sum of four components capped at Email 40 + Deals 30 + Attribution 20 + Velocity 10: Email: if any emails were sent, use 0.2×open_rate + 0.2×click_through_rate, capped at 40; else 0. Deals: if any deals exist, use 6 points per deal, capped at 30; else 0. Attribution: if any attributed deals exist, use 10 points per attributed deal, capped at 20; else 0. Velocity: 0.1×conversion_velocity_score, capped at 10. If a >0 gate is not met, that component contributes 0; no additional null-imputation is applied, so null rate or velocity inputs can yield a null overall score. - days_from_creation_to_last_engagement: number of days between created_date and last_engagement_date; null if either date is missing. - revenue_per_email_sent: total_deal_value divided by total_emails_sent when both are >0; else 0. - revenue_per_day_known: total_deal_value divided by contact_age_days when both are >0; else 0. 5) Final labels: - final_engagement_classification: by comprehensive_engagement_score, in order: ≥80 ''Champion''; ≥60 ''Active Prospect''; ≥40 ''Engaged Lead''; ≥20 ''Warm Lead''; else ''Cold Lead''. - mql_classification: ''Marketing Qualified Lead'' if engagement_tier=''High Engagement'' and total_emails_clicked>0 and contact_maturity_segment in (''Established Contact'',''Mature Contact'') and engagement_recency_status in (''Recently Active'',''Moderately Active''); else ''Marketing Engaged Lead'' if engagement_tier in (''High Engagement'',''Medium Engagement'') and total_emails_opened≥3 and engagement_recency_status!=''Never Engaged''; else ''Unqualified Lead''. - sales_readiness_status: ''Sales Ready'' if total_associated_deals>0; else ''Sales Qualified'' if comprehensive_engagement_score≥60 and email_attributed_deals>0; else ''Sales Interested'' if comprehensive_engagement_score≥40 and total_emails_clicked>0; else ''Not Sales Ready''. Note: The final result is presented sorted by comprehensive_engagement_score descending.'
+      columns:
+      - name: contact_id
+        data_type: VARCHAR
+        description: Unique contact identifier; grouping key with exactly one output row per contact_id
+      - name: email
+        data_type: VARCHAR
+        description: Contact email used to join to email attribution data; NULL yields no attribution row
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Datetime the contact record was created; used in date difference calculations
+      - name: first_conversion_date
+        data_type: TIMESTAMP
+        description: Datetime of the contact’s first conversion event from lifecycle metrics
+      - name: contact_age_days
+        data_type: BIGINT
+        description: Age in whole days from created_date to current_date as defined in lifecycle metrics
+      - name: days_to_conversion
+        data_type: BIGINT
+        description: Whole days from created_date to first_conversion_date from lifecycle metrics
+      - name: contact_maturity_segment
+        data_type: VARCHAR
+        description: Lifecycle maturity segment label from lifecycle metrics; used in MQL classification
+      - name: conversion_status
+        data_type: VARCHAR
+        description: Lifecycle conversion status label from lifecycle metrics
+      - name: conversion_velocity_score
+        data_type: INTEGER
+        description: Velocity score from lifecycle metrics; contributes up to 10 points (0.1×score) to comprehensive_engagement_score
+      - name: total_emails_sent
+        data_type: HUGEINT
+        description: Total emails sent to the contact from lifecycle metrics; >0 gate for email weighting and revenue_per_email_sent
+      - name: total_emails_opened
+        data_type: HUGEINT
+        description: Total email opens from lifecycle metrics; used in MQL second-tier rule (≥3)
+      - name: total_emails_clicked
+        data_type: HUGEINT
+        description: Total email clicks from lifecycle metrics; used in MQL and sales readiness rules (>0)
+      - name: total_emails_bounced
+        data_type: HUGEINT
+        description: Total email bounces from lifecycle metrics
+      - name: email_open_rate
+        data_type: DOUBLE
+        description: Email open rate from lifecycle metrics (percentage 0–100); contributes open_rate×0.2 to the email component when emails were sent
+      - name: email_click_through_rate
+        data_type: DOUBLE
+        description: Email click-through rate from lifecycle metrics (percentage 0–100); contributes click_rate×0.2 to the email component when emails were sent
+      - name: last_engagement_date
+        data_type: TIMESTAMP
+        description: Most recent engagement datetime from lifecycle metrics; drives engagement_recency_status and date difference
+      - name: total_associated_deals
+        data_type: BIGINT
+        description: Total deals associated with the contact from lifecycle metrics; used in deal component and segmentation
+      - name: total_closed_deals
+        data_type: BIGINT
+        description: Total closed deals associated with the contact from lifecycle metrics
+      - name: total_deal_value
+        data_type: DOUBLE
+        description: Sum of deal values from lifecycle metrics; drives customer_value_segment and revenue efficiency metrics
+      - name: avg_deal_value
+        data_type: DOUBLE
+        description: Average deal value from lifecycle metrics
+      - name: first_deal_date
+        data_type: TIMESTAMP
+        description: Datetime of the first associated deal from lifecycle metrics
+      - name: last_deal_closed_date
+        data_type: TIMESTAMP
+        description: Datetime of the most recent closed deal from lifecycle metrics
+      - name: overall_engagement_score
+        data_type: DOUBLE
+        description: Precomputed overall engagement score from lifecycle metrics (passthrough)
+      - name: engagement_tier
+        data_type: VARCHAR
+        description: Engagement tier label from lifecycle metrics; used in MQL classification
+      - name: final_engagement_classification
+        data_type: VARCHAR
+        description: 'Classification by comprehensive_engagement_score: Champion ≥80; Active Prospect ≥60; Engaged Lead ≥40; Warm Lead ≥20; else Cold Lead'
+      - name: email_campaigns_engaged
+        data_type: BIGINT
+        description: Distinct count of non-null campaign_ids per email from email events; missing attribution row yields 0
+      - name: email_attributed_deals
+        data_type: INTEGER
+        description: Simplified attributed deals count from email attribution data; missing attribution row yields 0 (placeholder 0)
+      - name: engagement_recency_status
+        data_type: VARCHAR
+        description: 'Recency category from last_engagement_date vs today: within 30d Recently Active; within 90d Moderately Active; within 180d Somewhat Active; else Inactive; NULL → Never Engaged'
+      - name: customer_value_segment
+        data_type: VARCHAR
+        description: 'Value segment by total_deal_value: High ≥50000; Medium ≥10000; Low >0; else Prospect with Opportunity if total_associated_deals>0; else Lead Only'
+      - name: revenue_per_email_sent
+        data_type: DOUBLE
+        description: total_deal_value divided by total_emails_sent when both >0; else 0
+      - name: mql_classification
+        data_type: VARCHAR
+        description: MQL if High Engagement + clicks>0 + maturity in set + recent; else Marketing Engaged Lead if tier in set + opens≥3 + recency not Never; else Unqualified Lead
+      - name: email_attributed_revenue
+        data_type: INTEGER
+        description: Simplified attributed revenue from email attribution data; missing attribution row yields 0 (placeholder 0)
+      - name: sales_readiness_status
+        data_type: VARCHAR
+        description: Sales Ready if total_associated_deals>0; else Sales Qualified if score≥60 and email_attributed_deals>0; else Sales Interested if score≥40 and clicks>0; else Not Sales Ready
+      - name: primary_attribution_type
+        data_type: VARCHAR
+        description: Primary attribution channel from email attribution data; 'Email' when an attribution row exists; else NULL
+      - name: revenue_per_day_known
+        data_type: DOUBLE
+        description: total_deal_value divided by contact_age_days when both >0; else 0
+      - name: avg_attribution_window_days
+        data_type: INTEGER
+        description: Default attribution window in days from email attribution data (30 when an attribution row exists; else NULL)
+      - name: comprehensive_engagement_score
+        data_type: DOUBLE
+        description: Sum of capped components (Email 40, Deals 30, Attribution 20, Velocity 10); components are 0 when their >0 gates fail; null rate or velocity inputs can yield a null score
+      - name: days_from_creation_to_last_engagement
+        data_type: BIGINT
+        description: Number of days between created_date and last_engagement_date; NULL if either date is missing
+    - name: hubspot__campaign_performance_analysis
+      schema: marketing
+      description: Email campaign analytics with engagement rates, global benchmarking, scoring, classifications, and simplified attribution (one row per email_campaign_id)
+      grain: One row per email_campaign_id
+      source_models:
+      - raw.email_event_data
+      business_logic: 'Build campaign_engagement_metrics (cem) from raw.email_event_data: - Keep records with a non-null email_campaign_id; aggregate by email_campaign_id. - unique_recipients: number of distinct non-null recipients for the campaign. - total_sends: number of events where type is SENT. - open_rate (%): if total_sends > 0, then (number of OPEN events ÷ total_sends) × 100; otherwise 0. - click_through_rate (%): if total opens > 0, then (number of CLICK events ÷ number of OPEN events) × 100; otherwise 0. - delivery_rate (%): constant 95.0 for all campaigns. - bounce_rate (%): if total_sends > 0, then (number of BOUNCE events ÷ total_sends) × 100; otherwise 0. - unsubscribe_rate (%): if total_sends > 0, then (number of UNSUBSCRIBE events ÷ total_sends) × 100; otherwise 0. Build campaign_benchmarking (cb) from cem (global across all campaigns): - benchmark_open_rate: average of open_rate across campaigns. - benchmark_click_rate: average of click_through_rate across campaigns. - top_quartile_open_rate: 75th percentile of open_rate across campaigns. - top_quartile_click_rate: 75th percentile of click_through_rate across campaigns. Final output: - Cross join cem with cb so each campaign receives the same benchmark metrics; one row per email_campaign_id. - engagement_quality_score: sum of four bucketed components: - Open rate: ≥25 → 25; ≥15 → 20; ≥10 → 15; else 10. - Click-through rate: ≥5 → 25; ≥3 → 20; ≥1 → 15; else 10. - Bounce rate: ≤2 → 20; ≤5 → 15; ≤10 → 10; else 5. - Unsubscribe rate: ≤0.5 → 15; ≤1 → 12; ≤2 → 8; else 5. - campaign_performance_tier: - High Performing if open_rate ≥ 25 and click_through_rate ≥ 5; Good Performing if open_rate ≥ 15 and click_through_rate ≥ 2; Average Performing if open_rate ≥ 10 and click_through_rate ≥ 1; else Underperforming. - roi_tier: constant ''Low ROI''. - open_rate_performance: Above Benchmark if open_rate ≥ top quartile; At Benchmark if ≥ global average; else Below Benchmark. - click_rate_performance: Above Benchmark if click_through_rate ≥ top quartile; At Benchmark if ≥ global average; else Below Benchmark. - revenue_performance: constant ''At Benchmark''. - Audience engagement simplifications: highly_engaged_recipients = unique_recipients; moderately_engaged_recipients = 0; lightly_engaged_recipients = 0; no_engagement_recipients = 0; highly_engaged_percentage = 100.0. - avg_response_time_minutes = 60; avg_opens_per_recipient = 2.5; avg_clicks_per_recipient = 0.5. - Simplified attribution constants: attributed_deals = 0; attributed_revenue = 0; revenue_per_send = 0; revenue_per_recipient = 0; lead_conversion_rate = 0; deals_per_send_rate = 0; avg_days_to_conversion = 30; avg_deal_size_from_campaign = 0. - optimization_recommendation (evaluated in order; first match wins): - If open_rate < benchmark_open_rate → ''Optimize Subject Line''; else if click_through_rate < benchmark_click_rate → ''Improve Content/CTA''; else if bounce_rate > 5 → ''Clean Email List''; else if unsubscribe_rate > 1 → ''Review Content Relevance''; else → ''Maintain Current Strategy''. - overall_campaign_success: - Highly Successful if engagement_quality_score ≥ 80; Successful if ≥ 60; Moderately Successful if ≥ 40; else Needs Improvement. - Final query sorts by unique_recipients descending; physical storage does not guarantee row order.'
+      columns:
+      - name: email_campaign_id
+        data_type: BIGINT
+        description: HubSpot email campaign identifier and grouping key
+        tests:
+        - not_null
+        - unique
+      - name: unique_recipients
+        data_type: BIGINT
+        description: Number of distinct non-null recipients for the campaign
+      - name: total_sends
+        data_type: HUGEINT
+        description: Number of SENT events for the campaign
+      - name: open_rate
+        data_type: DOUBLE
+        description: Opens ÷ sends × 100; 0 when sends=0
+      - name: click_through_rate
+        data_type: DOUBLE
+        description: Clicks ÷ opens × 100; 0 when opens=0
+      - name: attributed_deals
+        data_type: INTEGER
+        description: Simplified attribution placeholder set to 0
+      - name: attributed_revenue
+        data_type: INTEGER
+        description: Simplified attribution placeholder set to 0
+      - name: revenue_per_send
+        data_type: INTEGER
+        description: Simplified attribution placeholder set to 0
+      - name: revenue_per_recipient
+        data_type: INTEGER
+        description: Simplified attribution placeholder set to 0
+      - name: lead_conversion_rate
+        data_type: INTEGER
+        description: Simplified attribution placeholder set to 0
+      - name: avg_days_to_conversion
+        data_type: INTEGER
+        description: Constant 30 days as simplified conversion timing
+      - name: campaign_performance_tier
+        data_type: VARCHAR
+        description: Tier based on open and click thresholds
+      - name: roi_tier
+        data_type: VARCHAR
+        description: ROI classification set to 'Low ROI'
+      - name: avg_response_time_minutes
+        data_type: INTEGER
+        description: Average response time set to 60 minutes
+      - name: avg_deal_size_from_campaign
+        data_type: INTEGER
+        description: Simplified attribution placeholder set to 0
+      - name: avg_clicks_per_recipient
+        data_type: DECIMAL(2,1)
+        description: Average clicks per recipient set to 0.5
+      - name: highly_engaged_recipients
+        data_type: BIGINT
+        description: Set equal to unique_recipients for simplified engagement
+      - name: lightly_engaged_recipients
+        data_type: INTEGER
+        description: Simplified engagement bucket set to 0
+      - name: avg_opens_per_recipient
+        data_type: DECIMAL(2,1)
+        description: Average opens per recipient set to 2.5
+      - name: benchmark_open_rate
+        data_type: DOUBLE
+        description: Global average open_rate across campaigns
+      - name: highly_engaged_percentage
+        data_type: DECIMAL(4,1)
+        description: Percentage of highly engaged recipients set to 100.0
+      - name: revenue_performance
+        data_type: VARCHAR
+        description: Revenue performance classification set to 'At Benchmark'
+      - name: no_engagement_recipients
+        data_type: INTEGER
+        description: Simplified engagement bucket set to 0
+      - name: click_rate_performance
+        data_type: VARCHAR
+        description: Click rate vs benchmark using top quartile and average thresholds
+      - name: overall_campaign_success
+        data_type: VARCHAR
+        description: Success classification from engagement_quality_score thresholds
+      - name: optimization_recommendation
+        data_type: VARCHAR
+        description: Recommendation from ordered checks on open, click, bounce, unsubscribe
+      - name: unsubscribe_rate
+        data_type: DOUBLE
+        description: Unsubscribes ÷ sends × 100; 0 when sends=0
+      - name: bounce_rate
+        data_type: DOUBLE
+        description: Bounces ÷ sends × 100; 0 when sends=0
+      - name: engagement_quality_score
+        data_type: INTEGER
+        description: Sum of bucketed open, click, bounce, and unsubscribe scores
+      - name: benchmark_click_rate
+        data_type: DOUBLE
+        description: Global average click_through_rate across campaigns
+      - name: deals_per_send_rate
+        data_type: INTEGER
+        description: Simplified attribution placeholder set to 0
+      - name: delivery_rate
+        data_type: DECIMAL(3,1)
+        description: Delivery percentage set to constant 95.0
+      - name: open_rate_performance
+        data_type: VARCHAR
+        description: Open rate vs benchmark using top quartile and average thresholds
+      - name: moderately_engaged_recipients
+        data_type: INTEGER
+        description: Simplified engagement bucket set to 0
+    - name: hubspot__email_event_sent
+      schema: marketing
+      description: Email send events with event attributes and contact match by recipient email.
+      grain: Base grain is one row per stg_hubspot__email_event_sent record (email_event_id); joins may create multiple rows if joined sources have multiple matches.
+      source_models:
+      - staging.stg_hubspot__email_event_sent
+      - staging.stg_hubspot__email_event
+      - intermediate.int_hubspot__contact_merge_adjust
+      business_logic: '- Begin with all columns from staging.stg_hubspot__email_event_sent. - Left join staging.stg_hubspot__email_event on email_event_id and add: - created_timestamp from events - email_campaign_id from events - recipient_email_address from events - email_send_timestamp copied from the events created_timestamp - email_send_id copied from the events email_event_id - Left join intermediate.int_hubspot__contact_merge_adjust on recipient_email_address = contacts.email and add: - contact_id from contacts - is_contact_deleted defaulted to false when the contact flag is null or when no contact match exists - No filters or aggregations; all joins are left joins; base rows are preserved even without matches; no explicit ordering. - Join matching uses exact string matches; if multiple rows match in any joined source, the output contains one row per matching combination without de-duplication. - Null handling: fields from unmatched joins are null, except is_contact_deleted which is false by default.'
+      columns:
+      - name: email_event_id
+        data_type: VARCHAR
+        description: Primary event identifier from stg_hubspot__email_event_sent; not null.
+        tests:
+        - not_null
+        - unique
+      - name: email_send_id
+        data_type: VARCHAR
+        description: Event identifier sourced from stg_hubspot__email_event; equals email_event_id when an event match exists, else null.
+      - name: email_campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier from the matched event; null if no event match.
+      - name: contact_id
+        data_type: VARCHAR
+        description: Matched contact_id using recipient_email_address = contacts.email; null if no contact match.
+      - name: recipient_email_address
+        data_type: VARCHAR
+        description: Recipient email taken from the matched event; null if no event match.
+      - name: email_send_timestamp
+        data_type: TIMESTAMP
+        description: Send timestamp copied from the matched event's created timestamp; null if no event match.
+      - name: created_timestamp
+        data_type: TIMESTAMP
+        description: Event created timestamp from the matched event (same as email_send_timestamp); null if no event match.
+      - name: email_from
+        data_type: VARCHAR
+        description: Sender address from the base event; may be null.
+      - name: email_reply_to
+        data_type: VARCHAR
+        description: Reply-to address from the base event; may be null.
+      - name: email_subject
+        data_type: VARCHAR
+        description: Subject from the base event; may be null.
+      - name: email_bcc
+        data_type: VARCHAR
+        description: BCC recipients string from the base event; may be null.
+      - name: email_cc
+        data_type: VARCHAR
+        description: CC recipients string from the base event; may be null.
+      - name: is_contact_deleted
+        data_type: BOOLEAN
+        description: Contact deletion flag defaulted to false when null or when no contact match exists.
+        tests:
+        - not_null
+      - name: _fivetran_synced
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Ingestion sync timestamp from the base event; timezone-aware; may be null.
+  sales_models:
+    - name: hubspot__deals
+      schema: sales
+      description: Exact passthrough of HubSpot deals with pipeline, stage, and owner details from intermediate.int_hubspot__deals_enhanced.
+      grain: One row per source row from intermediate.int_hubspot__deals_enhanced
+      source_models:
+      - intermediate.int_hubspot__deals_enhanced
+      business_logic: '- Read all rows and columns from intermediate.int_hubspot__deals_enhanced without modification. - No filters, joins, renames, casts, calculations, or aggregations are applied; rows are returned exactly as received. - Grain: identical to the source; one output row per input row. No deduplication—if multiple rows share the same deal_id in the source, all are retained. - Null policy: all NULLs are preserved; no defaulting or coalescing. - Ordering: no explicit ordering; output order is database-dependent and nondeterministic. - Data types: preserved exactly as in the source (VARCHAR, BIGINT, DECIMAL(18,2), TIMESTAMP, TIMESTAMP WITH TIME ZONE, BOOLEAN). - String values: casing and whitespace are preserved; no trimming or normalization. - Numeric values: amount (DECIMAL(18,2)) is passed through without rounding or conversion. - Timestamps: closed_date and created_date are TIMESTAMP; _fivetran_synced is TIMESTAMP WITH TIME ZONE; all values are passed through unchanged.'
+      columns:
+      - name: deal_id
+        data_type: VARCHAR
+        description: HubSpot deal unique identifier; passthrough from source.
+      - name: deal_pipeline_id
+        data_type: VARCHAR
+        description: Identifier of the pipeline the deal belongs to; passthrough.
+      - name: deal_pipeline_stage_id
+        data_type: VARCHAR
+        description: Identifier of the deal's stage within its pipeline; passthrough.
+      - name: owner_id
+        data_type: VARCHAR
+        description: HubSpot owner identifier for the deal; passthrough.
+      - name: portal_id
+        data_type: BIGINT
+        description: HubSpot portal/account ID; passthrough.
+      - name: deal_name
+        data_type: VARCHAR
+        description: Deal name/title; passthrough.
+      - name: description
+        data_type: VARCHAR
+        description: Deal description text; passthrough.
+      - name: amount
+        data_type: DECIMAL(18,2)
+        description: Deal amount as stored in DECIMAL(18,2); no conversion or extra rounding.
+      - name: closed_date
+        data_type: TIMESTAMP
+        description: Timestamp when the deal was closed; passthrough; may be NULL.
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Timestamp when the deal was created; passthrough.
+      - name: is_deal_deleted
+        data_type: BOOLEAN
+        description: Indicates if the deal record is deleted; passthrough.
+      - name: _fivetran_synced
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Fivetran connector last synced timestamp with time zone; passthrough.
+      - name: is_deal_pipeline_deleted
+        data_type: BOOLEAN
+        description: Indicates if the pipeline is deleted; passthrough.
+      - name: pipeline_label
+        data_type: VARCHAR
+        description: Human-readable pipeline label; passthrough.
+      - name: is_pipeline_active
+        data_type: BOOLEAN
+        description: Indicates whether the pipeline is active; passthrough.
+      - name: deal_pipeline_created_at
+        data_type: TIMESTAMP
+        description: Timestamp when the pipeline was created; passthrough.
+      - name: deal_pipeline_updated_at
+        data_type: TIMESTAMP
+        description: Timestamp when the pipeline was last updated; passthrough.
+      - name: is_deal_pipeline_stage_deleted
+        data_type: BOOLEAN
+        description: Indicates if the pipeline stage is deleted; passthrough.
+      - name: pipeline_stage_label
+        data_type: VARCHAR
+        description: Human-readable pipeline stage label; passthrough.
+      - name: owner_active_user_id
+        data_type: VARCHAR
+        description: Active user ID for the owner when available; passthrough.
+      - name: owner_email_address
+        data_type: VARCHAR
+        description: Owner email address; passthrough.
+      - name: owner_full_name
+        data_type: VARCHAR
+        description: Owner full name; passthrough.
+    - name: hubspot__companies
+      schema: sales
+      description: Pass-through HubSpot company records from staging with no transformation
+      grain: One row per source record in staging.stg_hubspot__company; duplicates preserved
+      source_models:
+      - staging.stg_hubspot__company
+      business_logic: '- Create CTE companies by selecting all columns and rows from staging.stg_hubspot__company. - Emit SELECT * from companies with no joins, filters, renames, casts, or derived fields. - Grain: one output row per input row; duplicates and multiple rows per company_id (if present) are preserved; no de-duplication. - Column semantics: exact pass-through; NULLs, casing, and whitespace are preserved; DECIMAL(18,2) precision is preserved without rounding; TIMESTAMP and TIMESTAMP WITH TIME ZONE values are preserved without timezone conversion. - Ordering: no ORDER BY is applied, so output row order is not deterministic.'
+      columns:
+      - name: company_id
+        data_type: VARCHAR
+        description: HubSpot company identifier; pass-through value with NULLs and duplicates preserved
+      - name: company_name
+        data_type: VARCHAR
+        description: Company name as stored in HubSpot; pass-through with original casing and spacing
+      - name: description
+        data_type: VARCHAR
+        description: Company description text; pass-through with NULLs preserved
+      - name: industry
+        data_type: VARCHAR
+        description: Industry label/category; pass-through with no normalization
+      - name: address
+        data_type: VARCHAR
+        description: Primary street address line; pass-through with original formatting
+      - name: address_2
+        data_type: VARCHAR
+        description: Secondary street address line; pass-through with original formatting
+      - name: city
+        data_type: VARCHAR
+        description: City name; pass-through with original casing and spacing
+      - name: state
+        data_type: VARCHAR
+        description: State or region; pass-through with original casing and spacing
+      - name: country
+        data_type: VARCHAR
+        description: Country name; pass-through with original casing and spacing
+      - name: annual_revenue
+        data_type: DECIMAL(18,2)
+        description: Annual revenue amount as provided; DECIMAL(18,2) preserved with no rounding or currency conversion
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Record creation timestamp from HubSpot; pass-through with no timezone conversion
+      - name: is_company_deleted
+        data_type: BOOLEAN
+        description: HubSpot deletion flag; pass-through boolean with NULLs preserved
+      - name: _fivetran_synced
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Fivetran sync timestamp with time zone; pass-through value with no transformation
+    - name: hubspot__sales_rep_performance
+      schema: sales
+      description: Sales representative performance analytics with rankings, segment metrics, trends, and derived classifications
+      grain: One row per owner_id (only reps with total_deals > 0)
+      source_models:
+      - intermediate.int_hubspot__owner_performance_metrics
+      - intermediate.int_hubspot__deal_performance_metrics
+      business_logic: '- Start from intermediate.int_hubspot__owner_performance_metrics and retain only owners where total_deals > 0. - Build monthly deal performance per owner from intermediate.int_hubspot__deal_performance_metrics: - Group by owner_id and the year/month of created_date; exclude rows where created_date is NULL. - monthly_deals_created: count distinct deal_id per month. - monthly_deals_won: count distinct deal_id where deal_status = ''Won''. - monthly_revenue: sum deal_amount where deal_status = ''Won'' (0 otherwise). - monthly_pipeline_added: sum deal_amount where deal_status = ''Open'' (0 otherwise). - monthly_win_rate: if decided deals (Won or Lost) exist, compute 100 × (won / decided); otherwise 0. - monthly_avg_cycle_time: average deal_cycle_time_days for won deals; NULL if none. - Aggregate per-owner trends over monthly data: - Use month_index = performance_year*12 + performance_month and current_month_index from current_date. - recent_6m_avg_revenue: average monthly_revenue where month_index >= current_month_index - 6 (inclusive). - prior_6m_avg_revenue: average monthly_revenue where month_index between current_month_index - 12 and current_month_index - 7 (inclusive). - recent_6m_avg_win_rate / prior_6m_avg_win_rate: analogous averages over monthly_win_rate (percent values). - revenue_volatility: standard deviation of monthly_revenue; activity_consistency: standard deviation of monthly_deals_created. - recent_active_months: count of monthly rows in the last 3 calendar months (relative to current_date), inclusive. - Territory and segment analysis per owner from all deals: - primary_deal_segment: most frequent deal_size_category; ties break by ascending category label. - segments_covered: count distinct deal_size_category. - enterprise/large/medium/small_revenue: sum won deal_amount within each named deal_size_category. - enterprise_win_rate / large_deal_win_rate: if decided deals in the segment exist, compute 100 × (won / decided); otherwise 0. - Rankings and percentiles from owner metrics: - revenue_rank: best-to-worst by total_won_revenue; win_rate_rank: best-to-worst by win_rate_percentage; volume_rank: best-to-worst by won_deals. - efficiency_rank: best-to-worst by avg_won_cycle_time, treating NULL as 999. - revenue_percentile / win_rate_percentile / volume_percentile: percentile position (0–100) across all reps using ascending order of each metric; peers share the same percentile. - efficiency_percentile: percentile position (0–100) using descending order of avg_won_cycle_time, treating NULL as 999 (longer cycles → higher percentile). - overall_performance_score: weighted sum of these percentiles (revenue 40%, win rate 25%, volume 20%, efficiency 15%), then scaled by ×100 to a 0–10,000 range. - Ties in ranks are resolved by the database’s implicit peer order. - Join rankings to trends and territory by owner_id (cast trend/territory owner_id to VARCHAR); unmatched trend/territory values remain NULL. - Derivations: - revenue_trend_percentage: if prior_6m_avg_revenue > 0 and recent_6m_avg_revenue is not NULL, compute 100 × (recent - prior) / prior; else NULL. - win_rate_trend_points: if prior_6m_avg_win_rate > 0 and recent_6m_avg_win_rate is not NULL, compute recent - prior; else NULL. - performance_tier: >=80 Top Performer; >=60 High Performer; >=40 Core Performer; >=20 Developing Performer; else Needs Improvement. - performance_trend: >=20 Strong Growth; >=5 Steady Growth; >=-5 Stable; >=-20 Declining; else Significant Decline (NULLs map to the else). - sales_specialization: Enterprise Specialist if enterprise_revenue strictly exceeds (large + medium + small); Large Deal Specialist if large_revenue strictly exceeds (enterprise + medium + small); else if segments_covered >= 3 then Generalist; otherwise Focused Seller. - development_focus (first-match order): low win rate + long cycle → Focus on Qualification and Process; low win rate → Improve Win Rate; very long cycle → Accelerate Sales Cycle; few wins → Increase Activity Volume; declining revenue trend → Address Performance Decline; else Maintain Current Performance. - activity_level (first-match): Highly Active (recent_active_months >= 3 and total_deals >= 10); Active (recent_active_months >= 2 and total_deals >= 5); Moderately Active (recent_active_months >= 1); else Low Activity. - pipeline_health_status: compare current_pipeline_value to total_won_revenue thresholds: >=2× Strong Pipeline; >=1× Healthy Pipeline; >=0.5× Adequate Pipeline; else Weak Pipeline. - Output rows are ordered by overall_performance_score descending.'
+      columns:
+      - name: owner_id
+        data_type: VARCHAR
+        description: Sales rep identifier; grouping key; exactly one output row per owner_id with total_deals > 0
+        tests:
+        - not_null
+        - unique
+      - name: owner_name
+        data_type: VARCHAR
+        description: Sales rep name from owner metrics; passed through from source (may be NULL)
+      - name: owner_email
+        data_type: VARCHAR
+        description: Sales rep email from owner metrics; passed through from source (may be NULL)
+      - name: total_deals
+        data_type: BIGINT
+        description: Total number of deals attributed to the rep from owner metrics; used for filters and activity_level thresholds
+      - name: won_deals
+        data_type: BIGINT
+        description: Count of won deals from owner metrics; used for volume_rank and development_focus
+      - name: total_won_revenue
+        data_type: DECIMAL(38,2)
+        description: Sum of deal_amount for won deals from owner metrics; basis for revenue_rank, revenue_percentile, and pipeline health thresholds
+      - name: win_rate_percentage
+        data_type: DOUBLE
+        description: Overall win rate percentage (0–100) from owner metrics; used for win_rate_rank and percentiles
+      - name: avg_won_cycle_time
+        data_type: DOUBLE
+        description: Average days to close for won deals from owner metrics; NULL permitted; for ranking, NULL treated as 999
+      - name: current_pipeline_value
+        data_type: DECIMAL(38,2)
+        description: Current open pipeline value from owner metrics (alias of pipeline_value); used for pipeline_health_status thresholds
+      - name: enterprise_win_rate
+        data_type: DOUBLE
+        description: Enterprise (100K+) segment win rate in percent; if no decided enterprise deals then 0; computed as 100×won/decided
+      - name: large_deal_win_rate
+        data_type: DOUBLE
+        description: Large (50K-100K) segment win rate in percent; if no decided large deals then 0; computed as 100×won/decided
+      - name: enterprise_revenue
+        data_type: DECIMAL(38,2)
+        description: Sum of won deal_amount in Enterprise (100K+) segment; NULL if no territory data joined
+      - name: large_revenue
+        data_type: DECIMAL(38,2)
+        description: Sum of won deal_amount in Large (50K-100K) segment; NULL if no territory data joined
+      - name: medium_revenue
+        data_type: DECIMAL(38,2)
+        description: Sum of won deal_amount in Medium (10K-50K) segment; NULL if no territory data joined
+      - name: small_revenue
+        data_type: DECIMAL(38,2)
+        description: Sum of won deal_amount in Small (<10K) segment; NULL if no territory data joined
+      - name: revenue_rank
+        data_type: BIGINT
+        description: Integer rank by total_won_revenue descending across all reps; 1 is highest revenue; ties resolved by peer order
+      - name: win_rate_rank
+        data_type: BIGINT
+        description: Integer rank by win_rate_percentage descending across all reps; 1 is highest win rate; ties resolved by peer order
+      - name: volume_rank
+        data_type: BIGINT
+        description: Integer rank by won_deals descending across all reps; 1 is most wins; ties resolved by peer order
+      - name: efficiency_rank
+        data_type: BIGINT
+        description: Integer rank by avg_won_cycle_time ascending, treating NULL as 999; 1 is shortest cycle; ties resolved by peer order
+      - name: revenue_percentile
+        data_type: DOUBLE
+        description: Percentile (0–100) using ascending order of total_won_revenue; peers share the same percentile
+      - name: win_rate_percentile
+        data_type: DOUBLE
+        description: Percentile (0–100) using ascending order of win_rate_percentage; peers share the same percentile
+      - name: volume_percentile
+        data_type: DOUBLE
+        description: Percentile (0–100) using ascending order of won_deals; peers share the same percentile
+      - name: efficiency_percentile
+        data_type: DOUBLE
+        description: Percentile (0–100) using descending order of avg_won_cycle_time with NULL treated as 999; higher values indicate longer cycles
+      - name: overall_performance_score
+        data_type: DOUBLE
+        description: Weighted sum of percentiles (revenue 40%, win rate 25%, volume 20%, efficiency 15%) scaled by ×100; range 0–10,000
+      - name: performance_tier
+        data_type: VARCHAR
+        description: 'Tier by overall_performance_score: >=80 Top, >=60 High, >=40 Core, >=20 Developing, else Needs Improvement'
+      - name: sales_specialization
+        data_type: VARCHAR
+        description: Enterprise Specialist if enterprise_revenue > (large + medium + small), Large Deal Specialist if large_revenue > (enterprise + medium + small), else Generalist if segments_covered >= 3, otherwise Focused Seller
+      - name: development_focus
+        data_type: VARCHAR
+        description: 'First-match guidance: low win rate + long cycle → process; low win rate → improve; very long cycle → accelerate; few wins → increase volume; declining trend → address; else maintain'
+      - name: pipeline_health_status
+        data_type: VARCHAR
+        description: 'Pipeline health by current_pipeline_value versus total_won_revenue: >=2x Strong, >=1x Healthy, >=0.5x Adequate, else Weak'
+      - name: primary_deal_segment
+        data_type: VARCHAR
+        description: Most frequent deal_size_category with tie-break by ascending label; NULL if no deal data
+      - name: segments_covered
+        data_type: BIGINT
+        description: Count of distinct deal_size_category values across the rep’s deals; NULL if no deal data
+      - name: activity_level
+        data_type: VARCHAR
+        description: 'Activity classification by recent_active_months and total_deals with ordered thresholds: Highly Active, Active, Moderately Active, or Low Activity'
+      - name: activity_consistency
+        data_type: DOUBLE
+        description: Standard deviation of monthly_deals_created; higher implies more variability; may be NULL with limited data
+      - name: recent_active_months
+        data_type: BIGINT
+        description: Count of months in the last 3-month window with any monthly activity row (based on created_date); integer >= 0
+      - name: performance_trend
+        data_type: VARCHAR
+        description: 'Trend label from revenue_trend_percentage: >=20 Strong Growth, >=5 Steady Growth, >=-5 Stable, >=-20 Declining, else Significant Decline (NULLs map to else)'
+      - name: revenue_trend_percentage
+        data_type: DOUBLE
+        description: Percent change between recent_6m_avg_revenue and prior_6m_avg_revenue; NULL if prior <= 0 or recent is NULL
+      - name: win_rate_trend_points
+        data_type: DOUBLE
+        description: Difference in percentage points between recent_6m_avg_win_rate and prior_6m_avg_win_rate; NULL if prior <= 0 or recent is NULL
+      - name: revenue_volatility
+        data_type: DOUBLE
+        description: Standard deviation of monthly_revenue; may be NULL with limited data
+      - name: recent_6m_avg_revenue
+        data_type: DOUBLE
+        description: Average monthly_revenue where month_index >= current_month_index - 6; includes months with zero revenue if present; NULL if no months
+      - name: prior_6m_avg_revenue
+        data_type: DOUBLE
+        description: Average monthly_revenue where month_index is between current_month_index - 12 and current_month_index - 7; NULL if no months
+      - name: recent_6m_avg_win_rate
+        data_type: DOUBLE
+        description: Average monthly_win_rate (percent) where month_index >= current_month_index - 6; NULL if no months
+      - name: prior_6m_avg_win_rate
+        data_type: DOUBLE
+        description: Average monthly_win_rate (percent) where month_index is between current_month_index - 12 and current_month_index - 7; NULL if no months
+    - name: hubspot__sales_performance_dashboard
+      schema: sales
+      description: Quarterly sales performance metrics and forecasts derived from deal-level activity
+      grain: One row per created_year and created_quarter
+      source_models:
+      - intermediate.int_hubspot__deal_performance_metrics
+      business_logic: '- Build quarterly_sales_metrics (qsm) from intermediate.int_hubspot__deal_performance_metrics (dpb): - Keep records where created_year and created_quarter are present; aggregate by created_year, created_quarter. - Distinct counts of deal_id: total created, Won, Lost, Open; null deal_id never counted. - Revenue: - revenue_won_in_quarter: sum of deal_amount for Won deals; non-Won contribute zero; null amounts do not affect the sum. - pipeline_value_in_quarter: sum of deal_amount for Open deals; others contribute zero; null amounts ignored. - Averages and distribution for Won deals only: - avg_won_deal_size: average deal_amount; null amounts ignored; returns null if no values. - avg_sales_cycle_days: average deal_cycle_time_days; null values ignored; returns null if none. - median_sales_cycle_days: continuous 50th percentile of deal_cycle_time_days; null if none. - p25_deal_size: continuous 25th percentile of deal_amount; null if none. - p75_deal_size: continuous 75th percentile of deal_amount; null if none. - quarterly_win_rate (%): 100 times distinct Won divided by distinct Won+Lost; returns 0 if no Won+Lost. - active_sales_reps_in_quarter: distinct owner_id across all deals; null owner_id excluded. - Build forecast_metrics (fm), grouped by created_year, created_quarter: - total_open_pipeline: sum of deal_amount for Open deals; null amounts ignored. - weighted_pipeline_forecast: for Open deals, sum of deal_amount multiplied by the deal_size_category’s historical win rate (average of 1 for Won, 0 otherwise across all data); use 0.15 if no category history; null amounts ignored. - time_weighted_forecast: for Open deals with unknown cycle time, sum of deal_amount multiplied by a recency factor based on created_date relative to quarter boundaries at execution time (0.3 for current quarter, 0.5 for last quarter, 0.7 if older); null amounts ignored. - Left join qsm to fm on created_year and created_quarter. - Previous-quarter benchmarks: - Sort by created_year, created_quarter ascending; prev_quarter_revenue and prev_quarter_win_rate take the prior row’s values; first applicable row returns null. - Growth and indicators: - revenue_growth_rate (%): 100 times (current revenue_won_in_quarter minus previous) divided by previous; null if previous is null or not positive. - quarterly_performance_rating: Excellent if win_rate ≥ 30 and avg cycle ≤ 60; Good if win_rate ≥ 20 and avg cycle ≤ 90; Average if win_rate ≥ 15 and avg cycle ≤ 120; otherwise Below Average. - revenue_per_sales_rep: revenue_won_in_quarter divided by active_sales_reps_in_quarter; returns 0 if rep count is 0. - revenue_per_deal_created: revenue_won_in_quarter divided by deals_created_in_quarter; returns 0 if deal count is 0. - quarterly_goal_status: Exceeded Target if revenue_won_in_quarter ≥ 1,000,000; Met Target if ≥ 750,000; Close to Target if ≥ 500,000; otherwise Below Target. - Final output is sorted by created_year and created_quarter descending; the grain is one row per year-quarter.'
+      columns:
+      - name: created_year
+        data_type: BIGINT
+        description: Calendar year of deal creation; grouping key; never NULL in output
+      - name: created_quarter
+        data_type: BIGINT
+        description: Calendar quarter (1–4) of deal creation; grouping key; never NULL in output
+      - name: deals_created_in_quarter
+        data_type: BIGINT
+        description: Distinct count of deal_id in the quarter; NULL deal_id excluded
+      - name: deals_won_in_quarter
+        data_type: BIGINT
+        description: Distinct count of deal_id with status Won in the quarter; NULL deal_id excluded
+      - name: deals_lost_in_quarter
+        data_type: BIGINT
+        description: Distinct count of deal_id with status Lost in the quarter; NULL deal_id excluded
+      - name: deals_still_open
+        data_type: BIGINT
+        description: Distinct count of deal_id with status Open in the quarter; NULL deal_id excluded
+      - name: revenue_won_in_quarter
+        data_type: DECIMAL(38,2)
+        description: Sum of deal_amount for Won deals in the quarter; others contribute zero; NULL amounts ignored
+      - name: pipeline_value_in_quarter
+        data_type: DECIMAL(38,2)
+        description: Sum of deal_amount for Open deals in the quarter; others contribute zero; NULL amounts ignored
+      - name: total_open_pipeline
+        data_type: DECIMAL(38,2)
+        description: Sum of deal_amount for Open deals in the quarter from forecast metrics; NULL amounts ignored
+      - name: quarterly_win_rate
+        data_type: DOUBLE
+        description: 'Percentage: 100 × distinct Won divided by distinct Won+Lost for the quarter; returns 0 when none Closed'
+      - name: prev_quarter_win_rate
+        data_type: DOUBLE
+        description: Win rate from the previous quarter based on ascending year-quarter order; NULL for the first applicable row
+      - name: prev_quarter_revenue
+        data_type: DECIMAL(38,2)
+        description: Revenue_won_in_quarter from the previous quarter based on ascending year-quarter order; NULL for the first applicable row
+      - name: revenue_growth_rate
+        data_type: DOUBLE
+        description: Percent change vs previous quarter revenue; NULL if previous is NULL or not positive
+      - name: avg_won_deal_size
+        data_type: DOUBLE
+        description: Average deal_amount for Won deals in the quarter; NULL amounts ignored; NULL if no values
+      - name: p25_deal_size
+        data_type: DECIMAL(18,2)
+        description: Continuous 25th percentile of deal_amount for Won deals in the quarter; NULL if no values
+      - name: p75_deal_size
+        data_type: DECIMAL(18,2)
+        description: Continuous 75th percentile of deal_amount for Won deals in the quarter; NULL if no values
+      - name: avg_sales_cycle_days
+        data_type: DOUBLE
+        description: Average deal_cycle_time_days for Won deals in the quarter; NULL values ignored; NULL if none
+      - name: median_sales_cycle_days
+        data_type: DOUBLE
+        description: Continuous 50th percentile of deal_cycle_time_days for Won deals in the quarter; NULL if none
+      - name: active_sales_reps_in_quarter
+        data_type: BIGINT
+        description: Distinct count of owner_id across all deals in the quarter; NULL owner_id excluded
+      - name: revenue_per_sales_rep
+        data_type: DOUBLE
+        description: Revenue_won_in_quarter divided by active_sales_reps_in_quarter; returns 0 when rep count is 0
+      - name: revenue_per_deal_created
+        data_type: DOUBLE
+        description: Revenue_won_in_quarter divided by deals_created_in_quarter; returns 0 when deal count is 0
+      - name: weighted_pipeline_forecast
+        data_type: DOUBLE
+        description: Sum for Open deals of deal_amount × category win rate (average of 1 for Won, 0 otherwise by deal_size_category); uses 0.15 if no history; NULL amounts ignored
+      - name: time_weighted_forecast
+        data_type: DECIMAL(38,3)
+        description: Sum for Open deals with unknown cycle time of deal_amount × recency factor (0.3 current quarter, 0.5 last quarter, 0.7 older) using quarter boundaries at execution; NULL amounts ignored
+      - name: quarterly_performance_rating
+        data_type: VARCHAR
+        description: Rating determined by win rate and average cycle time using ordered thresholds
+      - name: quarterly_goal_status
+        data_type: VARCHAR
+        description: 'Target attainment from revenue_won_in_quarter: ≥1,000,000 Exceeded, ≥750,000 Met, ≥500,000 Close, otherwise Below'
+  service_models:
+    - name: hubspot__tickets
+      schema: service
+      description: Comprehensive HubSpot ticket facts enriched with pipeline/stage attributes, owner details, and aggregated company/contact associations
+      grain: One row per ticket_id
+      source_models:
+      - staging.stg_hubspot__ticket
+      - staging.stg_hubspot__ticket_pipeline
+      - staging.stg_hubspot__ticket_pipeline_stage
+      - staging.stg_hubspot__ticket_company
+      - staging.stg_hubspot__company
+      - staging.stg_hubspot__ticket_contact
+      - staging.stg_hubspot__contact
+      - intermediate.int_hubspot__owners_enhanced
+      business_logic: '- Load all tickets; output grain is one row per ticket_id. - Left join pipeline attributes on ticket_pipeline_id. - Left join stage attributes on ticket_pipeline_stage_id, and require the stage’s pipeline_id to match the ticket’s pipeline_id. - Left join owner details on owner_id. - Company associations: - Left join ticket_company to company to bring company_name. - Per ticket_id, concatenate company_id values with "," and separately concatenate company_name values with ",". - NULL inputs become empty elements in the concatenation; duplicates are kept; no ordering is imposed; if no company rows exist, the concatenated fields are NULL. - Contact associations: - Left join ticket_contact to contact to bring email. - Per ticket_id, concatenate contact_id values with "," and separately concatenate email values with ",". - NULL inputs become empty elements in the concatenation; duplicates are kept; no ordering is imposed; if no contact rows exist, the concatenated fields are NULL. - Select all ticket fields plus joined attributes and aggregations; no additional filtering or de-duplication.'
+      columns:
+      - name: ticket_id
+        data_type: VARCHAR
+        description: Primary key of the ticket; exactly one output row per ticket_id (from stg_hubspot__ticket)
+        tests:
+        - not_null
+        - unique
+      - name: owner_id
+        data_type: VARCHAR
+        description: Owner identifier from stg_hubspot__ticket; used to join owner details; NULL preserved
+      - name: ticket_subject
+        data_type: VARCHAR
+        description: Ticket subject/title from stg_hubspot__ticket; NULL preserved
+      - name: ticket_content
+        data_type: VARCHAR
+        description: Ticket body/description from stg_hubspot__ticket; NULL preserved
+      - name: ticket_category
+        data_type: VARCHAR
+        description: Ticket category from stg_hubspot__ticket; NULL preserved
+      - name: ticket_priority
+        data_type: BIGINT
+        description: Numeric priority value from stg_hubspot__ticket; NULL preserved
+      - name: ticket_pipeline_id
+        data_type: VARCHAR
+        description: Pipeline identifier from stg_hubspot__ticket; used to join pipeline metadata; NULL preserved
+      - name: ticket_pipeline_stage_id
+        data_type: VARCHAR
+        description: Stage identifier from stg_hubspot__ticket; used to join stage metadata; NULL preserved
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Ticket creation timestamp from stg_hubspot__ticket; timezone-naive; NULL preserved
+      - name: closed_date
+        data_type: TIMESTAMP
+        description: Ticket closed timestamp from stg_hubspot__ticket; timezone-naive; NULL preserved
+      - name: first_agent_reply_date
+        data_type: TIMESTAMP
+        description: First agent reply timestamp from stg_hubspot__ticket; timezone-naive; NULL preserved
+      - name: is_ticket_deleted
+        data_type: BOOLEAN
+        description: Ticket deletion flag from stg_hubspot__ticket; NULL preserved
+      - name: _fivetran_synced
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Last Fivetran sync timestamp from stg_hubspot__ticket; timezone-aware; NULL preserved
+      - name: ticket_state
+        data_type: VARCHAR
+        description: Stage state from stg_hubspot__ticket_pipeline_stage joined by stage_id and matching pipeline_id; NULL if no match
+      - name: company_ids
+        data_type: VARCHAR
+        description: Comma-separated company_id values per ticket; NULL inputs become empty elements; duplicates kept; order not guaranteed; NULL when no associated companies
+      - name: contact_ids
+        data_type: VARCHAR
+        description: Comma-separated contact_id values per ticket; NULL inputs become empty elements; duplicates kept; order not guaranteed; NULL when no associated contacts
+      - name: contact_emails
+        data_type: VARCHAR
+        description: Comma-separated contact emails per ticket; NULL inputs become empty elements; duplicates kept; order not guaranteed; NULL when no associated contacts
+      - name: owner_active_user_id
+        data_type: VARCHAR
+        description: Active user identifier from int_hubspot__owners_enhanced joined by owner_id; NULL if no match
+      - name: company_names
+        data_type: VARCHAR
+        description: Comma-separated company names per ticket; NULL inputs become empty elements; duplicates kept; order not guaranteed; NULL when no associated companies
+      - name: owner_email_address
+        data_type: VARCHAR
+        description: Owner email address from int_hubspot__owners_enhanced joined by owner_id; NULL if no match
+      - name: pipeline_stage_label
+        data_type: VARCHAR
+        description: Stage label from stg_hubspot__ticket_pipeline_stage joined by stage_id and matching pipeline_id; NULL if no match
+      - name: is_ticket_pipeline_deleted
+        data_type: BOOLEAN
+        description: Pipeline deletion flag from stg_hubspot__ticket_pipeline joined by pipeline_id; NULL if no match
+      - name: is_ticket_pipeline_stage_deleted
+        data_type: BOOLEAN
+        description: Stage deletion flag from stg_hubspot__ticket_pipeline_stage joined by stage_id and matching pipeline_id; NULL if no match
+      - name: is_closed
+        data_type: BOOLEAN
+        description: Stage closed flag from stg_hubspot__ticket_pipeline_stage joined by stage_id and matching pipeline_id; NULL if no match
+      - name: pipeline_stage_order
+        data_type: BIGINT
+        description: Stage display order from stg_hubspot__ticket_pipeline_stage joined by stage_id and matching pipeline_id; NULL if no match
+      - name: pipeline_label
+        data_type: VARCHAR
+        description: Pipeline label from stg_hubspot__ticket_pipeline joined by pipeline_id; NULL if no match
+      - name: owner_full_name
+        data_type: VARCHAR
+        description: Owner full name from int_hubspot__owners_enhanced joined by owner_id; NULL if no match
+    - name: hubspot__customer_support_analytics
+      schema: service
+      description: Customer support analytics with SLA compliance, urgency scoring, and risk/service classifications; timestamps are set at execution time.
+      grain: Rows per ticket_id; duplicates may occur due to left joins to contact/company mappings (no de-duplication).
+      source_models:
+      - raw.ticket_data
+      - raw.ticket_contact_data
+      - staging.stg_hubspot__contact
+      - raw.ticket_company_data
+      - raw.company_data
+      - raw.owner_data
+      business_logic: '- Start from raw.ticket_data t and keep tickets where t.is_deleted != ''true''. - Set created_date = current_timestamp (execution time); set closed_date = current_timestamp only if t.property_closed_date is not null and not empty, else NULL. - Derive resolution_time_hours: 24 if t.property_closed_date is not null, else 8. - Derive ticket_status: ''Closed'' if t.property_closed_date is not null; else if t.property_hs_pipeline_stage LIKE ''%waiting%'' then ''Waiting for Customer''; else if LIKE ''%progress%'' then ''In Progress''; else ''Open''. - Derive priority_level from t.property_hs_ticket_priority: 1→High, 2→Medium, 3→Low, others→Medium. - Derive sla_target_hours by priority_level: High→4, Medium→24, Low→48, default→24. - Enrich using left joins: - Join raw.ticket_contact_data tc on cast(regexp_extract(t.id, ''ID(\d+)'', 1) as bigint) = tc.ticket_id; then staging.stg_hubspot__contact c on cast(tc.contact_id as varchar) = c.contact_id. - Join raw.ticket_company_data tco on cast(regexp_extract(t.id, ''ID(\d+)'', 1) as bigint) = tco.ticket_id; then raw.company_data comp on tco.company_id = comp.id. - Join raw.owner_data o on t.property_hubspot_owner_id = o.owner_id. - Left joins may introduce duplicate rows per ticket_id; no de-duplication is applied. - Derive SLA performance: - sla_status: ''Met SLA'' if resolution_time_hours <= sla_target_hours; ''Near Miss'' if <= 1.5 × sla_target_hours; else ''SLA Breach''. - sla_breach_hours: 0 if resolution_time_hours <= sla_target_hours; else resolution_time_hours − sla_target_hours. - Derive urgency_score as integer sum of three components: - Priority weight: High 40, Medium 20, else 10. - Revenue weight: ≥1,000,000 → 30; ≥100,000 → 20; >0 → 10; else 5. - Resolution-time weight: ≥72 → 30; ≥24 → 20; ≥4 → 10; else 0. - Derive resolution_efficiency: - If ticket_status=''Closed'' and resolution_time_hours <= 0.5 × sla_target_hours → ''Fast Resolution''. - Else if ''Closed'' and resolution_time_hours <= sla_target_hours → ''Standard Resolution''. - Else if ''Closed'' → ''Slow Resolution''. - Else → ''Unresolved''. - Final derivations: - customer_segment from company_annual_revenue: ≥1,000,000 → ''Enterprise Customer''; ≥100,000 → ''Mid-Market Customer''; >0 → ''SMB Customer''; else ''Unknown Size''. - escalation_recommendation from urgency_score: ≥80 → ''Critical - Immediate Escalation''; ≥60 → ''High - Manager Review''; ≥40 → ''Medium - Monitor Closely''; else ''Low - Standard Process''. - service_quality_rating: ''Excellent Service'' if resolution_efficiency=''Fast Resolution'' and sla_status=''Met SLA''; ''Good Service'' if resolution_efficiency∈{''Fast Resolution'',''Standard Resolution''} and sla_status=''Met SLA''; ''Adequate Service'' if sla_status=''Near Miss''; else ''Poor Service''. - days_open: if ticket_status!=''Closed'' then days between created_date and current_date; else NULL. - risk_level (only for non-closed): if urgency_score≥70 and days_open≥3 → ''High Risk''; else if urgency_score≥50 and days_open≥7 → ''Medium Risk''; else if days_open≥14 → ''Low Risk''; else ''No Risk''; closed tickets return ''No Risk''. - Output columns exactly as selected; results are ordered by urgency_score desc, then created_date desc.'
+      columns:
+      - name: ticket_id
+        data_type: VARCHAR
+        description: HubSpot ticket identifier from raw.ticket_data.id; may repeat due to left joins; non-null.
+        tests:
+        - not_null
+      - name: ticket_subject
+        data_type: VARCHAR
+        description: Ticket subject from raw.ticket_data.property_subject; NULLs preserved.
+      - name: ticket_pipeline
+        data_type: VARCHAR
+        description: Pipeline name from raw.ticket_data.property_hs_pipeline; NULLs preserved.
+      - name: ticket_stage
+        data_type: VARCHAR
+        description: Pipeline stage from raw.ticket_data.property_hs_pipeline_stage; NULLs preserved.
+      - name: ticket_status
+        data_type: VARCHAR
+        description: 'Derived: ''Closed'' if source closed_date is not null; else ''Waiting for Customer'' if stage contains ''waiting''; ''In Progress'' if stage contains ''progress''; else ''Open''.'
+      - name: priority_level
+        data_type: VARCHAR
+        description: 'Derived from property_hs_ticket_priority: 1→High, 2→Medium, 3→Low, others→Medium.'
+      - name: created_date
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Execution-time timestamp set to current_timestamp; always non-null.
+      - name: closed_date
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Execution-time timestamp set to current_timestamp only when source closed_date is present and not empty; else NULL.
+      - name: days_open
+        data_type: BIGINT
+        description: For non-closed tickets, days from created_date to current_date at execution time; else NULL.
+      - name: resolution_time_hours
+        data_type: INTEGER
+        description: 'Fixed: 24 if source closed_date is present, else 8.'
+      - name: sla_target_hours
+        data_type: INTEGER
+        description: 'Target by priority: High 4, Medium 24, Low 48, default 24.'
+      - name: sla_breach_hours
+        data_type: INTEGER
+        description: 0 if resolution_time_hours ≤ sla_target_hours; otherwise the positive difference.
+      - name: sla_status
+        data_type: VARCHAR
+        description: 'SLA result: ''Met SLA'' if within target; ''Near Miss'' if within 1.5× target; else ''SLA Breach''.'
+      - name: resolution_efficiency
+        data_type: VARCHAR
+        description: Closed & time ≤ 0.5× target → Fast; Closed & time ≤ target → Standard; Closed → Slow; otherwise Unresolved.
+      - name: urgency_score
+        data_type: INTEGER
+        description: 'Sum of weights: priority (High 40/Medium 20/else 10) + revenue (≥1M 30/≥100k 20/>0 10/else 5) + time (≥72 30/≥24 20/≥4 10/else 0).'
+      - name: risk_level
+        data_type: VARCHAR
+        description: 'For non-closed: ≥70 urgency and ≥3 days → High; ≥50 and ≥7 days → Medium; ≥14 days → Low; else No Risk; closed return No Risk.'
+      - name: service_quality_rating
+        data_type: VARCHAR
+        description: Excellent if Fast Resolution and Met SLA; Good if (Fast or Standard) and Met SLA; Adequate if Near Miss; else Poor.
+      - name: escalation_recommendation
+        data_type: VARCHAR
+        description: 'Based on urgency_score: ≥80 Critical; ≥60 High; ≥40 Medium; else Low.'
+      - name: agent_first_name
+        data_type: VARCHAR
+        description: Owner first name from raw.owner_data via owner_id; NULLs preserved.
+      - name: agent_last_name
+        data_type: VARCHAR
+        description: Owner last name from raw.owner_data via owner_id; NULLs preserved.
+      - name: agent_email
+        data_type: VARCHAR
+        description: Owner email from raw.owner_data via owner_id; NULLs preserved.
+      - name: contact_first_name
+        data_type: VARCHAR
+        description: Contact first name from staging.stg_hubspot__contact via ticket_contact mapping; NULLs preserved.
+      - name: contact_last_name
+        data_type: VARCHAR
+        description: Contact last name from staging.stg_hubspot__contact via ticket_contact mapping; NULLs preserved.
+      - name: contact_email
+        data_type: VARCHAR
+        description: Contact email from staging.stg_hubspot__contact via ticket_contact mapping; NULLs preserved.
+      - name: contact_job_title
+        data_type: VARCHAR
+        description: Contact job title from staging.stg_hubspot__contact via ticket_contact mapping; NULLs preserved.
+      - name: company_name
+        data_type: VARCHAR
+        description: Company name from raw.company_data via ticket_company mapping; NULLs preserved.
+      - name: company_industry
+        data_type: VARCHAR
+        description: Company industry from raw.company_data via ticket_company mapping; NULLs preserved.
+      - name: company_annual_revenue
+        data_type: BIGINT
+        description: Company annual revenue from raw.company_data.property_annualrevenue; integer units; NULLs preserved.
+      - name: customer_segment
+        data_type: VARCHAR
+        description: 'From company_annual_revenue: ≥1,000,000 Enterprise; ≥100,000 Mid-Market; >0 SMB; else Unknown Size.'
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.

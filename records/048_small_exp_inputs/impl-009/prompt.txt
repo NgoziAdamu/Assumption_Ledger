@@ -1,0 +1,2173 @@
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Google Play Console data transformation and analytics"
+  author: "Data Engineering Team"
+  created_date: "2025-09-11"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+  source_system: "Google Play Console"
+  target_system: "Analytics Data Warehouse"
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw Google Play Console data into clean, validated staging tables with standardized formats, data types, and quality controls"
+
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "standardize timezone formats", "normalize phone numbers"]
+    
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  tables:
+    - name: stg_google_play__earnings
+      description: "Cleaned and standardized earnings transaction data from Google Play Console"
+      source_table: "raw.earnings"
+      columns:
+        - name: amount_buyer_currency
+          data_type: DECIMAL(18,3)
+          validation_rules:
+            - rule: "amount_buyer_currency >= -999999.99 AND amount_buyer_currency <= 999999.99"
+              on_failure: nullify_field
+        - name: amount_merchant_currency
+          data_type: DECIMAL(18,3)
+        - name: base_plan_id
+          data_type: VARCHAR
+        - name: buyer_country
+          data_type: VARCHAR
+        - name: buyer_currency
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "buyer_currency = UPPER(TRIM(buyer_currency))"
+              on_failure: correct
+            - rule: "LENGTH(buyer_currency) = 3"
+              on_failure: nullify_field
+        - name: buyer_postal_code
+          data_type: DOUBLE
+        - name: buyer_state
+          data_type: VARCHAR
+        - name: currency_conversion_rate
+          data_type: DOUBLE
+        - name: order_id
+          data_type: VARCHAR
+        - name: buyer_hardware
+          data_type: DOUBLE
+        - name: merchant_currency
+          data_type: VARCHAR
+        - name: offer_id
+          data_type: VARCHAR
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: product_title
+          data_type: VARCHAR
+        - name: product_type
+          data_type: BOOLEAN
+        - name: refund_type
+          data_type: DOUBLE
+        - name: sku_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: tax_type
+          data_type: DOUBLE
+        - name: transaction_date
+          data_type: DATE
+          constraints: [not_null]
+        - name: transaction_pt_timestamp
+          data_type: TIMESTAMP
+        - name: transaction_timezone
+          data_type: VARCHAR
+        - name: transaction_type
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "transaction_type IN ('Charge', 'Refund', 'Other')"
+              on_failure: nullify_field
+            - rule: "transaction_type = COALESCE(transaction_type, 'Other')"
+              on_failure: correct
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+    - name: stg_google_play__stats_installs_overview
+      description: "Cleaned daily install statistics at the app level"
+      source_table: "raw.stats_installs_overview"
+      columns:
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+          validation_rules:
+            - rule: "date_day IS NOT NULL"
+              on_failure: delete_row
+            - rule: "date_day >= '2020-01-01' AND date_day <= CURRENT_DATE"
+              on_failure: delete_row
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: current_device_installs
+          data_type: BIGINT
+        - name: daily_device_installs
+          data_type: BIGINT
+        - name: daily_device_uninstalls
+          data_type: BIGINT
+        - name: daily_device_upgrades
+          data_type: BIGINT
+        - name: active_device_installs
+          data_type: BIGINT
+        - name: daily_user_installs
+          data_type: BIGINT
+        - name: daily_user_uninstalls
+          data_type: BIGINT
+        - name: install_events
+          data_type: BIGINT
+        - name: update_events
+          data_type: BIGINT
+        - name: total_user_installs
+          data_type: BIGINT
+        - name: uninstall_events
+          data_type: BIGINT
+        - name: current_user_installs
+          data_type: BIGINT
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+    - name: stg_google_play__stats_installs_country
+      description: "Cleaned daily install statistics broken down by country"
+      source_table: "raw.stats_installs_country"
+      columns:
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: country
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "country IS NOT NULL AND LENGTH(country) = 2"
+              on_failure: delete_row
+            - rule: "country = UPPER(TRIM(country))"
+              on_failure: correct
+        - name: daily_device_installs
+          data_type: BIGINT
+        - name: daily_device_uninstalls
+          data_type: BIGINT
+        - name: active_device_installs
+          data_type: BIGINT
+        - name: install_events
+          data_type: BIGINT
+        - name: daily_user_installs
+          data_type: BIGINT
+        - name: current_device_installs
+          data_type: BIGINT
+        - name: update_events
+          data_type: BIGINT
+        - name: daily_user_uninstalls
+          data_type: BIGINT
+        - name: total_user_installs
+          data_type: BIGINT
+        - name: uninstall_events
+          data_type: BIGINT
+        - name: current_user_installs
+          data_type: BIGINT
+        - name: daily_device_upgrades
+          data_type: BIGINT
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+    - name: stg_google_play__stats_ratings_overview
+      description: "Cleaned daily rating statistics at the app level"
+      source_table: "raw.stats_ratings_overview"
+      columns:
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: daily_average_rating
+          data_type: NUMERIC
+        - name: total_average_rating
+          data_type: NUMERIC
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+    - name: stg_google_play__stats_crashes_overview
+      description: "Cleaned daily crash and ANR statistics at the app level"
+      source_table: "raw.stats_crashes_overview"
+      columns:
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: crashes
+          data_type: BIGINT
+        - name: anrs
+          data_type: BIGINT
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+    - name: stg_google_play__subscriptions_country
+      description: "Cleaned subscription metrics by country and product"
+      source_table: "raw.financial_stats_subscriptions_country"
+      columns:
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: product_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: country
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "country IS NOT NULL AND LENGTH(country) = 2"
+              on_failure: delete_row
+        - name: new_subscriptions
+          data_type: BIGINT
+        - name: cancelled_subscriptions
+          data_type: BIGINT
+        - name: total_active_subscriptions
+          data_type: BIGINT
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+    - name: stg_google_play__country_codes
+      description: "Reference table for country code mappings and regional classifications"
+      source_table: "raw.google_play__country_codes"
+      columns:
+        - name: country_code_alpha_2
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+          validation_rules:
+            - rule: "country_code_alpha_2 IS NOT NULL AND LENGTH(country_code_alpha_2) = 2"
+              on_failure: delete_row
+            - rule: "country_code_alpha_2 = UPPER(TRIM(country_code_alpha_2))"
+              on_failure: correct
+        - name: country_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: alternative_country_name
+          data_type: VARCHAR
+        - name: region
+          data_type: VARCHAR
+        - name: sub_region
+          data_type: VARCHAR
+        - name: country_code_alpha_3
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "country_code_alpha_3 = UPPER(TRIM(country_code_alpha_3))"
+              on_failure: correct
+            - rule: "LENGTH(country_code_alpha_3) = 3 OR country_code_alpha_3 IS NULL"
+              on_failure: nullify_field
+        - name: numeric_code
+          data_type: INTEGER
+
+    - name: stg_google_play__stats_installs_app_version
+      description: "Install statistics by app version"
+      source_table: "raw.stats_installs_app_version"
+      columns:
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: app_version_code
+          data_type: VARCHAR
+        - name: device
+          data_type: VARCHAR
+        - name: android_os_version
+          data_type: VARCHAR
+        - name: active_device_installs
+          data_type: BIGINT
+        - name: daily_user_installs
+          data_type: BIGINT
+        - name: current_device_installs
+          data_type: BIGINT
+        - name: daily_user_uninstalls
+          data_type: BIGINT
+        - name: install_events
+          data_type: BIGINT
+        - name: update_events
+          data_type: BIGINT
+        - name: daily_device_installs
+          data_type: BIGINT
+        - name: uninstall_events
+          data_type: BIGINT
+        - name: daily_device_uninstalls
+          data_type: BIGINT
+        - name: total_user_installs
+          data_type: BIGINT
+        - name: daily_device_upgrades
+          data_type: BIGINT
+        - name: current_user_installs
+          data_type: BIGINT
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+    - name: stg_google_play__stats_installs_os_version
+      description: "Install statistics by OS version"
+      source_table: "raw.stats_installs_os_version"
+      columns:
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: android_os_version
+          data_type: VARCHAR
+        - name: active_device_installs
+          data_type: BIGINT
+        - name: current_device_installs
+          data_type: BIGINT
+        - name: daily_user_installs
+          data_type: BIGINT
+        - name: daily_user_uninstalls
+          data_type: BIGINT
+        - name: install_events
+          data_type: BIGINT
+        - name: update_events
+          data_type: BIGINT
+        - name: daily_device_installs
+          data_type: BIGINT
+        - name: uninstall_events
+          data_type: BIGINT
+        - name: daily_device_uninstalls
+          data_type: BIGINT
+        - name: total_user_installs
+          data_type: BIGINT
+        - name: daily_device_upgrades
+          data_type: BIGINT
+        - name: current_user_installs
+          data_type: BIGINT
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+    - name: stg_google_play__store_performance_country
+      description: "Store performance metrics by country"
+      source_table: "raw.stats_store_performance_country"
+      columns:
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: country
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: store_listing_visitors
+          data_type: INTEGER
+        - name: store_listing_conversion_rate
+          data_type: DECIMAL(18,3)
+        - name: store_listing_installers
+          data_type: INTEGER
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+    - name: stg_google_play__store_performance_source
+      description: "Store performance metrics by traffic source"
+      source_table: "raw.stats_store_performance_traffic_source"
+      columns:
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: traffic_source
+          data_type: VARCHAR
+        - name: store_listing_visitors
+          data_type: INTEGER
+        - name: store_listing_conversion_rate
+          data_type: DECIMAL(18,3)
+          validation_rules:
+            - rule: "store_listing_conversion_rate >= 0 AND store_listing_conversion_rate <= 1"
+              on_failure: nullify_field
+        - name: store_listing_installers
+          data_type: INTEGER
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+    - name: stg_google_play__stats_crashes_app_version
+      description: "Crash statistics by app version"
+      source_table: "raw.stats_crashes_app_version"
+      columns:
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: app_version_code
+          data_type: VARCHAR
+        - name: crashes
+          data_type: BIGINT
+        - name: anrs
+          data_type: BIGINT
+        - name: android_os_version
+          data_type: VARCHAR
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+    - name: stg_google_play__stats_ratings_os_version
+      description: "Rating statistics by OS version"
+      source_table: "raw.stats_ratings_os_version"
+      columns:
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: android_os_version
+          data_type: VARCHAR
+        - name: total_average_rating
+          data_type: NUMERIC
+          validation_rules:
+            - rule: "total_average_rating >= 1.0 AND total_average_rating <= 5.0"
+              on_failure: nullify_field
+        - name: daily_average_rating
+          data_type: NUMERIC
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+    - name: stg_google_play__stats_ratings_app_version
+      description: "Rating statistics by app version"
+      source_table: "raw.stats_ratings_app_version"
+      columns:
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: app_version_code
+          data_type: VARCHAR
+        - name: total_average_rating
+          data_type: NUMERIC
+        - name: daily_average_rating
+          data_type: NUMERIC
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+    - name: stg_google_play__stats_ratings_country
+      description: "Rating statistics by country"
+      source_table: "raw.stats_ratings_country"
+      columns:
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: country
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: total_average_rating
+          data_type: NUMERIC
+        - name: daily_average_rating
+          data_type: NUMERIC
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+    - name: stg_google_play__stats_installs_device
+      description: "Install statistics by device type"
+      source_table: "raw.stats_installs_device"
+      columns:
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: device
+          data_type: VARCHAR
+        - name: active_device_installs
+          data_type: BIGINT
+        - name: daily_user_installs
+          data_type: BIGINT
+        - name: current_device_installs
+          data_type: BIGINT
+        - name: daily_user_uninstalls
+          data_type: BIGINT
+        - name: install_events
+          data_type: BIGINT
+        - name: update_events
+          data_type: BIGINT
+        - name: daily_device_installs
+          data_type: BIGINT
+        - name: uninstall_events
+          data_type: BIGINT
+        - name: daily_device_uninstalls
+          data_type: BIGINT
+        - name: total_user_installs
+          data_type: BIGINT
+        - name: daily_device_upgrades
+          data_type: BIGINT
+        - name: current_user_installs
+          data_type: BIGINT
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+    - name: stg_google_play__stats_crashes_os_version
+      description: "Crash statistics by OS version"
+      source_table: "raw.stats_crashes_os_version"
+      columns:
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: android_os_version
+          data_type: VARCHAR
+        - name: crashes
+          data_type: BIGINT
+        - name: anrs
+          data_type: BIGINT
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+    - name: stg_google_play__stats_ratings_device
+      description: "Rating statistics by device type"
+      source_table: "raw.stats_ratings_device"
+      columns:
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: package_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: device
+          data_type: VARCHAR
+        - name: total_average_rating
+          data_type: NUMERIC
+        - name: daily_average_rating
+          data_type: NUMERIC
+        - name: _fivetran_synced
+          data_type: VARCHAR
+
+# --------------------------------------------------------------------------- #
+# PHASE 2: Defines the business logic from staging tables to analytical models. #
+# --------------------------------------------------------------------------- #
+modeling_spec:
+  purpose: "Transform staging data into business-ready models that provide comprehensive Google Play analytics, user behavior insights, revenue optimization, and market intelligence"
+
+  design_principles:
+    intermediate_purpose: "Create reusable, business-centric data models that combine multiple staging sources and apply complex business logic for downstream analysis"
+    mart_purpose: "Provide analysis-ready datasets optimized for specific business use cases and reporting requirements"
+    grain_importance: "Each model must have a clearly defined grain to ensure data integrity and proper aggregation"
+    modularity: "Models should be modular and reusable across multiple downstream use cases"
+
+  intermediate_models:
+    - name: int_google_play__user_behavior_metrics
+      description: Daily app metrics by package and country, including installs/uninstalls, rolling averages, growth, churn, ratings, and segmentations.
+      grain: One row per (package_name, country, date_day)
+      source_models:
+      - staging.stg_google_play__stats_installs_country (date_day, package_name, country, daily_device_installs, daily_device_uninstalls, active_device_installs)
+      - staging.stg_google_play__stats_ratings_country (date_day, package_name, country, daily_average_rating, total_average_rating)
+      business_logic: '1) Filter sources: - Installs source: keep rows where daily_device_installs, daily_device_uninstalls, and active_device_installs are each >= 0 (rows with NULLs or negatives are excluded). - Ratings source: keep rows where daily_average_rating and total_average_rating are both within 1.0 to 5.0 inclusive. 2) Left join ratings to installs on (date_day, package_name, country); missing matches leave rating fields NULL. 3) For each (package_name, country), ordered by date_day, compute: - 7-day rolling averages for device installs and device uninstalls using up to the last 7 days including the current day. - 30-day rolling average for device installs using up to the last 30 days including the current day. - Weekly install growth rate: percent change vs the value 7 days prior; returned only when the 7-days-prior value is > 0; rounded to 4 decimals. - Daily churn rate: daily_device_uninstalls divided by active_device_installs; returned only when active_device_installs > 0; rounded to 4 decimals. - Rating 7 days ago via a 7-day lag of daily_average_rating (may be NULL when data is missing). 4) Segmentations: - user_engagement_level: • High Engagement when avg_7d_device_installs >= 100, daily_churn_rate <= 0.05, and daily_average_rating >= 4.0. • Medium Engagement when avg_7d_device_installs >= 50, daily_churn_rate <= 0.1, and daily_average_rating >= 3.5. • Low Engagement when avg_7d_device_installs >= 10 and daily_churn_rate <= 0.2. • Otherwise At Risk (any NULL condition fails). - growth_momentum: • Accelerating if weekly_install_growth_rate > 0.1. • Growing if weekly_install_growth_rate is between 0.0 and 0.1 inclusive. • Stable if weekly_install_growth_rate is between -0.1 and 0.0 inclusive. • Declining if weekly_install_growth_rate < -0.1. • Otherwise New Market (e.g., when the rate is NULL). - rating_trend: • Rating Improving if the 7-day rating change is greater than 0.1. • Rating Declining if the 7-day rating change is less than -0.1. • Otherwise Rating Stable (also when inputs are NULL). 5) Final outputs: - avg_7d_device_installs, avg_7d_device_uninstalls, and avg_30d_device_installs are rounded to 2 decimals. - weekly_install_growth_rate and daily_churn_rate retain 4-decimal rounding from computation. - install_uninstall_ratio is daily_device_installs divided by daily_device_uninstalls only when uninstalls > 0; rounded to 2 decimals; otherwise NULL. - market_maturity is based on the unrounded 30-day rolling average of installs: >1000 Mature Market; >100 Growing Market; >10 Emerging Market; else Niche Market. - Keep only rows where date_day, package_name, and country are not NULL; grain is one row per (package_name, country, date_day).'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar date of the metric row.
+        tests:
+        - not_null
+      - name: package_name
+        data_type: VARCHAR
+        description: Google Play package identifier.
+        tests:
+        - not_null
+      - name: country
+        data_type: VARCHAR
+        description: Country code provided by the source.
+        tests:
+        - not_null
+      - name: daily_device_installs
+        data_type: BIGINT
+        description: Daily count of device installs; rows with negative or NULL values are excluded upstream.
+        tests: []
+      - name: daily_device_uninstalls
+        data_type: BIGINT
+        description: Daily count of device uninstalls; rows with negative or NULL values are excluded upstream.
+        tests: []
+      - name: active_device_installs
+        data_type: BIGINT
+        description: Active installed devices at end of day; rows with negative or NULL values are excluded upstream.
+        tests: []
+      - name: avg_7d_device_installs
+        data_type: DOUBLE
+        description: 7-day rolling average of device installs within each (package_name, country), using days up to and including the current day; output rounded to 2 decimals.
+        tests: []
+      - name: avg_7d_device_uninstalls
+        data_type: DOUBLE
+        description: 7-day rolling average of device uninstalls within each (package_name, country), using days up to and including the current day; output rounded to 2 decimals.
+        tests: []
+      - name: avg_30d_device_installs
+        data_type: DOUBLE
+        description: 30-day rolling average of device installs within each (package_name, country), using days up to and including the current day; output rounded to 2 decimals.
+        tests: []
+      - name: weekly_install_growth_rate
+        data_type: DOUBLE
+        description: Week-over-week rate of change in device installs vs 7 days prior; rounded to 4 decimals; NULL if the prior value is <= 0 or missing.
+        tests: []
+      - name: daily_churn_rate
+        data_type: DOUBLE
+        description: Daily uninstalls divided by active devices; rounded to 4 decimals; NULL when active devices are <= 0.
+        tests: []
+      - name: daily_average_rating
+        data_type: DECIMAL(18,3)
+        description: Daily average rating when a ratings row exists and passes the 1.0–5.0 filter; otherwise NULL.
+        tests: []
+      - name: user_engagement_level
+        data_type: VARCHAR
+        description: Category based on thresholds of 7-day installs, churn, and rating; defaults to 'At Risk' if conditions are unmet or NULL.
+        tests:
+        - values_in_set:
+            values:
+            - High Engagement
+            - Medium Engagement
+            - Low Engagement
+            - At Risk
+      - name: growth_momentum
+        data_type: VARCHAR
+        description: 'Growth category derived from weekly install growth: >0.1 Accelerating; 0.0–0.1 Growing; -0.1–0.0 Stable; < -0.1 Declining; NULL -> New Market.'
+        tests:
+        - values_in_set:
+            values:
+            - Accelerating
+            - Growing
+            - Stable
+            - Declining
+            - New Market
+      - name: rating_trend
+        data_type: VARCHAR
+        description: 'Based on 7-day rating change: >0.1 Rating Improving; < -0.1 Rating Declining; else Rating Stable (also when inputs are NULL).'
+        tests:
+        - values_in_set:
+            values:
+            - Rating Improving
+            - Rating Declining
+            - Rating Stable
+      - name: install_uninstall_ratio
+        data_type: DOUBLE
+        description: Daily installs divided by daily uninstalls when uninstalls > 0; rounded to 2 decimals; otherwise NULL.
+        tests: []
+      - name: market_maturity
+        data_type: VARCHAR
+        description: 'Market stage from unrounded 30-day installs average: >1000 Mature Market; >100 Growing Market; >10 Emerging Market; else Niche Market.'
+        tests:
+        - values_in_set:
+            values:
+            - Mature Market
+            - Growing Market
+            - Emerging Market
+            - Niche Market
+    - name: int_google_play__revenue_analytics
+      description: Revenue analytics per package/sku/country/day with transaction categorization, rolling trends, subscription integration, performance scoring, and risk flagging
+      grain: One row per date_day, package_name, buyer_country, sku_id, product_title, merchant_currency
+      source_models:
+      - staging.stg_google_play__earnings (transaction_date, package_name, buyer_country, sku_id, product_title, merchant_currency, amount_merchant_currency, transaction_type, order_id)
+      - staging.stg_google_play__subscriptions_country (date_day, package_name, product_id, country, new_subscriptions, cancelled_subscriptions, total_active_subscriptions)
+      business_logic: '1) Prepare bases: - Earnings: keep rows where amount, transaction_date, and package_name are present; rename transaction_date to date_day. - Subscriptions: keep rows where new_subscriptions, cancelled_subscriptions, and total_active_subscriptions are all nonnegative; rename product_id to sku_id. 2) Classify each earnings transaction: - gross_revenue: amount when the type is a charge and the amount is positive; otherwise 0. - refund_amount: absolute amount when the type is a refund and the amount is negative; otherwise 0. - other_adjustments: amount when the type is neither charge nor refund; otherwise 0. - paying_transactions: 1 for charge with a positive amount; otherwise 0. - refund_transactions: 1 for refund, counted regardless of amount sign; otherwise 0. 3) Aggregate by (date_day, package_name, buyer_country, sku_id, product_title, merchant_currency): - daily_gross_revenue: sum of gross_revenue. - daily_refunds: sum of refund_amount. - daily_paying_transactions: sum of paying_transactions. - daily_refund_transactions: sum of refund_transactions. - total_transactions: number of unique order_ids (NULLs excluded). - daily_net_revenue: gross minus refunds plus other_adjustments. - average_transaction_value: gross revenue divided by paying transactions, rounded to 2 decimals; NULL if no paying transactions. - refund_rate: refund transactions divided by paying transactions, rounded to 4 decimals; NULL if no paying transactions. - revenue_per_transaction: daily net revenue divided by unique orders, rounded to 2 decimals; NULL if no orders. 4) Compute trends within each (package_name, sku_id) ordered by date_day: - avg_7d_net_revenue: 7-day rolling average of daily net revenue including the current day. - avg_30d_net_revenue: 30-day rolling average of daily net revenue including the current day. - weekly_revenue_growth_rate: growth ratio versus the value 7 days earlier; NULL if that earlier value is missing or not positive. - cumulative_net_revenue: running sum of daily net revenue from the start of the series. 5) Left join subscriptions on (date_day, package_name, sku_id, buyer_country=country) and compute: - revenue_per_new_subscription: daily net revenue divided by new subscriptions, rounded to 2 decimals; NULL if new subscriptions are not positive. - arpu_daily: daily net revenue divided by total active subscriptions, rounded to 2 decimals; NULL if total active subscriptions are not positive. - subscription_churn_rate: cancelled divided by total active subscriptions, rounded to 4 decimals; NULL if total active subscriptions are not positive. - net_subscriber_growth: new subscriptions minus cancellations. 6) Categorize performance: - revenue_tier by daily_net_revenue: ≥1000 High Performer; ≥100 Medium Performer; ≥10 Low Performer; >0 Minimal Performer; otherwise No Revenue. - growth_momentum by weekly_revenue_growth_rate: >0.2 Accelerating; >0.05 Growing; between -0.05 and 0.05 Stable; >-0.2 Declining; otherwise Steep Decline when growth exists; New Product when growth is NULL. - revenue_health_score (0–100): 0 when daily_net_revenue≤0; otherwise sum the component points (revenue presence 30, growth up to 25, refund rate up to 20, churn up to 25 with 12 points if churn is missing) and cap at 100; final score rounded to 2 decimals before capping. 7) Final output and filters: - Round to 2 decimals: daily_gross_revenue, daily_refunds, daily_net_revenue, avg_7d_net_revenue, avg_30d_net_revenue, cumulative_net_revenue. - Keep previously rounded metrics: average_transaction_value (2 decimals), refund_rate (4 decimals), revenue_per_transaction (2 decimals). - risk_flag precedence: High Refund Risk if refund_rate>0.3; else High Churn Risk if subscription_churn_rate>0.2; else Revenue Decline Risk if weekly_revenue_growth_rate<-0.3; else Overall Health Risk if revenue_health_score<30; otherwise Low Risk. - Exclude rows where date_day, package_name, or sku_id is NULL; other dimensions may be NULL.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Transaction date used for grouping, rolling windows, and subscription joins
+        tests:
+        - not_null
+      - name: package_name
+        data_type: VARCHAR
+        description: Google Play package identifier used for grouping and subscription joins
+        tests:
+        - not_null
+      - name: buyer_country
+        data_type: VARCHAR
+        description: ISO country code from earnings used to match subscriptions; may be NULL
+      - name: sku_id
+        data_type: VARCHAR
+        description: SKU/product identifier used for grouping and subscription joins
+        tests:
+        - not_null
+      - name: product_title
+        data_type: VARCHAR
+        description: Product title from earnings; part of the grouping key; may be NULL
+      - name: merchant_currency
+        data_type: VARCHAR
+        description: Currency from earnings; all amounts are expressed and rounded in this currency; may be NULL
+      - name: daily_gross_revenue
+        data_type: DECIMAL(38,2)
+        description: Sum of positive charge amounts; rounded to 2 decimals; nonnegative; in merchant_currency
+      - name: daily_refunds
+        data_type: DECIMAL(38,2)
+        description: Sum of absolute refund amounts when negative; rounded to 2 decimals; nonnegative; in merchant_currency
+      - name: daily_net_revenue
+        data_type: DECIMAL(38,2)
+        description: Gross minus refunds plus other adjustments for non-charge/refund types; rounded to 2 decimals; may be negative; in merchant_currency
+      - name: daily_paying_transactions
+        data_type: HUGEINT
+        description: Number of charge transactions with a positive amount; integer ≥ 0
+      - name: daily_refund_transactions
+        data_type: HUGEINT
+        description: Number of refund transactions counted regardless of amount sign; integer ≥ 0
+      - name: total_transactions
+        data_type: BIGINT
+        description: Number of unique orders in the group; NULL order_id excluded; may be 0
+      - name: average_transaction_value
+        data_type: DOUBLE
+        description: Gross revenue divided by paying transactions; rounded to 2 decimals; NULL if no paying transactions; in merchant_currency
+      - name: refund_rate
+        data_type: DOUBLE
+        description: Refund transactions divided by paying transactions; rounded to 4 decimals; NULL if no paying transactions; may exceed 1.0
+      - name: revenue_per_transaction
+        data_type: DOUBLE
+        description: Daily net revenue divided by unique orders; rounded to 2 decimals; NULL if no orders; in merchant_currency
+      - name: avg_7d_net_revenue
+        data_type: DOUBLE
+        description: 7-day rolling average of daily net revenue within each package and SKU including the current day; rounded to 2 decimals; in merchant_currency
+      - name: avg_30d_net_revenue
+        data_type: DOUBLE
+        description: 30-day rolling average of daily net revenue within each package and SKU including the current day; rounded to 2 decimals; in merchant_currency
+      - name: weekly_revenue_growth_rate
+        data_type: DOUBLE
+        description: Week-over-week growth versus the value 7 days earlier; rounded to 4 decimals; NULL if the earlier value is missing or ≤ 0
+      - name: cumulative_net_revenue
+        data_type: DECIMAL(38,2)
+        description: Running sum of daily net revenue within each package and SKU ordered by date; rounded to 2 decimals; in merchant_currency
+      - name: new_subscriptions
+        data_type: BIGINT
+        description: New subscriptions on date_day from the subscriptions feed matched by country; nonnegative when present; NULL if no match
+      - name: cancelled_subscriptions
+        data_type: BIGINT
+        description: Subscriptions cancelled on date_day from the subscriptions feed matched by country; nonnegative when present; NULL if no match
+      - name: total_active_subscriptions
+        data_type: BIGINT
+        description: Active subscriptions on date_day from the subscriptions feed matched by country; nonnegative when present; NULL if no match
+      - name: revenue_per_new_subscription
+        data_type: DOUBLE
+        description: Daily net revenue divided by new subscriptions; rounded to 2 decimals; NULL if new subscriptions are ≤ 0 or missing; in merchant_currency
+      - name: arpu_daily
+        data_type: DOUBLE
+        description: Daily net revenue divided by total active subscriptions; rounded to 2 decimals; NULL if total active subscriptions are ≤ 0 or missing; in merchant_currency
+      - name: subscription_churn_rate
+        data_type: DOUBLE
+        description: Cancelled subscriptions divided by total active subscriptions; rounded to 4 decimals; NULL if total active subscriptions are ≤ 0 or missing
+      - name: net_subscriber_growth
+        data_type: BIGINT
+        description: New subscriptions minus cancellations; NULL if either input is missing
+      - name: revenue_tier
+        data_type: VARCHAR
+        description: 'Tier by daily_net_revenue: High Performer (≥1000), Medium Performer (≥100), Low Performer (≥10), Minimal Performer (>0), No Revenue (≤0)'
+        tests:
+        - in_values:
+            values:
+            - High Performer
+            - Medium Performer
+            - Low Performer
+            - Minimal Performer
+            - No Revenue
+      - name: growth_momentum
+        data_type: VARCHAR
+        description: Categorization based on weekly_revenue_growth_rate thresholds; 'New Product' when growth is NULL
+        tests:
+        - in_values:
+            values:
+            - Accelerating
+            - Growing
+            - Stable
+            - Declining
+            - Steep Decline
+            - New Product
+      - name: revenue_health_score
+        data_type: INTEGER
+        description: Composite 0–100 score from revenue presence (30), growth (up to 25), refund rate (up to 20), and churn (up to 25 with 12 if churn is missing); capped at 100
+      - name: risk_flag
+        data_type: VARCHAR
+        description: 'Priority-based risk: High Refund Risk, High Churn Risk, Revenue Decline Risk, Overall Health Risk, else Low Risk'
+        tests:
+        - in_values:
+            values:
+            - High Refund Risk
+            - High Churn Risk
+            - Revenue Decline Risk
+            - Overall Health Risk
+            - Low Risk
+    - name: int_google_play__user_retention_analysis
+      description: Cohort-based Google Play retention and churn metrics by package_name, country, and install_date
+      grain: One row per package_name, country, install_date
+      source_models:
+      - staging.stg_google_play__stats_installs_country
+      business_logic: '- Build install_cohorts: - From staging.stg_google_play__stats_installs_country select rows with date_day not null and both daily_device_installs > 0 and daily_user_installs > 0. - Rename: install_date = date_day; cohort_size source = new_installs = daily_device_installs; keep package_name, country. - Build active_users_daily: - From the same source select rows with active_device_installs > 0; rename: active_devices = active_device_installs; keep date_day, package_name, country. - Build uninstall_data: - From the same source select rows with daily_device_uninstalls >= 0 and daily_user_uninstalls >= 0; rename: uninstalls = daily_device_uninstalls; keep date_day, package_name, country. - Cohort activity mapping (cohort_analysis): - Inner join install_cohorts to active_users_daily on package_name and country; keep rows where activity_date is between install_date and install_date + 90 days inclusive. - Compute days_since_install as the number of days between install_date and activity_date. - Map retention_period only for exact days_since_install in {0,1,7,14,30,60,90}; others => null. - Retained counts per cohort (retention_rates): - Group by install_date, package_name, country, new_installs. - For each retention_period in {Day 0, Day 1, Day 7, Day 14, Day 30, Day 60, Day 90}, take the maximum active_devices as the retained count for that period (to deterministically select if multiple rows exist). - Rename cohort_size = new_installs. - Retention percentages (retention_calculated): - Cap retained counts at cohort_size. - For each period in {1,7,14,30,60,90}, compute retention_rate = (capped retained / cohort_size) * 100, rounded to 2 decimals; null if the retained count is missing. - Churn metrics (churn_analysis): - Left join uninstall_data to active_users_daily on package_name, country, date_day. - daily_churn_rate = (uninstalls / active_devices) * 100, rounded to 4 decimals when active_devices > 0; else null. - avg_7d_churn_rate = 7-row rolling average by date_day within (package_name, country) of (uninstalls / active_devices) * 100; rows with active_devices <= 0 contribute null and are excluded; not rounded here. - Combine retention and churn (comprehensive_retention): - Left join each cohort to the latest available churn row for its package_name+country (date_day = max(date_day) in churn_analysis for that partition). - current_daily_churn_rate = daily_churn_rate (as computed); current_avg_7d_churn_rate = avg_7d_churn_rate rounded to 4 decimals. - retention_quality_score = 0.3*day_1_retention_rate + 0.4*day_7_retention_rate + 0.3*day_30_retention_rate, rounded to 2 decimals; null if any input is null. - retention_category by day_30_retention_rate: >=40 Excellent; >=25 Good; >=15 Average; >=5 Poor; if not null and <5 Critical; if null Insufficient Data. - churn_risk_level by the latest unrounded 7-day average churn: >10 High; >5 Medium; >2 Low; if not null and <=2 Minimal; if null Unknown Risk. - Trend and comparisons (retention_trends): - prev_week_day_7_retention = day_7_retention_rate from 7 rows earlier within (package_name, country) ordered by install_date. - prev_month_day_30_retention = day_30_retention_rate from 30 rows earlier within the same partition/order. - retention_trend compares day_7_retention_rate to the 7-row lag: Improving if greater, Declining if less, else Stable (includes cases with null lag or equality). - Final projection and filters: - Output the selected fields. - Derive product_stickiness by thresholds: if day_1>=70 and day_7>=30 Sticky; else if day_1>=50 and day_7>=20 Engaging; else if day_1>=30 and day_7>=10 Standard; else if day_1 not null Struggling; else Insufficient Data. - Derive cohort_lifecycle_stage by days since install_date relative to current_date at execution time: <30 New Cohort; <90 Maturing Cohort; else Mature Cohort. - Keep rows where install_date, package_name, country are not null and cohort_size > 0.'
+      columns:
+      - name: install_date
+        data_type: DATE
+        description: Cohort install date from source rows where daily_device_installs>0 and daily_user_installs>0
+        tests:
+        - not_null
+      - name: package_name
+        data_type: VARCHAR
+        description: Google Play package identifier
+        tests:
+        - not_null
+      - name: country
+        data_type: VARCHAR
+        description: Country/region code from source
+        tests:
+        - not_null
+      - name: cohort_size
+        data_type: BIGINT
+        description: Cohort size on install_date based on daily_device_installs; strictly > 0 due to filters
+        tests:
+        - not_null
+        - cohort_size > 0
+      - name: day_1_retention_rate
+        data_type: DOUBLE
+        description: Percent retained at day 1 using capped retained/cohort_size*100; rounded to 2 decimals; null if no day-1 activity
+        tests:
+        - day_1_retention_rate >= 0
+        - day_1_retention_rate <= 100
+      - name: day_7_retention_rate
+        data_type: DOUBLE
+        description: Percent retained at day 7 using capped retained/cohort_size*100; rounded to 2 decimals; null if no day-7 activity
+        tests:
+        - day_7_retention_rate >= 0
+        - day_7_retention_rate <= 100
+      - name: day_14_retention_rate
+        data_type: DOUBLE
+        description: Percent retained at day 14 using capped retained/cohort_size*100; rounded to 2 decimals; null if no day-14 activity
+        tests:
+        - day_14_retention_rate >= 0
+        - day_14_retention_rate <= 100
+      - name: day_30_retention_rate
+        data_type: DOUBLE
+        description: Percent retained at day 30 using capped retained/cohort_size*100; rounded to 2 decimals; null if no day-30 activity
+        tests:
+        - day_30_retention_rate >= 0
+        - day_30_retention_rate <= 100
+      - name: day_60_retention_rate
+        data_type: DOUBLE
+        description: Percent retained at day 60 using capped retained/cohort_size*100; rounded to 2 decimals; null if no day-60 activity
+        tests:
+        - day_60_retention_rate >= 0
+        - day_60_retention_rate <= 100
+      - name: day_90_retention_rate
+        data_type: DOUBLE
+        description: Percent retained at day 90 using capped retained/cohort_size*100; rounded to 2 decimals; null if no day-90 activity
+        tests:
+        - day_90_retention_rate >= 0
+        - day_90_retention_rate <= 100
+      - name: current_daily_churn_rate
+        data_type: DOUBLE
+        description: Latest daily uninstall rate for package+country as uninstalls/active_devices*100; rounded to 4 decimals; null if active_devices<=0 or no churn row
+        tests:
+        - current_daily_churn_rate >= 0
+        - current_daily_churn_rate <= 100
+      - name: current_avg_7d_churn_rate
+        data_type: DOUBLE
+        description: Latest 7-row rolling average daily churn (%) within package+country over date_day; rows with active_devices<=0 are excluded; rounded to 4 decimals; null if none
+        tests:
+        - current_avg_7d_churn_rate >= 0
+        - current_avg_7d_churn_rate <= 100
+      - name: retention_quality_score
+        data_type: DOUBLE
+        description: Weighted score (0–100) = 0.3*day_1 + 0.4*day_7 + 0.3*day_30; rounded to 2 decimals; null if any input missing
+        tests:
+        - retention_quality_score >= 0
+        - retention_quality_score <= 100
+      - name: retention_category
+        data_type: VARCHAR
+        description: 'Category by day_30_retention_rate: >=40 Excellent, >=25 Good, >=15 Average, >=5 Poor, <5 Critical; null day_30 => Insufficient Data'
+        tests:
+        - retention_category IN ('Excellent Retention', 'Good Retention', 'Average Retention', 'Poor Retention', 'Critical Retention', 'Insufficient Data')
+      - name: churn_risk_level
+        data_type: VARCHAR
+        description: 'Category by latest unrounded 7-day average churn: >10 High, >5 Medium, >2 Low, <=2 Minimal; null => Unknown Risk'
+        tests:
+        - churn_risk_level IN ('High Churn Risk', 'Medium Churn Risk', 'Low Churn Risk', 'Minimal Churn Risk', 'Unknown Risk')
+      - name: retention_trend
+        data_type: VARCHAR
+        description: 'Trend comparing day_7_retention_rate vs 7-row lag within package+country ordered by install_date: Improving if greater, Declining if less, else Stable'
+        tests:
+        - retention_trend IN ('Improving', 'Stable', 'Declining')
+      - name: prev_week_day_7_retention
+        data_type: DOUBLE
+        description: day_7_retention_rate from 7 rows prior within package+country ordered by install_date; inherits 2-decimal rounding; null if fewer than 7 prior rows
+        tests:
+        - prev_week_day_7_retention >= 0
+        - prev_week_day_7_retention <= 100
+      - name: prev_month_day_30_retention
+        data_type: DOUBLE
+        description: day_30_retention_rate from 30 rows prior within package+country ordered by install_date; inherits 2-decimal rounding; null if fewer than 30 prior rows
+        tests:
+        - prev_month_day_30_retention >= 0
+        - prev_month_day_30_retention <= 100
+      - name: product_stickiness
+        data_type: VARCHAR
+        description: 'Category from day_1/day_7: D1>=70&D7>=30 Sticky; D1>=50&D7>=20 Engaging; D1>=30&D7>=10 Standard; else if D1 not null Struggling; else Insufficient Data'
+        tests:
+        - product_stickiness IN ('Sticky Product', 'Engaging Product', 'Standard Product', 'Struggling Product', 'Insufficient Data')
+      - name: cohort_lifecycle_stage
+        data_type: VARCHAR
+        description: 'Stage by days since install_date at current_date: <30 New Cohort, <90 Maturing Cohort, else Mature Cohort'
+        tests:
+        - cohort_lifecycle_stage IN ('New Cohort', 'Maturing Cohort', 'Mature Cohort')
+    - name: int_google_play__earnings
+      description: Aggregated Google Play earnings and transaction metrics by date, country, SKU, package, and currency
+      grain: One row per combination of date_day, country_short, sku_id, package_name, merchant_currency
+      source_models:
+      - staging.stg_google_play__earnings
+      business_logic: '- Read all rows from staging.stg_google_play__earnings using fields: transaction_date, buyer_country, sku_id, package_name, merchant_currency, amount_merchant_currency, order_id, transaction_type. - For each order_id, compute an order-level total by summing amount_merchant_currency across all rows of that order; attach this order total to every row belonging to that order. Sums ignore NULL amounts; if all amounts are NULL the total is NULL. - Aggregate to one row per (transaction_date, buyer_country, sku_id, package_name, merchant_currency). - net_amount: sum the attached order-level totals across rows in the group; if an order appears in multiple rows within the group, its order total is added for each such row. - transactions: count distinct order_id values in the group; NULL order_id values are excluded. - charge_amount/refund_amount/other_amount: for each category, sum amount_merchant_currency for rows whose transaction_type equals the category value (''charge'', ''refund'', or ''other''), matched case-insensitively; non-matching rows contribute zero; NULL amounts on matching rows are ignored. Monetary sums are expressed in merchant_currency with three decimal places; no currency conversion or special rounding is applied. - charge_transactions/refund_transactions/other_transactions: for each category, count distinct order_id among rows whose transaction_type equals the category value, matched case-insensitively; NULL order_id values are excluded. - No filters are applied; input duplicates are preserved; row ordering does not affect results.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Transaction date used for grouping
+      - name: country_short
+        data_type: VARCHAR
+        description: Buyer country code
+      - name: sku_id
+        data_type: VARCHAR
+        description: Product SKU
+      - name: package_name
+        data_type: VARCHAR
+        description: Google Play package name
+      - name: merchant_currency
+        data_type: VARCHAR
+        description: Currency code for monetary values in the row
+      - name: net_amount
+        data_type: DECIMAL(38,3)
+        description: Sum of order-level totals across rows in the group; orders with multiple rows are added for each row
+      - name: transactions
+        data_type: BIGINT
+        description: Distinct count of order_id in the group
+      - name: charge_amount
+        data_type: DECIMAL(38,3)
+        description: Sum of merchant-currency amounts for charge transactions in the group
+      - name: charge_transactions
+        data_type: BIGINT
+        description: Distinct count of order_id for charge transactions
+      - name: refund_amount
+        data_type: DECIMAL(38,3)
+        description: Sum of merchant-currency amounts for refund transactions in the group
+      - name: refund_transactions
+        data_type: BIGINT
+        description: Distinct count of order_id for refund transactions
+      - name: other_amount
+        data_type: DECIMAL(38,3)
+        description: Sum of merchant-currency amounts for other transactions in the group
+      - name: other_transactions
+        data_type: BIGINT
+        description: Distinct count of order_id for other transactions
+    - name: int_google_play__latest_product_info
+      description: Latest non-null product title per (package_name, sku_id) based on the most recent transaction_date from stg_google_play__earnings.
+      grain: One row per (package_name, sku_id) with at least one non-null product_title
+      source_models:
+      - staging.stg_google_play__earnings
+      business_logic: '- Read package_name, sku_id, product_title, transaction_date from staging.stg_google_play__earnings. - Exclude rows where product_title is null. - For each (package_name, sku_id), sort by transaction_date descending and select the single most recent row. - Tie policy: if multiple rows share the same most recent transaction_date, one is selected arbitrarily; results may vary among tied rows. - Rows with null transaction_date are treated as less recent than any non-null date and are selected only if all rows in the group have null dates. - Groups with no non-null product_title are excluded entirely (no row output).'
+      columns:
+      - name: package_name
+        data_type: VARCHAR
+        description: Google Play package identifier used for grouping; may be null if null in source.
+      - name: sku_id
+        data_type: VARCHAR
+        description: In-app product SKU used with package_name for grouping; may be null if null in source.
+      - name: product_title
+        data_type: VARCHAR
+        description: Title from the selected latest row after excluding null titles; always non-null.
+        tests:
+        - not_null
+    - name: int_google_play__app_quality_metrics
+      description: Daily Google Play app stability and quality metrics per package (crashes, ANRs, rates, rolling averages, fragmentation, scoring, trend, category, and risk)
+      grain: One row per package_name per date_day (driven by crashes_overview)
+      source_models:
+      - staging.stg_google_play__stats_crashes_overview
+      - staging.stg_google_play__stats_crashes_app_version
+      - staging.stg_google_play__stats_crashes_os_version
+      - staging.stg_google_play__stats_installs_overview
+      - staging.stg_google_play__stats_ratings_overview
+      business_logic: '- Filter sources to valid ranges: - crashes_overview, crashes_by_version, crashes_by_os: keep rows with crashes >= 0 and ANRs >= 0. - installs_overview: keep rows with daily_device_installs >= 0 and active_device_installs >= 0. - ratings_overview: keep rows with daily_average_rating and total_average_rating between 1.0 and 5.0. - Build stability_metrics per (package_name, date_day) from crashes_overview: - Left join installs_overview and ratings_overview by (date_day, package_name). - crash_rate_per_1k_devices: daily_crashes divided by active_device_installs, scaled to per 1,000 devices, rounded to 4 decimals; only when active_device_installs > 0, otherwise NULL. - anr_rate_per_1k_devices: daily_anrs divided by active_device_installs, scaled to per 1,000 devices, rounded to 4 decimals; only when active_device_installs > 0, otherwise NULL. - total_stability_issues = daily_crashes + daily_anrs. - Rolling 7-day averages per package_name ordered by date_day using a window that includes the current day and up to the prior 6 days: - avg_7d_crashes and avg_7d_anrs average the available daily values; inputs are non-NULL so these averages are defined. - avg_7d_rating averages available non-NULL ratings; returns NULL when no ratings exist in the window. - Version fragmentation: - active_versions_count: count distinct app_version_code from crashes_by_version per (date_day, package_name); NULL when no version data exists. - version_with_most_crashes: select the app_version_code with the highest sum of crashes + ANRs on that day; ties follow default engine ordering; associated crashes and ANRs are reported. - OS fragmentation: - supported_os_versions: count distinct android_os_version from crashes_by_os per (date_day, package_name); NULL when no OS data exists. - os_with_most_crashes: select the OS version with the highest sum of crashes + ANRs on that day; ties follow default engine ordering; associated crashes and ANRs are reported. - Quality scoring: - If daily_average_rating is NULL, quality_score is NULL. Otherwise compute points: - Rating: (daily_average_rating / 5) × 40. - Crash rate: 30 points if ≤1, 20 if ≤5, 10 if ≤10, else 0; NULL rate contributes 0. - ANR rate: 20 points if ≤1, 15 if ≤5, 10 if ≤10, else 0; NULL rate contributes 0. - Version fragmentation: 10 points if active_versions_count ≤3, 5 if ≤5, else 0; NULL contributes 0. - Sum points, clamp at a minimum of 0, and round to 2 decimals to produce quality_score. - Stability trend: - Compare avg_7d_crashes to the value 7 days earlier within the same package: if lower → Improving; if higher → Degrading; otherwise → Stable. If the prior value is missing, treat as Stable. - Final output: - Round avg_7d_crashes, avg_7d_anrs, avg_7d_rating to 2 decimals. - quality_category: Excellent (≥80), Good (≥65), Fair (≥50), Poor (≥35), Critical (<35 when not NULL), Unrated (NULL score). - stability_risk_level: High Risk if crash rate >20 or ANR rate >15; Medium Risk if >10 or >8; Low Risk if >5 or >3; otherwise Minimal Risk. NULL rates do not trigger thresholds. - Emit one row per (package_name, date_day) and remove rows where either key is NULL.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Metric date (UTC); exactly one output row per package_name per date_day
+        tests:
+        - not_null
+      - name: package_name
+        data_type: VARCHAR
+        description: Google Play package identifier; grouping key with date_day
+        tests:
+        - not_null
+      - name: daily_crashes
+        data_type: BIGINT
+        description: Number of crashes on date_day from crashes_overview; source rows require crashes >= 0
+        tests:
+        - not_null
+      - name: daily_anrs
+        data_type: BIGINT
+        description: Number of ANRs on date_day from crashes_overview; source rows require anrs >= 0
+        tests:
+        - not_null
+      - name: total_stability_issues
+        data_type: BIGINT
+        description: Sum of daily_crashes + daily_anrs for the day; always >= 0
+        tests:
+        - not_null
+      - name: crash_rate_per_1k_devices
+        data_type: DOUBLE
+        description: Daily crashes per 1,000 active devices; computed only when active_device_installs > 0; rounded to 4 decimals; else NULL
+        tests: []
+      - name: anr_rate_per_1k_devices
+        data_type: DOUBLE
+        description: Daily ANRs per 1,000 active devices; computed only when active_device_installs > 0; rounded to 4 decimals; else NULL
+        tests: []
+      - name: avg_7d_crashes
+        data_type: DOUBLE
+        description: 7-day rolling average of daily_crashes per package_name ordered by date_day (current day plus up to 6 prior days); rounded to 2 decimals; never NULL
+        tests: []
+      - name: avg_7d_anrs
+        data_type: DOUBLE
+        description: 7-day rolling average of daily_anrs per package_name ordered by date_day (current day plus up to 6 prior days); rounded to 2 decimals; never NULL
+        tests: []
+      - name: avg_7d_rating
+        data_type: DOUBLE
+        description: 7-day rolling average of daily_average_rating using non-NULL values only; NULL if window has no ratings; rounded to 2 decimals
+        tests: []
+      - name: active_versions_count
+        data_type: BIGINT
+        description: Count of distinct app_version_code with non-negative metrics on date_day; NULL if no version data
+        tests: []
+      - name: version_with_most_crashes
+        data_type: VARCHAR
+        description: App version_code with highest total of crashes + ANRs on date_day; ties resolved by engine-default order; NULL if no version data
+        tests: []
+      - name: worst_version_crashes
+        data_type: BIGINT
+        description: Crashes for version_with_most_crashes on date_day; NULL if no version selected
+        tests: []
+      - name: worst_version_anrs
+        data_type: BIGINT
+        description: ANRs for version_with_most_crashes on date_day; NULL if no version selected
+        tests: []
+      - name: supported_os_versions
+        data_type: BIGINT
+        description: Count of distinct android_os_version with non-negative metrics on date_day; NULL if no OS data
+        tests: []
+      - name: os_with_most_crashes
+        data_type: VARCHAR
+        description: Android OS version with highest total of crashes + ANRs on date_day; ties resolved by engine-default order; NULL if no OS data
+        tests: []
+      - name: worst_os_crashes
+        data_type: BIGINT
+        description: Crashes for os_with_most_crashes on date_day; NULL if no OS selected
+        tests: []
+      - name: worst_os_anrs
+        data_type: BIGINT
+        description: ANRs for os_with_most_crashes on date_day; NULL if no OS selected
+        tests: []
+      - name: quality_score
+        data_type: DOUBLE
+        description: Weighted score (0–100) combining rating (40%), crash rate (30%), ANR rate (20%), and version fragmentation (10); NULL rates or counts contribute 0; rounded to 2 decimals; NULL if daily_average_rating is NULL
+        tests: []
+      - name: stability_trend
+        data_type: VARCHAR
+        description: 'Trend vs the value 7 days earlier using avg_7d_crashes: Improving if lower, Degrading if higher, else Stable; missing prior value treated as Stable'
+        tests:
+        - not_null
+        - in_set('Improving','Degrading','Stable')
+      - name: quality_category
+        data_type: VARCHAR
+        description: 'Category from quality_score: Excellent (≥80), Good (≥65), Fair (≥50), Poor (≥35), Critical (<35 and not NULL), Unrated (quality_score NULL)'
+        tests:
+        - not_null
+        - in_set('Excellent','Good','Fair','Poor','Critical','Unrated')
+      - name: stability_risk_level
+        data_type: VARCHAR
+        description: 'Risk from crash/anr rates: High Risk (>20 or >15), Medium Risk (>10 or >8), Low Risk (>5 or >3), else Minimal Risk; NULL rates do not trigger thresholds'
+        tests:
+        - not_null
+        - in_set('High Risk','Medium Risk','Low Risk','Minimal Risk')
+    - name: int_google_play__store_performance
+      description: Unioned store listing performance by country or traffic source with standardized fields
+      grain: 'Each row corresponds to a source record: country-level keyed by (date_day, package_name, country) or source-level keyed by (date_day, package_name, traffic_source); duplicates from sources are retained'
+      source_models:
+      - staging.stg_google_play__store_performance_country
+      - staging.stg_google_play__store_performance_source
+      business_logic: '- Load all rows from staging.stg_google_play__store_performance_country and staging.stg_google_play__store_performance_source without filtering. - For country rows: - Carry date_day, package_name, country, store_listing_visitors, store_listing_conversion_rate, and store_listing_installers unchanged. - Set traffic_source to NULL. - Set performance_type to "country". - For source rows: - Carry date_day, package_name, traffic_source, store_listing_visitors, store_listing_conversion_rate, and store_listing_installers unchanged. - Set country to NULL. - Set performance_type to "source". - Append the two result sets: - No aggregation, de-duplication, or recalculation; duplicates from inputs are preserved. - NULLs from inputs are preserved; only the mutually exclusive country/traffic_source field is intentionally set to NULL per row type. - No ordering is applied. - store_listing_conversion_rate is passed through with three decimal places due to the column type; no additional rounding is performed.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Date of the performance metrics
+        tests:
+        - not_null
+      - name: package_name
+        data_type: VARCHAR
+        description: Google Play package identifier for the app
+        tests:
+        - not_null
+      - name: country
+        data_type: VARCHAR
+        description: Country code for country-level rows; NULL for source-level rows
+      - name: traffic_source
+        data_type: VARCHAR
+        description: Traffic source label for source-level rows; NULL for country-level rows
+      - name: store_listing_visitors
+        data_type: INTEGER
+        description: Count of store listing visitors passed through from source without adjustment
+      - name: store_listing_conversion_rate
+        data_type: DECIMAL(18,3)
+        description: Share of visitors who installed; passed through at three decimal places with no recalculation
+      - name: store_listing_installers
+        data_type: INTEGER
+        description: Count of installers from the store listing passed through without adjustment
+      - name: performance_type
+        data_type: VARCHAR
+        description: 'Row type indicator: ''country'' for country rows; ''source'' for source rows'
+  marts_models:
+    - name: google_play__comprehensive_performance_dashboard
+      description: Daily Google Play app performance combining installs, stability, engagement, retention, revenue, store conversion, risk, and recommended actions.
+      grain: One or more rows per date_day and package_name (rows can repeat when multiple countries exist for the same day and app).
+      source_models:
+      - intermediate.int_google_play__user_behavior_metrics
+      - intermediate.int_google_play__revenue_analytics
+      - intermediate.int_google_play__user_retention_analysis
+      - mart.google_play__overview_report
+      business_logic: 'Build user_behavior per date_day, package_name, and country by summing installs, uninstalls, and active devices, averaging churn and weekly installs, and counting distinct countries meeting engagement and growth conditions. Build revenue_performance per date_day and package_name by summing net revenue, transactions, and new subscriptions, averaging transaction value, refund rate, ARPU, and revenue health. Build retention_insights per package_name over the last 30 days by averaging day-1/7/30 retention and retention quality, and counting distinct countries with strong retention or high churn risk. Build overview_base per date_day and package_name by summing installs, uninstalls, crashes, ANRs, store acquisitions, and visitors, and averaging rating. Fully outer join these on date_day and package_name; for each metric, prefer overview_base where applicable, then user_behavior or revenue_performance, and default to 0 when unavailable (except conversion rate). Set default quality_score=75.0, crash_rate_per_1k=0.0, anr_rate_per_1k=0.0, and version_fragmentation=1. Compute store_conversion_rate only when visitors > 0 as acquisitions divided by visitors times 100, rounded to 2 decimals; otherwise NULL. Derive business_health_status with tiers: Thriving (installs > 2x uninstalls, quality >= 70, and revenue > 0), Healthy (installs > uninstalls, quality >= 50, and churn <= 0.10), Stable (installs >= uninstalls or quality >= 40), At Risk (quality >= 30), else Critical. Compute overall_performance_score (0–100) by adding points: installs activity (15 if installs > 0), quality (up to 20 by thresholds 80/60/40), rating (up to 15 by thresholds 4.5/4.0/3.5), retention via churn (up to 20 by thresholds 0.05/0.10/0.20), revenue (15 if revenue > 0), and store conversion (up to 15 by thresholds 5/2/1 percent); clamp to 0–100 and round to 2 decimals. Set growth_trend by comparing installs to the value 7 days earlier within the same package: Growing if higher, Declining if lower, else Stable (also Stable when no prior value). Compute install_uninstall_ratio as installs divided by uninstalls rounded to 2 decimals when uninstalls > 0; else NULL. Compute total_issues_per_1k_devices as (crashes + ANRs) per 1,000 active devices rounded to 2 decimals when active devices > 0; else NULL. Left join retention_insights by package_name so the same package-level 30-day averages apply to all dates. In the final output, round: quality_score to 1 decimal; average_rating to 2 decimals; crash and ANR rates per 1k to 2 decimals; daily_churn_rate to 4 decimals; day-1/7/30 retention to 1 decimal; daily_net_revenue to 2 decimals; avg_transaction_value to 2 decimals; refund_rate to 4 decimals; ARPU to 2 decimals; revenue_health_score to 1 decimal; overall_performance_score to 2 decimals; store_conversion_rate is already rounded to 2 decimals. Set primary_risk_flag with priority: Stability Risk (high crash/ANR rates), Retention Risk (high churn), Revenue Risk (high refunds), Performance Risk (low score), else Low Risk. Set recommended_action from the score: Optimize and Scale (>=80), Improve Quality (>=60), Focus on Retention (>=40), else Critical Review Required. Exclude rows where date_day or package_name is NULL and sort by date_day descending, then by overall_performance_score descending.'
+      columns:
+      - name: date_day
+        description: Calendar date of the metrics; rows with NULL are excluded.
+      - name: package_name
+        description: Android app package identifier; rows with NULL are excluded.
+      - name: daily_installs
+        description: Device installs for the day, preferring overview data, else user_behavior totals; defaults to 0.
+      - name: daily_uninstalls
+        description: Device uninstalls for the day, preferring overview data, else user_behavior totals; defaults to 0.
+      - name: active_devices
+        description: Active devices from user_behavior; defaults to 0 when unavailable.
+      - name: daily_crashes
+        description: Crash count from overview; defaults to 0.
+      - name: daily_anrs
+        description: ANR count from overview; defaults to 0.
+      - name: quality_score
+        description: Default quality score set to 75.0 and rounded to 1 decimal.
+      - name: average_rating
+        description: Average store rating from overview, rounded to 2 decimals; defaults to 0.
+      - name: crash_rate_per_1k_devices
+        description: Crashes per 1,000 active devices; currently defaults to 0.00 and is rounded to 2 decimals.
+      - name: anr_rate_per_1k_devices
+        description: ANRs per 1,000 active devices; currently defaults to 0.00 and is rounded to 2 decimals.
+      - name: version_fragmentation
+        description: Default value set to 1.
+      - name: daily_churn_rate
+        description: Average churn rate from user_behavior, rounded to 4 decimals; defaults to 0.
+      - name: high_engagement_markets
+        description: Count of distinct countries classified as High Engagement for the day; defaults to 0.
+      - name: accelerating_markets
+        description: Count of distinct countries with Accelerating growth momentum for the day; defaults to 0.
+      - name: day_1_retention_rate
+        description: Average day-1 retention over the last 30 days per package, rounded to 1 decimal.
+      - name: day_7_retention_rate
+        description: Average day-7 retention over the last 30 days per package, rounded to 1 decimal.
+      - name: day_30_retention_rate
+        description: Average day-30 retention over the last 30 days per package, rounded to 1 decimal.
+      - name: strong_retention_markets
+        description: Distinct countries with Excellent/Good retention over the last 30 days.
+      - name: high_churn_markets
+        description: Distinct countries flagged High Churn Risk over the last 30 days.
+      - name: daily_net_revenue
+        description: Total net revenue for the day from revenue analytics, rounded to 2 decimals; defaults to 0.
+      - name: daily_transactions
+        description: Total paying transactions for the day; defaults to 0.
+      - name: avg_transaction_value
+        description: Average transaction value, rounded to 2 decimals; defaults to 0.
+      - name: refund_rate
+        description: Average refund rate, rounded to 4 decimals; defaults to 0.
+      - name: new_subscriptions
+        description: New subscriptions started on the day; defaults to 0.
+      - name: average_revenue_per_user
+        description: Average revenue per user (ARPU), rounded to 2 decimals; defaults to 0.
+      - name: revenue_health_score
+        description: Average revenue health score, rounded to 1 decimal; defaults to 0.
+      - name: store_acquisitions
+        description: Store listing acquisitions from overview; defaults to 0.
+      - name: store_visitors
+        description: Store listing visitors from overview; defaults to 0.
+      - name: store_conversion_rate
+        description: If visitors > 0, acquisitions divided by visitors times 100 rounded to 2 decimals; otherwise NULL.
+      - name: business_health_status
+        description: 'Tiered status from installs vs uninstalls, quality, churn, and revenue: Thriving, Healthy, Stable, At Risk, or Critical.'
+      - name: overall_performance_score
+        description: 0–100 score from weighted components (installs, quality, rating, retention via churn, revenue, store conversion), clamped and rounded to 2 decimals.
+      - name: growth_trend
+        description: Growing, Declining, or Stable based on installs versus the value 7 days earlier within the same package.
+      - name: install_uninstall_ratio
+        description: Installs divided by uninstalls rounded to 2 decimals when uninstalls > 0; otherwise NULL.
+      - name: total_issues_per_1k_devices
+        description: Crashes plus ANRs per 1,000 active devices rounded to 2 decimals when active devices > 0; otherwise NULL.
+      - name: primary_risk_flag
+        description: 'Risk priority based on thresholds: Stability, Retention, Revenue, or Performance; Low Risk if none apply.'
+      - name: recommended_action
+        description: 'Action based on overall_performance_score: Optimize and Scale (>=80), Improve Quality (>=60), Focus on Retention (>=40), else Critical Review Required.'
+    - name: google_play__geo_market_analysis
+      description: Geo market summary per app-country over the last 30 days combining behavior, revenue, retention, store performance, default quality, and derived market scoring/classification
+      grain: One row per package_name + country with positive avg_active_devices in the last 30 days
+      source_models:
+      - intermediate.int_google_play__user_behavior_metrics
+      - intermediate.int_google_play__revenue_analytics
+      - intermediate.int_google_play__user_retention_analysis
+      - intermediate.int_google_play__store_performance
+      - staging.stg_google_play__country_codes
+      business_logic: 'Time window and base: - Use last 30 days relative to current_date for all aggregations. - Build user_behavior_geo (from intermediate.int_google_play__user_behavior_metrics): - Group by package_name, country. - Compute arithmetic averages: daily_device_installs, daily_device_uninstalls, active_device_installs, daily_churn_rate, avg_7d_device_installs, avg_30d_device_installs, weekly_install_growth_rate. - Compute modes via mode() within group (order by <value>) for: user_engagement_level, growth_momentum, market_maturity. Determinism: returns the most frequent non-NULL value; ties resolved by ascending order of the value; returns NULL if all values are NULL. - Count distinct date_day as active_days. - Build revenue_geo (from intermediate.int_google_play__revenue_analytics): - Filter date_day to last 30 days and daily_net_revenue > 0. - Group by package_name, buyer_country as country. - Aggregate: sum(daily_net_revenue) as total_revenue_30d; avg(daily_net_revenue) as avg_daily_revenue; sum(daily_paying_transactions) as total_transactions_30d; avg(average_transaction_value) as avg_transaction_value; avg(refund_rate) as avg_refund_rate; sum(new_subscriptions) as total_new_subscriptions; avg(total_active_subscriptions) as avg_active_subscriptions; avg(arpu_daily) as avg_arpu; avg(revenue_health_score) as avg_revenue_health; mode() within group (order by revenue_tier) as dominant_revenue_tier; count distinct date_day as revenue_days. - Build retention_geo (from intermediate.int_google_play__user_retention_analysis): - Filter install_date to last 30 days. - Group by package_name, country. - Aggregate averages: day_1_retention_rate, day_7_retention_rate, day_30_retention_rate, retention_quality_score, current_avg_7d_churn_rate. - Modes with same determinism as above: retention_category, churn_risk_level, product_stickiness. - Count distinct install_date as cohort_count. - Build store_performance_geo (from intermediate.int_google_play__store_performance): - Filter date_day to last 30 days and performance_type = ''country''. - Group by package_name, country. - Aggregate: sum(store_listing_visitors) as total_store_visitors; sum(store_listing_installers) as total_store_installs; avg(store_listing_conversion_rate) as avg_store_conversion_rate; count distinct date_day as store_active_days. - Country metadata (from staging.stg_google_play__country_codes): select country_code_alpha_2 and coalesce(alternative_country_name, country_name) as country_name, plus region, sub_region. Join and defaults: - Start from user_behavior_geo (required presence). - Left join country codes on country = country_code_alpha_2. - Left join revenue_geo, retention_geo, and store_performance_geo on (package_name, country). - Apply defaults via COALESCE: - Revenue metrics: total_revenue_30d, avg_daily_revenue, avg_transaction_value, avg_refund_rate, avg_arpu default to 0; revenue_tier defaults to ''No Revenue''. - Retention: avg_day_1_retention, avg_day_7_retention, avg_day_30_retention default to 0; retention_category defaults to ''Unknown''; churn_risk_level defaults to ''Unknown Risk''; product_stickiness defaults to ''Unknown''. - Store performance: total_store_visitors, total_store_installs default to 0; avg_store_conversion_rate defaults to 0. - Quality metrics are set to constants: app_quality_score = 75.0; app_crash_rate = 0.0; app_quality_category = ''Good''. Scoring: - market_size_score from avg_active_devices: >=10000→5; >=5000→4; >=1000→3; >=100→2; else 1. - revenue_opportunity_score from avg_daily_revenue: >=100→5; >=50→4; >=10→3; >=1→2; >0→1; else 0. - growth_potential_score from avg_growth_rate: >0.2→5; >0.1→4; >0.05→3; >0→2; ≥-0.05→1; else 0 (NULL compares false and falls to else 0). - user_quality_score from avg_day_30_retention: ≥40→5; ≥25→4; ≥15→3; ≥10→2; >0→1; else 0. - store_performance_score from avg_store_conversion_rate: ≥10→5; ≥5→4; ≥2→3; ≥1→2; >0→1; else 0. Overall score and classifications: - overall_market_score = round(0.25*market_size_score + 0.25*revenue_opportunity_score + 0.20*growth_potential_score + 0.20*user_quality_score + 0.10*store_performance_score, 2). - market_tier uses the unrounded weighted sum (same coefficients): ≥4.0 → ''Tier 1 - Strategic''; ≥3.0 → ''Tier 2 - Important''; ≥2.0 → ''Tier 3 - Develop''; ≥1.0 → ''Tier 4 - Monitor''; else ''Tier 5 - Low Priority''. - investment_recommendation (first-match wins): - revenue_opportunity_score ≥ 4 and growth_potential_score ≥ 3 → ''High Investment''; - else market_size_score ≥ 4 and user_quality_score ≥ 3 → ''Medium Investment''; - else growth_potential_score ≥ 4 → ''Growth Investment''; - else (market_size_score ≥ 3 or revenue_opportunity_score ≥ 3) → ''Selective Investment''; - else ''Maintain Current Level''. - opportunity_type (first-match wins): - market_maturity_level = ''Emerging Market'' and growth_potential_score ≥ 3 → ''High Growth Opportunity''; - else revenue_opportunity_score ≥ 4 and user_quality_score ≥ 3 → ''Revenue Optimization''; - else market_size_score ≥ 4 and avg_churn_rate > 0.1 → ''Retention Focus''; - else store_performance_score ≤ 2 and market_size_score ≥ 3 → ''Acquisition Focus''; - else ''Stable Operation''. - market_insight (first-match wins): - avg_growth_rate > 0.1 and avg_day_7_retention > 20 → ''High Growth + Strong Retention''; - else total_revenue_30d > 1000 and avg_arpu > 1 → ''High Value Market''; - else avg_active_devices > 5000 and avg_churn_rate < 0.05 → ''Large Stable Market''; - else market_maturity_level = ''Emerging Market'' and avg_growth_rate > 0.05 → ''Emerging Opportunity''; - else avg_store_conversion_rate < 1 and avg_active_devices > 1000 → ''Acquisition Challenge''; - else ''Standard Performance''. Final projection and transformations: - Round using DuckDB round(): avg_daily_installs (0), avg_active_devices (0), weekly_growth_rate from avg_growth_rate (4), revenue_last_30_days from total_revenue_30d (2), avg_daily_revenue (2), avg_transaction_value (2), average_revenue_per_user from avg_arpu (2), day_1/7/30_retention_rate (1), daily_churn_rate from avg_churn_rate (4), store_conversion_rate (2), app_quality_score (1), app_crash_rate_per_1k from app_crash_rate (2), overall_market_score (2). - Filter rows where avg_active_devices > 0. - Sort by overall_market_score DESC, then total_revenue_30d DESC (sorting does not affect row content).'
+      columns:
+      - name: package_name
+        data_type: VARCHAR
+        description: Google Play package identifier; grouping key (one row per package_name+country)
+      - name: country
+        data_type: VARCHAR
+        description: Country code from user behavior (two-letter when available) used to join country metadata
+      - name: country_name
+        data_type: VARCHAR
+        description: Resolved country name from country codes (alternative_country_name else country_name); NULL if no match
+      - name: region
+        data_type: VARCHAR
+        description: Region from country codes for the given country; NULL if no match
+      - name: sub_region
+        data_type: VARCHAR
+        description: Sub-region from country codes for the given country; NULL if no match
+      - name: avg_daily_installs
+        data_type: DOUBLE
+        description: Average daily installs over last 30 days rounded to 0 decimals using DuckDB round(); NULL if upstream average is NULL
+      - name: avg_active_devices
+        data_type: DOUBLE
+        description: Average active devices over last 30 days rounded to 0 decimals; strictly > 0 due to final filter
+      - name: weekly_growth_rate
+        data_type: DOUBLE
+        description: Average weekly install growth rate over last 30 days rounded to 4 decimals; NULL if missing
+      - name: market_maturity_level
+        data_type: VARCHAR
+        description: Mode of market_maturity over the window; ties resolved by ascending value; NULL if all values are NULL
+      - name: dominant_engagement_level
+        data_type: VARCHAR
+        description: Mode of user_engagement_level over the window; ties resolved by ascending value; NULL if all values are NULL
+      - name: dominant_growth_momentum
+        data_type: VARCHAR
+        description: Mode of growth_momentum over the window; ties resolved by ascending value; NULL if all values are NULL
+      - name: revenue_last_30_days
+        data_type: DECIMAL(38,2)
+        description: Sum of daily_net_revenue over last 30 days (only days with revenue > 0), defaulted to 0 and rounded to 2 decimals
+      - name: avg_daily_revenue
+        data_type: DOUBLE
+        description: Average daily_net_revenue on days with revenue > 0 over last 30 days, defaulted to 0 and rounded to 2 decimals
+      - name: avg_transaction_value
+        data_type: DOUBLE
+        description: Average transaction value on days with revenue > 0 over last 30 days, defaulted to 0 and rounded to 2 decimals
+      - name: average_revenue_per_user
+        data_type: DOUBLE
+        description: Average ARPU on days with revenue > 0 over last 30 days, defaulted to 0 and rounded to 2 decimals
+      - name: revenue_tier
+        data_type: VARCHAR
+        description: Mode of revenue_tier over last 30 days (days with revenue > 0); defaults to 'No Revenue' if none
+      - name: day_1_retention_rate
+        data_type: DOUBLE
+        description: Average 1-day retention over last 30 days rounded to 1 decimal; defaults to 0 if missing
+      - name: day_7_retention_rate
+        data_type: DOUBLE
+        description: Average 7-day retention over last 30 days rounded to 1 decimal; defaults to 0 if missing
+      - name: day_30_retention_rate
+        data_type: DOUBLE
+        description: Average 30-day retention over last 30 days rounded to 1 decimal; defaults to 0 if missing
+      - name: retention_category
+        data_type: VARCHAR
+        description: Mode of retention_category over last 30 days; defaults to 'Unknown' if none
+      - name: product_stickiness
+        data_type: VARCHAR
+        description: Mode of product_stickiness over last 30 days; defaults to 'Unknown' if none
+      - name: daily_churn_rate
+        data_type: DOUBLE
+        description: Average daily churn rate over last 30 days rounded to 4 decimals; NULL if upstream values are all NULL
+      - name: churn_risk_level
+        data_type: VARCHAR
+        description: Mode of churn_risk_level over last 30 days; defaults to 'Unknown Risk' if none
+      - name: store_visitors_30d
+        data_type: HUGEINT
+        description: Total store listing visitors over last 30 days (performance_type='country'); defaults to 0
+      - name: store_installs_30d
+        data_type: HUGEINT
+        description: Total store listing installers over last 30 days (performance_type='country'); defaults to 0
+      - name: store_conversion_rate
+        data_type: DOUBLE
+        description: Average store listing conversion rate over last 30 days (performance_type='country') rounded to 2 decimals; defaults to 0
+      - name: app_quality_score
+        data_type: DECIMAL(3,1)
+        description: Constant placeholder 75.0 rounded to 1 decimal for all rows
+      - name: app_quality_category
+        data_type: VARCHAR
+        description: Constant placeholder 'Good' for all rows
+      - name: app_crash_rate_per_1k
+        data_type: DECIMAL(2,1)
+        description: Constant placeholder 0.0 crashes per 1k devices rounded to 2 decimals
+      - name: overall_market_score
+        data_type: DECIMAL(17,2)
+        description: Weighted average of component scores (0.25,0.25,0.20,0.20,0.10) rounded to 2 decimals
+      - name: market_tier
+        data_type: VARCHAR
+        description: 'Tier from unrounded weighted sum: ≥4.0 Tier 1 - Strategic; ≥3.0 Tier 2 - Important; ≥2.0 Tier 3 - Develop; ≥1.0 Tier 4 - Monitor; else Tier 5 - Low Priority'
+      - name: investment_recommendation
+        data_type: VARCHAR
+        description: 'First-match classification: High Investment, Medium Investment, Growth Investment, Selective Investment, or Maintain Current Level per score thresholds'
+      - name: opportunity_type
+        data_type: VARCHAR
+        description: 'First-match classification: High Growth Opportunity, Revenue Optimization, Retention Focus, Acquisition Focus, or Stable Operation per conditions'
+      - name: market_size_score
+        data_type: INTEGER
+        description: 'Score by avg_active_devices: ≥10000→5, ≥5000→4, ≥1000→3, ≥100→2, else 1'
+      - name: revenue_opportunity_score
+        data_type: INTEGER
+        description: 'Score by avg_daily_revenue: ≥100→5, ≥50→4, ≥10→3, ≥1→2, >0→1, else 0'
+      - name: growth_potential_score
+        data_type: INTEGER
+        description: 'Score by avg_growth_rate: >0.2→5, >0.1→4, >0.05→3, >0→2, ≥-0.05→1, else 0'
+      - name: user_quality_score
+        data_type: INTEGER
+        description: 'Score by avg_day_30_retention: ≥40→5, ≥25→4, ≥15→3, ≥10→2, >0→1, else 0'
+      - name: store_performance_score
+        data_type: INTEGER
+        description: 'Score by avg_store_conversion_rate: ≥10→5, ≥5→4, ≥2→3, ≥1→2, >0→1, else 0'
+      - name: market_insight
+        data_type: VARCHAR
+        description: 'First-match insight: High Growth + Strong Retention, High Value Market, Large Stable Market, Emerging Opportunity, Acquisition Challenge, or Standard Performance'
+    - name: google_play__product_portfolio_analysis
+      description: Strategic 30-day portfolio metrics and classifications per app with BCG-style scoring and investment guidance.
+      grain: One row per package_name with activity in any source within the last 30 days
+      source_models:
+      - intermediate.int_google_play__revenue_analytics
+      - intermediate.int_google_play__user_behavior_metrics
+      - intermediate.int_google_play__user_retention_analysis
+      business_logic: 'Window and grain: - Use the last 30 days of data per source: revenue_analytics and user_behavior_metrics filter by date_day; user_retention_analysis filters by install_date. - Produce one row per package_name present in any source during the window (full outer join on package_name), then exclude NULL package_name. Revenue_by_app (from int_google_play__revenue_analytics): - Group by package_name and compute: - total_products = distinct SKU count. - total_revenue_30d = sum of daily_net_revenue. - avg_daily_revenue = average of daily_net_revenue. - total_transactions_30d = sum of daily_paying_transactions (not used in final output). - avg_transaction_value = average of average_transaction_value. - avg_refund_rate = average refund_rate (not used). - total_new_subscriptions = sum of new_subscriptions (not used). - avg_arpu = average of arpu_daily. - avg_revenue_health = average revenue_health_score (not used). - revenue_countries = distinct buyer_country count. User_engagement_by_app (from int_google_play__user_behavior_metrics): - Group by package_name and compute: - total_installs_30d = sum of daily_device_installs. - total_uninstalls_30d = sum of daily_device_uninstalls (used for user_base_trend only). - avg_active_devices = average of active_device_installs. - avg_churn_rate = average of daily_churn_rate. - avg_weekly_installs = average of avg_7d_device_installs (not used in final output). - avg_install_growth_rate = average of weekly_install_growth_rate. - high_engagement_markets = distinct country count where user_engagement_level = ''High Engagement''. - total_markets = distinct country count. Retention_by_app (from int_google_play__user_retention_analysis): - Group by package_name and compute: - avg_day_1_retention = average of day_1_retention_rate (not selected). - avg_day_7_retention = average of day_7_retention_rate. - avg_day_30_retention = average of day_30_retention_rate. - avg_retention_quality = average retention_quality_score (not selected). - strong_retention_markets = distinct country count where retention_category in (''Excellent Retention'',''Good Retention''). Join and null policy: - Full outer join the three rollups on package_name; package_name is the coalesced key across sources. - For all numeric measures from sources, replace NULL with 0 before downstream logic; then filter out NULL package_name rows. Default quality metrics: - Use a constant quality baseline: avg_quality_score = 75.0; avg_crash_rate = 0.0; avg_anr_rate = 0.0 (crash/anr not selected). Scoring and classification: - revenue_score (0–100) from total_revenue_30d thresholds: ≥10000→100; ≥5000→85; ≥1000→70; ≥100→50; ≥10→30; >0→15; else 0. - engagement_score = sum of three components, capped at 100, rounded to 2 decimals, then stored as integer (fraction dropped): - Active devices: ≥50000→40; ≥10000→30; ≥1000→20; ≥100→10; else 0. - Install growth rate: >0.10→30; >0.05→20; >0→10; else 0. - Churn rate: ≤0.05→30; ≤0.10→20; ≤0.20→10; else 0. - portfolio_type from total_products: ≥5 Diversified Portfolio; ≥3 Multi-Product; =2 Dual Product; =1 Single Product; else No Products. Strategic metrics: - portfolio_health_score = weighted sum of revenue_score (40%), engagement_score (30%), and the quality baseline value 75.0 (30%), rounded to 2 decimals. - bcg_matrix_category (first-match order): combined score ≥80 Star Performer; ≥65 Cash Cow; engagement_score ≥70 and avg_install_growth_rate > 0.05 Rising Star; revenue_score ≥50 and quality baseline < 50 Problem Child; combined score ≥40 Question Mark; else Dog. - investment_priority (first-match order): combined score ≥80 Invest & Expand; engagement_score ≥70 and avg_install_growth_rate > 0.05 Invest for Growth; revenue_score ≥70 and quality baseline ≥60 Maintain & Optimize; quality baseline < 40 Fix Quality Issues; combined score ≥40 Selective Investment; else Divest or Redesign. Final projections, rounding, and ordering: - Apply rounding: total_revenue_30d 2 decimals; avg_daily_revenue 2; avg_active_devices 0; avg_transaction_value 2; average_revenue_per_user 2; day_7_retention_rate 1; day_30_retention_rate 1; daily_churn_rate 4; quality_score 1. - user_base_trend from 30-day totals: installs > 2× uninstalls → Growing; installs > uninstalls → Stable; else Declining. - growth_stage from avg_install_growth_rate: >0.10 High Growth; >0.05 Moderate Growth; >0 Slow Growth; else Declining. - Distinct country counts are within the 30-day window and exclude NULL countries; numeric outputs are 0 when inputs are NULL. - Sort the final output by portfolio_health_score descending, then by total 30-day revenue descending.'
+      columns:
+      - name: package_name
+        data_type: VARCHAR
+        description: Google Play package identifier; one output row per package_name.
+        tests:
+        - not_null
+        - unique
+      - name: total_products
+        data_type: BIGINT
+        description: Distinct SKU count per app over the last 30 days; NULL treated as 0.
+        tests:
+        - total_products >= 0
+      - name: portfolio_type
+        data_type: VARCHAR
+        description: 'Based on total_products: ≥5 Diversified Portfolio; ≥3 Multi-Product; =2 Dual Product; =1 Single Product; else No Products.'
+      - name: total_revenue_30d
+        data_type: DECIMAL(38,2)
+        description: Sum of daily revenue over the last 30 days, rounded to 2 decimals; NULL treated as 0.
+        tests:
+        - total_revenue_30d >= 0
+      - name: avg_daily_revenue
+        data_type: DOUBLE
+        description: Average daily revenue over the last 30 days, rounded to 2 decimals; NULL treated as 0.
+        tests:
+        - avg_daily_revenue >= 0
+      - name: total_installs_30d
+        data_type: HUGEINT
+        description: Sum of device installs over the last 30 days; NULL treated as 0.
+        tests:
+        - total_installs_30d >= 0
+      - name: avg_active_devices
+        data_type: DOUBLE
+        description: Average active devices over the last 30 days, rounded to 0 decimals; NULL treated as 0.
+        tests:
+        - avg_active_devices >= 0
+      - name: total_markets
+        data_type: BIGINT
+        description: Distinct countries from user behavior in the last 30 days; NULL countries excluded; NULL totals as 0.
+        tests:
+        - total_markets >= 0
+      - name: avg_transaction_value
+        data_type: DOUBLE
+        description: Average transaction value over the last 30 days, rounded to 2 decimals; NULL treated as 0.
+        tests:
+        - avg_transaction_value >= 0
+      - name: average_revenue_per_user
+        data_type: DOUBLE
+        description: Average daily ARPU over the last 30 days, rounded to 2 decimals; NULL treated as 0.
+        tests:
+        - average_revenue_per_user >= 0
+      - name: day_7_retention_rate
+        data_type: DOUBLE
+        description: Average 7-day retention over the last 30 days, rounded to 1 decimal (percentage); NULL treated as 0.
+        tests:
+        - day_7_retention_rate >= 0
+        - day_7_retention_rate <= 100
+      - name: day_30_retention_rate
+        data_type: DOUBLE
+        description: Average 30-day retention over the last 30 days, rounded to 1 decimal (percentage); NULL treated as 0.
+        tests:
+        - day_30_retention_rate >= 0
+        - day_30_retention_rate <= 100
+      - name: daily_churn_rate
+        data_type: DOUBLE
+        description: Average daily churn rate over the last 30 days, rounded to 4 decimals (fraction 0–1); NULL treated as 0.
+        tests:
+        - daily_churn_rate >= 0
+        - daily_churn_rate <= 1
+      - name: quality_score
+        data_type: DECIMAL(3,1)
+        description: Constant quality baseline of 75.0, rounded to 1 decimal.
+        tests:
+        - quality_score >= 0
+        - quality_score <= 100
+      - name: revenue_score
+        data_type: INTEGER
+        description: 'Bucketed by 30-day revenue: ≥10000=100, ≥5000=85, ≥1000=70, ≥100=50, ≥10=30, >0=15, else 0.'
+        tests:
+        - revenue_score >= 0
+      - name: engagement_score
+        data_type: INTEGER
+        description: Sum of device, growth, and churn components capped at 100, rounded to 2 decimals then stored as integer (fraction dropped).
+        tests:
+        - engagement_score >= 0
+      - name: portfolio_health_score
+        data_type: DECIMAL(15,2)
+        description: Weighted sum of revenue_score (40%), engagement_score (30%), and the 75.0 quality value (30%), rounded to 2 decimals.
+        tests:
+        - portfolio_health_score >= 0
+      - name: bcg_matrix_category
+        data_type: VARCHAR
+        description: 'Strategic category by ordered rules: Star Performer, Cash Cow, Rising Star, Problem Child, Question Mark, Dog.'
+      - name: investment_priority
+        data_type: VARCHAR
+        description: 'Priority by ordered rules: Invest & Expand, Invest for Growth, Maintain & Optimize, Fix Quality Issues, Selective Investment, Divest or Redesign.'
+      - name: user_base_trend
+        data_type: VARCHAR
+        description: 'From 30-day totals: installs > 2× uninstalls → Growing; installs > uninstalls → Stable; else Declining.'
+      - name: growth_stage
+        data_type: VARCHAR
+        description: 'From avg_install_growth_rate: >0.10 High Growth; >0.05 Moderate Growth; >0 Slow Growth; else Declining.'
+      - name: high_engagement_markets
+        data_type: BIGINT
+        description: Distinct countries with user_engagement_level='High Engagement' in the last 30 days; NULL countries excluded; NULL totals as 0.
+        tests:
+        - high_engagement_markets >= 0
+      - name: strong_retention_markets
+        data_type: BIGINT
+        description: Distinct countries with retention_category in ('Excellent Retention','Good Retention') in the last 30 days; NULL countries excluded; NULL totals as 0.
+        tests:
+        - strong_retention_markets >= 0
+      - name: revenue_countries
+        data_type: BIGINT
+        description: Distinct buyer countries contributing revenue in the last 30 days; NULL countries excluded; NULL totals as 0.
+        tests:
+        - revenue_countries >= 0
+    - name: google_play__app_version_report
+      description: App version performance by date with installs, uninstalls, crashes/ANRs, ratings, and cumulative metrics per OS version and device
+      grain: One row per date_day, package_name, app_version_code, android_os_version, device
+      source_models:
+      - staging.stg_google_play__stats_installs_app_version
+      - staging.stg_google_play__stats_crashes_app_version
+      - staging.stg_google_play__stats_ratings_app_version
+      business_logic: '- Inputs: - Installs: per date, package, app_version_code, android_os_version, device - Ratings: per date, package, app_version_code - Crashes: per date, package, app_version_code, android_os_version - Compute cumulative install totals on the installs input: - total_device_installs: cumulative sum of daily_device_installs by date_day ascending within (package_name, app_version_code) - total_device_uninstalls: cumulative sum of daily_device_uninstalls by date_day ascending within (package_name, app_version_code) - Note: ordering is by date_day only; if multiple rows share the same date_day, the physical/source row order determines evaluation within that day; device and android_os_version are not included in the partition. - Full outer join to unify datasets: - First join installs with ratings on (date_day, package_name, app_version_code) using null-safe comparison by substituting NULL app_version_code with ''null_version'' - Then join crashes on the available date from installs or ratings, plus (package_name, app_version_code, android_os_version), using null-safe comparison by substituting NULL app_version_code with ''null_version'' and NULL android_os_version with ''null_os''; android_os_version is compared as a string; device is not part of any join key. - Output dimensions: - date_day, app_version_code, package_name selected from installs if present, else ratings, else crashes - android_os_version from installs if present else crashes (as string) - device from installs only (NULL if the row originates only from ratings/crashes) - Populate metrics with deterministic null handling: - From installs: active_device_installs → active_devices_last_30_days; all daily device/user/event metrics treat missing values as 0 - From crashes: crashes and anrs treat missing values as 0; values repeat across devices because device is not joined - From ratings: average_rating is the daily average rating (NULL if missing); rolling_total_average_rating is the total-average rating (may be NULL) - Forward-fill selected metrics across dates within (package_name, app_version_code): - For rolling_total_average_rating and each cumulative total, create a segment identifier as the running count of non-NULL values by date_day ascending - Within each segment, carry forward the first observed non-NULL value to subsequent rows; values remain NULL until the first non-NULL appears - Finalize outputs: - total_device_installs and total_device_uninstalls are treated as 0 when still missing after forward-fill - net_device_installs = total_device_installs − total_device_uninstalls - No aggregation or de-duplication beyond the joins; duplicates from sources are preserved; original string casing and spacing are preserved'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Selected from installs if present, else ratings, else crashes
+        tests:
+        - not_null
+      - name: app_version_code
+        data_type: VARCHAR
+        description: Taken from whichever source is present; may be NULL; joins substitute NULL with 'null_version'
+      - name: package_name
+        data_type: VARCHAR
+        description: Google Play package identifier selected from the available source
+        tests:
+        - not_null
+      - name: android_os_version
+        data_type: VARCHAR
+        description: Android OS version from installs else crashes, compared as strings with 'null_os' used when missing
+      - name: device
+        data_type: VARCHAR
+        description: Device identifier from installs; NULL when only ratings/crashes data exists
+      - name: device_installs
+        data_type: BIGINT
+        description: Daily device installs from installs; missing values become 0
+      - name: device_uninstalls
+        data_type: BIGINT
+        description: Daily device uninstalls from installs; missing values become 0
+      - name: device_upgrades
+        data_type: BIGINT
+        description: Daily device upgrades from installs; missing values become 0
+      - name: user_installs
+        data_type: BIGINT
+        description: Daily user installs from installs; missing values become 0
+      - name: user_uninstalls
+        data_type: BIGINT
+        description: Daily user uninstalls from installs; missing values become 0
+      - name: install_events
+        data_type: BIGINT
+        description: Daily install event count from installs; missing values become 0
+      - name: uninstall_events
+        data_type: BIGINT
+        description: Daily uninstall event count from installs; missing values become 0
+      - name: update_events
+        data_type: BIGINT
+        description: Daily update event count from installs; missing values become 0
+      - name: crashes
+        data_type: BIGINT
+        description: Daily crash count joined by date/package/version/OS; missing values become 0 and values repeat across devices
+      - name: anrs
+        data_type: BIGINT
+        description: Daily ANR count joined by date/package/version/OS; missing values become 0 and values repeat across devices
+      - name: active_devices_last_30_days
+        data_type: BIGINT
+        description: Active devices in the last 30 days from installs; missing values become 0
+      - name: average_rating
+        data_type: DECIMAL(18,3)
+        description: Daily average rating from ratings; NULL if unavailable; range 1–5 when present
+      - name: rolling_total_average_rating
+        data_type: DECIMAL(18,3)
+        description: Total-average rating forward-filled by date within (package_name, app_version_code); NULL until the first non-NULL appears
+      - name: total_device_installs
+        data_type: HUGEINT
+        description: Cumulative device installs by date within (package_name, app_version_code), forward-filled across gaps; missing values become 0; same-day tie order follows source row order
+      - name: total_device_uninstalls
+        data_type: HUGEINT
+        description: Cumulative device uninstalls by date within (package_name, app_version_code), forward-filled across gaps; missing values become 0; same-day tie order follows source row order
+      - name: net_device_installs
+        data_type: HUGEINT
+        description: Total device installs minus total device uninstalls; may be negative; never NULL
+    - name: google_play__country_report
+      description: Country-level performance metrics by package and day, joined across installs, ratings, and store performance and enriched with country metadata
+      grain: One row per package_name per country_short per date_day
+      source_models:
+      - staging.stg_google_play__stats_installs_country
+      - staging.stg_google_play__stats_ratings_country
+      - staging.stg_google_play__store_performance_country
+      - staging.stg_google_play__country_codes
+      business_logic: '- Load installs, ratings, store_performance, and country_codes staging tables. - From installs: compute running cumulative device installs and uninstalls per (country, package_name) across ascending dates. - From store_performance: compute running cumulative store listing installers and visitors per (country, package_name) across ascending dates. - Full outer join installs and ratings on matching date_day and package_name; match country null-safe by treating missing country codes as a shared placeholder so missing values match each other. - Full outer join store_performance to the combined result using the available date_day, package_name, and null-safe country from either side. - Build daily fields on the joined rows: - For daily counts (device_installs, device_uninstalls, device_upgrades, user_installs, user_uninstalls, install_events, uninstall_events, update_events, store_listing_acquisitions, store_listing_visitors, active_devices_last_30_days) replace missing values with 0. - Pass through store_listing_conversion_rate as provided (may be missing). - Pass through ratings.daily_average_rating and ratings.total_average_rating (may be missing). - Forward-fill cumulative totals and rolling_total_average_rating: - For each country and package, segment the timeline by each new non-missing occurrence of the cumulative field. - Within each segment, carry the most recently observed non-missing value forward to later days; values remain missing before the first observation. - Enrich with country metadata: - Left join country_codes on ISO alpha-2; set country_long to alternative name when available, otherwise the standard name; include region and sub_region. - Final computations: - Replace any remaining missing cumulative totals (device installs/uninstalls, store acquisitions/visitors) with 0. - rolling_store_conversion_rate = cumulative installers divided by cumulative visitors, rounded to 4 decimals; result is NULL when visitors is zero or missing. - net_device_installs = cumulative device installs minus cumulative device uninstalls.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar date resolved from any joined source; used to order window calculations
+      - name: package_name
+        data_type: VARCHAR
+        description: Google Play package identifier; join key across sources; may be NULL if missing in all sources
+      - name: country_short
+        data_type: VARCHAR
+        description: ISO alpha-2 country code from sources; may be NULL if absent; used for partitioning and country enrichment
+      - name: country_long
+        data_type: VARCHAR
+        description: Country display name from codes, preferring the alternative name when available; NULL if no code match
+      - name: region
+        data_type: VARCHAR
+        description: Region from country codes; NULL if no code match
+      - name: sub_region
+        data_type: VARCHAR
+        description: Sub-region from country codes; NULL if no code match
+      - name: device_installs
+        data_type: BIGINT
+        description: Daily device installs from installs; missing values replaced with 0
+      - name: device_uninstalls
+        data_type: BIGINT
+        description: Daily device uninstalls from installs; missing values replaced with 0
+      - name: device_upgrades
+        data_type: BIGINT
+        description: Daily device upgrades from installs; missing values replaced with 0
+      - name: user_installs
+        data_type: BIGINT
+        description: Daily user installs from installs; missing values replaced with 0
+      - name: user_uninstalls
+        data_type: BIGINT
+        description: Daily user uninstalls from installs; missing values replaced with 0
+      - name: install_events
+        data_type: BIGINT
+        description: Daily install events from installs; missing values replaced with 0
+      - name: uninstall_events
+        data_type: BIGINT
+        description: Daily uninstall events from installs; missing values replaced with 0
+      - name: update_events
+        data_type: BIGINT
+        description: Daily update events from installs; missing values replaced with 0
+      - name: store_listing_acquisitions
+        data_type: INTEGER
+        description: Daily installers from store listing; missing values replaced with 0
+      - name: store_listing_visitors
+        data_type: INTEGER
+        description: Daily visitors to the store listing; missing values replaced with 0
+      - name: store_listing_conversion_rate
+        data_type: DECIMAL(18,3)
+        description: Daily store listing conversion rate from store_performance; passed through as is; may be NULL
+      - name: active_devices_last_30_days
+        data_type: BIGINT
+        description: Active devices in the last 30 days from installs; missing values replaced with 0
+      - name: average_rating
+        data_type: DECIMAL(18,3)
+        description: Daily average rating from ratings; may be NULL; typical range 1.000–5.000
+      - name: rolling_total_average_rating
+        data_type: DECIMAL(18,3)
+        description: Forward-filled cumulative average rating; NULL until first observed, then carried forward by date
+      - name: total_device_installs
+        data_type: HUGEINT
+        description: Forward-filled running total of device installs per (country, package); set to 0 in final output when missing
+      - name: total_device_uninstalls
+        data_type: HUGEINT
+        description: Forward-filled running total of device uninstalls per (country, package); set to 0 in final output when missing
+      - name: total_store_acquisitions
+        data_type: HUGEINT
+        description: Forward-filled running total of store listing installers per (country, package); set to 0 in final output when missing
+      - name: total_store_visitors
+        data_type: HUGEINT
+        description: Forward-filled running total of store listing visitors per (country, package); set to 0 in final output when missing
+      - name: rolling_store_conversion_rate
+        data_type: DOUBLE
+        description: Cumulative installers divided by cumulative visitors, rounded to 4 decimals; NULL when visitors is zero or missing
+      - name: net_device_installs
+        data_type: HUGEINT
+        description: Cumulative device installs minus cumulative device uninstalls; uses 0 when missing; may be negative
+    - name: google_play__device_report
+      description: Device-level daily performance joined from installs and ratings with forward-filled cumulative totals.
+      grain: Rows per package_name, device, date_day from the full outer join; duplicates may exist if sources contain duplicates.
+      source_models:
+      - staging.stg_google_play__stats_installs_device
+      - staging.stg_google_play__stats_ratings_device
+      business_logic: '- Read installs and ratings from their staging sources. - In installs, compute running totals by device and package_name ordered by date_day ascending: - total_device_installs accumulates daily_device_installs. - total_device_uninstalls accumulates daily_device_uninstalls. - Full outer join installs and ratings on date_day and package_name, and match device values treating NULLs as equal; choose date_day, device, and package_name from the non-NULL side. - Set daily install/user/event metrics and active_devices_last_30_days to 0 when missing; keep ratings as provided: - average_rating comes from the daily rating. - rolling_total_average_rating comes from the life-to-date rating on that day. - Forward-fill within each device and package_name over ascending date_day: - Carry the latest non-NULL rolling_total_average_rating forward; it remains NULL until the first non-NULL appears. - Carry the latest non-NULL total_device_installs and total_device_uninstalls forward. - Finalize: - Replace remaining NULLs in total_device_installs and total_device_uninstalls with 0. - Compute net_device_installs as total_device_installs minus total_device_uninstalls. - Notes: - All running and forward-fill operations are ordered by date_day ascending. - No de-duplication is performed; if sources contain multiple rows for the same keys and date, all are retained.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar date used to align and order metrics.
+        tests:
+        - not_null
+      - name: device
+        data_type: VARCHAR
+        description: Device identifier chosen from installs or ratings; may be NULL only if missing in both sources.
+      - name: package_name
+        data_type: VARCHAR
+        description: Google Play package identifier chosen from installs or ratings.
+      - name: device_installs
+        data_type: BIGINT
+        description: Daily device installs from installs; NULLs are set to 0.
+        tests:
+        - device_installs >= 0
+      - name: device_uninstalls
+        data_type: BIGINT
+        description: Daily device uninstalls from installs; NULLs are set to 0.
+        tests:
+        - device_uninstalls >= 0
+      - name: device_upgrades
+        data_type: BIGINT
+        description: Daily device upgrades from installs; NULLs are set to 0.
+        tests:
+        - device_upgrades >= 0
+      - name: user_installs
+        data_type: BIGINT
+        description: Daily user installs from installs; NULLs are set to 0.
+        tests:
+        - user_installs >= 0
+      - name: user_uninstalls
+        data_type: BIGINT
+        description: Daily user uninstalls from installs; NULLs are set to 0.
+        tests:
+        - user_uninstalls >= 0
+      - name: install_events
+        data_type: BIGINT
+        description: Daily install events from installs; NULLs are set to 0.
+        tests:
+        - install_events >= 0
+      - name: uninstall_events
+        data_type: BIGINT
+        description: Daily uninstall events from installs; NULLs are set to 0.
+        tests:
+        - uninstall_events >= 0
+      - name: update_events
+        data_type: BIGINT
+        description: Daily update events from installs; NULLs are set to 0.
+        tests:
+        - update_events >= 0
+      - name: active_devices_last_30_days
+        data_type: BIGINT
+        description: Active devices in the last 30 days from installs; NULLs are set to 0.
+        tests:
+        - active_devices_last_30_days >= 0
+      - name: average_rating
+        data_type: DECIMAL(18,3)
+        description: Daily average rating from ratings; may be NULL when no rating is reported.
+      - name: rolling_total_average_rating
+        data_type: DECIMAL(18,3)
+        description: Life-to-date average rating forward-filled within device+package by ascending date; NULL until the first non-NULL.
+      - name: total_device_installs
+        data_type: HUGEINT
+        description: Cumulative device installs within device+package ordered by date, forward-filled, then set to 0 when still missing.
+        tests:
+        - total_device_installs >= 0
+      - name: total_device_uninstalls
+        data_type: HUGEINT
+        description: Cumulative device uninstalls within device+package ordered by date, forward-filled, then set to 0 when still missing.
+        tests:
+        - total_device_uninstalls >= 0
+      - name: net_device_installs
+        data_type: HUGEINT
+        description: Difference of cumulative installs and uninstalls after null-to-zero handling; may be negative.
+    - name: google_play__finance_report
+      description: Daily Google Play earnings and subscription activity, fully outer-joined and enriched with product and country metadata.
+      grain: One row per (date_day, package_name, country_short, sku_id); source duplicates are preserved and may multiply across the join.
+      source_models:
+      - intermediate.int_google_play__earnings
+      - staging.stg_google_play__subscriptions_country
+      - intermediate.int_google_play__latest_product_info
+      - staging.stg_google_play__country_codes
+      business_logic: 'Inputs: - Earnings: intermediate.int_google_play__earnings (monetary amounts and transaction counts, merchant_currency). - Subscriptions: staging.stg_google_play__subscriptions_country (new, cancelled, active by country). - Product metadata: intermediate.int_google_play__latest_product_info (title by package_name and sku_id). - Country metadata: staging.stg_google_play__country_codes (names, region, sub_region by ISO alpha-2). Steps: - Join earnings and subscriptions with a full outer join on date_day, package_name, SKU (earnings.sku_id = subscriptions.product_id), and country code; null country codes are treated as equal between the two sources for matching (a temporary placeholder is used only for join matching and never appears in outputs). - For each output row, choose identifiers as follows: - date_day: from earnings if present; otherwise from subscriptions. - country_short: from earnings if present; otherwise from subscriptions. - package_name: from earnings if present; otherwise from subscriptions. - sku_id: from earnings if present; otherwise from subscriptions. - merchant_currency: taken from earnings (subscriptions do not supply currency). - Metric null handling: - Earnings metrics (net_amount, transactions, charge_amount, charge_transactions, refund_amount, refund_transactions, other_amount, other_transactions): if missing, output 0; amounts use merchant_currency; signs are preserved; no additional rounding beyond source precision (3 decimal places). - Subscription flow metrics (new_subscriptions, cancelled_subscriptions): if missing, output 0. - Active subscriptions forward-fill: - For each (country_short, sku_id), sort rows by date_day ascending. - When a non-null active count appears, carry that value forward to later days until another non-null value replaces it. - Days before the first non-null active count remain unset during filling and are finally output as 0. - Enrichment: - Left join product metadata by (package_name, sku_id) to add product_title. - Left join country metadata by country_short to add country_long (alternative name when available, else standard name), region, and sub_region. - No aggregation or de-duplication is applied; output row order is not enforced.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Reporting date from earnings if present, otherwise from subscriptions; may be null.
+      - name: country_short
+        data_type: VARCHAR
+        description: ISO alpha-2 country code from earnings if present, otherwise from subscriptions; may be null; used to join country metadata.
+      - name: package_name
+        data_type: VARCHAR
+        description: Google Play package identifier from earnings if present, otherwise from subscriptions; may be null; used to join product metadata.
+      - name: sku_id
+        data_type: VARCHAR
+        description: Product SKU from earnings if present, otherwise from subscriptions; may be null; used to join product metadata.
+      - name: merchant_currency
+        data_type: VARCHAR
+        description: Currency code sourced from earnings; may be null; unit for all amount columns.
+      - name: net_amount
+        data_type: DECIMAL(38,3)
+        description: Net amount from earnings; missing values output as 0; uses merchant_currency; sign preserved.
+      - name: transactions
+        data_type: BIGINT
+        description: Total transaction count from earnings; missing values output as 0.
+      - name: charge_amount
+        data_type: DECIMAL(38,3)
+        description: Charge amount from earnings; missing values output as 0; uses merchant_currency; sign preserved.
+      - name: charge_transactions
+        data_type: BIGINT
+        description: Charge transaction count from earnings; missing values output as 0.
+      - name: refund_amount
+        data_type: DECIMAL(38,3)
+        description: Refund amount from earnings; missing values output as 0; uses merchant_currency; sign preserved.
+      - name: refund_transactions
+        data_type: BIGINT
+        description: Refund transaction count from earnings; missing values output as 0.
+      - name: other_amount
+        data_type: DECIMAL(38,3)
+        description: Other amount from earnings; missing values output as 0; uses merchant_currency; sign preserved.
+      - name: other_transactions
+        data_type: BIGINT
+        description: Other transaction count from earnings; missing values output as 0.
+      - name: new_subscriptions
+        data_type: BIGINT
+        description: New subscriptions from the subscriptions source; missing values output as 0.
+      - name: cancelled_subscriptions
+        data_type: BIGINT
+        description: Cancelled subscriptions from the subscriptions source; missing values output as 0.
+      - name: total_active_subscriptions
+        data_type: BIGINT
+        description: Active subscriptions after forward-filling within (country_short, sku_id) by ascending date; if no prior non-null exists on a date, output 0.
+      - name: product_title
+        data_type: VARCHAR
+        description: Product title from product metadata joined by (package_name, sku_id); null if no match.
+      - name: country_long
+        data_type: VARCHAR
+        description: Country name from country metadata by country_short using alternative name when available, else standard name; null if no match.
+      - name: region
+        data_type: VARCHAR
+        description: Region from country metadata joined by country_short; null if no match.
+      - name: sub_region
+        data_type: VARCHAR
+        description: Sub-region from country metadata joined by country_short; null if no match.
+    - name: google_play__os_version_report
+      description: Daily Google Play metrics by package and Android OS version with installs, events, crashes, ratings, and cumulative totals
+      grain: One row per package_name, android_os_version, date_day (emitted when any source has data)
+      source_models:
+      - staging.stg_google_play__stats_installs_os_version
+      - staging.stg_google_play__stats_crashes_os_version
+      - staging.stg_google_play__stats_ratings_os_version
+      business_logic: '- Source tables: installs, ratings, and crashes at a daily, package, and Android OS version level. - In installs, compute running cumulative totals of device installs and device uninstalls per package_name and android_os_version, ordered by date_day ascending and inclusive of the current day. - Full outer join installs, ratings, and crashes on date_day, package_name, and android_os_version: - For join equality only, treat NULL android_os_version as the placeholder ''null_os'' to align NULLs across sources. - Output keys (date_day, package_name, android_os_version) are the coalesced values across sources; if all are NULL for a key, the output remains NULL. - Rows are emitted when any source has data; duplicates in sources are not deduplicated. - Null handling: - Device/user counts, event counts, crashes, ANRs, and active devices are set to 0 when missing from their source. - average_rating and rolling_total_average_rating from ratings remain nullable. - Forward-fill within each package_name and android_os_version, ordered by date_day ascending: - Carry the most recent non-NULL value forward for rolling_total_average_rating, total_device_installs, and total_device_uninstalls. - Leading periods before the first non-NULL value remain NULL. - After forward-fill, total_device_installs and total_device_uninstalls are set to 0 where still NULL; rolling_total_average_rating remains nullable. - Final calculation: - net_device_installs equals total_device_installs minus total_device_uninstalls. - All windowed operations are ordered by date_day ascending and partitioned by package_name and android_os_version.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Metric date coalesced from sources; one row per date per package and OS version when any source has data.
+        tests:
+        - not_null
+      - name: android_os_version
+        data_type: VARCHAR
+        description: Android OS version coalesced from sources; may be NULL when NULL in all; NULLs matched across sources using 'null_os' only for join equality.
+      - name: package_name
+        data_type: VARCHAR
+        description: Google Play package identifier coalesced from sources.
+        tests:
+        - not_null
+      - name: device_installs
+        data_type: BIGINT
+        description: Daily device installs from installs; set to 0 when missing.
+        tests:
+        - device_installs >= 0
+      - name: device_uninstalls
+        data_type: BIGINT
+        description: Daily device uninstalls from installs; set to 0 when missing.
+        tests:
+        - device_uninstalls >= 0
+      - name: device_upgrades
+        data_type: BIGINT
+        description: Daily device upgrades from installs; set to 0 when missing.
+        tests:
+        - device_upgrades >= 0
+      - name: user_installs
+        data_type: BIGINT
+        description: Daily user installs from installs; set to 0 when missing.
+        tests:
+        - user_installs >= 0
+      - name: user_uninstalls
+        data_type: BIGINT
+        description: Daily user uninstalls from installs; set to 0 when missing.
+        tests:
+        - user_uninstalls >= 0
+      - name: install_events
+        data_type: BIGINT
+        description: Daily install events from installs; set to 0 when missing.
+        tests:
+        - install_events >= 0
+      - name: uninstall_events
+        data_type: BIGINT
+        description: Daily uninstall events from installs; set to 0 when missing.
+        tests:
+        - uninstall_events >= 0
+      - name: update_events
+        data_type: BIGINT
+        description: Daily update events from installs; set to 0 when missing.
+        tests:
+        - update_events >= 0
+      - name: crashes
+        data_type: BIGINT
+        description: Daily crash count from crashes; set to 0 when missing.
+        tests:
+        - crashes >= 0
+      - name: anrs
+        data_type: BIGINT
+        description: Daily ANR count from crashes; set to 0 when missing.
+        tests:
+        - anrs >= 0
+      - name: active_devices_last_30_days
+        data_type: BIGINT
+        description: Active devices in the last 30 days from installs; set to 0 when missing.
+        tests:
+        - active_devices_last_30_days >= 0
+      - name: average_rating
+        data_type: DECIMAL(18,3)
+        description: Daily average rating from ratings; nullable.
+      - name: rolling_total_average_rating
+        data_type: DECIMAL(18,3)
+        description: Total average rating from ratings forward-filled by date within each package and OS; leading gaps remain NULL.
+      - name: total_device_installs
+        data_type: HUGEINT
+        description: Running total of device installs within each package and OS ordered by date, forward-filled across later dates without installs, then set to 0 where still NULL; includes the current date.
+        tests:
+        - total_device_installs >= 0
+      - name: total_device_uninstalls
+        data_type: HUGEINT
+        description: Running total of device uninstalls within each package and OS ordered by date, forward-filled across later dates without uninstalls, then set to 0 where still NULL; includes the current date.
+        tests:
+        - total_device_uninstalls >= 0
+      - name: net_device_installs
+        data_type: HUGEINT
+        description: total_device_installs minus total_device_uninstalls after forward-fill and zero-fill; may be negative.
+    - name: google_play__overview_report
+      description: Daily Google Play performance overview per app combining installs, events, store listing, crashes/ANRs, and ratings
+      grain: One row per package_name per date_day present in any source
+      source_models:
+      - staging.stg_google_play__stats_installs_overview
+      - staging.stg_google_play__stats_ratings_overview
+      - staging.stg_google_play__stats_crashes_overview
+      - intermediate.int_google_play__store_performance
+      business_logic: '- Aggregate store performance: - Filter intermediate.int_google_play__store_performance to performance_type = ''country''. - For each (date_day, package_name), sum visitors and installers; take the simple (unweighted) average of conversion rate, ignoring missing values. - Compute running totals for installs: - For each package_name ordered by date_day ascending, compute cumulative totals of daily_device_installs and daily_device_uninstalls. - Combine sources: - Full outer join installs (with running totals), ratings, store_performance (aggregated), and crashes on (date_day, package_name). - When date or package is missing in a source, choose the first available from installs, then ratings, then store_performance, then crashes. - Set missing counts to 0 for device/user installs, uninstalls, upgrades; install/uninstall/update events; crashes; ANRs; active devices; store installers and visitors. Leave store listing conversion rate and daily average rating as NULL if absent. - Forward-fill selected metrics by app: - Within each package_name ordered by date_day, carry forward the latest non-null values for total average rating, cumulative device installs, and cumulative device uninstalls; before the first non-null appears, these remain NULL. - Final calculations: - Default total_device_installs and total_device_uninstalls to 0 in the output. - rolling_store_conversion_rate = acquisitions divided by visitors, rounded to 4 decimals; return NULL when visitors is 0. - net_device_installs = total_device_installs minus total_device_uninstalls. - Output one row per (package_name, date_day).'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Date chosen from the first available among installs, ratings, store performance, and crashes in that order
+        tests:
+        - not_null
+      - name: package_name
+        data_type: VARCHAR
+        description: App package identifier chosen from the first available among installs, ratings, store performance, and crashes in that order
+        tests:
+        - not_null
+      - name: device_installs
+        data_type: BIGINT
+        description: Daily device installs; missing values set to 0; no smoothing or rounding
+      - name: device_uninstalls
+        data_type: BIGINT
+        description: Daily device uninstalls; missing values set to 0; no smoothing or rounding
+      - name: device_upgrades
+        data_type: BIGINT
+        description: Daily device upgrades; missing values set to 0; no smoothing or rounding
+      - name: user_installs
+        data_type: BIGINT
+        description: Daily user installs; missing values set to 0; no smoothing or rounding
+      - name: user_uninstalls
+        data_type: BIGINT
+        description: Daily user uninstalls; missing values set to 0; no smoothing or rounding
+      - name: crashes
+        data_type: BIGINT
+        description: Daily crash events; missing values set to 0; per app per day
+      - name: anrs
+        data_type: BIGINT
+        description: Daily ANR events; missing values set to 0; per app per day
+      - name: install_events
+        data_type: BIGINT
+        description: Daily install events; missing values set to 0; event counts unchanged
+      - name: uninstall_events
+        data_type: BIGINT
+        description: Daily uninstall events; missing values set to 0; event counts unchanged
+      - name: update_events
+        data_type: BIGINT
+        description: Daily update events; missing values set to 0; event counts unchanged
+      - name: store_listing_acquisitions
+        data_type: HUGEINT
+        description: Sum of store installers across country rows per day and app; defaults to 0 when store performance is absent
+      - name: store_listing_visitors
+        data_type: HUGEINT
+        description: Sum of store visitors across country rows per day and app; defaults to 0 when store performance is absent
+      - name: store_listing_conversion_rate
+        data_type: DOUBLE
+        description: Unweighted average of store listing conversion rate across country rows per day and app; NULL when no rows; no rounding applied
+      - name: active_devices_last_30_days
+        data_type: BIGINT
+        description: Active devices in the last 30 days from installs; missing values set to 0
+      - name: average_rating
+        data_type: DECIMAL(18,3)
+        description: Daily average rating; may be NULL; three-decimal precision
+      - name: rolling_total_average_rating
+        data_type: DECIMAL(18,3)
+        description: Forward-filled total average rating per app ordered by date; remains NULL until the first non-null appears
+      - name: total_device_installs
+        data_type: HUGEINT
+        description: Cumulative device installs per app ordered by date; forward-filled across days without install data; defaults to 0 in output
+      - name: total_device_uninstalls
+        data_type: HUGEINT
+        description: Cumulative device uninstalls per app ordered by date; forward-filled across days without install data; defaults to 0 in output
+      - name: rolling_store_conversion_rate
+        data_type: DOUBLE
+        description: Acquisitions divided by visitors, rounded to 4 decimals; returns NULL when visitors equals 0
+      - name: net_device_installs
+        data_type: HUGEINT
+        description: Total device installs minus total device uninstalls after defaulting NULLs to 0
+    - name: google_play__time_series_trends
+      description: Daily Google Play performance trends with rolling averages, growth, volatility, anomalies, and derived insights for the last 90 days
+      grain: One row per package_name + date_day within the last 90 days
+      source_models:
+      - intermediate.int_google_play__user_behavior_metrics (date_day, package_name, daily_device_installs, daily_device_uninstalls, active_device_installs, daily_churn_rate, country)
+      - intermediate.int_google_play__revenue_analytics (date_day, package_name, daily_net_revenue, daily_paying_transactions, average_transaction_value, new_subscriptions, total_active_subscriptions)
+      business_logic: '- Aggregate daily by package_name and date_day: - User behavior: sum installs, sum uninstalls, sum active devices, average churn rate, and count distinct countries. - Revenue: sum net revenue, sum paying transactions, average transaction value, sum new subscriptions, and average active subscriptions. - Combine the two daily aggregates with a full outer join on package_name and date_day; for missing values set numeric measures to 0; set defaults: quality_score=75.0, crash_rate=0.0, anr_rate=0.0. - Compute rolling metrics per package_name ordered by date_day: - 7-day moving averages (including the current day): installs, revenue, quality, churn. - 30-day moving averages (including the current day): installs, revenue, quality. - Week-over-week growth rates: compare installs and revenue to the value 7 days earlier; return NULL if the prior value is missing or not positive. - Volatility over 30 days: coefficient of variation (standard deviation divided by mean); return NULL if the mean is not positive. - Derive seasonality and labels: - day_name from day of week (Sunday..Saturday), month_name from month (January..December), and week_of_year from date_day. - install_trend from week-over-week install growth: >0.10 Strong Growth; >0.05 Moderate Growth; >0 Slow Growth; >-0.05 Stable; >-0.10 Declining; else Strong Decline; NULL→Insufficient Data. - revenue_trend from week-over-week revenue growth: >0.20 Revenue Surge; >0.10 Strong Revenue Growth; >0.05 Moderate Revenue Growth; >0 Slow Revenue Growth; >-0.10 Revenue Stable; else Revenue Declining; NULL→No Revenue Data. - install_stability from the 30-day install volatility: >1.0 Highly Volatile; >0.5 Moderately Volatile; >0.2 Low Volatility; not NULL→Very Stable; NULL→Unknown. - performance_momentum: Positive Momentum if growth>0.05 and quality>7-day avg; Building Momentum if growth>0 and quality≥7-day avg; Negative Momentum if growth≤0 and quality<7-day avg; Quality Decline if quality<7-day avg (and prior rules not met); else Stable Momentum. - Anomaly detection (30-day context): - install_anomaly_score and revenue_anomaly_score are absolute z-scores using the 30-day mean and standard deviation; return NULL if the mean is not positive or the standard deviation is zero. - anomaly_flag precedence: Install Anomaly if install z-score>2; else Revenue Anomaly if revenue z-score>2; else Quality Drop if quality is ≥20 points below the 7-day average; else Normal. - Final calculations and rounding: - Rounding: churn 4dp; revenue 2dp; avg transaction value 2dp; active subscriptions 0dp; quality 1dp; crash_rate_per_1k 2dp; anr_rate_per_1k 2dp; 7-day/30-day install MAs 1dp; 7-day/30-day revenue MAs 2dp; 7-day/30-day quality MAs 1dp; 7-day churn MA 4dp; WoW growth rates 4dp; volatility coefficients 4dp; anomaly scores 2dp; install/uninstall ratio 2dp; revenue per active device 4dp. - daily_performance_vs_baseline: Above Average if installs > 1.5× 30-day avg; Below Average if installs < 0.7× 30-day avg; else Average Performance. - risk_growth_profile: High Growth, High Risk if install volatility>0.5 and WoW install growth>0.1; Stable Growth if install volatility≤0.3 and WoW install growth>0.05; Stable & Predictable if install volatility≤0.3 and |WoW install growth|≤0.05; Unpredictable Performance if install volatility>0.5; else Standard Variation. - Filters: keep rows where date_day and package_name are not NULL and date_day is within the last 90 days; final ordering is by package_name and descending date_day.'
+      columns:
+      - name: date_day
+        data_type: DATE
+        description: Calendar date of the metrics (limited to the last 90 days)
+        tests:
+        - not_null
+      - name: package_name
+        data_type: VARCHAR
+        description: Google Play package identifier for the app
+        tests:
+        - not_null
+      - name: day_name
+        data_type: VARCHAR
+        description: Day of week name (Sunday..Saturday) based on date_day
+      - name: month_name
+        data_type: VARCHAR
+        description: Month name (January..December) based on date_day
+      - name: week_of_year
+        data_type: BIGINT
+        description: Week number of the year based on date_day
+      - name: daily_installs
+        data_type: HUGEINT
+        description: Total installs aggregated per package_name and date_day; missing values default to 0
+      - name: daily_uninstalls
+        data_type: HUGEINT
+        description: Total uninstalls aggregated per package_name and date_day; missing values default to 0
+      - name: active_devices
+        data_type: HUGEINT
+        description: Total active devices aggregated per package_name and date_day; missing values default to 0
+      - name: daily_churn_rate
+        data_type: DOUBLE
+        description: Average daily churn rate per package_name and date_day, defaulted to 0 when missing and rounded to 4 decimals
+      - name: active_countries
+        data_type: BIGINT
+        description: Distinct country count per package_name and date_day, defaulted to 0 when missing
+      - name: daily_revenue
+        data_type: DECIMAL(38,2)
+        description: Total net revenue per package_name and date_day, defaulted to 0 when missing and rounded to 2 decimals
+      - name: daily_transactions
+        data_type: HUGEINT
+        description: Total paying transactions per package_name and date_day, defaulted to 0 when missing
+      - name: avg_transaction_value
+        data_type: DOUBLE
+        description: Average transaction value per package_name and date_day, defaulted to 0 when missing and rounded to 2 decimals
+      - name: new_subscriptions
+        data_type: HUGEINT
+        description: Total new subscriptions per package_name and date_day, defaulted to 0 when missing
+      - name: active_subscriptions
+        data_type: DOUBLE
+        description: Average active subscriptions per package_name and date_day, defaulted to 0 when missing and rounded to 0 decimals
+      - name: quality_score
+        data_type: DECIMAL(3,1)
+        description: Quality score defaulted to 75.0 and rounded to 1 decimal
+      - name: crash_rate_per_1k
+        data_type: DECIMAL(2,1)
+        description: Crash rate per 1,000 devices defaulted to 0.0 and rounded to 2 decimals in logic, stored with 1 decimal due to type
+      - name: anr_rate_per_1k
+        data_type: DECIMAL(2,1)
+        description: ANR rate per 1,000 devices defaulted to 0.0 and rounded to 2 decimals in logic, stored with 1 decimal due to type
+      - name: ma_7d_installs
+        data_type: DOUBLE
+        description: 7-day moving average of installs (includes current day, per package_name ordered by date), rounded to 1 decimal
+      - name: ma_30d_installs
+        data_type: DOUBLE
+        description: 30-day moving average of installs (includes current day, per package_name ordered by date), rounded to 1 decimal
+      - name: ma_7d_revenue
+        data_type: DOUBLE
+        description: 7-day moving average of revenue (includes current day, per package_name ordered by date), rounded to 2 decimals
+      - name: ma_30d_revenue
+        data_type: DOUBLE
+        description: 30-day moving average of revenue (includes current day, per package_name ordered by date), rounded to 2 decimals
+      - name: ma_7d_quality
+        data_type: DOUBLE
+        description: 7-day moving average of quality score (includes current day, per package_name ordered by date), rounded to 1 decimal
+      - name: ma_30d_quality
+        data_type: DOUBLE
+        description: 30-day moving average of quality score (includes current day, per package_name ordered by date), rounded to 1 decimal
+      - name: ma_7d_churn
+        data_type: DOUBLE
+        description: 7-day moving average of daily churn rate (includes current day, per package_name ordered by date), rounded to 4 decimals
+      - name: wow_install_growth_rate
+        data_type: DOUBLE
+        description: Week-over-week install growth versus the value 7 days earlier; NULL if prior value is missing or not positive; rounded to 4 decimals
+      - name: wow_revenue_growth_rate
+        data_type: DOUBLE
+        description: Week-over-week revenue growth versus the value 7 days earlier; NULL if prior value is missing or not positive; rounded to 4 decimals
+      - name: install_trend
+        data_type: VARCHAR
+        description: 'Label from week-over-week install growth: >0.10 Strong Growth; >0.05 Moderate Growth; >0 Slow Growth; >-0.05 Stable; >-0.10 Declining; else Strong Decline; NULL→Insufficient Data'
+      - name: revenue_trend
+        data_type: VARCHAR
+        description: 'Label from week-over-week revenue growth: >0.20 Revenue Surge; >0.10 Strong Revenue Growth; >0.05 Moderate Revenue Growth; >0 Slow Revenue Growth; >-0.10 Revenue Stable; else Revenue Declining; NULL→No Revenue Data'
+      - name: install_volatility_coefficient
+        data_type: DOUBLE
+        description: 30-day coefficient of variation for installs; NULL if the 30-day mean is not positive; rounded to 4 decimals
+      - name: revenue_volatility_coefficient
+        data_type: DOUBLE
+        description: 30-day coefficient of variation for revenue; NULL if the 30-day mean is not positive; rounded to 4 decimals
+      - name: install_stability
+        data_type: VARCHAR
+        description: 'Install volatility classification: >1.0 Highly Volatile; >0.5 Moderately Volatile; >0.2 Low Volatility; not NULL→Very Stable; NULL→Unknown'
+      - name: performance_momentum
+        data_type: VARCHAR
+        description: Positive Momentum if WoW install growth>0.05 and quality>7-day avg; Building Momentum if growth>0 and quality≥7-day avg; Negative Momentum if growth≤0 and quality<7-day avg; Quality Decline if quality<7-day avg (other rules not met); else Stable Momentum
+      - name: install_anomaly_score
+        data_type: DOUBLE
+        description: Absolute z-score of installs versus the 30-day mean using the 30-day standard deviation; NULL if mean≤0 or stdev=0; rounded to 2 decimals
+      - name: revenue_anomaly_score
+        data_type: DOUBLE
+        description: Absolute z-score of revenue versus the 30-day mean using the 30-day standard deviation; NULL if mean≤0 or stdev=0; rounded to 2 decimals
+      - name: anomaly_flag
+        data_type: VARCHAR
+        description: Install Anomaly if install z-score>2; else Revenue Anomaly if revenue z-score>2; else Quality Drop if quality is 20+ points below the 7-day average; else Normal
+      - name: daily_performance_vs_baseline
+        data_type: VARCHAR
+        description: Above Average Performance if installs > 1.5× 30-day average; Below Average Performance if installs < 0.7× 30-day average; otherwise Average Performance
+      - name: risk_growth_profile
+        data_type: VARCHAR
+        description: 'Profile from install volatility and WoW install growth: High Growth, High Risk; Stable Growth; Stable & Predictable; Unpredictable Performance; or Standard Variation'
+      - name: daily_install_uninstall_ratio
+        data_type: DOUBLE
+        description: daily_installs divided by daily_uninstalls when daily_uninstalls>0; otherwise NULL; rounded to 2 decimals
+      - name: revenue_per_active_device
+        data_type: DOUBLE
+        description: daily_revenue divided by active_devices when active_devices>0 (using unrounded revenue), rounded to 4 decimals
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
