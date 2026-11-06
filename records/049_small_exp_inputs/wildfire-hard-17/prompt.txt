@@ -1,0 +1,1 @@
+What is the average elevation (in feet) of the weather stations used for fire site monitoring in the NOAA dataset?
