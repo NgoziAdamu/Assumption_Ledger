@@ -1,0 +1,1274 @@
+{
+  "stg_amazon_ads__ad_group_report": {
+    "items": [
+      {
+        "problem": "Invalid or missing ad_group_id values are retained instead of causing row deletion.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT * FROM cleaned",
+        "source": "ad_group_id IS NOT NULL AND TRIM(ad_group_id) != ''; REGEXP_LIKE(ad_group_id, '^[A-Za-z0-9_-]{1,128}$'); on_failure: delete_row",
+        "importance": 5,
+        "reason": "Invalid identifiers can enter every downstream ad-group report."
+      },
+      {
+        "problem": "Dates outside the permitted range are cast but never nullified.",
+        "about": "requirement",
+        "evidence_in_work": "CAST(TRY_CAST(date AS DATE) AS DATE) AS date_day",
+        "source": "date_day >= '2020-01-01' AND date_day <= CURRENT_DATE; on_failure: nullify_field",
+        "importance": 4,
+        "reason": "Parseable invalid dates remain available for downstream reporting."
+      },
+      {
+        "problem": "CTR and CPC are emitted as NULL placeholders despite available clicks, impressions, and cost.",
+        "about": "requirement",
+        "evidence_in_work": "if expr is None: expr=f\"NULL::{col['data_type']}\"",
+        "source": "click_through_rate = clicks / NULLIF(impressions, 0) when CTR doesn't match",
+        "importance": 4,
+        "reason": "The staging output omits computable performance metrics."
+      },
+      {
+        "problem": "Negative clicks are passed through rather than corrected to zero.",
+        "about": "requirement",
+        "evidence_in_work": "expr=f'TRY_CAST({rawexpr} AS BIGINT)'",
+        "source": "CASE WHEN clicks < 0 THEN 0 ELSE clicks END for negative value correction",
+        "importance": 3,
+        "reason": "Negative counts can distort downstream rates and totals."
+      }
+    ],
+    "fewer_reason": "Four concrete concerns are supported by the visible staging generator and this table's contract."
+  },
+  "stg_amazon_ads__campaign_report": {
+    "items": [
+      {
+        "problem": "CTR, CPC, and ROAS are left NULL rather than derived from available source metrics.",
+        "about": "requirement",
+        "evidence_in_work": "if expr is None: expr=f\"NULL::{col['data_type']}\"",
+        "source": "columns: click_through_rate, cost_per_click, return_on_ad_spend",
+        "importance": 5,
+        "reason": "Unified campaign metrics consume these fields directly, affecting screening and performance tiers."
+      },
+      {
+        "problem": "Rows with NULL campaign_id are not deleted.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT * FROM cleaned",
+        "source": "campaign_id; constraints: [not_null]",
+        "importance": 4,
+        "reason": "Missing campaign keys undermine campaign-level analysis."
+      },
+      {
+        "problem": "Out-of-range and sentinel dates are preserved whenever they parse successfully.",
+        "about": "requirement",
+        "evidence_in_work": "CAST(TRY_CAST(date AS DATE) AS DATE) AS date_day",
+        "source": "date_day >= '2020-01-01' AND date_day <= CURRENT_DATE; on_failure: nullify_field",
+        "importance": 4,
+        "reason": "Invalid dates can change time-window selection and campaign ages."
+      },
+      {
+        "problem": "Negative clicks are not corrected.",
+        "about": "requirement",
+        "evidence_in_work": "CAST(TRY_CAST(\"clicks\" AS BIGINT) AS INTEGER) AS clicks",
+        "source": "CASE WHEN clicks < 0 THEN 0 ELSE clicks END for negative value correction",
+        "importance": 3,
+        "reason": "This changes downstream totals and which rows survive quality filters."
+      }
+    ],
+    "fewer_reason": "Only four distinct, grounded implementation concerns were identified."
+  },
+  "stg_amazon_ads__keyword_report": {
+    "items": [
+      {
+        "problem": "Invalid campaign_id values are not nullified according to the length, whitespace, and character rules.",
+        "about": "requirement",
+        "evidence_in_work": "expr=f'CAST({rawexpr} AS VARCHAR)'",
+        "source": "LENGTH(campaign_id) <= 50 AND REGEXP_LIKE(campaign_id, '^[A-Za-z0-9_-]+$'); on_failure: nullify_field",
+        "importance": 4,
+        "reason": "Malformed campaign references propagate into keyword marts."
+      },
+      {
+        "problem": "NULL keyword_id values are retained despite the required non-null constraint.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT * FROM cleaned",
+        "source": "keyword_id; constraints: [not_null]",
+        "importance": 4,
+        "reason": "Records without their primary business identifier remain reportable."
+      },
+      {
+        "problem": "Invalid dates are not nullified after casting.",
+        "about": "requirement",
+        "evidence_in_work": "expr=f\"TRY_CAST({rawcol} AS DATE)\"",
+        "source": "date_day >= '2020-01-01' AND date_day <= CURRENT_DATE; on_failure: nullify_field",
+        "importance": 4,
+        "reason": "Parseable dates outside the contractual range remain unchanged."
+      },
+      {
+        "problem": "Computable CTR and CPC fields are left NULL.",
+        "about": "requirement",
+        "evidence_in_work": "'cost_per_click':['cpc'],'click_through_rate':['ctr']",
+        "source": "columns: click_through_rate, cost_per_click",
+        "importance": 3,
+        "reason": "The chosen raw report lacks cpc and ctr columns but contains their inputs."
+      }
+    ],
+    "fewer_reason": "Missing attribution fields are genuinely absent from the indexed source, so they are not treated as additional proven mapping omissions."
+  },
+  "stg_amazon_ads__product_report": {
+    "items": [
+      {
+        "problem": "Rows with NULL advertised_asin are retained.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT * FROM cleaned",
+        "source": "advertised_asin; constraints: [not_null]",
+        "importance": 4,
+        "reason": "Product reporting can contain records without its required product identifier."
+      },
+      {
+        "problem": "Parseable out-of-range dates are not nullified.",
+        "about": "requirement",
+        "evidence_in_work": "expr=f\"TRY_CAST({rawcol} AS DATE)\"",
+        "source": "date_day >= '2020-01-01' AND date_day <= CURRENT_DATE; on_failure: nullify_field",
+        "importance": 4,
+        "reason": "Invalid dates propagate into URL/product reports."
+      },
+      {
+        "problem": "CTR and CPC are NULL placeholders even though their inputs exist.",
+        "about": "requirement",
+        "evidence_in_work": "'cost_per_click':['cpc'],'click_through_rate':['ctr']",
+        "source": "columns: click_through_rate, cost_per_click",
+        "importance": 3,
+        "reason": "The staging performance fields are not populated."
+      },
+      {
+        "problem": "Casting DOUBLE ASIN and SKU fields directly to text may produce numeric representations rather than usable product identifiers.",
+        "about": "data",
+        "evidence_in_work": "['advertised_asin', 'advertised_sku'], ... ['DOUBLE', 'DOUBLE']",
+        "source": "raw.amazon_ads_product_ad_history_data: asin, sku",
+        "importance": 2,
+        "reason": "The observed source typing is suspicious and no values or alternative product identifiers were checked."
+      }
+    ],
+    "fewer_reason": "Four supported issues were found; absent source attribution columns alone do not establish another error."
+  },
+  "stg_amazon_ads__search_report": {
+    "items": [
+      {
+        "problem": "CTR and CPC remain NULL instead of being calculated from available report inputs.",
+        "about": "requirement",
+        "evidence_in_work": "'cost_per_click':['cpc'],'click_through_rate':['ctr']",
+        "source": "click_through_rate = clicks / NULLIF(impressions, 0) when CTR doesn't match",
+        "importance": 3,
+        "reason": "The raw search report contains clicks, impressions, and cost but not the selected rate aliases."
+      },
+      {
+        "problem": "Negative clicks are not corrected before downstream reporting.",
+        "about": "requirement",
+        "evidence_in_work": "expr=f'TRY_CAST({rawexpr} AS BIGINT)'",
+        "source": "CASE WHEN clicks < 0 THEN 0 ELSE clicks END for negative value correction",
+        "importance": 3,
+        "reason": "Negative counts can alter search-term performance calculations."
+      },
+      {
+        "problem": "match_type is left NULL without checking the available keyword history for a possible source.",
+        "about": "data",
+        "evidence_in_work": "if expr is None: expr=f\"NULL::{col['data_type']}\"",
+        "source": "raw.amazon_ads_keyword_history_data: id, ad_group_id, campaign_id, match_type",
+        "importance": 2,
+        "reason": "A relevant unused source may explain a field otherwise treated as unavailable, although enrichment requirements are not explicit."
+      }
+    ],
+    "fewer_reason": "The search staging contract has no table-specific date or key validation rules, and further concerns would be speculative."
+  },
+  "stg_apple_search_ads__ad_group_report": {
+    "items": [
+      {
+        "problem": "Invalid ad-group identifiers and invalid or missing dates are never filtered out.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT * FROM cleaned",
+        "source": "ad_group_id ... LENGTH(ad_group_id) <= 50; date_day IS NOT NULL ...; on_failure: delete_row",
+        "importance": 5,
+        "reason": "Required row-level validity checks are completely omitted."
+      },
+      {
+        "problem": "Spend is rounded but not range-validated or corrected for missing values.",
+        "about": "requirement",
+        "evidence_in_work": "expr=f'ROUND(TRY_CAST({rawexpr} AS DOUBLE), 2)'",
+        "source": "spend >= 0 AND spend <= 999999999999.99; spend IS NOT NULL OR spend = 0",
+        "importance": 4,
+        "reason": "Invalid and missing monetary values retain the wrong treatment."
+      },
+      {
+        "problem": "Cost-per-tap, cost-per-conversion, and calculated tap-through-rate are emitted as NULL.",
+        "about": "requirement",
+        "evidence_in_work": "if expr is None: expr=f\"NULL::{col['data_type']}\"",
+        "source": "columns: calculated_tap_through_rate, cost_per_tap, cost_per_conversion",
+        "importance": 4,
+        "reason": "Available spend, taps, conversions, and impressions are not used to populate derived metrics."
+      },
+      {
+        "problem": "Currency normalization and enum validation are omitted.",
+        "about": "requirement",
+        "evidence_in_work": "else: expr=rawexpr",
+        "source": "avg_cpt_currency = UPPER(TRIM(avg_cpt_currency)); avg_cpa_currency IN ('USD','EUR','GBP','JPY','AUD','CAD')",
+        "importance": 3,
+        "reason": "Invalid or inconsistently formatted currency codes remain unchanged."
+      },
+      {
+        "problem": "Conversion rates outside zero to one are not nullified.",
+        "about": "requirement",
+        "evidence_in_work": "'conversion_rate':['conversion_rate']",
+        "source": "conversion_rate BETWEEN 0 AND 1; on_failure: nullify_field",
+        "importance": 3,
+        "reason": "Casting alone does not enforce the metric's bounds."
+      }
+    ],
+    "fewer_reason": "Five distinct omissions are directly supported."
+  },
+  "stg_apple_search_ads__ad_report": {
+    "items": [
+      {
+        "problem": "All four derived rate and cost metrics are left NULL despite available inputs.",
+        "about": "requirement",
+        "evidence_in_work": "if expr is None: expr=f\"NULL::{col['data_type']}\"",
+        "source": "columns: tap_through_rate, cost_per_tap, cost_per_conversion, cost_per_download",
+        "importance": 5,
+        "reason": "These missing fields feed the unified ad-level report directly."
+      },
+      {
+        "problem": "The DOUBLE-typed local_spend_currency field is cast to text without checking whether it contains usable currency information.",
+        "about": "data",
+        "evidence_in_work": "local_spend_currency ... DOUBLE",
+        "source": "spend_currency; data_type: VARCHAR",
+        "importance": 2,
+        "reason": "The unusual raw type may signal missing or malformed currency values rather than valid codes."
+      }
+    ],
+    "fewer_reason": "The table-specific contract contains no additional validation rules, limiting grounded concerns."
+  },
+  "stg_apple_search_ads__campaign_report": {
+    "items": [
+      {
+        "problem": "campaign_id is left NULL because the generator searches only campaign_id rather than the source id column.",
+        "about": "data",
+        "evidence_in_work": "'campaign_id':['campaign_id','CAMPAIGN_ID']",
+        "source": "raw.apple_search_campaign_report_data: date, id",
+        "importance": 5,
+        "reason": "Every campaign identifier is lost despite an available source key."
+      },
+      {
+        "problem": "Invalid and missing report dates are retained instead of deleting their rows.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT * FROM cleaned",
+        "source": "date_day IS NOT NULL AND date_day >= '2020-01-01' AND date_day <= CURRENT_DATE; on_failure: delete_row",
+        "importance": 5,
+        "reason": "The required date validity filter is absent."
+      },
+      {
+        "problem": "Spend range validation and missing-spend correction are not implemented.",
+        "about": "requirement",
+        "evidence_in_work": "expr=f'ROUND(TRY_CAST({rawexpr} AS DOUBLE), 2)'",
+        "source": "spend >= 0 AND spend <= 999999999999.99; spend IS NOT NULL OR spend = 0",
+        "importance": 4,
+        "reason": "Rounding does not implement the specified invalid-value actions."
+      },
+      {
+        "problem": "Calculated tap-through-rate and unit-cost metrics are NULL placeholders.",
+        "about": "requirement",
+        "evidence_in_work": "if expr is None: expr=f\"NULL::{col['data_type']}\"",
+        "source": "columns: calculated_tap_through_rate, cost_per_tap, cost_per_conversion",
+        "importance": 4,
+        "reason": "Computable performance fields are omitted."
+      },
+      {
+        "problem": "Currency correction and validation and conversion-rate bounds are omitted.",
+        "about": "requirement",
+        "evidence_in_work": "else: expr=rawexpr",
+        "source": "avg_cpa_currency = UPPER(TRIM(avg_cpa_currency)); conversion_rate BETWEEN 0 AND 1",
+        "importance": 3,
+        "reason": "These fields can remain invalid after successful casting."
+      }
+    ],
+    "fewer_reason": "Five grounded problems were identified."
+  },
+  "stg_facebook_ads__ad_report": {
+    "items": [
+      {
+        "problem": "Spend is always NULL because a duplicate dictionary entry restricts spend lookup to local_spend_amount.",
+        "about": "data",
+        "evidence_in_work": "'spend':['local_spend_amount']",
+        "source": "raw.facebook_ads_basic_ad_data: spend",
+        "importance": 5,
+        "reason": "An available core monetary metric is discarded for all Facebook records."
+      },
+      {
+        "problem": "CTR, CPC, and CPM are left NULL rather than calculated.",
+        "about": "requirement",
+        "evidence_in_work": "'cost_per_thousand_impressions':['ecpm'],'cost_per_click':['cpc'],'click_through_rate':['ctr']",
+        "source": "columns: click_through_rate, cost_per_click, cost_per_thousand_impressions",
+        "importance": 5,
+        "reason": "The raw feed lacks those aliases, and downstream ad reports copy the resulting NULLs."
+      },
+      {
+        "problem": "Rows with missing ad_id or invalid dates are not deleted.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT * FROM cleaned",
+        "source": "ad_id; constraints: [not_null]; date_day ... on_failure: delete_row",
+        "importance": 4,
+        "reason": "Required key and date screening is absent."
+      },
+      {
+        "problem": "Negative impressions and inline_link_clicks are not corrected.",
+        "about": "requirement",
+        "evidence_in_work": "expr=f'TRY_CAST({rawexpr} AS BIGINT)'",
+        "source": "impressions >= 0; inline_link_clicks >= 0; on_failure: correct",
+        "importance": 4,
+        "reason": "Invalid engagement counts can survive into marts and analytics."
+      }
+    ],
+    "fewer_reason": "Four distinct concerns cover the visible mapping and validation omissions."
+  },
+  "stg_facebook_ads__ad_actions": {
+    "items": [],
+    "fewer_reason": "The detailed contract for this table was not provided, and the visible source mapping alone does not establish a specific additional error."
+  },
+  "stg_google_ads__account_report": {
+    "items": [
+      {
+        "problem": "Spend is NULL rather than converted from cost_micros.",
+        "about": "data",
+        "evidence_in_work": "CAST(NULL::DECIMAL(18,2) AS DECIMAL(18,2)) AS spend",
+        "source": "raw.google_ads_account_stats_data: cost_micros",
+        "importance": 5,
+        "reason": "The source contains cost information that the lookup never uses."
+      },
+      {
+        "problem": "Missing account identifiers and invalid or future dates are not filtered.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT * FROM cleaned",
+        "source": "account_id; constraints: [not_null]; date_day IS NOT NULL AND date_day <= CURRENT_DATE; on_failure: delete_row",
+        "importance": 4,
+        "reason": "Required key and date constraints are not enforced."
+      },
+      {
+        "problem": "Malformed numeric strings are silently nullified without distinguishing unusable records from optional field errors.",
+        "about": "data",
+        "evidence_in_work": "Could not convert string \"false\" to DECIMAL(15,2) ... conversions_value",
+        "source": "Remove entire row when records contain severe data quality issues that make them unusable downstream.",
+        "importance": 2,
+        "reason": "Observed source corruption warrants validation beyond making casts executable."
+      }
+    ],
+    "fewer_reason": "Three concerns are supported by the available account staging specification."
+  },
+  "stg_google_ads__campaign_report": {
+    "items": [
+      {
+        "problem": "campaign_id is NULL because the available source id is not included in the effective lookup.",
+        "about": "data",
+        "evidence_in_work": "'campaign_id':['campaign_id','CAMPAIGN_ID']",
+        "source": "raw.google_ads_campaign_stats_data: id",
+        "importance": 5,
+        "reason": "All Google campaigns collapse into missing identifiers in downstream grouping and age calculations."
+      },
+      {
+        "problem": "Spend is NULL rather than mapped from cost_micros.",
+        "about": "data",
+        "evidence_in_work": "'spend':['local_spend_amount']",
+        "source": "raw.google_ads_campaign_stats_data: cost_micros",
+        "importance": 5,
+        "reason": "Google spending is lost and later zero-filled, corrupting monetary KPIs."
+      }
+    ],
+    "fewer_reason": "Two definite source-mapping omissions dominate this table; its contract supplies no further field-specific validation rules."
+  },
+  "stg_google_ads__ad_group_report": {
+    "items": [
+      {
+        "problem": "Spend is not mapped from the available cost_micros field.",
+        "about": "data",
+        "evidence_in_work": "'spend':['local_spend_amount']",
+        "source": "raw.google_ads_ad_group_stats_data: cost_micros",
+        "importance": 5,
+        "reason": "An entire core metric becomes NULL."
+      },
+      {
+        "problem": "ad_group_id is taken from base_ad_group without checking whether id is the intended report entity key.",
+        "about": "data",
+        "evidence_in_work": "'ad_group_id':['ad_group_id','base_ad_group']",
+        "source": "raw.google_ads_ad_group_stats_data: base_ad_group, id",
+        "importance": 3,
+        "reason": "The source exposes two potentially different identifiers and their semantics were not verified."
+      },
+      {
+        "problem": "Fractional conversions may be rounded by an unnecessary BIGINT conversion before their final decimal cast.",
+        "about": "data",
+        "evidence_in_work": "elif lc in ('clicks','impressions','conversions', ...): expr=f'TRY_CAST({rawexpr} AS BIGINT)'",
+        "source": "raw.google_ads_ad_group_stats_data ... conversions ... DOUBLE",
+        "importance": 3,
+        "reason": "Attributed fractional conversions can be changed even when valid."
+      }
+    ],
+    "fewer_reason": "Only three source-grounded concerns can be identified without this table's omitted detailed contract."
+  },
+  "stg_google_ads__account_stats": {
+    "items": [
+      {
+        "problem": "The generated SQL has the same missing-spend lookup as the account report.",
+        "about": "data",
+        "evidence_in_work": "'google_ads__account_stats':'google_ads_account_stats_data'; 'spend':['local_spend_amount']",
+        "source": "raw.google_ads_account_stats_data: cost_micros",
+        "importance": 3,
+        "reason": "The file would discard source costs if executed, although it is not in the configured run."
+      }
+    ],
+    "fewer_reason": "This SQL file was generated but not materialized, and its detailed contract was not supplied."
+  },
+  "stg_google_ads__campaign_stats": {
+    "items": [
+      {
+        "problem": "The generated SQL omits the source id fallback and cost_micros mapping.",
+        "about": "data",
+        "evidence_in_work": "'campaign_id':['campaign_id','CAMPAIGN_ID']; 'spend':['local_spend_amount']",
+        "source": "raw.google_ads_campaign_stats_data: id, cost_micros",
+        "importance": 3,
+        "reason": "Campaign keys and costs would be lost if this unconfigured file were executed."
+      }
+    ],
+    "fewer_reason": "The file is outside the run configuration and its detailed contract is unavailable."
+  },
+  "stg_google_ads__ad_group_stats": {
+    "items": [
+      {
+        "problem": "The generated SQL cannot obtain spend from cost_micros and converts fractional conversions through BIGINT.",
+        "about": "data",
+        "evidence_in_work": "'spend':['local_spend_amount']; expr=f'TRY_CAST({rawexpr} AS BIGINT)'",
+        "source": "raw.google_ads_ad_group_stats_data: conversions, cost_micros",
+        "importance": 3,
+        "reason": "Costs and conversion precision would be affected if this file were executed."
+      }
+    ],
+    "fewer_reason": "This generated file is not configured for execution and lacks a supplied detailed specification."
+  },
+  "stg_google_ads__ad_stats": {
+    "items": [
+      {
+        "problem": "cost_micros is not used to populate spend or cost.",
+        "about": "data",
+        "evidence_in_work": "'spend':['local_spend_amount']; 'cost':['cost','spend','local_spend_amount','cost_in_usd']",
+        "source": "raw.google_ads_ad_stats_data: cost_micros",
+        "importance": 3,
+        "reason": "Source costs would be discarded if the file were run."
+      },
+      {
+        "problem": "Fractional conversion values may be changed by casting conversions through BIGINT.",
+        "about": "data",
+        "evidence_in_work": "expr=f'TRY_CAST({rawexpr} AS BIGINT)'",
+        "source": "raw.google_ads_ad_stats_data ... conversions ... DOUBLE",
+        "importance": 2,
+        "reason": "The risk is real for fractional values but this SQL is not part of the executed configuration."
+      }
+    ],
+    "fewer_reason": "Only two concerns are supported for this unexecuted SQL file."
+  },
+  "stg_google_ads__keyword_stats": {
+    "items": [
+      {
+        "problem": "The generator does not map cost_micros to spend or the criterion identifier to keyword_id.",
+        "about": "data",
+        "evidence_in_work": "'spend':['local_spend_amount']; candidates=[lc]",
+        "source": "raw.google_ads_keyword_stats_data: ad_group_criterion_criterion_id, cost_micros",
+        "importance": 3,
+        "reason": "Relevant source fields are available but ignored if this file is executed."
+      }
+    ],
+    "fewer_reason": "The file is not executed and its detailed output contract was not provided."
+  },
+  "stg_google_ads__search_term_keyword_stats": {
+    "items": [
+      {
+        "problem": "Source cost_micros is not mapped to a monetary output.",
+        "about": "data",
+        "evidence_in_work": "'spend':['local_spend_amount']; 'cost':['cost','spend','local_spend_amount','cost_in_usd']",
+        "source": "raw.google_ads_search_term_keyword_stats_data: cost_micros",
+        "importance": 3,
+        "reason": "An available monetary metric would be lost."
+      },
+      {
+        "problem": "DOUBLE conversions are routed through BIGINT and can lose fractional attribution.",
+        "about": "data",
+        "evidence_in_work": "expr=f'TRY_CAST({rawexpr} AS BIGINT)'",
+        "source": "raw.google_ads_search_term_keyword_stats_data ... conversions ... DOUBLE",
+        "importance": 2,
+        "reason": "This changes valid fractional values, but the file is outside the executed configuration."
+      }
+    ],
+    "fewer_reason": "Two concrete mapping and precision risks are visible."
+  },
+  "stg_linkedin_ads__campaign_report": {
+    "items": [
+      {
+        "problem": "CTR, CPC, and CPM are left NULL despite available clicks, impressions, and cost.",
+        "about": "requirement",
+        "evidence_in_work": "'cost_per_thousand_impressions':['ecpm'],'cost_per_click':['cpc'],'click_through_rate':['ctr']",
+        "source": "columns: click_through_rate, cost_per_click, cost_per_thousand_impressions",
+        "importance": 4,
+        "reason": "The lookup expects fields absent from the LinkedIn feed instead of deriving metrics."
+      },
+      {
+        "problem": "Invalid text values in numeric engagement fields are silently nullified without checking their extent.",
+        "about": "data",
+        "evidence_in_work": "Could not convert string 'false' to INT32 ... video_completions",
+        "source": "raw.linkedin_ad_analytics_by_campaign_data: video_completions",
+        "importance": 2,
+        "reason": "Observed corruption could materially reduce usable engagement data."
+      }
+    ],
+    "fewer_reason": "Only two grounded concerns are supported by this staging specification."
+  },
+  "stg_microsoft_ads__campaign_report": {
+    "items": [
+      {
+        "problem": "Spend is not read from the available spend column because the effective alias accepts only local_spend_amount.",
+        "about": "data",
+        "evidence_in_work": "'spend':['local_spend_amount']",
+        "source": "raw.microsoft_ads_campaign_performance_daily_report_data: spend",
+        "importance": 5,
+        "reason": "All source spend values are discarded."
+      }
+    ],
+    "fewer_reason": "The detailed Microsoft contract is omitted, so additional metric expectations cannot be checked reliably."
+  },
+  "stg_pinterest_ads__campaign_report": {
+    "items": [
+      {
+        "problem": "The generator may leave standard spend and clicks fields NULL because it does not use Pinterest's micro-dollar spend and clickthrough fields.",
+        "about": "data",
+        "evidence_in_work": "'spend':['local_spend_amount']; 'clicks':['clicks','inline_link_clicks','taps']",
+        "source": "raw.pinterest_campaign_report_data: spend_in_micro_dollar, clickthrough_1, clickthrough_2",
+        "importance": 3,
+        "reason": "The platform-specific source fields are available but absent from standard metric lookups."
+      }
+    ],
+    "fewer_reason": "The supplied materials omit the detailed Pinterest output schema and metric definitions."
+  },
+  "stg_reddit_ads__campaign_report": {
+    "items": [
+      {
+        "problem": "The available spend field is ignored by the effective spend mapping.",
+        "about": "data",
+        "evidence_in_work": "'spend':['local_spend_amount']",
+        "source": "raw.reddit_ads_campaign_report_data: spend",
+        "importance": 5,
+        "reason": "Source monetary values become NULL."
+      },
+      {
+        "problem": "Malformed source CTR values are turned into NULL rather than recalculated from clicks and impressions.",
+        "about": "data",
+        "evidence_in_work": "Could not convert string 'mock_ctr_482' to DOUBLE ... ctr",
+        "source": "click_through_rate = clicks / NULLIF(impressions, 0) when CTR doesn't match",
+        "importance": 3,
+        "reason": "The observed malformed metric has available deterministic replacement inputs."
+      }
+    ],
+    "fewer_reason": "Two concerns are supported without the omitted Reddit table contract."
+  },
+  "stg_snapchat_ads__campaign_report": {
+    "items": [
+      {
+        "problem": "Spend is not mapped from the existing source spend column.",
+        "about": "data",
+        "evidence_in_work": "'spend':['local_spend_amount']",
+        "source": "raw.snapchat_campaign_hourly_report_data: spend",
+        "importance": 5,
+        "reason": "All source spend values can be lost."
+      },
+      {
+        "problem": "Timestamp-like corruption in screen_time_millis is silently nullified without checking whether other source fields are similarly compromised.",
+        "about": "data",
+        "evidence_in_work": "Could not convert string '2024-03-15 00:00:00.000 +0800' to INT64 ... screen_time_millis",
+        "source": "raw.snapchat_campaign_hourly_report_data: screen_time_millis",
+        "importance": 2,
+        "reason": "The observed value is incompatible with the field's unit and may indicate broader source issues."
+      }
+    ],
+    "fewer_reason": "The detailed Snapchat contract is not supplied, preventing stronger conclusions about hourly aggregation or units."
+  },
+  "stg_tiktok_ads__campaign_report": {
+    "items": [
+      {
+        "problem": "SPEND is ignored because spend lookup is restricted to local_spend_amount.",
+        "about": "data",
+        "evidence_in_work": "'spend':['local_spend_amount']",
+        "source": "raw.tiktok_campaign_report_hourly_data: SPEND",
+        "importance": 5,
+        "reason": "Available campaign costs become NULL."
+      },
+      {
+        "problem": "A target conversions field may remain NULL because the generator does not map TikTok's singular CONVERSION field.",
+        "about": "data",
+        "evidence_in_work": "'conversions':['conversions']",
+        "source": "raw.tiktok_campaign_report_hourly_data: CONVERSION",
+        "importance": 3,
+        "reason": "A platform-specific naming difference can discard valid conversion data."
+      }
+    ],
+    "fewer_reason": "Only two mapping risks can be grounded without the omitted TikTok table contract."
+  },
+  "stg_twitter_ads__campaign_report": {
+    "items": [
+      {
+        "problem": "Standard spend or cost outputs may remain NULL instead of using billed_charge_local_micro with the appropriate unit conversion.",
+        "about": "data",
+        "evidence_in_work": "'spend':['local_spend_amount']; 'cost':['cost','spend','local_spend_amount','cost_in_usd']",
+        "source": "raw.twitter_campaign_report_data: billed_charge_local_micro",
+        "importance": 3,
+        "reason": "The available billing amount is excluded from standard monetary lookups."
+      }
+    ],
+    "fewer_reason": "The detailed Twitter output contract is omitted, so the exact required monetary mapping cannot be established."
+  },
+  "int_ad_reporting__country_mapping": {
+    "items": [
+      {
+        "problem": "The static country mapping contains only the United States rather than the required multi-region country set.",
+        "about": "requirement",
+        "evidence_in_work": "VALUES ('US', 'United States', 'North America', ...)",
+        "source": "inline enumerated list of country rows spanning North America, Europe, Asia Pacific, Middle East & Africa, and Latin America",
+        "importance": 5,
+        "reason": "Almost all country coverage is absent."
+      },
+      {
+        "problem": "Country attributes are supplied as an unsupported placeholder rather than verified enumerated values.",
+        "about": "data",
+        "evidence_in_work": "331000000, 65000, 88.0, 120.0, TRUE, TRUE, 'All platforms'",
+        "source": "Emit all fields exactly as listed",
+        "importance": 3,
+        "reason": "Population, economic, penetration, and market flags are not grounded in a visible enumerated source."
+      },
+      {
+        "problem": "The model does not explicitly enforce the declared decimal and integer output types.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT * FROM (VALUES ... 88.0, 120.0 ...)",
+        "source": "internet_penetration_pct: DECIMAL(3,1); mobile_penetration_pct: DECIMAL(4,1)",
+        "importance": 2,
+        "reason": "DuckDB infers types from literals, while the agent validated only column names."
+      }
+    ],
+    "fewer_reason": "Three substantive concerns are identifiable; sorting a single row would not currently change the result."
+  },
+  "int_ad_reporting__unified_campaign_metrics": {
+    "items": [
+      {
+        "problem": "Amazon rows can be wrongly excluded because NULL staging CTR and CPC make the quality predicate NULL.",
+        "about": "requirement",
+        "evidence_in_work": "clicks > impressions OR cost < 0 OR click_through_rate > 100 OR cost_per_click > 50 AS has_data_quality_issues; AND NOT has_data_quality_issues",
+        "source": "has_data_quality_issues: TRUE when ...; otherwise FALSE",
+        "importance": 5,
+        "reason": "The upstream generator leaves both Amazon rate fields NULL, making this a likely large row-loss mechanism."
+      },
+      {
+        "problem": "Google and Facebook costs become zero because their staging spend mappings discard the actual source costs.",
+        "about": "data",
+        "evidence_in_work": "CAST(COALESCE(spend, 0) AS DOUBLE) AS cost",
+        "source": "Google ... cost from spend; Facebook ... cost from spend defaulting to 0",
+        "importance": 5,
+        "reason": "Spend, CPC, ROAS, efficiency tiers, and downstream forecasts are systematically affected."
+      },
+      {
+        "problem": "Google campaign identifiers are NULL because the staging model misses the source id field.",
+        "about": "data",
+        "evidence_in_work": "google_rows ('google_ads', None, ...)",
+        "source": "campaign_id: Source campaign identifier",
+        "importance": 5,
+        "reason": "Distinct campaign counts and per-campaign lifecycle calculations lose their intended grouping."
+      },
+      {
+        "problem": "The CTR tier CASE falls through to generic thresholds for Google and Facebook rows below their own platform thresholds.",
+        "about": "requirement",
+        "evidence_in_work": "WHEN base.platform = 'facebook_ads' AND base.click_through_rate >= 0.9 THEN 'MEDIUM' ... WHEN base.click_through_rate >= 0.5 THEN 'MEDIUM'",
+        "source": "facebook_ads: HIGH when ≥1.5; MEDIUM when ≥0.9; else LOW",
+        "importance": 4,
+        "reason": "Facebook CTR from 0.5 to below 0.9 is misclassified, and analogous Google ranges are also affected."
+      },
+      {
+        "problem": "Source rows with NULL quality-screened metrics are admitted by COALESCE instead of satisfying the specified non-negative source filters.",
+        "about": "requirement",
+        "evidence_in_work": "WHERE COALESCE(clicks, 0) >= 0 AND COALESCE(impressions, 0) >= 0 AND COALESCE(spend, 0) >= 0",
+        "source": "Keep rows where clicks, impressions, and spend are all non-negative",
+        "importance": 4,
+        "reason": "Missing and malformed inputs can be treated as valid zero-valued records."
+      },
+      {
+        "problem": "The final date filter has no upper bound and can retain future dates.",
+        "about": "requirement",
+        "evidence_in_work": "WHERE date_day >= CURRENT_DATE - INTERVAL '365 days'",
+        "source": "Keep rows where date_day is within the last 365 days relative to execution",
+        "importance": 3,
+        "reason": "Staging does not consistently remove future dates."
+      },
+      {
+        "problem": "LinkedIn cost is cast directly to DOUBLE rather than first to the specified decimal representation.",
+        "about": "requirement",
+        "evidence_in_work": "TRY_CAST(cost_in_usd AS DOUBLE)",
+        "source": "cost cast to decimal and defaulting to 0",
+        "importance": 2,
+        "reason": "Precision and rounding can differ for cost-derived KPIs."
+      }
+    ],
+    "fewer_reason": "Seven distinct high-value concerns are supported by the final SQL and its upstream mappings."
+  },
+  "int_ad_reporting__time_series_analytics": {
+    "items": [
+      {
+        "problem": "Every analytical output column is a NULL placeholder rather than a computed time-series measure.",
+        "about": "requirement",
+        "evidence_in_work": "NULL::DOUBLE AS \"daily_spend\"; NULL::DOUBLE AS \"daily_ctr\"",
+        "source": "Advanced daily ad performance time series with moving averages, trends, anomalies, seasonality, forecasts, and recommendations",
+        "importance": 5,
+        "reason": "The model produces no usable analytical values."
+      },
+      {
+        "problem": "Only Google campaign rows are read instead of combining the four required sources.",
+        "about": "requirement",
+        "evidence_in_work": "FROM staging.stg_google_ads__campaign_report",
+        "source": "Ingest four ad sources, align fields, and union",
+        "importance": 5,
+        "reason": "Amazon, Facebook, and LinkedIn activity is completely omitted."
+      },
+      {
+        "problem": "Daily platform aggregation is absent, leaving one placeholder row per Google source record.",
+        "about": "requirement",
+        "evidence_in_work": "int_ad_reporting__time_series_analytics: 26,031 rows",
+        "source": "grain: One row per (date_day, platform)",
+        "importance": 5,
+        "reason": "The output does not represent daily platform observations."
+      },
+      {
+        "problem": "The required 18-month input window and 12-month final window are not applied.",
+        "about": "requirement",
+        "evidence_in_work": "FROM staging.stg_google_ads__campaign_report",
+        "source": "Keep only records ... last 18 months ... Finalize by keeping only the last 12 months",
+        "importance": 4,
+        "reason": "Both analysis coverage and baseline history are uncontrolled."
+      },
+      {
+        "problem": "Rolling windows, prior-period comparisons, and calendar baselines are never calculated.",
+        "about": "requirement",
+        "evidence_in_work": "NULL::DOUBLE AS \"spend_7d_ma\"",
+        "source": "Rolling metrics are computed per platform ordered by date_day and include the current day",
+        "importance": 4,
+        "reason": "All trend, anomaly, and forecast dependencies are missing."
+      },
+      {
+        "problem": "The required generated timestamp and output ordering are omitted.",
+        "about": "requirement",
+        "evidence_in_work": "NULL::TIMESTAMP WITH TIME ZONE AS \"analysis_generated_at\"",
+        "source": "ordering by platform ascending and date_day descending, and stamping analysis_generated_at with the current timestamp",
+        "importance": 2,
+        "reason": "Freshness metadata and presentation requirements are not met."
+      }
+    ],
+    "fewer_reason": "Six distinct structural omissions cover the placeholder implementation without separately listing every NULL metric."
+  },
+  "int_ad_reporting__customer_journey_analysis": {
+    "items": [
+      {
+        "problem": "The model is a first-source projection with typed NULLs rather than implemented customer-journey logic.",
+        "about": "requirement",
+        "evidence_in_work": "if field: expr=... else: expr=f'NULL::{c[\"data_type\"]}'; FROM {src[0]}",
+        "source": "implementing a complete SQL data pipeline based on data contract documents",
+        "importance": 5,
+        "reason": "The agent explicitly substituted structural placeholders for the intended analysis."
+      }
+    ],
+    "fewer_reason": "The detailed customer-journey specification is omitted, so individual calculations cannot be audited reliably."
+  },
+  "int_ad_reporting__geo_channel_performance": {
+    "items": [
+      {
+        "problem": "The model uses only the first source and NULL fallbacks rather than implementing geographic channel analysis.",
+        "about": "requirement",
+        "evidence_in_work": "sql='SELECT\\n'+',\\n'.join(fields)+f'\\nFROM {src[0]}'",
+        "source": "implementing a complete SQL data pipeline based on data contract documents",
+        "importance": 5,
+        "reason": "A generic projection cannot supply the omitted geographic integration and analysis."
+      }
+    ],
+    "fewer_reason": "The detailed geographic model contract is unavailable in the review materials."
+  },
+  "int_ad_reporting__account_report": {
+    "items": [
+      {
+        "problem": "The model remains a generic projection with NULL fallbacks rather than demonstrated account-level transformation logic.",
+        "about": "requirement",
+        "evidence_in_work": "if field: expr=... else: expr=f'NULL::{c[\"data_type\"]}'",
+        "source": "implementing a complete SQL data pipeline based on data contract documents",
+        "importance": 4,
+        "reason": "Successful execution and matching column names do not validate account-level business logic."
+      }
+    ],
+    "fewer_reason": "The account intermediate model's detailed contract is omitted, limiting more specific findings."
+  },
+  "int_ad_reporting__campaign_report": {
+    "items": [
+      {
+        "problem": "The derived currency ratios may materialize as DECIMAL rather than the required DOUBLE types because expressions are not explicitly cast.",
+        "about": "requirement",
+        "evidence_in_work": "CASE WHEN clicks > 0 THEN ROUND(cost / clicks,2) ELSE 0 END",
+        "source": "cost_per_click; data_type: DOUBLE",
+        "importance": 1,
+        "reason": "DuckDB division generally yields DOUBLE, so this is a low-likelihood schema check rather than an established error."
+      },
+      {
+        "problem": "The model inherits unvalidated identifiers, dates, and negative click counts from staging.",
+        "about": "data",
+        "evidence_in_work": "FROM staging.stg_amazon_ads__campaign_report",
+        "source": "staging: campaign_id constraints: [not_null]; date_day ... on_failure: nullify_field",
+        "importance": 3,
+        "reason": "The intermediate passthrough cannot repair staging contract violations."
+      }
+    ],
+    "fewer_reason": "The core intermediate mapping closely follows its supplied specification; only inherited validation risks and a low-priority type check remain."
+  },
+  "int_ad_reporting__ad_group_report": {
+    "items": [
+      {
+        "problem": "The model inherits invalid ad-group identifiers and dates because upstream staging validation is absent.",
+        "about": "data",
+        "evidence_in_work": "FROM staging.stg_amazon_ads__ad_group_report",
+        "source": "ad_group_id ... on_failure: delete_row; date_day ... on_failure: nullify_field",
+        "importance": 3,
+        "reason": "Otherwise correct row-preserving logic still propagates invalid staged records."
+      }
+    ],
+    "fewer_reason": "The visible intermediate calculations otherwise align closely with the supplied contract."
+  },
+  "int_ad_reporting__ad_report": {
+    "items": [
+      {
+        "problem": "Apple Search Ads rows are entirely omitted because the fallback reads only the first Facebook source.",
+        "about": "requirement",
+        "evidence_in_work": "FROM {src[0]}",
+        "source": "Build a standardized ad report by stacking rows from the two source models",
+        "importance": 5,
+        "reason": "A complete required platform branch is absent."
+      },
+      {
+        "problem": "Facebook clicks and cost are NULL because the fallback does not map inline_link_clicks and spend.",
+        "about": "requirement",
+        "evidence_in_work": "cand=[alias.get(out,out)]; alias includes 'clicks':'total_clicks'",
+        "source": "Facebook ... clicks from inline_link_clicks ... cost from spend",
+        "importance": 5,
+        "reason": "Core performance metrics are discarded even before considering upstream spend loss."
+      },
+      {
+        "problem": "Required zero constants are emitted as NULL when their names do not exist upstream.",
+        "about": "requirement",
+        "evidence_in_work": "else: expr=f'NULL::{c[\"data_type\"]}'",
+        "source": "interactions set to 0; conversions set to 0; conversions_value set to 0.0; view_through_conversions set to 0",
+        "importance": 4,
+        "reason": "Missing-versus-zero semantics differ throughout the standardized output."
+      }
+    ],
+    "fewer_reason": "Three distinct implementation failures cover the missing branch and incorrect metric mappings."
+  },
+  "int_ad_reporting__keyword_report": {
+    "items": [
+      {
+        "problem": "Invalid campaign references, missing keyword identifiers, and invalid dates are inherited from the unvalidated staging model.",
+        "about": "data",
+        "evidence_in_work": "FROM staging.stg_amazon_ads__keyword_report",
+        "source": "keyword_id constraints: [not_null]; campaign_id ... on_failure: nullify_field",
+        "importance": 3,
+        "reason": "Correct intermediate passthrough still carries upstream contract violations."
+      }
+    ],
+    "fewer_reason": "The visible intermediate metric mappings and denominator checks otherwise match the supplied specification."
+  },
+  "int_ad_reporting__search_report": {
+    "items": [
+      {
+        "problem": "Derived metrics use positive-denominator checks rather than the specified zero-denominator checks.",
+        "about": "requirement",
+        "evidence_in_work": "CASE WHEN COALESCE(impressions,0)>0 THEN ... ELSE 0 END",
+        "source": "returns 0 when impressions is 0; returns 0 when clicks is 0",
+        "importance": 3,
+        "reason": "Negative source values produce zero instead of the specified division, and staging does not consistently correct them."
+      },
+      {
+        "problem": "ROAS returns zero for negative nonzero cost or sales although the specification only zeroes zero-valued inputs.",
+        "about": "requirement",
+        "evidence_in_work": "CASE WHEN COALESCE(cost,0)>0 AND COALESCE(attributed_sales_30_d,0)>0 THEN ... ELSE 0 END",
+        "source": "return_on_ad_spend ... returns 0 when either cost or sales is 0",
+        "importance": 2,
+        "reason": "The difference affects negative-value cases, though current attribution source fields are absent."
+      },
+      {
+        "problem": "Word count trims the search term before counting spaces, which may not match literal space-delimited token counting.",
+        "about": "requirement",
+        "evidence_in_work": "LENGTH(TRIM(search_term))-LENGTH(REPLACE(TRIM(search_term),' ',''))+1",
+        "source": "search_term_word_count is the number of space-delimited words",
+        "importance": 2,
+        "reason": "Leading, trailing, repeated spaces, and empty terms require an explicit interpretation."
+      }
+    ],
+    "fewer_reason": "Three specific edge-case differences are visible; the remaining mappings largely match the contract."
+  },
+  "int_ad_reporting__url_report": {
+    "items": [
+      {
+        "problem": "Positive-only denominator checks differ from the contract's zero-only special cases.",
+        "about": "requirement",
+        "evidence_in_work": "CASE WHEN COALESCE(clicks,0)>0 THEN ... ELSE 0 END",
+        "source": "cost_per_click ... if clicks = 0 then 0",
+        "importance": 3,
+        "reason": "Negative values are handled differently and are not consistently screened upstream."
+      },
+      {
+        "problem": "ROAS is forced to zero for negative nonzero cost or sales.",
+        "about": "requirement",
+        "evidence_in_work": "CASE WHEN COALESCE(cost,0)>0 AND COALESCE(attributed_sales_30_d,0)>0 THEN ... ELSE 0 END",
+        "source": "if cost = 0 or attributed_sales_30_d = 0 then 0",
+        "importance": 2,
+        "reason": "The implemented condition is stricter than specified."
+      },
+      {
+        "problem": "Product identifiers inherit unverified numeric-to-text ASIN and SKU conversions from staging.",
+        "about": "data",
+        "evidence_in_work": "CAST(advertised_asin AS VARCHAR); product_sku: advertised_sku",
+        "source": "raw.amazon_ads_advertised_product_report_data ... advertised_asin, advertised_sku ... DOUBLE, DOUBLE",
+        "importance": 2,
+        "reason": "Unexpected source typing could make product-level identifiers unusable."
+      }
+    ],
+    "fewer_reason": "Three supported edge-case and inherited-data concerns were identified."
+  },
+  "int_ad_reporting__monthly_campaign_country_report": {
+    "items": [
+      {
+        "problem": "The model is a source-row projection with NULL fallbacks rather than demonstrated monthly country aggregation.",
+        "about": "requirement",
+        "evidence_in_work": "sql='SELECT\\n'+',\\n'.join(fields)+f'\\nFROM {src[0]}'",
+        "source": "Temporal aggregation model (last execution)",
+        "importance": 5,
+        "reason": "No grouping or multi-source processing is implemented by the fallback."
+      }
+    ],
+    "fewer_reason": "The detailed monthly-country model contract is omitted."
+  },
+  "int_ad_reporting__monthly_campaign_region_report": {
+    "items": [
+      {
+        "problem": "The model is a source-row projection with NULL fallbacks rather than demonstrated monthly regional aggregation.",
+        "about": "requirement",
+        "evidence_in_work": "sql='SELECT\\n'+',\\n'.join(fields)+f'\\nFROM {src[0]}'",
+        "source": "Temporal aggregation model (last execution)",
+        "importance": 5,
+        "reason": "The generator implements neither aggregation nor regional enrichment."
+      }
+    ],
+    "fewer_reason": "The detailed monthly-region model contract is omitted."
+  },
+  "ad_reporting__executive_dashboard": {
+    "items": [
+      {
+        "problem": "The dashboard is a generic projection of the first source rather than implemented dashboard business logic.",
+        "about": "requirement",
+        "evidence_in_work": "if field: expr=... else: expr=f'NULL::{c[\"data_type\"]}'; FROM {src[0]}",
+        "source": "Business-ready advanced analytical reports and dashboards",
+        "importance": 5,
+        "reason": "Typed NULLs and direct row projection do not supply the required analytical dashboard."
+      },
+      {
+        "problem": "Its unified source already loses Google identifiers, Google and Facebook spend, and potentially Amazon rows.",
+        "about": "data",
+        "evidence_in_work": "FROM intermediate.int_ad_reporting__unified_campaign_metrics",
+        "source": "Core Unified Data Model ... the foundation for all advanced analytics",
+        "importance": 5,
+        "reason": "Core input defects would materially affect any dashboard calculations built on this table."
+      }
+    ],
+    "fewer_reason": "The detailed dashboard contract is omitted, so individual output metrics cannot be checked."
+  },
+  "ad_reporting__customer_analytics": {
+    "items": [
+      {
+        "problem": "The mart remains a first-source projection with NULL placeholders instead of completed customer analytics.",
+        "about": "requirement",
+        "evidence_in_work": "else: expr=f'NULL::{c[\"data_type\"]}'",
+        "source": "Business-ready advanced analytical reports and dashboards",
+        "importance": 5,
+        "reason": "Its upstream customer-journey model is also a placeholder projection."
+      }
+    ],
+    "fewer_reason": "The detailed customer analytics contract is omitted."
+  },
+  "ad_reporting__market_opportunities": {
+    "items": [
+      {
+        "problem": "The mart projects available source fields and NULLs rather than implementing market-opportunity analysis.",
+        "about": "requirement",
+        "evidence_in_work": "sql='SELECT\\n'+',\\n'.join(fields)+f'\\nFROM {src[0]}'",
+        "source": "Business-ready advanced analytical reports and dashboards",
+        "importance": 5,
+        "reason": "The intended analytical logic is not represented by the generic fallback."
+      }
+    ],
+    "fewer_reason": "The detailed market-opportunities contract is omitted."
+  },
+  "ad_reporting__predictive_analytics": {
+    "items": [
+      {
+        "problem": "Every output is a typed NULL rather than a computed baseline, forecast, risk score, or recommendation.",
+        "about": "requirement",
+        "evidence_in_work": "NULL::DOUBLE AS \"predicted_next_month_spend\"; NULL::VARCHAR AS \"forecast_risk_level\"",
+        "source": "Predictive analytics per platform-month with trend analysis, forecasts, risk/confidence scoring, and strategy recommendations",
+        "importance": 5,
+        "reason": "The result contains no predictive information."
+      },
+      {
+        "problem": "There is no monthly platform aggregation and source record multiplicity is retained.",
+        "about": "requirement",
+        "evidence_in_work": "FROM intermediate.int_ad_reporting__unified_campaign_metrics",
+        "source": "grain: One row per platform per performance_month",
+        "importance": 5,
+        "reason": "The output grain is fundamentally wrong."
+      },
+      {
+        "problem": "The required 12-month baseline and six-month final filters are absent.",
+        "about": "requirement",
+        "evidence_in_work": "FROM intermediate.int_ad_reporting__unified_campaign_metrics",
+        "source": "Build the baseline ... last 12 months ... Filter to months within the last six months",
+        "importance": 4,
+        "reason": "Neither historical analysis scope nor final reporting scope is enforced."
+      },
+      {
+        "problem": "Prior-month comparisons and three-month rolling averages are not calculated.",
+        "about": "requirement",
+        "evidence_in_work": "NULL::DOUBLE AS \"mom_spend_growth\"; NULL::VARCHAR AS \"spend_momentum\"",
+        "source": "Per platform, order months chronologically ... 3-month rolling averages",
+        "importance": 4,
+        "reason": "Forecasting and risk rules have no implemented inputs."
+      },
+      {
+        "problem": "Run timestamps, forecast dates, and required ordering are omitted.",
+        "about": "requirement",
+        "evidence_in_work": "NULL::TIMESTAMP WITH TIME ZONE AS \"forecast_generated_at\"; NULL::DATE AS \"forecast_base_date\"",
+        "source": "base date is today, target date is 30 days after the base date ... ordered by platform ascending and performance month descending",
+        "importance": 3,
+        "reason": "The result cannot identify its forecast horizon or generation time."
+      }
+    ],
+    "fewer_reason": "Five structural failures cover the placeholder implementation without duplicating every missing formula."
+  },
+  "ad_reporting__account_report": {
+    "items": [
+      {
+        "problem": "The mart is a generic source projection with NULL fallbacks and no demonstrated implementation of its account-report business logic.",
+        "about": "requirement",
+        "evidence_in_work": "else: expr=f'NULL::{c[\"data_type\"]}'; FROM {src[0]}",
+        "source": "ensure ... high-quality data results that meet business requirements",
+        "importance": 4,
+        "reason": "Column-name validation does not establish semantic correctness for this fallback model."
+      }
+    ],
+    "fewer_reason": "The account mart's detailed contract is not provided."
+  },
+  "ad_reporting__campaign_report": {
+    "items": [
+      {
+        "problem": "mart_created_at is NULL rather than the execution timestamp.",
+        "about": "requirement",
+        "evidence_in_work": "else: expr=f'NULL::{c[\"data_type\"]}'",
+        "source": "mart_created_at: set to the current timestamp at model execution time",
+        "importance": 3,
+        "reason": "Required materialization freshness metadata is missing for all rows."
+      },
+      {
+        "problem": "The required placeholder exclusion is omitted.",
+        "about": "requirement",
+        "evidence_in_work": "sql='SELECT\\n'+',\\n'.join(fields)+f'\\nFROM {src[0]}'",
+        "source": "remove rows where platform is the literal \"placeholder\"",
+        "importance": 2,
+        "reason": "Current upstream platform is constant Amazon, but the mart does not implement its filter contract."
+      },
+      {
+        "problem": "The required platform, account, campaign, and descending-date ordering is absent.",
+        "about": "requirement",
+        "evidence_in_work": "FROM {src[0]}",
+        "source": "sort by platform, account_id, campaign_id ascending and report_date descending",
+        "importance": 2,
+        "reason": "Presentation order is not guaranteed."
+      }
+    ],
+    "fewer_reason": "The fallback's field renames otherwise match the supplied campaign mart mappings."
+  },
+  "ad_reporting__ad_group_report": {
+    "items": [
+      {
+        "problem": "mart_created_at is emitted as NULL.",
+        "about": "requirement",
+        "evidence_in_work": "else: expr=f'NULL::{c[\"data_type\"]}'",
+        "source": "set mart_created_at = CURRENT_TIMESTAMP at execution",
+        "importance": 3,
+        "reason": "The required mart creation timestamp is absent."
+      },
+      {
+        "problem": "The mart does not exclude placeholder platform rows.",
+        "about": "requirement",
+        "evidence_in_work": "FROM {src[0]}",
+        "source": "Exclude rows where platform = 'placeholder'",
+        "importance": 2,
+        "reason": "The omitted filter is currently masked by the upstream constant platform."
+      },
+      {
+        "problem": "The required output ordering is not implemented.",
+        "about": "requirement",
+        "evidence_in_work": "sql='SELECT\\n'+',\\n'.join(fields)+f'\\nFROM {src[0]}'",
+        "source": "Order output by platform, account_id, campaign_id, ad_group_id ... report_date (descending)",
+        "importance": 2,
+        "reason": "Output presentation need not follow the contractual sort."
+      }
+    ],
+    "fewer_reason": "Three direct mart omissions are visible; upstream validation issues are already recorded separately."
+  },
+  "ad_reporting__ad_report": {
+    "items": [
+      {
+        "problem": "The mart lacks all Apple rows and important Facebook metrics because its intermediate source omits the Apple branch and required mappings.",
+        "about": "data",
+        "evidence_in_work": "FROM intermediate.int_ad_reporting__ad_report",
+        "source": "Unified ad-level performance across platforms",
+        "importance": 5,
+        "reason": "The upstream fallback substantially narrows coverage and leaves core measures NULL."
+      },
+      {
+        "problem": "mart_created_at is NULL instead of a uniform model-run timestamp.",
+        "about": "requirement",
+        "evidence_in_work": "else: expr=f'NULL::{c[\"data_type\"]}'",
+        "source": "Set mart_created_at to the model run timestamp",
+        "importance": 3,
+        "reason": "Required freshness metadata is absent."
+      },
+      {
+        "problem": "The placeholder filter and prescribed sorting are absent.",
+        "about": "requirement",
+        "evidence_in_work": "sql='SELECT\\n'+',\\n'.join(fields)+f'\\nFROM {src[0]}'",
+        "source": "Exclude rows where platform equals 'placeholder' ... Sort output by platform, account_id, campaign_id, ad_group_id, ad_id ... report_date descending",
+        "importance": 2,
+        "reason": "The mart omits explicit filtering and presentation requirements."
+      }
+    ],
+    "fewer_reason": "Three distinct concerns cover inherited content defects and local mart omissions."
+  },
+  "ad_reporting__keyword_report": {
+    "items": [
+      {
+        "problem": "The output necessarily has NULL account_id despite a declared not-null test.",
+        "about": "requirement",
+        "evidence_in_work": "int_ad_reporting__keyword_report: 'account_id':'NULL::INTEGER'",
+        "source": "ad_reporting__keyword_report: account_id; tests: - not_null",
+        "importance": 3,
+        "reason": "The contract conflicts with the intermediate's explicit NULL mapping and this unresolved inconsistency affects every row."
+      },
+      {
+        "problem": "mart_created_at is NULL rather than CURRENT_TIMESTAMP.",
+        "about": "requirement",
+        "evidence_in_work": "else: expr=f'NULL::{c[\"data_type\"]}'",
+        "source": "Derive mart_created_at as CURRENT_TIMESTAMP",
+        "importance": 3,
+        "reason": "Required execution metadata is missing."
+      },
+      {
+        "problem": "The placeholder exclusion and prescribed ordering are not implemented.",
+        "about": "requirement",
+        "evidence_in_work": "FROM {src[0]}",
+        "source": "exclude records where platform = 'placeholder'; ORDER BY platform, account_id, campaign_id, ad_group_id, keyword_id, report_date DESC",
+        "importance": 2,
+        "reason": "The projection omits explicit mart behavior."
+      }
+    ],
+    "fewer_reason": "Three grounded issues were found; the not-null conflict is flagged for contract resolution rather than assumed to require invented identifiers."
+  },
+  "ad_reporting__search_report": {
+    "items": [
+      {
+        "problem": "mart_created_at is NULL rather than the query execution timestamp.",
+        "about": "requirement",
+        "evidence_in_work": "else: expr=f'NULL::{c[\"data_type\"]}'",
+        "source": "Set mart_created_at to the query execution timestamp",
+        "importance": 3,
+        "reason": "Every output row lacks required mart freshness metadata."
+      },
+      {
+        "problem": "The required placeholder platform filter is missing.",
+        "about": "requirement",
+        "evidence_in_work": "FROM {src[0]}",
+        "source": "Exclude rows where platform equals 'placeholder'",
+        "importance": 2,
+        "reason": "The filter contract is not implemented, although current upstream rows have a constant platform."
+      },
+      {
+        "problem": "The required ordered output is not produced explicitly.",
+        "about": "requirement",
+        "evidence_in_work": "sql='SELECT\\n'+',\\n'.join(fields)+f'\\nFROM {src[0]}'",
+        "source": "Order output rows by platform, account_id, campaign_id, ad_group_id, search_term, then ... report_date descending",
+        "importance": 2,
+        "reason": "The source projection does not guarantee presentation order."
+      }
+    ],
+    "fewer_reason": "The remaining visible renames and NULL placeholders match this mart's supplied specification."
+  },
+  "ad_reporting__url_report": {
+    "items": [
+      {
+        "problem": "mart_created_at is NULL instead of the model execution timestamp.",
+        "about": "requirement",
+        "evidence_in_work": "else: expr=f'NULL::{c[\"data_type\"]}'",
+        "source": "set mart_created_at to the model execution timestamp, identical across all rows in a run",
+        "importance": 3,
+        "reason": "Required materialization metadata is absent."
+      },
+      {
+        "problem": "Placeholder platform records are not excluded.",
+        "about": "requirement",
+        "evidence_in_work": "FROM {src[0]}",
+        "source": "exclude rows whose platform equals 'placeholder'",
+        "importance": 2,
+        "reason": "The omission is masked by the current intermediate's constant platform."
+      },
+      {
+        "problem": "The required platform, account, campaign, destination, and date ordering is omitted.",
+        "about": "requirement",
+        "evidence_in_work": "sql='SELECT\\n'+',\\n'.join(fields)+f'\\nFROM {src[0]}'",
+        "source": "ordered by platform, account_id, campaign_id, destination_url, then report_date descending",
+        "importance": 2,
+        "reason": "Presentation order is not guaranteed."
+      }
+    ],
+    "fewer_reason": "Three local mart omissions are supported; inherited product data concerns are listed upstream."
+  },
+  "ad_reporting__monthly_campaign_country_report": {
+    "items": [
+      {
+        "problem": "The mart is built on an unaggregated placeholder intermediate and applies only generic field projection.",
+        "about": "requirement",
+        "evidence_in_work": "sql='SELECT\\n'+',\\n'.join(fields)+f'\\nFROM {src[0]}'",
+        "source": "Aggregation report (final execution)",
+        "importance": 5,
+        "reason": "The intended monthly country report is not supported by implemented upstream aggregation."
+      }
+    ],
+    "fewer_reason": "The detailed monthly-country mart specification is omitted."
+  },
+  "ad_reporting__monthly_campaign_region_report": {
+    "items": [
+      {
+        "problem": "The mart is built on an unaggregated placeholder intermediate and applies only generic field projection.",
+        "about": "requirement",
+        "evidence_in_work": "sql='SELECT\\n'+',\\n'.join(fields)+f'\\nFROM {src[0]}'",
+        "source": "Aggregation report (final execution)",
+        "importance": 5,
+        "reason": "The intended monthly regional report lacks implemented upstream aggregation and enrichment."
+      }
+    ],
+    "fewer_reason": "The detailed monthly-region mart specification is omitted."
+  }
+}

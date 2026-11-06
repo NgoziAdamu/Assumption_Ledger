@@ -1,0 +1,57 @@
+=== code_comment (event 23; python) ===
+# staging: (file, raw table, projected cols, filters)
+
+=== code_comment (event 23; python) ===
+# describe
+
+=== code_comment (event 23; python) ===
+# utility calendar through current day, data coverage created onwards
+
+=== code_comment (event 33; python) ===
+# SCD groups use running sum on break condition in descending chronological order; carry latest value via first_value within group.
+
+=== code_comment (event 33; python) ===
+# Marts email sends
+
+=== code_comment (event 33; python) ===
+# markets common stats
+
+=== code_comment (event 41; python) ===
+# Improve date extraction in program source CAST currently try cast, in generated select parse date prefix for timezone-bearing dates
+
+=== final_report (event 55; text) ===
+【回复用户】
+
+## 已完成
+
+已根据 `docs/data_contract.yaml` 和 `config/layer_dependencies.yaml` 实现 Marketo SQL 数据流水线，SQL 位于 `sql/staging/`、`sql/intermediate/`、`sql/marts/`，并实现依赖配置所需的 `sql/utils/marketo__calendar_spine.sql`。所有模型均使用 DuckDB SQL，直接以 `schema.table` 引用上游表，没有 dbt `ref()`，文件末尾没有分号。
+
+实现涵盖：
+- 14 个 staging 模型：源字段映射与类型转换、邮箱清理/验证、必要记录筛除及主键重复处理。
+- 11 个 intermediate 模型：lead 合并/删除标识、邮件活动去重与计数、变更明细/透视/SCD、lead 日历骨架。
+- 13 个 marts 模型：邮件发送事实、lead/campaign/program/template 维度与统计、邮件漏斗、lead intelligence、运营健康快照及 lead history。
+- Calendar spine 工具模型。
+
+## 验证结果
+
+已完整运行 `python run.py` 并成功生成 `marketo.duckdb`。执行成功数量：utils 1/1、staging 14/14、intermediate 11/11、marts 13/13。
+
+关键校验：
+- `staging.stg_marketo__lead`：5,984 行；lead_id 空值 0、重复 0。
+- `intermediate.marketo__email_sends_deduped`：15,000 行；email_send_id 空值 0、重复 0（源数据的 send ID 均非空）。
+- `staging.stg_marketo__campaigns`：campaign_id 重复 0。
+- `marts.marketo__email_templates`：email_template_id 重复 0。
+- 邮件事实中的 engagement flags 和 activity_timestamp 空值均为 0。
+- 最终表数：staging 14、intermediate 11、marts 13、utils 1。
+
+## 假设与数据质量处理说明
+
+- 对 YAML 未明确的源字段对应，采用原始 schema 的同义字段映射，如 `id` → `activity_id`、`merge_ids` → `merged_lead_ids`、`restname` → `rest_name_xf`。
+- 原始活动表没有独立 `email_send_id`，发送表使用 `id` 映射；其他活动表也按原始活动 ID 输出 `email_send_id`。源数据未提供可确认的跨活动发送键，因此打开、点击、投递等跨事件连接存在来源标识的局限，计数仍按 contract 在各活动自身分组。
+- 原始 email template history 没有 `is_most_recent_version`，按每模板最大 `version` 推导最新版本，同版本按更新时间排序。若上游业务定义的“最新”规则不同，需按该规则调整。
+- 依据 staging 契约去除缺少关键 ID/时间/必需属性的行，并对重复主键保留更新时间较新的记录（活动重复时保留较早记录）。这保全了声明的唯一粒度，但剔除记录不会进入后续分析。
+- `int_marketo__lead` 依照其业务逻辑保留全部 staging 行；contract 中其 unique 测试与“保留重复”的 grain 描述有冲突。本次按保留全部的逻辑实现，staging 对自身明确唯一的 lead_id 契约进行去重。
+- 日历延伸至当前日期，并按 lead created date 起算。逐 lead/日生成约 1,111 万行，遵守日粒度要求，但会比活动事实表占用更多空间。
+
+首次运行中，源 template history 未包含 YAML 假定的 `is_most_recent_version` 列，触发 Binder Error。已以最大版本逻辑代替后再次运行，完整 pipeline 成功。当前环境 `/workspace` 路径不可写，因此报告保存在项目目录 `result.md`。
+
