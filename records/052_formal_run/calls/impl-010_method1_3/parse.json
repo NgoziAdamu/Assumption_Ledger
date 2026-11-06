@@ -1,0 +1,220 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "premises": [
+      {
+        "statement": "raw.email_event_data exposes a recipient_email_address column.",
+        "about": "data",
+        "target": "hubspot__contact_engagement_analysis",
+        "evidence_of_dependence": "select recipient_email_address ... from raw.email_event_data ... group by recipient_email_address",
+        "alternative": "The material index lists \"recipient\", and the contract specifies joining on \"email=recipient\".",
+        "importance": 5,
+        "reason": "The attribution query cannot bind if this column is absent.",
+        "updates": null
+      },
+      {
+        "statement": "Computing email attribution directly from all campaign events is equivalent to first joining those events to staging contacts.",
+        "about": "data",
+        "target": "hubspot__contact_engagement_analysis",
+        "evidence_of_dependence": "from raw.email_event_data where email_campaign_id is not null and recipient is not null",
+        "alternative": "The contract says \"join contacts to email events on email=recipient\" and lists staging.stg_hubspot__contact as a source.",
+        "importance": 3,
+        "reason": "Lifecycle emails absent from staging could receive attribution that the specified contact join would exclude.",
+        "updates": null
+      },
+      {
+        "statement": "Engagement recency windows are anchored to the current instant rather than to today's date.",
+        "about": "requirement",
+        "target": "hubspot__contact_engagement_analysis",
+        "evidence_of_dependence": "last_engagement_date>=current_timestamp-interval 30 day",
+        "alternative": "The contract says \"compare last_engagement_date to today\".",
+        "importance": 2,
+        "reason": "The choice changes classifications for engagements on window-boundary dates.",
+        "updates": null
+      },
+      {
+        "statement": "Rate inputs to the email score component cannot be null when total_emails_sent is positive.",
+        "about": "data",
+        "target": "hubspot__contact_engagement_analysis",
+        "evidence_of_dependence": "least(email_open_rate*0.2+email_click_through_rate*0.2,40)",
+        "alternative": "The contract says \"null rate or velocity inputs can yield a null overall score\"; DuckDB LEAST can return the non-null cap when its other input is null.",
+        "importance": 2,
+        "reason": "A null rate could otherwise produce the maximum email component instead of propagating null.",
+        "updates": null
+      },
+      {
+        "statement": "COUNT-based total_sends is an acceptable substitute for the contract's HUGEINT output type.",
+        "about": "requirement",
+        "target": "hubspot__campaign_performance_analysis",
+        "evidence_of_dependence": "count(*) filter(where type='SENT') total_sends",
+        "alternative": "The contract declares total_sends as \"HUGEINT\", whereas COUNT returns BIGINT.",
+        "importance": 2,
+        "reason": "The output schema differs even if the observed counts fit either type.",
+        "updates": null
+      },
+      {
+        "statement": "Every quarter used as a previous-quarter benchmark has at least one Won or Lost deal.",
+        "about": "data",
+        "target": "hubspot__sales_performance_dashboard",
+        "evidence_of_dependence": "lag(100.0*deals_won_in_quarter/nullif(deals_won_in_quarter+deals_lost_in_quarter,0))",
+        "alternative": "The contract requires quarterly_win_rate to return \"0 if no Won+Lost\" and prev_quarter_win_rate to take the prior row's value.",
+        "importance": 4,
+        "reason": "An undecided quarter produces a null benchmark rather than its specified zero win rate.",
+        "updates": null
+      },
+      {
+        "statement": "Replacing null quarterly monetary sums with zero preserves the required aggregate semantics.",
+        "about": "requirement",
+        "target": "hubspot__sales_performance_dashboard",
+        "evidence_of_dependence": "coalesce(sum(deal_amount) filter(where deal_status='Won'),0)",
+        "alternative": "The contract specifies summing qualifying amounts with \"non-Won contribute zero\" and \"null amounts do not affect the sum\", which can leave an all-null qualifying group null.",
+        "importance": 3,
+        "reason": "All-null groups can change revenue, pipeline values, and downstream benchmarks.",
+        "updates": null
+      },
+      {
+        "statement": "A zero weighted pipeline forecast is required when no non-null qualifying forecast contributions exist.",
+        "about": "requirement",
+        "target": "hubspot__sales_performance_dashboard",
+        "evidence_of_dependence": "coalesce(sum(deal_amount*coalesce(h.win_rate,0.15)) filter(where deal_status='Open'),0)",
+        "alternative": "The contract specifies a \"sum for Open deals\" with \"NULL amounts ignored\" but does not prescribe zero-imputation for an empty sum.",
+        "importance": 3,
+        "reason": "Quarters without usable open amounts receive zero rather than a potentially required null.",
+        "updates": null
+      },
+      {
+        "statement": "The inferred numeric type of weighted_pipeline_forecast is acceptable without explicitly producing DOUBLE.",
+        "about": "requirement",
+        "target": "hubspot__sales_performance_dashboard",
+        "evidence_of_dependence": "sum(deal_amount*coalesce(h.win_rate,0.15)) ... weighted_pipeline_forecast",
+        "alternative": "The contract declares weighted_pipeline_forecast as \"DOUBLE\".",
+        "importance": 2,
+        "reason": "Implicit arithmetic and aggregation types may not satisfy the required output schema.",
+        "updates": null
+      },
+      {
+        "statement": "Future-quarter open deals should receive the same 0.7 recency factor as older deals.",
+        "about": "requirement",
+        "target": "hubspot__sales_performance_dashboard",
+        "evidence_of_dependence": "when date_trunc('quarter',created_date)=date_trunc('quarter',current_date) then 0.3 ... then 0.5 else 0.7",
+        "alternative": "The contract describes the factors as \"0.3 for current quarter, 0.5 for last quarter, 0.7 if older\".",
+        "importance": 2,
+        "reason": "The catch-all branch silently extends the older-deal rule to future creation dates.",
+        "updates": null
+      },
+      {
+        "statement": "Every owner-month included in win-rate trends has at least one Won or Lost deal.",
+        "about": "data",
+        "target": "hubspot__sales_rep_performance",
+        "evidence_of_dependence": "100.0*count(*) filter(where deal_status='Won')/nullif(count(*) filter(where deal_status in('Won','Lost')),0) monthly_win_rate",
+        "alternative": "The contract requires monthly_win_rate to be \"0\" when no decided deals exist.",
+        "importance": 4,
+        "reason": "Null monthly rates are excluded from trend averages instead of contributing zero.",
+        "updates": null
+      },
+      {
+        "statement": "Every owner has won deals in each size segment for which a revenue field is emitted.",
+        "about": "data",
+        "target": "hubspot__sales_rep_performance",
+        "evidence_of_dependence": "sum(deal_amount) filter(where deal_status='Won' and deal_size_category='Enterprise (100K+)') enterprise_revenue",
+        "alternative": "The contract describes segment revenue as sums within territory data and says these fields are \"NULL if no territory data joined\", rather than whenever a particular segment has no wins.",
+        "importance": 3,
+        "reason": "Missing segment wins otherwise generate null revenue fields despite a successful territory join.",
+        "updates": null
+      },
+      {
+        "statement": "A revenue trend below negative five percent is the intended threshold for Address Performance Decline.",
+        "about": "requirement",
+        "target": "hubspot__sales_rep_performance",
+        "evidence_of_dependence": "when revenue_trend_percentage< -5 then 'Address Performance Decline'",
+        "alternative": "The contract requires this label for a \"declining revenue trend\" without giving a numeric threshold for this development-focus rule.",
+        "importance": 3,
+        "reason": "The unstated threshold determines which otherwise qualifying representatives receive decline guidance.",
+        "updates": null
+      },
+      {
+        "statement": "Enterprise and large-deal win rates from owner metrics are equivalent to rates recomputed from deal performance territory data.",
+        "about": "data",
+        "target": "hubspot__sales_rep_performance",
+        "evidence_of_dependence": "select ... enterprise_win_rate,large_deal_win_rate ... from scored",
+        "alternative": "The contract places \"enterprise_win_rate / large_deal_win_rate\" under \"Territory and segment analysis per owner from all deals\".",
+        "importance": 3,
+        "reason": "Differences in source multiplicity or zero-denominator handling can make the reused rates diverge.",
+        "updates": null
+      },
+      {
+        "statement": "The monthly deal input has no repeated deal identifiers within an owner-month that would affect won counts or win-rate ratios.",
+        "about": "data",
+        "target": "hubspot__sales_rep_performance",
+        "evidence_of_dependence": "sum(case when deal_status='Won' then 1 else 0 end) monthly_deals_won",
+        "alternative": "The contract requires \"monthly_deals_won: count distinct deal_id where deal_status = 'Won'\".",
+        "importance": 2,
+        "reason": "Repeated deals would make the monthly calculations row-weighted rather than distinct-deal based.",
+        "updates": null
+      },
+      {
+        "statement": "Ticket status matching should ignore case in pipeline-stage strings.",
+        "about": "requirement",
+        "target": "hubspot__customer_support_analytics",
+        "evidence_of_dependence": "lower(t.property_hs_pipeline_stage) like '%waiting%'",
+        "alternative": "The contract specifies \"property_hs_pipeline_stage LIKE '%waiting%'\" and the analogous progress check without lowercasing.",
+        "importance": 3,
+        "reason": "Mixed-case stage values can receive different statuses and downstream risk classifications.",
+        "updates": null
+      },
+      {
+        "statement": "Tickets whose identifiers cannot be parsed by the prescribed numeric extraction should remain in the output with unmatched associations.",
+        "about": "requirement",
+        "target": "hubspot__customer_support_analytics",
+        "evidence_of_dependence": "try_cast(regexp_extract(t.id,'ID([0-9]+)',1) as bigint) numeric_id",
+        "alternative": "The contract specifies \"cast(regexp_extract(t.id, 'ID(\\d+)', 1) as bigint)\" rather than TRY_CAST.",
+        "importance": 2,
+        "reason": "The implementation silently tolerates identifiers for which the specified expression would fail.",
+        "updates": null
+      },
+      {
+        "statement": "All raw tickets retained by the deletion filter have non-null identifiers.",
+        "about": "data",
+        "target": "hubspot__customer_support_analytics",
+        "evidence_of_dependence": "from raw.ticket_data t where t.is_deleted<>'true' ... cast(id as varchar) ticket_id",
+        "alternative": "The output contract declares ticket_id \"non-null\" and includes a not_null test.",
+        "importance": 3,
+        "reason": "This raw-source model bypasses staging identifier validation.",
+        "updates": null
+      }
+    ],
+    "fewer": [
+      {
+        "target": "hubspot__contact_engagement_analysis",
+        "count": 4,
+        "reason": "Other dependencies are specified directly or already covered by recorded lifecycle and staging premises."
+      },
+      {
+        "target": "hubspot__campaign_performance_analysis",
+        "count": 1,
+        "reason": "The remaining transformations closely follow explicit campaign aggregation and classification rules."
+      },
+      {
+        "target": "hubspot__deals",
+        "count": 0,
+        "reason": "The SELECT * implements the explicit passthrough contract without introducing additional premises."
+      },
+      {
+        "target": "hubspot__companies",
+        "count": 0,
+        "reason": "The SELECT * implements the explicit passthrough contract; upstream quality premises are already recorded."
+      },
+      {
+        "target": "hubspot__tickets",
+        "count": 0,
+        "reason": "Joins and concatenations follow the contract, and relevant ticket, pipeline, stage, and owner uniqueness premises are already recorded."
+      },
+      {
+        "target": "hubspot__customer_support_analytics",
+        "count": 3,
+        "reason": "The remaining unusual timestamp, resolution, association, and scoring choices are explicitly required by the contract."
+      }
+    ]
+  }
+}

@@ -1,0 +1,1293 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Salesforce CRM data transformation and analytics"
+  author: "Data Engineering Team"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+  created_date: "2024-09-11"
+  source_system: "Salesforce CRM"
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw Salesforce data into clean, validated, and standardized staging tables with comprehensive data quality controls and business rule enforcement"
+
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "standardize timezone formats", "normalize phone numbers"]
+    
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform staging data into business-ready analytical models that support sales performance analysis, pipeline management, and revenue forecasting"
+
+  design_principles:
+    intermediate_purpose: "Create reusable, business-centric data models that implement core business logic and serve as building blocks for multiple analytical use cases"
+    marts_purpose: "Deliver analysis-ready models optimized for specific business questions and reporting requirements"
+    grain_importance: "Every model must have a clearly defined grain that specifies what each row represents, ensuring consistent interpretation and preventing aggregation errors"
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-018/agent/dacomp-de-impl-018/salesforce_start.duckdb
+{"table": "raw.account", "columns": ["id", "account_number", "account_source", "annual_revenue", "billing_city", "billing_country", "billing_country_code", "billing_geocode_accuracy", "billing_latitude", "billing_longitude", "billing_postal_code", "billing_state", "billing_state_code", "billing_street", "description", "fax", "industry", "is_deleted", "jigsaw_company_id", "last_activity_date", "last_referenced_date", "last_viewed_date", "master_record_id", "name", "number_of_employees", "owner_id", "ownership", "parent_id", "phone", "photo_url", "rating", "record_type_id", "shipping_city", "shipping_country", "shipping_country_code", "shipping_geocode_accuracy", "shipping_latitude", "shipping_longitude", "shipping_postal_code", "shipping_state", "shipping_state_code", "shipping_street", "sic", "sic_desc", "site", "ticker_symbol", "type", "website"]}
+{"table": "raw.account_history", "columns": ["id", "account_number", "account_source", "annual_revenue", "billing_city", "billing_country", "billing_postal_code", "billing_state", "billing_street", "description", "industry", "is_deleted", "last_activity_date", "last_referenced_date", "last_viewed_date", "master_record_id", "name", "number_of_employees", "owner_id", "ownership", "parent_id", "rating", "record_type_id", "shipping_city", "shipping_country", "shipping_postal_code", "shipping_state", "shipping_street", "type", "website", "_fivetran_active", "_fivetran_start", "_fivetran_end", "_fivetran_synced"]}
+{"table": "raw.contact", "columns": ["id", "account_id", "assistant_name", "assistant_phone", "birthdate", "department", "description", "do_not_call", "email", "email_bounced_date", "email_bounced_reason", "fax", "first_name", "has_opted_out_of_email", "has_opted_out_of_fax", "home_phone", "individual_id", "is_deleted", "is_email_bounced", "jigsaw", "jigsaw_contact_id", "last_activity_date", "last_curequest_date", "last_cuupdate_date", "last_modified_by_id", "last_modified_date", "last_name", "last_referenced_date", "last_viewed_date", "lead_source", "mailing_city", "mailing_country", "mailing_country_code", "mailing_geocode_accuracy", "mailing_latitude", "mailing_longitude", "mailing_postal_code", "mailing_state", "mailing_state_code", "mailing_street", "master_record_id", "mobile_phone", "name", "other_city", "other_country", "other_geocode_accuracy", "other_latitude", "other_longitude", "other_phone", "other_postal_code", "other_state", "other_street", "owner_id", "phone", "photo_url", "reports_to_id", "salutation", "system_modstamp", "title"]}
+{"table": "raw.contact_history", "columns": ["id", "account_id", "description", "email", "first_name", "home_phone", "individual_id", "is_deleted", "last_activity_date", "last_modified_by_id", "last_modified_date", "last_name", "last_referenced_date", "last_viewed_date", "lead_source", "mailing_city", "mailing_country", "mailing_postal_code", "mailing_state", "mailing_street", "master_record_id", "mobile_phone", "name", "owner_id", "phone", "reports_to_id", "title", "_fivetran_active", "_fivetran_start", "_fivetran_end", "_fivetran_synced"]}
+{"table": "raw.event", "columns": ["id", "account_id", "activity_date", "activity_date_time", "created_by_id", "created_date", "description", "duration_in_minutes", "end_date", "end_date_time", "event_subtype", "group_event_type", "is_archived", "is_child", "is_deleted", "is_group_event", "is_private", "is_recurrence", "is_recurrence_2", "is_recurrence_2_exception", "is_recurrence_2_exclusion", "is_reminder_set", "last_modified_by_id", "last_modified_date", "location", "owner_id", "recurrence_2_pattern_start_date", "recurrence_2_pattern_text", "recurrence_2_pattern_time_zone", "recurrence_2_pattern_version", "recurrence_activity_id", "recurrence_day_of_month", "recurrence_day_of_week_mask", "recurrence_end_date_only", "recurrence_instance", "recurrence_interval", "recurrence_month_of_year", "recurrence_start_date_time", "recurrence_time_zone_sid_key", "recurrence_type", "reminder_date_time", "show_as", "start_date_time", "subject", "system_modstamp", "type", "what_count", "what_id", "who_count", "who_id"]}
+{"table": "raw.lead", "columns": ["id", "annual_revenue", "city", "company", "converted_account_id", "converted_contact_id", "converted_date", "converted_opportunity_id", "country", "country_code", "created_by_id", "created_date", "description", "email", "email_bounced_date", "email_bounced_reason", "fax", "first_name", "geocode_accuracy", "has_opted_out_of_email", "individual_id", "industry", "is_converted", "is_deleted", "is_unread_by_owner", "jigsaw_contact_id", "last_activity_date", "last_modified_by_id", "last_modified_date", "last_name", "last_referenced_date", "last_viewed_date", "latitude", "lead_source", "longitude", "master_record_id", "mobile_phone", "name", "number_of_employees", "owner_id", "phone", "photo_url", "postal_code", "salutation", "state", "state_code", "status", "street", "system_modstamp", "title", "website"]}
+{"table": "raw.opportunity", "columns": ["id", "account_id", "amount", "campaign_id", "close_date", "created_date", "description", "expected_revenue", "fiscal", "fiscal_quarter", "fiscal_year", "forecast_category", "forecast_category_name", "has_open_activity", "has_opportunity_line_item", "has_overdue_task", "is_closed", "is_deleted", "is_excluded_from_territory_2_filter", "is_won", "last_activity_date", "last_referenced_date", "last_viewed_date", "lead_source", "name", "next_step", "owner_id", "pricebook_2_id", "probability", "record_type_id", "stage_name", "synced_quote_id", "territory_2_id", "type"]}
+{"table": "raw.opportunity_history", "columns": ["id", "account_id", "amount", "campaign_id", "close_date", "created_date", "description", "expected_revenue", "fiscal", "fiscal_quarter", "fiscal_year", "forecast_category", "forecast_category_name", "has_open_activity", "has_opportunity_line_item", "has_overdue_task", "is_closed", "is_deleted", "is_won", "last_activity_date", "last_referenced_date", "last_viewed_date", "lead_source", "name", "next_step", "owner_id", "probability", "record_type_id", "stage_name", "synced_quote_id", "type", "_fivetran_active", "_fivetran_start", "_fivetran_end", "_fivetran_synced"]}
+{"table": "raw.opportunity_line_item", "columns": ["id", "created_by_id", "created_date", "description", "discount", "has_quantity_schedule", "has_revenue_schedule", "has_schedule", "is_deleted", "last_modified_by_id", "last_modified_date", "last_referenced_date", "last_viewed_date", "list_price", "name", "opportunity_id", "pricebook_entry_id", "product_2_id", "product_code", "quantity", "service_date", "sort_order", "system_modstamp", "total_price", "unit_price"]}
+{"table": "raw.order_data", "columns": ["id", "account_id", "activated_by_id", "activated_date", "billing_city", "billing_country", "billing_country_code", "billing_geocode_accuracy", "billing_latitude", "billing_longitude", "billing_postal_code", "billing_state", "billing_state_code", "billing_street", "company_authorized_by_id", "contract_id", "created_by_id", "created_date", "customer_authorized_by_id", "description", "effective_date", "end_date", "is_deleted", "is_reduction_order", "last_modified_by_id", "last_modified_date", "last_referenced_date", "last_viewed_date", "opportunity_id", "order_number", "original_order_id", "owner_id", "pricebook_2_id", "shipping_city", "shipping_country", "shipping_country_code", "shipping_geocode_accuracy", "shipping_latitude", "shipping_longitude", "shipping_postal_code", "shipping_state", "shipping_state_code", "shipping_street", "status", "status_code", "system_modstamp", "total_amount", "type"]}
+{"table": "raw.product_2", "columns": ["id", "created_by_id", "created_date", "description", "display_url", "external_data_source_id", "external_id", "family", "is_active", "is_archived", "is_deleted", "last_modified_by_id", "last_modified_date", "last_referenced_date", "last_viewed_date", "name", "number_of_quantity_installments", "number_of_revenue_installments", "product_code", "quantity_installment_period", "quantity_schedule_type", "quantity_unit_of_measure", "record_type_id", "revenue_installment_period", "revenue_schedule_type", "stock_keeping_unit", "system_modstamp"]}
+{"table": "raw.task", "columns": ["id", "account_id", "activity_date", "call_disposition", "call_duration_in_seconds", "call_object", "call_type", "completed_date_time", "created_by_id", "created_date", "description", "is_archived", "is_closed", "is_deleted", "is_high_priority", "is_recurrence", "is_reminder_set", "last_modified_by_id", "last_modified_date", "owner_id", "priority", "record_type_id", "recurrence_activity_id", "recurrence_day_of_month", "recurrence_day_of_week_mask", "recurrence_end_date_only", "recurrence_instance", "recurrence_interval", "recurrence_month_of_year", "recurrence_regenerated_type", "recurrence_start_date_only", "recurrence_time_zone_sid_key", "recurrence_type", "reminder_date_time", "status", "subject", "system_modstamp", "task_subtype", "type", "what_count", "what_id", "who_count", "who_id"]}
+{"table": "raw.user", "columns": ["id", "about_me", "account_id", "alias", "badge_text", "banner_photo_url", "call_center_id", "city", "community_nickname", "company_name", "contact_id", "country", "country_code", "default_group_notification_frequency", "delegated_approver_id", "department", "digest_frequency", "division", "email", "email_encoding_key", "email_preferences_auto_bcc", "employee_number", "extension", "fax", "federation_identifier", "first_name", "forecast_enabled", "full_photo_url", "geocode_accuracy", "individual_id", "is_active", "is_profile_photo_active", "language_locale_key", "last_login_date", "last_name", "last_referenced_date", "last_viewed_date", "latitude", "locale_sid_key", "longitude", "manager_id", "medium_banner_photo_url", "mobile_phone", "name", "offline_trial_expiration_date", "phone", "postal_code", "profile_id", "receives_admin_info_emails", "receives_info_emails", "sender_email", "sender_name", "signature", "small_banner_photo_url", "small_photo_url", "state", "state_code", "street", "time_zone_sid_key", "title", "username", "user_role_id", "user_type"]}
+{"table": "raw.user_role", "columns": ["id", "case_access_for_account_owner", "contact_access_for_account_owner", "developer_name", "forecast_user_id", "may_forecast_manager_share", "name", "opportunity_access_for_account_owner", "parent_role_id", "portal_type", "rollup_description"]}
+
+
+=== Relevant specification and documentation ===
+## stg_salesforce__account
+
+    - name: stg_salesforce__account
+      description: "Cleaned and standardized company/organization records from Salesforce with validated business information"
+      source_table: raw.account
+      columns:
+        - name: account_id
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "account_id IS NOT NULL"
+              on_failure: delete_row
+            - rule: "account_id ~ '^[A-Za-z0-9]{15,18}$'"
+              on_failure: delete_row
+            - rule: "account_id IN (SELECT id FROM raw.account)"
+              on_failure: delete_row
+        - name: account_number
+          data_type: VARCHAR
+        - name: account_name
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "account_name IS NOT NULL"
+              on_failure: delete_row
+            - rule: "TRIM(account_name) != ''"
+              on_failure: delete_row
+            - rule: "account_name = TRIM(account_name)"
+              on_failure: correct
+        - name: account_description
+          data_type: VARCHAR
+        - name: account_source
+          data_type: VARCHAR
+        - name: industry
+          data_type: VARCHAR
+        - name: annual_revenue
+          data_type: DECIMAL(15,2)
+          validation_rules:
+            - rule: "annual_revenue IS NULL OR annual_revenue >= 0"
+              on_failure: nullify_field
+            - rule: "annual_revenue IS NULL OR annual_revenue <= 999999999999.99"
+              on_failure: nullify_field
+        - name: number_of_employees
+          data_type: INTEGER
+        - name: website
+          data_type: VARCHAR
+        - name: owner_id
+          data_type: VARCHAR
+        - name: type
+          data_type: VARCHAR
+        - name: billing_city
+          data_type: VARCHAR
+        - name: billing_country
+          data_type: VARCHAR
+        - name: billing_postal_code
+          data_type: VARCHAR
+        - name: billing_state
+          data_type: VARCHAR
+        - name: billing_state_code
+          data_type: VARCHAR
+        - name: billing_street
+          data_type: VARCHAR
+        - name: last_activity_date
+          data_type: DATE
+        - name: last_referenced_date
+          data_type: TIMESTAMP
+        - name: last_viewed_date
+          data_type: TIMESTAMP
+        - name: master_record_id
+          data_type: VARCHAR
+        - name: ownership
+          data_type: VARCHAR
+        - name: parent_id
+          data_type: VARCHAR
+        - name: rating
+          data_type: VARCHAR
+        - name: record_type_id
+          data_type: VARCHAR
+        - name: shipping_city
+          data_type: VARCHAR
+        - name: shipping_country
+          data_type: VARCHAR
+        - name: shipping_country_code
+          data_type: VARCHAR
+        - name: shipping_postal_code
+          data_type: VARCHAR
+        - name: shipping_state
+          data_type: VARCHAR
+        - name: shipping_state_code
+          data_type: VARCHAR
+        - name: shipping_street
+          data_type: VARCHAR
+        - name: is_deleted
+          data_type: BOOLEAN
+          validation_rules:
+            - rule: "NOT COALESCE(is_deleted, false)"
+              on_failure: delete_row
+
+
+
+## stg_salesforce__contact
+
+    - name: stg_salesforce__contact
+      description: "Cleaned and validated individual contact records with standardized personal and professional information"
+      source_table: raw.contact
+      columns:
+        - name: account_id
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "account_id IS NULL OR account_id ~ '^[A-Za-z0-9]{15,18}$'"
+              on_failure: nullify_field
+            - rule: "account_id IS NULL OR account_id IN (SELECT id FROM raw.account)"
+              on_failure: nullify_field
+        - name: assistant_name
+          data_type: VARCHAR
+        - name: assistant_phone
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "assistant_phone IS NULL OR LENGTH(assistant_phone) <= 50"
+              on_failure: nullify_field
+            - rule: "assistant_phone IS NULL OR assistant_phone = TRIM(assistant_phone)"
+              on_failure: correct
+        - name: birthdate
+          data_type: DATE
+          validation_rules:
+            - rule: "birthdate IS NULL OR birthdate >= DATE '1900-01-01'"
+              on_failure: nullify_field
+            - rule: "birthdate IS NULL OR birthdate <= CURRENT_DATE"
+              on_failure: nullify_field
+        - name: created_date
+          data_type: TIMESTAMP
+        - name: department
+          data_type: VARCHAR
+        - name: contact_description
+          data_type: VARCHAR
+        - name: email
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "email = LOWER(TRIM(email))"
+              on_failure: correct
+            - rule: "email IS NULL OR LENGTH(email) <= 255"
+              on_failure: nullify_field
+            - rule: "email IS NULL OR email ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$'"
+              on_failure: nullify_field
+        - name: email_bounced_date
+          data_type: TIMESTAMP
+        - name: email_bounced_reason
+          data_type: VARCHAR
+        - name: fax
+          data_type: VARCHAR
+        - name: first_name
+          data_type: VARCHAR
+        - name: home_phone
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "home_phone IS NULL OR LENGTH(home_phone) <= 50"
+              on_failure: nullify_field
+            - rule: "home_phone IS NULL OR home_phone = TRIM(home_phone)"
+              on_failure: correct
+        - name: contact_id
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "contact_id ~ '^[A-Za-z0-9]{15,18}$'"
+              on_failure: delete_row
+        - name: is_deleted
+          data_type: BOOLEAN
+          validation_rules:
+            - rule: "NOT COALESCE(is_deleted, false)"
+              on_failure: delete_row
+        - name: is_email_bounced
+          data_type: BOOLEAN
+        - name: last_activity_date
+          data_type: DATE
+        - name: last_curequest_date
+          data_type: TIMESTAMP
+        - name: last_cuupdate_date
+          data_type: TIMESTAMP
+        - name: last_modified_date
+          data_type: TIMESTAMP
+        - name: last_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: last_referenced_date
+          data_type: TIMESTAMP
+        - name: last_viewed_date
+          data_type: TIMESTAMP
+        - name: lead_source
+          data_type: VARCHAR
+        - name: mailing_city
+          data_type: VARCHAR
+        - name: mailing_country
+          data_type: VARCHAR
+        - name: mailing_country_code
+          data_type: VARCHAR
+        - name: mailing_postal_code
+          data_type: VARCHAR
+        - name: mailing_state
+          data_type: VARCHAR
+        - name: mailing_state_code
+          data_type: VARCHAR
+        - name: mailing_street
+          data_type: VARCHAR
+        - name: master_record_id
+          data_type: VARCHAR
+        - name: mobile_phone
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "mobile_phone IS NULL OR LENGTH(mobile_phone) <= 50"
+              on_failure: nullify_field
+            - rule: "mobile_phone IS NULL OR mobile_phone = TRIM(mobile_phone)"
+              on_failure: correct
+        - name: contact_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: other_city
+          data_type: VARCHAR
+        - name: other_country
+          data_type: VARCHAR
+        - name: other_phone
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "other_phone IS NULL OR LENGTH(other_phone) <= 50"
+              on_failure: nullify_field
+            - rule: "other_phone IS NULL OR other_phone = TRIM(other_phone)"
+              on_failure: correct
+        - name: other_postal_code
+          data_type: VARCHAR
+        - name: other_state
+          data_type: VARCHAR
+        - name: other_street
+          data_type: VARCHAR
+        - name: owner_id
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "owner_id IS NULL OR owner_id ~ '^[A-Za-z0-9]{15,18}$'"
+              on_failure: nullify_field
+            - rule: "owner_id IS NULL OR owner_id IN (SELECT id FROM raw.user)"
+              on_failure: nullify_field
+        - name: phone
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "phone IS NULL OR LENGTH(phone) <= 50"
+              on_failure: nullify_field
+            - rule: "phone IS NULL OR phone = TRIM(phone)"
+              on_failure: correct
+        - name: photo_url
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "photo_url IS NULL OR LENGTH(photo_url) <= 500"
+              on_failure: nullify_field
+            - rule: "photo_url IS NULL OR photo_url = TRIM(photo_url)"
+              on_failure: correct
+        - name: reports_to_id
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "reports_to_id IS NULL OR reports_to_id ~ '^[A-Za-z0-9]{15,18}$'"
+              on_failure: nullify_field
+            - rule: "reports_to_id IS NULL OR reports_to_id IN (SELECT id FROM raw.contact)"
+              on_failure: nullify_field
+        - name: salutation
+          data_type: VARCHAR
+        - name: title
+          data_type: VARCHAR
+
+
+
+## stg_salesforce__opportunity
+
+    - name: stg_salesforce__opportunity
+      description: "Cleaned sales opportunity records with validated amounts, dates, and stage information"
+      source_table: raw.opportunity
+      columns:
+        - name: account_id
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "account_id IS NULL OR account_id ~ '^[A-Za-z0-9]{15,18}$'"
+              on_failure: nullify_field
+            - rule: "account_id IS NULL OR account_id IN (SELECT id FROM raw.account)"
+              on_failure: nullify_field
+        - name: amount
+          data_type: DECIMAL(18,2)
+          validation_rules:
+            - rule: "amount IS NULL OR amount >= 0"
+              on_failure: nullify_field
+            - rule: "amount IS NULL OR amount <= 999999999999.99"
+              on_failure: nullify_field
+        - name: campaign_id
+          data_type: VARCHAR
+        - name: close_date
+          data_type: DATE
+          validation_rules:
+            - rule: "close_date IS NULL OR close_date >= DATE '1900-01-01'"
+              on_failure: nullify_field
+            - rule: "close_date IS NULL OR close_date <= CURRENT_DATE + INTERVAL '1 year'"
+              on_failure: nullify_field
+            - rule: "close_date IS NULL OR close_date >= created_date::DATE"
+              on_failure: nullify_field
+        - name: created_date
+          data_type: TIMESTAMP
+        - name: opportunity_description
+          data_type: VARCHAR
+        - name: expected_revenue
+          data_type: DECIMAL(15,2)
+        - name: fiscal
+          data_type: VARCHAR
+        - name: fiscal_quarter
+          data_type: INTEGER
+        - name: fiscal_year
+          data_type: INTEGER
+        - name: forecast_category
+          data_type: VARCHAR
+        - name: forecast_category_name
+          data_type: VARCHAR
+        - name: has_open_activity
+          data_type: BOOLEAN
+        - name: has_opportunity_line_item
+          data_type: BOOLEAN
+        - name: has_overdue_task
+          data_type: BOOLEAN
+        - name: opportunity_id
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "opportunity_id ~ '^[A-Za-z0-9]{15,18}$'"
+              on_failure: delete_row
+        - name: is_closed
+          data_type: BOOLEAN
+        - name: is_deleted
+          data_type: BOOLEAN
+          validation_rules:
+            - rule: "NOT COALESCE(is_deleted, false)"
+              on_failure: delete_row
+        - name: is_won
+          data_type: BOOLEAN
+        - name: last_activity_date
+          data_type: DATE
+        - name: last_referenced_date
+          data_type: TIMESTAMP
+        - name: last_viewed_date
+          data_type: TIMESTAMP
+        - name: lead_source
+          data_type: VARCHAR
+        - name: opportunity_name
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "TRIM(opportunity_name) <> ''"
+              on_failure: delete_row
+            - rule: "LENGTH(TRIM(opportunity_name)) <= 255"
+              on_failure: delete_row
+        - name: next_step
+          data_type: VARCHAR
+        - name: owner_id
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "owner_id IS NULL OR owner_id ~ '^[A-Za-z0-9]{15,18}$'"
+              on_failure: nullify_field
+            - rule: "owner_id IS NULL OR owner_id IN (SELECT id FROM raw.user)"
+              on_failure: nullify_field
+        - name: probability
+          data_type: DECIMAL(5,2)
+          validation_rules:
+            - rule: "probability IS NULL OR probability >= 0"
+              on_failure: nullify_field
+            - rule: "probability IS NULL OR probability <= 100"
+              on_failure: nullify_field
+        - name: record_type_id
+          data_type: VARCHAR
+        - name: stage_name
+          data_type: VARCHAR
+        - name: synced_quote_id
+          data_type: VARCHAR
+        - name: type
+          data_type: VARCHAR
+        - name: is_created_this_month
+          data_type: BOOLEAN
+        - name: is_created_this_quarter
+          data_type: BOOLEAN
+        - name: days_since_created
+          data_type: INTEGER
+        - name: days_to_close
+          data_type: INTEGER
+        - name: is_closed_this_month
+          data_type: BOOLEAN
+        - name: is_closed_this_quarter
+          data_type: BOOLEAN
+
+
+
+## stg_salesforce__user
+
+    - name: stg_salesforce__user
+      description: "Cleaned user/employee records with validated authentication and profile information"
+      source_table: raw.user
+      columns:
+        - name: account_id
+          data_type: VARCHAR
+        - name: alias
+          data_type: VARCHAR
+        - name: city
+          data_type: VARCHAR
+        - name: company_name
+          data_type: VARCHAR
+        - name: contact_id
+          data_type: VARCHAR
+        - name: country
+          data_type: VARCHAR
+        - name: country_code
+          data_type: VARCHAR
+        - name: department
+          data_type: VARCHAR
+        - name: email
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "email IS NOT NULL"
+              on_failure: delete_row
+            - rule: "email = LOWER(TRIM(email))"
+              on_failure: correct
+            - rule: "email RLIKE '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$'"
+              on_failure: delete_row
+            - rule: "LENGTH(email) <= 255"
+              on_failure: delete_row
+        - name: first_name
+          data_type: VARCHAR
+        - name: user_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: individual_id
+          data_type: VARCHAR
+        - name: is_active
+          data_type: BOOLEAN
+          constraints: [not_null]
+        - name: last_login_date
+          data_type: TIMESTAMP
+        - name: last_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: last_referenced_date
+          data_type: TIMESTAMP
+        - name: last_viewed_date
+          data_type: TIMESTAMP
+        - name: manager_id
+          data_type: VARCHAR
+        - name: user_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: postal_code
+          data_type: VARCHAR
+        - name: profile_id
+          data_type: VARCHAR
+        - name: state
+          data_type: VARCHAR
+        - name: state_code
+          data_type: VARCHAR
+        - name: street
+          data_type: VARCHAR
+        - name: title
+          data_type: VARCHAR
+        - name: user_role_id
+          data_type: VARCHAR
+        - name: user_type
+          data_type: VARCHAR
+        - name: username
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+
+
+
+## stg_salesforce__lead
+
+    - name: stg_salesforce__lead
+      description: "Cleaned prospect/lead records with validated contact information and lead qualification data"
+      source_table: raw.lead
+      columns:
+        - name: lead_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: first_name
+          data_type: VARCHAR
+        - name: last_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: lead_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: email
+          data_type: VARCHAR
+        - name: company
+          data_type: VARCHAR
+        - name: title
+          data_type: VARCHAR
+        - name: phone
+          data_type: VARCHAR
+        - name: lead_source
+          data_type: VARCHAR
+        - name: status
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "status IS NOT NULL"
+              on_failure: delete_row
+            - rule: "status IN ('Open - Not Contacted', 'Working - Contacted', 'Closed - Converted', 'Closed - Not Converted')"
+              on_failure: delete_row
+            - rule: "status = TRIM(status)"
+              on_failure: correct
+        - name: owner_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: is_deleted
+          data_type: BOOLEAN
+        - name: lead_description
+          data_type: VARCHAR
+        - name: annual_revenue
+          data_type: DECIMAL(18,3)
+        - name: city
+          data_type: VARCHAR
+        - name: converted_account_id
+          data_type: VARCHAR
+        - name: converted_contact_id
+          data_type: VARCHAR
+        - name: converted_date
+          data_type: TIMESTAMP
+        - name: converted_opportunity_id
+          data_type: VARCHAR
+        - name: country
+          data_type: VARCHAR
+        - name: country_code
+          data_type: VARCHAR
+        - name: created_by_id
+          data_type: VARCHAR
+        - name: created_date
+          data_type: TIMESTAMP
+        - name: email_bounced_date
+          data_type: TIMESTAMP
+        - name: email_bounced_reason
+          data_type: VARCHAR
+        - name: fax
+          data_type: VARCHAR
+        - name: geocode_accuracy
+          data_type: VARCHAR
+        - name: has_opted_out_of_email
+          data_type: BOOLEAN
+        - name: industry
+          data_type: VARCHAR
+        - name: is_converted
+          data_type: BOOLEAN
+        - name: is_unread_by_owner
+          data_type: BOOLEAN
+        - name: last_activity_date
+          data_type: DATE
+        - name: last_modified_date
+          data_type: TIMESTAMP
+        - name: last_referenced_date
+          data_type: TIMESTAMP
+        - name: last_viewed_date
+          data_type: TIMESTAMP
+        - name: latitude
+          data_type: DECIMAL(18,3)
+        - name: longitude
+          data_type: DECIMAL(18,3)
+        - name: master_record_id
+          data_type: VARCHAR
+        - name: mobile_phone
+          data_type: VARCHAR
+        - name: number_of_employees
+          data_type: INTEGER
+        - name: photo_url
+          data_type: VARCHAR
+        - name: postal_code
+          data_type: VARCHAR
+        - name: salutation
+          data_type: VARCHAR
+        - name: state
+          data_type: VARCHAR
+        - name: state_code
+          data_type: VARCHAR
+        - name: street
+          data_type: VARCHAR
+        - name: system_modstamp
+          data_type: TIMESTAMP
+        - name: website
+          data_type: VARCHAR
+
+
+
+## stg_salesforce__task
+
+    - name: stg_salesforce__task
+      description: "Cleaned task records with validated activity information and completion status"
+      source_table: raw.task
+      columns:
+        - name: task_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: activity_date
+          data_type: DATE
+        - name: call_disposition
+          data_type: VARCHAR
+        - name: call_duration_in_seconds
+          data_type: INTEGER
+        - name: call_object
+          data_type: VARCHAR
+        - name: call_type
+          data_type: VARCHAR
+        - name: created_date
+          data_type: TIMESTAMP
+        - name: task_description
+          data_type: VARCHAR
+        - name: is_closed
+          data_type: BOOLEAN
+          constraints: [not_null]
+        - name: is_deleted
+          data_type: BOOLEAN
+        - name: is_high_priority
+          data_type: BOOLEAN
+        - name: owner_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: priority
+          data_type: VARCHAR
+        - name: status
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "status IS NOT NULL"
+              on_failure: delete_row
+            - rule: "status IN ('Not Started', 'In Progress', 'Completed', 'Waiting on someone else', 'Deferred')"
+              on_failure: delete_row
+            - rule: "status = TRIM(status)"
+              on_failure: correct
+        - name: subject
+          data_type: VARCHAR
+        - name: type
+          data_type: VARCHAR
+        - name: what_id
+          data_type: VARCHAR
+        - name: who_id
+          data_type: VARCHAR
+
+
+
+## stg_salesforce__event
+
+    - name: stg_salesforce__event
+      description: "Cleaned event records with validated calendar activity information"
+      source_table: raw.event
+      columns:
+        - name: event_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: activity_date
+          data_type: TIMESTAMP
+        - name: activity_date_time
+          data_type: TIMESTAMP
+        - name: is_deleted
+          data_type: BOOLEAN
+        - name: event_description
+          data_type: VARCHAR
+        - name: duration_in_minutes
+          data_type: INTEGER
+        - name: end_date_time
+          data_type: TIMESTAMP
+          validation_rules:
+            - rule: "end_date_time IS NULL OR end_date_time >= start_date_time"
+              on_failure: delete_row
+            - rule: "end_date_time IS NULL OR end_date_time <= '2100-01-01'"
+              on_failure: nullify_field
+            - rule: "end_date_time IS NULL OR end_date_time >= '2000-01-01'"
+              on_failure: nullify_field
+        - name: location
+          data_type: VARCHAR
+        - name: owner_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: start_date_time
+          data_type: TIMESTAMP
+          validation_rules:
+            - rule: "start_date_time <= '2100-01-01'"
+              on_failure: nullify_field
+            - rule: "start_date_time >= '2000-01-01'"
+              on_failure: nullify_field
+            - rule: "start_date_time <= CURRENT_TIMESTAMP + INTERVAL '1 year'"
+              on_failure: nullify_field
+        - name: subject
+          data_type: VARCHAR
+        - name: type
+          data_type: VARCHAR
+        - name: what_id
+          data_type: VARCHAR
+        - name: who_id
+          data_type: VARCHAR
+
+
+
+## stg_salesforce__user_role
+
+    - name: stg_salesforce__user_role
+      description: "Cleaned user role records with validated role hierarchy and permissions"
+      source_table: raw.user_role
+      columns:
+        - name: user_role_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: user_role_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: developer_name
+          data_type: VARCHAR
+        - name: parent_role_id
+          data_type: VARCHAR
+        - name: rollup_description
+          data_type: VARCHAR
+
+
+
+## stg_salesforce__product_2
+
+    - name: stg_salesforce__product_2
+      description: "Cleaned product records with validated pricing and catalog information"
+      source_table: raw.product_2
+      columns:
+        - name: product_2_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: created_date
+          data_type: TIMESTAMP
+        - name: product_description
+          data_type: VARCHAR
+        - name: external_data_source_id
+          data_type: VARCHAR
+        - name: external_id
+          data_type: VARCHAR
+        - name: family
+          data_type: VARCHAR
+        - name: is_active
+          data_type: BOOLEAN
+          constraints: [not_null]
+        - name: is_archived
+          data_type: BOOLEAN
+        - name: is_deleted
+          data_type: BOOLEAN
+        - name: last_modified_date
+          data_type: TIMESTAMP
+        - name: product_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: product_code
+          data_type: VARCHAR
+        - name: quantity_unit_of_measure
+          data_type: VARCHAR
+
+
+
+## stg_salesforce__opportunity_line_item
+
+    - name: stg_salesforce__opportunity_line_item
+      description: "Cleaned opportunity line item records with validated product and pricing information"
+      source_table: raw.opportunity_line_item
+      columns:
+        - name: opportunity_line_item_id
+          data_type: VARCHAR
+        - name: opportunity_id
+          data_type: VARCHAR
+        - name: product_2_id
+          data_type: VARCHAR
+        - name: created_date
+          data_type: TIMESTAMP
+        - name: opportunity_line_item_description
+          data_type: VARCHAR
+        - name: has_quantity_schedule
+          data_type: BOOLEAN
+        - name: has_revenue_schedule
+          data_type: BOOLEAN
+        - name: is_deleted
+          data_type: BOOLEAN
+          validation_rules:
+            - rule: "NOT COALESCE(is_deleted, false)"
+              on_failure: delete_row
+        - name: last_modified_date
+          data_type: TIMESTAMP
+        - name: list_price
+          data_type: DECIMAL
+        - name: pricebook_entry_id
+          data_type: VARCHAR
+        - name: quantity
+          data_type: DECIMAL
+        - name: service_date
+          data_type: DATE
+        - name: sort_order
+          data_type: INTEGER
+        - name: total_price
+          data_type: DECIMAL
+        - name: unit_price
+          data_type: DECIMAL
+
+
+
+## stg_salesforce__account_history
+
+    - name: stg_salesforce__account_history
+      description: "Cleaned account history records tracking changes to account data over time"
+      source_table: raw.account_history
+      columns:
+        - name: account_id
+          data_type: VARCHAR
+        - name: account_number
+          data_type: VARCHAR
+        - name: account_source
+          data_type: VARCHAR
+        - name: annual_revenue
+          data_type: DECIMAL(18,3)
+        - name: billing_city
+          data_type: VARCHAR
+        - name: billing_country
+          data_type: VARCHAR
+        - name: billing_postal_code
+          data_type: VARCHAR
+        - name: billing_state
+          data_type: VARCHAR
+        - name: billing_street
+          data_type: VARCHAR
+        - name: created_date
+          data_type: TIMESTAMP
+        - name: account_description
+          data_type: VARCHAR
+        - name: industry
+          data_type: VARCHAR
+        - name: is_deleted
+          data_type: BOOLEAN
+        - name: last_activity_date
+          data_type: DATE
+        - name: account_name
+          data_type: VARCHAR
+        - name: number_of_employees
+          data_type: INTEGER
+        - name: owner_id
+          data_type: VARCHAR
+        - name: ownership
+          data_type: VARCHAR
+        - name: parent_id
+          data_type: VARCHAR
+        - name: rating
+          data_type: VARCHAR
+        - name: shipping_city
+          data_type: VARCHAR
+        - name: shipping_country
+          data_type: VARCHAR
+        - name: shipping_postal_code
+          data_type: VARCHAR
+        - name: shipping_state
+          data_type: VARCHAR
+        - name: shipping_street
+          data_type: VARCHAR
+        - name: type
+          data_type: VARCHAR
+        - name: website
+          data_type: VARCHAR
+        - name: history_unique_key
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+
+
+
+## stg_salesforce__contact_history
+
+    - name: stg_salesforce__contact_history
+      description: "Cleaned contact history records tracking changes to contact data over time"
+      source_table: raw.contact_history
+      columns:
+        - name: contact_id
+          data_type: VARCHAR
+        - name: account_id
+          data_type: VARCHAR
+        - name: created_date
+          data_type: TIMESTAMP
+        - name: contact_description
+          data_type: VARCHAR
+        - name: email
+          data_type: VARCHAR
+        - name: first_name
+          data_type: VARCHAR
+        - name: is_deleted
+          data_type: BOOLEAN
+        - name: last_activity_date
+          data_type: DATE
+        - name: last_modified_date
+          data_type: TIMESTAMP
+        - name: last_name
+          data_type: VARCHAR
+        - name: lead_source
+          data_type: VARCHAR
+        - name: mailing_city
+          data_type: VARCHAR
+        - name: mailing_country
+          data_type: VARCHAR
+        - name: mailing_postal_code
+          data_type: VARCHAR
+        - name: mailing_state
+          data_type: VARCHAR
+        - name: mailing_street
+          data_type: VARCHAR
+        - name: mobile_phone
+          data_type: VARCHAR
+        - name: contact_name
+          data_type: VARCHAR
+        - name: owner_id
+          data_type: VARCHAR
+        - name: phone
+          data_type: VARCHAR
+        - name: title
+          data_type: VARCHAR
+        - name: history_unique_key
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+
+
+
+## stg_salesforce__opportunity_history
+
+    - name: stg_salesforce__opportunity_history
+      description: "Cleaned opportunity history records tracking changes to opportunity data over time"
+      source_table: raw.opportunity_history
+      columns:
+        - name: opportunity_id
+          data_type: VARCHAR
+        - name: account_id
+          data_type: VARCHAR
+        - name: amount
+          data_type: DECIMAL
+        - name: close_date
+          data_type: DATE
+        - name: created_date
+          data_type: TIMESTAMP
+        - name: opportunity_description
+          data_type: VARCHAR
+        - name: expected_revenue
+          data_type: DECIMAL
+        - name: forecast_category
+          data_type: VARCHAR
+        - name: is_closed
+          data_type: BOOLEAN
+        - name: is_deleted
+          data_type: BOOLEAN
+        - name: is_won
+          data_type: BOOLEAN
+        - name: last_activity_date
+          data_type: DATE
+        - name: last_modified_date
+          data_type: TIMESTAMP
+        - name: lead_source
+          data_type: VARCHAR
+        - name: opportunity_name
+          data_type: VARCHAR
+        - name: next_step
+          data_type: VARCHAR
+        - name: owner_id
+          data_type: VARCHAR
+        - name: probability
+          data_type: DECIMAL
+        - name: stage_name
+          data_type: VARCHAR
+        - name: type
+          data_type: VARCHAR
+        - name: history_unique_key
+          data_type: VARCHAR
+
+# PHASE 2: Defines the business logic from staging tables to analytical models. #
+# --------------------------------------------------------------------------- #
+
+
+
+
+=== Premises recorded in earlier reviews ===
+(none)
+
+=== Agent steps since the last review ===
+### event 15
+
+## 命令原文
+
+python - <<'PY'
+import yaml
+x=yaml.safe_load(open('docs/data_contract.yaml'))
+print([t['name'] for t in x['staging_contract']['tables']])
+for t in x['staging_contract']['tables']:
+ print(t['name'], [c['name'] for c in t['columns']])
+PY
+
+## agent 实际看到的执行结果
+
+['stg_salesforce__account', 'stg_salesforce__contact', 'stg_salesforce__opportunity', 'stg_salesforce__user', 'stg_salesforce__lead', 'stg_salesforce__task', 'stg_salesforce__event', 'stg_salesforce__user_role', 'stg_salesforce__product_2', 'stg_salesforce__opportunity_line_item', 'stg_salesforce__order', 'stg_salesforce__account_history', 'stg_salesforce__contact_history', 'stg_salesforce__opportunity_history']
+stg_salesforce__account ['account_id', 'account_number', 'account_name', 'account_description', 'account_source', 'industry', 'annual_revenue', 'number_of_employees', 'website', 'owner_id', 'type', 'billing_city', 'billing_country', 'billing_postal_code', 'billing_state', 'billing_state_code', 'billing_street', 'last_activity_date', 'last_referenced_date', 'last_viewed_date', 'master_record_id', 'ownership', 'parent_id', 'rating', 'record_type_id', 'shipping_city', 'shipping_country', 'shipping_country_code', 'shipping_postal_code', 'shipping_state', 'shipping_state_code', 'shipping_street', 'is_deleted']
+stg_salesforce__contact ['account_id', 'assistant_name', 'assistant_phone', 'birthdate', 'created_date', 'department', 'contact_description', 'email', 'email_bounced_date', 'email_bounced_reason', 'fax', 'first_name', 'home_phone', 'contact_id', 'is_deleted', 'is_email_bounced', 'last_activity_date', 'last_curequest_date', 'last_cuupdate_date', 'last_modified_date', 'last_name', 'last_referenced_date', 'last_viewed_date', 'lead_source', 'mailing_city', 'mailing_country', 'mailing_country_code', 'mailing_postal_code', 'mailing_state', 'mailing_state_code', 'mailing_street', 'master_record_id', 'mobile_phone', 'contact_name', 'other_city', 'other_country', 'other_phone', 'other_postal_code', 'other_state', 'other_street', 'owner_id', 'phone', 'photo_url', 'reports_to_id', 'salutation', 'title']
+stg_salesforce__opportunity ['account_id', 'amount', 'campaign_id', 'close_date', 'created_date', 'opportunity_description', 'expected_revenue', 'fiscal', 'fiscal_quarter', 'fiscal_year', 'forecast_category', 'forecast_category_name', 'has_open_activity', 'has_opportunity_line_item', 'has_overdue_task', 'opportunity_id', 'is_closed', 'is_deleted', 'is_won', 'last_activity_date', 'last_referenced_date', 'last_viewed_date', 'lead_source', 'opportunity_name', 'next_step', 'owner_id', 'probability', 'record_type_id', 'stage_name', 'synced_quote_id', 'type', 'is_created_this_month', 'is_created_this_quarter', 'days_since_created', 'days_to_close', 'is_closed_this_month', 'is_closed_this_quarter']
+stg_salesforce__user ['account_id', 'alias', 'city', 'company_name', 'contact_id', 'country', 'country_code', 'department', 'email', 'first_name', 'user_id', 'individual_id', 'is_active', 'last_login_date', 'last_name', 'last_referenced_date', 'last_viewed_date', 'manager_id', 'user_name', 'postal_code', 'profile_id', 'state', 'state_code', 'street', 'title', 'user_role_id', 'user_type', 'username']
+stg_salesforce__lead ['lead_id', 'first_name', 'last_name', 'lead_name', 'email', 'company', 'title', 'phone', 'lead_source', 'status', 'owner_id', 'is_deleted', 'lead_description', 'annual_revenue', 'city', 'converted_account_id', 'converted_contact_id', 'converted_date', 'converted_opportunity_id', 'country', 'country_code', 'created_by_id', 'created_date', 'email_bounced_date', 'email_bounced_reason', 'fax', 'geocode_accuracy', 'has_opted_out_of_email', 'industry', 'is_converted', 'is_unread_by_owner', 'last_activity_date', 'last_modified_date', 'last_referenced_date', 'last_viewed_date', 'latitude', 'longitude', 'master_record_id', 'mobile_phone', 'number_of_employees', 'photo_url', 'postal_code', 'salutation', 'state', 'state_code', 'street', 'system_modstamp', 'website']
+stg_salesforce__task ['task_id', 'activity_date', 'call_disposition', 'call_duration_in_seconds', 'call_object', 'call_type', 'created_date', 'task_description', 'is_closed', 'is_deleted', 'is_high_priority', 'owner_id', 'priority', 'status', 'subject', 'type', 'what_id', 'who_id']
+stg_salesforce__event ['event_id', 'activity_date', 'activity_date_time', 'is_deleted', 'event_description', 'duration_in_minutes', 'end_date_time', 'location', 'owner_id', 'start_date_time', 'subject', 'type', 'what_id', 'who_id']
+stg_salesforce__user_role ['user_role_id', 'user_role_name', 'developer_name', 'parent_role_id', 'rollup_description']
+stg_salesforce__product_2 ['product_2_id', 'created_date', 'product_description', 'external_data_source_id', 'external_id', 'family', 'is_active', 'is_archived', 'is_deleted', 'last_modified_date', 'product_name', 'product_code', 'quantity_unit_of_measure']
+stg_salesforce__opportunity_line_item ['opportunity_line_item_id', 'opportunity_id', 'product_2_id', 'created_date', 'opportunity_line_item_description', 'has_quantity_schedule', 'has_revenue_schedule', 'is_deleted', 'last_modified_date', 'list_price', 'pricebook_entry_id', 'quantity', 'service_date', 'sort_order', 'total_price', 'unit_price']
+stg_salesforce__order ['order_id', 'account_id', 'activated_by_id', 'activated_date', 'billing_city', 'billing_country', 'billing_postal_code', 'billing_state', 'billing_street', 'company_authorized_by_id', 'contract_id', 'created_date', 'customer_authorized_by_id', 'order_description', 'effective_date', 'end_date', 'is_deleted', 'last_modified_date', 'order_number', 'original_order_id', 'owner_id', 'status', 'total_amount', 'pricebook_2_id', 'shipping_city', 'shipping_country', 'shipping_postal_code', 'shipping_state', 'shipping_street', 'type']
+stg_salesforce__account_history ['account_id', 'account_number', 'account_source', 'annual_revenue', 'billing_city', 'billing_country', 'billing_postal_code', 'billing_state', 'billing_street', 'created_date', 'account_description', 'industry', 'is_deleted', 'last_activity_date', 'account_name', 'number_of_employees', 'owner_id', 'ownership', 'parent_id', 'rating', 'shipping_city', 'shipping_country', 'shipping_postal_code', 'shipping_state', 'shipping_street', 'type', 'website', 'history_unique_key']
+stg_salesforce__contact_history ['contact_id', 'account_id', 'created_date', 'contact_description', 'email', 'first_name', 'is_deleted', 'last_activity_date', 'last_modified_date', 'last_name', 'lead_source', 'mailing_city', 'mailing_country', 'mailing_postal_code', 'mailing_state', 'mailing_street', 'mobile_phone', 'contact_name', 'owner_id', 'phone', 'title', 'history_unique_key']
+stg_salesforce__opportunity_history ['opportunity_id', 'account_id', 'amount', 'close_date', 'created_date', 'opportunity_description', 'expected_revenue', 'forecast_category', 'is_closed', 'is_deleted', 'is_won', 'last_activity_date', 'last_modified_date', 'lead_source', 'opportunity_name', 'next_step', 'owner_id', 'probability', 'stage_name', 'type', 'history_unique_key']
+
+
+### event 17
+
+## 命令原文
+
+python - <<'PY'
+import duckdb
+c=duckdb.connect('salesforce_start.duckdb',read_only=True)
+for t in ['account','contact','opportunity','user','lead','task','event','user_role','product_2','opportunity_line_item','order_data','account_history','contact_history','opportunity_history']:
+ print('\n',t,c.execute(f'describe raw.{t}').fetchall())
+PY
+
+## agent 实际看到的执行结果
+
+
+ account [('id', 'VARCHAR', 'YES', None, None, None), ('account_number', 'VARCHAR', 'YES', None, None, None), ('account_source', 'VARCHAR', 'YES', None, None, None), ('annual_revenue', 'BIGINT', 'YES', None, None, None), ('billing_city', 'VARCHAR', 'YES', None, None, None), ('billing_country', 'VARCHAR', 'YES', None, None, None), ('billing_country_code', 'VARCHAR', 'YES', None, None, None), ('billing_geocode_accuracy', 'VARCHAR', 'YES', None, None, None), ('billing_latitude', 'DOUBLE', 'YES', None, None, None), ('billing_longitude', 'DOUBLE', 'YES', None, None, None), ('billing_postal_code', 'VARCHAR', 'YES', None, None, None), ('billing_state', 'VARCHAR', 'YES', None, None, None), ('billing_state_code', 'VARCHAR', 'YES', None, None, None), ('billing_street', 'VARCHAR', 'YES', None, None, None), ('description', 'VARCHAR', 'YES', None, None, None), ('fax', 'VARCHAR', 'YES', None, None, None), ('industry', 'VARCHAR', 'YES', None, None, None), ('is_deleted', 'BOOLEAN', 'YES', None, None, None), ('jigsaw_company_id', 'VARCHAR', 'YES', None, None, None), ('last_activity_date', 'TIMESTAMP', 'YES', None, None, None), ('last_referenced_date', 'TIMESTAMP', 'YES', None, None, None), ('last_viewed_date', 'TIMESTAMP', 'YES', None, None, None), ('master_record_id', 'VARCHAR', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('number_of_employees', 'BIGINT', 'YES', None, None, None), ('owner_id', 'VARCHAR', 'YES', None, None, None), ('ownership', 'VARCHAR', 'YES', None, None, None), ('parent_id', 'VARCHAR', 'YES', None, None, None), ('phone', 'VARCHAR', 'YES', None, None, None), ('photo_url', 'VARCHAR', 'YES', None, None, None), ('rating', 'VARCHAR', 'YES', None, None, None), ('record_type_id', 'VARCHAR', 'YES', None, None, None), ('shipping_city', 'VARCHAR', 'YES', None, None, None), ('shipping_country', 'VARCHAR', 'YES', None, None, None), ('shipping_country_code', 'VARCHAR', 'YES', None, None, None), ('shipping_geocode_accuracy', 'VARCHAR', 'YES', None, None, None), ('shipping_latitude', 'DOUBLE', 'YES', None, None, None), ('shipping_longitude', 'DOUBLE', 'YES', None, None, None), ('shipping_postal_code', 'VARCHAR', 'YES', None, None, None), ('shipping_state', 'VARCHAR', 'YES', None, None, None), ('shipping_state_code', 'VARCHAR', 'YES', None, None, None), ('shipping_street', 'VARCHAR', 'YES', None, None, None), ('sic', 'BIGINT', 'YES', None, None, None), ('sic_desc', 'VARCHAR', 'YES', None, None, None), ('site', 'VARCHAR', 'YES', None, None, None), ('ticker_symbol', 'VARCHAR', 'YES', None, None, None), ('type', 'VARCHAR', 'YES', None, None, None), ('website', 'VARCHAR', 'YES', None, None, None)]
+
+ contact [('id', 'VARCHAR', 'YES', None, None, None), ('account_id', 'VARCHAR', 'YES', None, None, None), ('assistant_name', 'VARCHAR', 'YES', None, None, None), ('assistant_phone', 'VARCHAR', 'YES', None, None, None), ('birthdate', 'DATE', 'YES', None, None, None), ('department', 'VARCHAR', 'YES', None, None, None), ('description', 'VARCHAR', 'YES', None, None, None), ('do_not_call', 'BOOLEAN', 'YES', None, None, None), ('email', 'VARCHAR', 'YES', None, None, None), ('email_bounced_date', 'TIMESTAMP', 'YES', None, None, None), ('email_bounced_reason', 'VARCHAR', 'YES', None, None, None), ('fax', 'VARCHAR', 'YES', None, None, None), ('first_name', 'VARCHAR', 'YES', None, None, None), ('has_opted_out_of_email', 'BOOLEAN', 'YES', None, None, None), ('has_opted_out_of_fax', 'BOOLEAN', 'YES', None, None, None), ('home_phone', 'VARCHAR', 'YES', None, None, None), ('individual_id', 'VARCHAR', 'YES', None, None, None), ('is_deleted', 'BOOLEAN', 'YES', None, None, None), ('is_email_bounced', 'BOOLEAN', 'YES', None, None, None), ('jigsaw', 'VARCHAR', 'YES', None, None, None), ('jigsaw_contact_id', 'VARCHAR', 'YES', None, None, None), ('last_activity_date', 'TIMESTAMP', 'YES', None, None, None), ('last_curequest_date', 'TIMESTAMP', 'YES', None, None, None), ('last_cuupdate_date', 'TIMESTAMP', 'YES', None, None, None), ('last_modified_by_id', 'VARCHAR', 'YES', None, None, None), ('last_modified_date', 'TIMESTAMP', 'YES', None, None, None), ('last_name', 'VARCHAR', 'YES', None, None, None), ('last_referenced_date', 'TIMESTAMP', 'YES', None, None, None), ('last_viewed_date', 'TIMESTAMP', 'YES', None, None, None), ('lead_source', 'VARCHAR', 'YES', None, None, None), ('mailing_city', 'VARCHAR', 'YES', None, None, None), ('mailing_country', 'VARCHAR', 'YES', None, None, None), ('mailing_country_code', 'VARCHAR', 'YES', None, None, None), ('mailing_geocode_accuracy', 'VARCHAR', 'YES', None, None, None), ('mailing_latitude', 'DOUBLE', 'YES', None, None, None), ('mailing_longitude', 'DOUBLE', 'YES', None, None, None), ('mailing_postal_code', 'VARCHAR', 'YES', None, None, None), ('mailing_state', 'VARCHAR', 'YES', None, None, None), ('mailing_state_code', 'VARCHAR', 'YES', None, None, None), ('mailing_street', 'VARCHAR', 'YES', None, None, None), ('master_record_id', 'VARCHAR', 'YES', None, None, None), ('mobile_phone', 'VARCHAR', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('other_city', 'VARCHAR', 'YES', None, None, None), ('other_country', 'VARCHAR', 'YES', None, None, None), ('other_geocode_accuracy', 'VARCHAR', 'YES', None, None, None), ('other_latitude', 'DOUBLE', 'YES', None, None, None), ('other_longitude', 'DOUBLE', 'YES', None, None, None), ('other_phone', 'VARCHAR', 'YES', None, None, None), ('other_postal_code', 'VARCHAR', 'YES', None, None, None), ('other_state', 'VARCHAR', 'YES', None, None, None), ('other_street', 'VARCHAR', 'YES', None, None, None), ('owner_id', 'VARCHAR', 'YES', None, None, None), ('phone', 'VARCHAR', 'YES', None, None, None), ('photo_url', 'VARCHAR', 'YES', None, None, None), ('reports_to_id', 'VARCHAR', 'YES', None, None, None), ('salutation', 'VARCHAR', 'YES', None, None, None), ('system_modstamp', 'TIMESTAMP', 'YES', None, None, None), ('title', 'VARCHAR', 'YES', None, None, None)]
+
+ opportunity [('id', 'VARCHAR', 'YES', None, None, None), ('account_id', 'VARCHAR', 'YES', None, None, None), ('amount', 'BIGINT', 'YES', None, None, None), ('campaign_id', 'VARCHAR', 'YES', None, None, None), ('close_date', 'TIMESTAMP', 'YES', None, None, None), ('created_date', 'TIMESTAMP', 'YES', None, None, None), ('description', 'VARCHAR', 'YES', None, None, None), ('expected_revenue', 'BIGINT', 'YES', None, None, None), ('fiscal', 'VARCHAR', 'YES', None, None, None), ('fiscal_quarter', 'BIGINT', 'YES', None, None, None), ('fiscal_year', 'BIGINT', 'YES', None, None, None), ('forecast_category', 'VARCHAR', 'YES', None, None, None), ('forecast_category_name', 'VARCHAR', 'YES', None, None, None), ('has_open_activity', 'BOOLEAN', 'YES', None, None, None), ('has_opportunity_line_item', 'BOOLEAN', 'YES', None, None, None), ('has_overdue_task', 'BOOLEAN', 'YES', None, None, None), ('is_closed', 'BOOLEAN', 'YES', None, None, None), ('is_deleted', 'BOOLEAN', 'YES', None, None, None), ('is_excluded_from_territory_2_filter', 'BOOLEAN', 'YES', None, None, None), ('is_won', 'BOOLEAN', 'YES', None, None, None), ('last_activity_date', 'TIMESTAMP', 'YES', None, None, None), ('last_referenced_date', 'TIMESTAMP', 'YES', None, None, None), ('last_viewed_date', 'TIMESTAMP', 'YES', None, None, None), ('lead_source', 'VARCHAR', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('next_step', 'VARCHAR', 'YES', None, None, None), ('owner_id', 'VARCHAR', 'YES', None, None, None), ('pricebook_2_id', 'VARCHAR', 'YES', None, None, None), ('probability', 'BIGINT', 'YES', None, None, None), ('record_type_id', 'VARCHAR', 'YES', None, None, None), ('stage_name', 'VARCHAR', 'YES', None, None, None), ('synced_quote_id', 'VARCHAR', 'YES', None, None, None), ('territory_2_id', 'VARCHAR', 'YES', None, None, None), ('type', 'VARCHAR', 'YES', None, None, None)]
+
+ user [('id', 'VARCHAR', 'YES', None, None, None), ('about_me', 'VARCHAR', 'YES', None, None, None), ('account_id', 'VARCHAR', 'YES', None, None, None), ('alias', 'VARCHAR', 'YES', None, None, None), ('badge_text', 'VARCHAR', 'YES', None, None, None), ('banner_photo_url', 'VARCHAR', 'YES', None, None, None), ('call_center_id', 'VARCHAR', 'YES', None, None, None), ('city', 'VARCHAR', 'YES', None, None, None), ('community_nickname', 'VARCHAR', 'YES', None, None, None), ('company_name', 'VARCHAR', 'YES', None, None, None), ('contact_id', 'VARCHAR', 'YES', None, None, None), ('country', 'VARCHAR', 'YES', None, None, None), ('country_code', 'VARCHAR', 'YES', None, None, None), ('default_group_notification_frequency', 'VARCHAR', 'YES', None, None, None), ('delegated_approver_id', 'VARCHAR', 'YES', None, None, None), ('department', 'VARCHAR', 'YES', None, None, None), ('digest_frequency', 'VARCHAR', 'YES', None, None, None), ('division', 'VARCHAR', 'YES', None, None, None), ('email', 'VARCHAR', 'YES', None, None, None), ('email_encoding_key', 'VARCHAR', 'YES', None, None, None), ('email_preferences_auto_bcc', 'BOOLEAN', 'YES', None, None, None), ('employee_number', 'VARCHAR', 'YES', None, None, None), ('extension', 'BIGINT', 'YES', None, None, None), ('fax', 'VARCHAR', 'YES', None, None, None), ('federation_identifier', 'VARCHAR', 'YES', None, None, None), ('first_name', 'VARCHAR', 'YES', None, None, None), ('forecast_enabled', 'BOOLEAN', 'YES', None, None, None), ('full_photo_url', 'VARCHAR', 'YES', None, None, None), ('geocode_accuracy', 'VARCHAR', 'YES', None, None, None), ('individual_id', 'VARCHAR', 'YES', None, None, None), ('is_active', 'BOOLEAN', 'YES', None, None, None), ('is_profile_photo_active', 'BOOLEAN', 'YES', None, None, None), ('language_locale_key', 'VARCHAR', 'YES', None, None, None), ('last_login_date', 'TIMESTAMP', 'YES', None, None, None), ('last_name', 'VARCHAR', 'YES', None, None, None), ('last_referenced_date', 'TIMESTAMP', 'YES', None, None, None), ('last_viewed_date', 'TIMESTAMP', 'YES', None, None, None), ('latitude', 'DOUBLE', 'YES', None, None, None), ('locale_sid_key', 'VARCHAR', 'YES', None, None, None), ('longitude', 'DOUBLE', 'YES', None, None, None), ('manager_id', 'VARCHAR', 'YES', None, None, None), ('medium_banner_photo_url', 'VARCHAR', 'YES', None, None, None), ('mobile_phone', 'VARCHAR', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('offline_trial_expiration_date', 'VARCHAR', 'YES', None, None, None), ('phone', 'VARCHAR', 'YES', None, None, None), ('postal_code', 'VARCHAR', 'YES', None, None, None), ('profile_id', 'VARCHAR', 'YES', None, None, None), ('receives_admin_info_emails', 'BOOLEAN', 'YES', None, None, None), ('receives_info_emails', 'BOOLEAN', 'YES', None, None, None), ('sender_email', 'VARCHAR', 'YES', None, None, None), ('sender_name', 'VARCHAR', 'YES', None, None, None), ('signature', 'VARCHAR', 'YES', None, None, None), ('small_banner_photo_url', 'VARCHAR', 'YES', None, None, None), ('small_photo_url', 'VARCHAR', 'YES', None, None, None), ('state', 'VARCHAR', 'YES', None, None, None), ('state_code', 'VARCHAR', 'YES', None, None, None), ('street', 'VARCHAR', 'YES', None, None, None), ('time_zone_sid_key', 'VARCHAR', 'YES', None, None, None), ('title', 'VARCHAR', 'YES', None, None, None), ('username', 'VARCHAR', 'YES', None, None, None), ('user_role_id', 'VARCHAR', 'YES', None, None, None), ('user_type', 'VARCHAR', 'YES', None, None, None)]
+
+ lead [('id', 'VARCHAR', 'YES', None, None, None), ('annual_revenue', 'BIGINT', 'YES', None, None, None), ('city', 'VARCHAR', 'YES', None, None, None), ('company', 'VARCHAR', 'YES', None, None, None), ('converted_account_id', 'VARCHAR', 'YES', None, None, None), ('converted_contact_id', 'VARCHAR', 'YES', None, None, None), ('converted_date', 'TIMESTAMP', 'YES', None, None, None), ('converted_opportunity_id', 'VARCHAR', 'YES', None, None, None), ('country', 'VARCHAR', 'YES', None, None, None), ('country_code', 'VARCHAR', 'YES', None, None, None), ('created_by_id', 'VARCHAR', 'YES', None, None, None), ('created_date', 'TIMESTAMP', 'YES', None, None, None), ('description', 'VARCHAR', 'YES', None, None, None), ('email', 'VARCHAR', 'YES', None, None, None), ('email_bounced_date', 'TIMESTAMP', 'YES', None, None, None), ('email_bounced_reason', 'VARCHAR', 'YES', None, None, None), ('fax', 'VARCHAR', 'YES', None, None, None), ('first_name', 'VARCHAR', 'YES', None, None, None), ('geocode_accuracy', 'VARCHAR', 'YES', None, None, None), ('has_opted_out_of_email', 'BOOLEAN', 'YES', None, None, None), ('individual_id', 'VARCHAR', 'YES', None, None, None), ('industry', 'VARCHAR', 'YES', None, None, None), ('is_converted', 'BOOLEAN', 'YES', None, None, None), ('is_deleted', 'BOOLEAN', 'YES', None, None, None), ('is_unread_by_owner', 'BOOLEAN', 'YES', None, None, None), ('jigsaw_contact_id', 'VARCHAR', 'YES', None, None, None), ('last_activity_date', 'TIMESTAMP', 'YES', None, None, None), ('last_modified_by_id', 'VARCHAR', 'YES', None, None, None), ('last_modified_date', 'TIMESTAMP', 'YES', None, None, None), ('last_name', 'VARCHAR', 'YES', None, None, None), ('last_referenced_date', 'TIMESTAMP', 'YES', None, None, None), ('last_viewed_date', 'TIMESTAMP', 'YES', None, None, None), ('latitude', 'DOUBLE', 'YES', None, None, None), ('lead_source', 'VARCHAR', 'YES', None, None, None), ('longitude', 'DOUBLE', 'YES', None, None, None), ('master_record_id', 'VARCHAR', 'YES', None, None, None), ('mobile_phone', 'VARCHAR', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('number_of_employees', 'BIGINT', 'YES', None, None, None), ('owner_id', 'VARCHAR', 'YES', None, None, None), ('phone', 'VARCHAR', 'YES', None, None, None), ('photo_url', 'VARCHAR', 'YES', None, None, None), ('postal_code', 'VARCHAR', 'YES', None, None, None), ('salutation', 'VARCHAR', 'YES', None, None, None), ('state', 'VARCHAR', 'YES', None, None, None), ('state_code', 'VARCHAR', 'YES', None, None, None), ('status', 'VARCHAR', 'YES', None, None, None), ('street', 'VARCHAR', 'YES', None, None, None), ('system_modstamp', 'TIMESTAMP', 'YES', None, None, None), ('title', 'VARCHAR', 'YES', None, None, None), ('website', 'VARCHAR', 'YES', None, None, None)]
+
+ task [('id', 'VARCHAR', 'YES', None, None, None), ('account_id', 'VARCHAR', 'YES', None, None, None), ('activity_date', 'TIMESTAMP', 'YES', None, None, None), ('call_disposition', 'VARCHAR', 'YES', None, None, None), ('call_duration_in_seconds', 'BIGINT', 'YES', None, None, None), ('call_object', 'VARCHAR', 'YES', None, None, None), ('call_type', 'VARCHAR', 'YES', None, None, None), ('completed_date_time', 'TIMESTAMP', 'YES', None, None, None), ('created_by_id', 'VARCHAR', 'YES', None, None, None), ('created_date', 'TIMESTAMP', 'YES', None, None, None), ('description', 'VARCHAR', 'YES', None, None, None), ('is_archived', 'BOOLEAN', 'YES', None, None, None), ('is_closed', 'BOOLEAN', 'YES', None, None, None), ('is_deleted', 'BOOLEAN', 'YES', None, None, None), ('is_high_priority', 'BOOLEAN', 'YES', None, None, None), ('is_recurrence', 'BOOLEAN', 'YES', None, None, None), ('is_reminder_set', 'BOOLEAN', 'YES', None, None, None), ('last_modified_by_id', 'VARCHAR', 'YES', None, None, None), ('last_modified_date', 'TIMESTAMP', 'YES', None, None, None), ('owner_id', 'VARCHAR', 'YES', None, None, None), ('priority', 'VARCHAR', 'YES', None, None, None), ('record_type_id', 'VARCHAR', 'YES', None, None, None), ('recurrence_activity_id', 'VARCHAR', 'YES', None, None, None), ('recurrence_day_of_month', 'VARCHAR', 'YES', None, None, None), ('recurrence_day_of_week_mask', 'VARCHAR', 'YES', None, None, None), ('recurrence_end_date_only', 'VARCHAR', 'YES', None, None, None), ('recurrence_instance', 'VARCHAR', 'YES', None, None, None), ('recurrence_interval', 'VARCHAR', 'YES', None, None, None), ('recurrence_month_of_year', 'VARCHAR', 'YES', None, None, None), ('recurrence_regenerated_type', 'VARCHAR', 'YES', None, None, None), ('recurrence_start_date_only', 'VARCHAR', 'YES', None, None, None), ('recurrence_time_zone_sid_key', 'VARCHAR', 'YES', None, None, None), ('recurrence_type', 'VARCHAR', 'YES', None, None, None), ('reminder_date_time', 'TIMESTAMP', 'YES', None, None, None), ('status', 'VARCHAR', 'YES', None, None, None), ('subject', 'VARCHAR', 'YES', None, None, None), ('system_modstamp', 'TIMESTAMP', 'YES', None, None, None), ('task_subtype', 'VARCHAR', 'YES', None, None, None), ('type', 'VARCHAR', 'YES', None, None, None), ('what_count', 'BIGINT', 'YES', None, None, None), ('what_id', 'VARCHAR', 'YES', None, None, None), ('who_count', 'BIGINT', 'YES', None, None, None), ('who_id', 'VARCHAR', 'YES', None, None, None)]
+
+ event [('id', 'VARCHAR', 'YES', None, None, None), ('account_id', 'VARCHAR', 'YES', None, None, None), ('activity_date', 'TIMESTAMP', 'YES', None, None, None), ('activity_date_time', 'TIMESTAMP', 'YES', None, None, None), ('created_by_id', 'VARCHAR', 'YES', None, None, None), ('created_date', 'TIMESTAMP', 'YES', None, None, None), ('description', 'VARCHAR', 'YES', None, None, None), ('duration_in_minutes', 'BIGINT', 'YES', None, None, None), ('end_date', 'TIMESTAMP', 'YES', None, None, None), ('end_date_time', 'TIMESTAMP', 'YES', None, None, None), ('event_subtype', 'VARCHAR', 'YES', None, None, None), ('group_event_type', 'VARCHAR', 'YES', None, None, None), ('is_archived', 'BOOLEAN', 'YES', None, None, None), ('is_child', 'BOOLEAN', 'YES', None, None, None), ('is_deleted', 'BOOLEAN', 'YES', None, None, None), ('is_group_event', 'BOOLEAN', 'YES', None, None, None), ('is_private', 'BOOLEAN', 'YES', None, None, None), ('is_recurrence', 'BOOLEAN', 'YES', None, None, None), ('is_recurrence_2', 'BOOLEAN', 'YES', None, None, None), ('is_recurrence_2_exception', 'BOOLEAN', 'YES', None, None, None), ('is_recurrence_2_exclusion', 'BOOLEAN', 'YES', None, None, None), ('is_reminder_set', 'BOOLEAN', 'YES', None, None, None), ('last_modified_by_id', 'VARCHAR', 'YES', None, None, None), ('last_modified_date', 'TIMESTAMP', 'YES', None, None, None), ('location', 'VARCHAR', 'YES', None, None, None), ('owner_id', 'VARCHAR', 'YES', None, None, None), ('recurrence_2_pattern_start_date', 'VARCHAR', 'YES', None, None, None), ('recurrence_2_pattern_text', 'VARCHAR', 'YES', None, None, None), ('recurrence_2_pattern_time_zone', 'VARCHAR', 'YES', None, None, None), ('recurrence_2_pattern_version', 'VARCHAR', 'YES', None, None, None), ('recurrence_activity_id', 'VARCHAR', 'YES', None, None, None), ('recurrence_day_of_month', 'VARCHAR', 'YES', None, None, None), ('recurrence_day_of_week_mask', 'VARCHAR', 'YES', None, None, None), ('recurrence_end_date_only', 'VARCHAR', 'YES', None, None, None), ('recurrence_instance', 'VARCHAR', 'YES', None, None, None), ('recurrence_interval', 'VARCHAR', 'YES', None, None, None), ('recurrence_month_of_year', 'VARCHAR', 'YES', None, None, None), ('recurrence_start_date_time', 'VARCHAR', 'YES', None, None, None), ('recurrence_time_zone_sid_key', 'VARCHAR', 'YES', None, None, None), ('recurrence_type', 'VARCHAR', 'YES', None, None, None), ('reminder_date_time', 'TIMESTAMP', 'YES', None, None, None), ('show_as', 'VARCHAR', 'YES', None, None, None), ('start_date_time', 'TIMESTAMP', 'YES', None, None, None), ('subject', 'VARCHAR', 'YES', None, None, None), ('system_modstamp', 'TIMESTAMP', 'YES', None, None, None), ('type', 'VARCHAR', 'YES', None, None, None), ('what_count', 'BIGINT', 'YES', None, None, None), ('what_id', 'VARCHAR', 'YES', None, None, None), ('who_count', 'BIGINT', 'YES', None, None, None), ('who_id', 'VARCHAR', 'YES', None, None, None)]
+
+ user_role [('id', 'VARCHAR', 'YES', None, None, None), ('case_access_for_account_owner', 'VARCHAR', 'YES', None, None, None), ('contact_access_for_account_owner', 'VARCHAR', 'YES', None, None, None), ('developer_name', 'VARCHAR', 'YES', None, None, None), ('forecast_user_id', 'VARCHAR', 'YES', None, None, None), ('may_forecast_manager_share', 'BOOLEAN', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('opportunity_access_for_account_owner', 'VARCHAR', 'YES', None, None, None), ('parent_role_id', 'VARCHAR', 'YES', None, None, None), ('portal_type', 'VARCHAR', 'YES', None, None, None), ('rollup_description', 'VARCHAR', 'YES', None, None, None)]
+
+ product_2 [('id', 'VARCHAR', 'YES', None, None, None), ('created_by_id', 'VARCHAR', 'YES', None, None, None), ('created_date', 'TIMESTAMP', 'YES', None, None, None), ('description', 'VARCHAR', 'YES', None, None, None), ('display_url', 'VARCHAR', 'YES', None, None, None), ('external_data_source_id', 'VARCHAR', 'YES', None, None, None), ('external_id', 'VARCHAR', 'YES', None, None, None), ('family', 'VARCHAR', 'YES', None, None, None), ('is_active', 'BOOLEAN', 'YES', None, None, None), ('is_archived', 'BOOLEAN', 'YES', None, None, None), ('is_deleted', 'BOOLEAN', 'YES', None, None, None), ('last_modified_by_id', 'VARCHAR', 'YES', None, None, None), ('last_modified_date', 'TIMESTAMP', 'YES', None, None, None), ('last_referenced_date', 'TIMESTAMP', 'YES', None, None, None), ('last_viewed_date', 'TIMESTAMP', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('number_of_quantity_installments', 'BIGINT', 'YES', None, None, None), ('number_of_revenue_installments', 'BIGINT', 'YES', None, None, None), ('product_code', 'VARCHAR', 'YES', None, None, None), ('quantity_installment_period', 'VARCHAR', 'YES', None, None, None), ('quantity_schedule_type', 'VARCHAR', 'YES', None, None, None), ('quantity_unit_of_measure', 'VARCHAR', 'YES', None, None, None), ('record_type_id', 'VARCHAR', 'YES', None, None, None), ('revenue_installment_period', 'VARCHAR', 'YES', None, None, None), ('revenue_schedule_type', 'VARCHAR', 'YES', None, None, None), ('stock_keeping_unit', 'VARCHAR', 'YES', None, None, None), ('system_modstamp', 'TIMESTAMP', 'YES', None, None, None)]
+
+ opportunity_line_item [('id', 'VARCHAR', 'YES', None, None, None), ('created_by_id', 'VARCHAR', 'YES', None, None, None), ('created_date', 'TIMESTAMP', 'YES', None, None, None), ('description', 'VARCHAR', 'YES', None, None, None), ('discount', 'DOUBLE', 'YES', None, None, None), ('has_quantity_schedule', 'BOOLEAN', 'YES', None, None, None), ('has_revenue_schedule', 'BOOLEAN', 'YES', None, None, None), ('has_schedule', 'BOOLEAN', 'YES', None, None, None), ('is_deleted', 'BOOLEAN', 'YES', None, None, None), ('last_modified_by_id', 'VARCHAR', 'YES', None, None, None), ('last_modified_date', 'TIMESTAMP', 'YES', None, None, None), ('last_referenced_date', 'TIMESTAMP', 'YES', None, None, None), ('last_viewed_date', 'TIMESTAMP', 'YES', None, None, None), ('list_price', 'DOUBLE', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('opportunity_id', 'VARCHAR', 'YES', None, None, None), ('pricebook_entry_id', 'VARCHAR', 'YES', None, None, None), ('product_2_id', 'VARCHAR', 'YES', None, None, None), ('product_code', 'VARCHAR', 'YES', None, None, None), ('quantity', 'BIGINT', 'YES', None, None, None), ('service_date', 'TIMESTAMP', 'YES', None, None, None), ('sort_order', 'BIGINT', 'YES', None, None, None), ('system_modstamp', 'TIMESTAMP', 'YES', None, None, None), ('total_price', 'DOUBLE', 'YES', None, None, None), ('unit_price', 'DOUBLE', 'YES', None, None, None)]
+
+ order_data [('id', 'VARCHAR', 'YES', None, None, None), ('account_id', 'VARCHAR', 'YES', None, None, None), ('activated_by_id', 'VARCHAR', 'YES', None, None, None), ('activated_date', 'TIMESTAMP', 'YES', None, None, None), ('billing_city', 'VARCHAR', 'YES', None, None, None), ('billing_country', 'VARCHAR', 'YES', None, None, None), ('billing_country_code', 'VARCHAR', 'YES', None, None, None), ('billing_geocode_accuracy', 'VARCHAR', 'YES', None, None, None), ('billing_latitude', 'DOUBLE', 'YES', None, None, None), ('billing_longitude', 'DOUBLE', 'YES', None, None, None), ('billing_postal_code', 'VARCHAR', 'YES', None, None, None), ('billing_state', 'VARCHAR', 'YES', None, None, None), ('billing_state_code', 'VARCHAR', 'YES', None, None, None), ('billing_street', 'VARCHAR', 'YES', None, None, None), ('company_authorized_by_id', 'VARCHAR', 'YES', None, None, None), ('contract_id', 'VARCHAR', 'YES', None, None, None), ('created_by_id', 'VARCHAR', 'YES', None, None, None), ('created_date', 'TIMESTAMP', 'YES', None, None, None), ('customer_authorized_by_id', 'VARCHAR', 'YES', None, None, None), ('description', 'VARCHAR', 'YES', None, None, None), ('effective_date', 'TIMESTAMP', 'YES', None, None, None), ('end_date', 'TIMESTAMP', 'YES', None, None, None), ('is_deleted', 'BOOLEAN', 'YES', None, None, None), ('is_reduction_order', 'BOOLEAN', 'YES', None, None, None), ('last_modified_by_id', 'VARCHAR', 'YES', None, None, None), ('last_modified_date', 'TIMESTAMP', 'YES', None, None, None), ('last_referenced_date', 'TIMESTAMP', 'YES', None, None, None), ('last_viewed_date', 'TIMESTAMP', 'YES', None, None, None), ('opportunity_id', 'VARCHAR', 'YES', None, None, None), ('order_number', 'VARCHAR', 'YES', None, None, None), ('original_order_id', 'VARCHAR', 'YES', None, None, None), ('owner_id', 'VARCHAR', 'YES', None, None, None), ('pricebook_2_id', 'VARCHAR', 'YES', None, None, None), ('shipping_city', 'VARCHAR', 'YES', None, None, None), ('shipping_country', 'VARCHAR', 'YES', None, None, None), ('shipping_country_code', 'VARCHAR', 'YES', None, None, None), ('shipping_geocode_accuracy', 'VARCHAR', 'YES', None, None, None), ('shipping_latitude', 'DOUBLE', 'YES', None, None, None), ('shipping_longitude', 'DOUBLE', 'YES', None, None, None), ('shipping_postal_code', 'VARCHAR', 'YES', None, None, None), ('shipping_state', 'VARCHAR', 'YES', None, None, None), ('shipping_state_code', 'VARCHAR', 'YES', None, None, None), ('shipping_street', 'VARCHAR', 'YES', None, None, None), ('status', 'VARCHAR', 'YES', None, None, None), ('status_code', 'VARCHAR', 'YES', None, None, None), ('system_modstamp', 'TIMESTAMP', 'YES', None, None, None), ('total_amount', 'DOUBLE', 'YES', None, None, None), ('type', 'VARCHAR', 'YES', None, None, None)]
+
+ account_history [('id', 'VARCHAR', 'YES', None, None, None), ('account_number', 'VARCHAR', 'YES', None, None, None), ('account_source', 'VARCHAR', 'YES', None, None, None), ('annual_revenue', 'BIGINT', 'YES', None, None, None), ('billing_city', 'VARCHAR', 'YES', None, None, None), ('billing_country', 'VARCHAR', 'YES', None, None, None), ('billing_postal_code', 'VARCHAR', 'YES', None, None, None), ('billing_state', 'VARCHAR', 'YES', None, None, None), ('billing_street', 'VARCHAR', 'YES', None, None, None), ('description', 'VARCHAR', 'YES', None, None, None), ('industry', 'VARCHAR', 'YES', None, None, None), ('is_deleted', 'BOOLEAN', 'YES', None, None, None), ('last_activity_date', 'TIMESTAMP', 'YES', None, None, None), ('last_referenced_date', 'TIMESTAMP', 'YES', None, None, None), ('last_viewed_date', 'TIMESTAMP', 'YES', None, None, None), ('master_record_id', 'VARCHAR', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('number_of_employees', 'BIGINT', 'YES', None, None, None), ('owner_id', 'VARCHAR', 'YES', None, None, None), ('ownership', 'VARCHAR', 'YES', None, None, None), ('parent_id', 'VARCHAR', 'YES', None, None, None), ('rating', 'VARCHAR', 'YES', None, None, None), ('record_type_id', 'VARCHAR', 'YES', None, None, None), ('shipping_city', 'VARCHAR', 'YES', None, None, None), ('shipping_country', 'VARCHAR', 'YES', None, None, None), ('shipping_postal_code', 'VARCHAR', 'YES', None, None, None), ('shipping_state', 'VARCHAR', 'YES', None, None, None), ('shipping_street', 'VARCHAR', 'YES', None, None, None), ('type', 'VARCHAR', 'YES', None, None, None), ('website', 'VARCHAR', 'YES', None, None, None), ('_fivetran_active', 'BOOLEAN', 'YES', None, None, None), ('_fivetran_start', 'TIMESTAMP', 'YES', None, None, None), ('_fivetran_end', 'TIMESTAMP', 'YES', None, None, None), ('_fivetran_synced', 'TIMESTAMP', 'YES', None, None, None)]
+
+ contact_history [('id', 'VARCHAR', 'YES', None, None, None), ('account_id', 'VARCHAR', 'YES', None, None, None), ('description', 'VARCHAR', 'YES', None, None, None), ('email', 'VARCHAR', 'YES', None, None, None), ('first_name', 'VARCHAR', 'YES', None, None, None), ('home_phone', 'VARCHAR', 'YES', None, None, None), ('individual_id', 'VARCHAR', 'YES', None, None, None), ('is_deleted', 'BOOLEAN', 'YES', None, None, None), ('last_activity_date', 'TIMESTAMP', 'YES', None, None, None), ('last_modified_by_id', 'VARCHAR', 'YES', None, None, None), ('last_modified_date', 'TIMESTAMP', 'YES', None, None, None), ('last_name', 'VARCHAR', 'YES', None, None, None), ('last_referenced_date', 'TIMESTAMP', 'YES', None, None, None), ('last_viewed_date', 'TIMESTAMP', 'YES', None, None, None), ('lead_source', 'VARCHAR', 'YES', None, None, None), ('mailing_city', 'VARCHAR', 'YES', None, None, None), ('mailing_country', 'VARCHAR', 'YES', None, None, None), ('mailing_postal_code', 'VARCHAR', 'YES', None, None, None), ('mailing_state', 'VARCHAR', 'YES', None, None, None), ('mailing_street', 'VARCHAR', 'YES', None, None, None), ('master_record_id', 'VARCHAR', 'YES', None, None, None), ('mobile_phone', 'VARCHAR', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('owner_id', 'VARCHAR', 'YES', None, None, None), ('phone', 'VARCHAR', 'YES', None, None, None), ('reports_to_id', 'VARCHAR', 'YES', None, None, None), ('title', 'VARCHAR', 'YES', None, None, None), ('_fivetran_active', 'BOOLEAN', 'YES', None, None, None), ('_fivetran_start', 'TIMESTAMP', 'YES', None, None, None), ('_fivetran_end', 'TIMESTAMP', 'YES', None, None, None), ('_fivetran_synced', 'TIMESTAMP', 'YES', None, None, None)]
+
+ opportunity_history [('id', 'VARCHAR', 'YES', None, None, None), ('account_id', 'VARCHAR', 'YES', None, None, None), ('amount', 'BIGINT', 'YES', None, None, None), ('campaign_id', 'VARCHAR', 'YES', None, None, None), ('close_date', 'TIMESTAMP', 'YES', None, None, None), ('created_date', 'TIMESTAMP', 'YES', None, None, None), ('description', 'VARCHAR', 'YES', None, None, None), ('expected_revenue', 'BIGINT', 'YES', None, None, None), ('fiscal', 'VARCHAR', 'YES', None, None, None), ('fiscal_quarter', 'BIGINT', 'YES', None, None, None), ('fiscal_year', 'BIGINT', 'YES', None, None, None), ('forecast_category', 'VARCHAR', 'YES', None, None, None), ('forecast_category_name', 'VARCHAR', 'YES', None, None, None), ('has_open_activity', 'BOOLEAN', 'YES', None, None, None), ('has_opportunity_line_item', 'BOOLEAN', 'YES', None, None, None), ('has_overdue_task', 'BOOLEAN', 'YES', None, None, None), ('is_closed', 'BOOLEAN', 'YES', None, None, None), ('is_deleted', 'BOOLEAN', 'YES', None, None, None), ('is_won', 'BOOLEAN', 'YES', None, None, None), ('last_activity_date', 'TIMESTAMP', 'YES', None, None, None), ('last_referenced_date', 'TIMESTAMP', 'YES', None, None, None), ('last_viewed_date', 'TIMESTAMP', 'YES', None, None, None), ('lead_source', 'VARCHAR', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('next_step', 'VARCHAR', 'YES', None, None, None), ('owner_id', 'VARCHAR', 'YES', None, None, None), ('probability', 'BIGINT', 'YES', None, None, None), ('record_type_id', 'VARCHAR', 'YES', None, None, None), ('stage_name', 'VARCHAR', 'YES', None, None, None), ('synced_quote_id', 'VARCHAR', 'YES', None, None, None), ('type', 'VARCHAR', 'YES', None, None, None), ('_fivetran_active', 'BOOLEAN', 'YES', None, None, None), ('_fivetran_start', 'TIMESTAMP', 'YES', None, None, None), ('_fivetran_end', 'TIMESTAMP', 'YES', None, None, None), ('_fivetran_synced', 'TIMESTAMP', 'YES', None, None, None)]
+
+
+### event 19
+
+## 命令原文
+
+mkdir -p sql/staging sql/intermediate sql/marts; cat > /tmp/build.py <<'PY'
+import yaml, pathlib
+contract=yaml.safe_load(open('docs/data_contract.yaml'))
+source=yaml.safe_load(open('salesforce_start.yaml'))
+base=pathlib.Path('sql/staging')
+# source name overrides
+mapping={'account_id':'id','account_name':'name','account_description':'description','contact_id':'id','contact_description':'description','contact_name':'name','opportunity_id':'id','opportunity_description':'description','opportunity_name':'name','user_id':'id','user_name':'name','lead_id':'id','lead_name':'name','lead_description':'description','task_id':'id','task_description':'description','event_id':'id','event_description':'description','user_role_id':'id','user_role_name':'name','product_2_id':'id','product_description':'description','product_name':'name','opportunity_line_item_id':'id','opportunity_line_item_description':'description','order_id':'id','order_description':'description','history_unique_key':None}
+for tab in contract['staging_contract']['tables']:
+ n=tab['name']; raw=tab['source_table'].split('.')[1]
+ selects=[]
+ for col in tab['columns']:
+  name=col['name']; src=mapping.get(name,name)
+  if name=='history_unique_key':
+   # deterministic row identity from entity, source timestamp, and source values
+   keyid={'stg_salesforce__account_history':'account_id','stg_salesforce__contact_history':'contact_id','stg_salesforce__opportunity_history':'opportunity_id'}.get(n,'id')
+   expr=f"md5(concat_ws('|', coalesce(cast({keyid} as varchar), ''), coalesce(cast(_fivetran_start as varchar), ''), coalesce(cast(_fivetran_end as varchar), '')))"
+  else:
+   typ=col['data_type']
+   expr=f'"{src}"' if src in ('type','order','start','end') else src
+   if name in ('created_date',) and n.endswith('_history'): expr='_fivetran_start'
+   if typ in ('DATE','TIMESTAMP','INTEGER','DECIMAL(15,2)','DECIMAL(18,2)','DECIMAL(18,3)','DECIMAL(5,2)','DECIMAL'):
+    expr=f'try_cast({expr} as {typ})'
+   if name in ('account_name',) and n=='stg_salesforce__account': expr='trim(cast(name as varchar))'
+   if name=='email' and n in ('stg_salesforce__contact','stg_salesforce__user'): expr='lower(trim(email))'
+   # validation nullification
+   if name in ('email',) and n=='stg_salesforce__contact':
+    expr="case when email is null or (length(lower(trim(email))) <= 255 and regexp_matches(lower(trim(email)), '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$')) then lower(trim(email)) else null end"
+   if name in ('annual_revenue','amount','probability'):
+    if name=='annual_revenue' and n=='stg_salesforce__account': expr=f"case when {expr} >= 0 and {expr} <= 999999999999.99 then {expr} else null end"
+    if name=='amount' and n=='stg_salesforce__opportunity': expr=f"case when {expr} >= 0 and {expr} <= 999999999999.99 then {expr} else null end"
+    if name=='probability': expr=f"case when {expr} between 0 and 100 then {expr} else null end"
+   if name in ('close_date','birthdate','start_date_time','end_date_time'):
+    # leave casts; validate date ranges in guards below
+    pass
+  selects.append(f'    {expr} as {name}')
+ filters=[]
+ if n=='stg_salesforce__account': filters=['id is not null',"regexp_matches(id, '^[A-Za-z0-9]{15,18}$')",'name is not null',"trim(name) <> ''",'not coalesce(is_deleted, false)']
+ if n=='stg_salesforce__contact': filters=['id is not null',"regexp_matches(id, '^[A-Za-z0-9]{15,18}$')",'not coalesce(is_deleted, false)']
+ if n=='stg_salesforce__opportunity': filters=['id is not null',"regexp_matches(id, '^[A-Za-z0-9]{15,18}$')",'not coalesce(is_deleted, false)',"trim(name) <> ''",'length(trim(name)) <= 255']
+ if n=='stg_salesforce__user': filters=['id is not null','email is not null',"regexp_matches(lower(trim(email)), '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$')",'length(lower(trim(email))) <= 255','is_active is not null','last_name is not null','name is not null','username is not null']
+ if n=='stg_salesforce__lead': filters=['id is not null','last_name is not null','name is not null','status in (\'Open - Not Contacted\', \'Working - Contacted\', \'Closed - Converted\', \'Closed - Not Converted\')']
+ if n=='stg_salesforce__task': filters=['id is not null','is_closed is not null','owner_id is not null','status in (\'Not Started\', \'In Progress\', \'Completed\', \'Waiting on someone else\', \'Deferred\')']
+ if n=='stg_salesforce__event': filters=['id is not null','owner_id is not null']
+ if n=='stg_salesforce__user_role': filters=['id is not null','name is not null']
+ if n=='stg_salesforce__product_2': filters=['id is not null','is_active is not null','name is not null']
+ if n=='stg_salesforce__opportunity_line_item': filters=['id is not null']
+ if n=='stg_salesforce__account_history': filters=['id is not null']
+ if n=='stg_salesforce__contact_history': filters=['id is not null']
+ if n=='stg_salesforce__opportunity_history': filters=['id is not null']
+ # generic unique dedupe by designated keys
+ unique=[c['name'] for c in tab['columns'] if 'unique' in c.get('constraints',[])]
+ # source key aliases
+ key={'account_id':'id','contact_id':'id','opportunity_id':'id','user_id':'id','lead_id':'id','task_id':'id','event_id':'id','user_role_id':'id','product_2_id':'id','opportunity_line_item_id':'id','history_unique_key':'id'}.get(unique[0]) if unique else None
+ q='\n'.join(['select','  '+',\n  '.join(selects),f'from raw.{raw}']+(['where '+'\n  and '.join(filters)] if filters else []))
+ if unique and key:
+  q+=f'\nqualify row_number() over (partition by {key} order by {key}) = 1'
+ (base/f'{n}.sql').write_text(q+'\n')
+PY
+python /tmp/build.py
+
+
+## agent 实际看到的执行结果
+
+
+
+

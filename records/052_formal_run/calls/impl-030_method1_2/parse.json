@@ -1,0 +1,70 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "premises": [
+      {
+        "statement": "Raw source tables expose the individual fields referenced by the generated SQL as separate columns, without requiring CSV parsing first.",
+        "about": "data",
+        "target": "/tmp/gen_stage.py: intended staging SQL",
+        "evidence_of_dependence": "The generator uses `FROM {src}` with direct field references, although the schema check reports many fields missing from account, contact, invoice, taxation item, and amendment.",
+        "alternative": "The material index shows a single comma-delimited column name for these tables, for example `\"id,_fivetran_deleted,_fivetran_synced,account_number,...\"` for raw.zuora_account_data; these sources may require unpacking before field-level transformations.",
+        "importance": 5,
+        "reason": "If the raw records are packed into one column, numerous generated models cannot execute.",
+        "updates": null
+      },
+      {
+        "statement": "A contract column without a source_expression can always be read from a raw column with the same name.",
+        "about": "data",
+        "target": "/tmp/gen_stage.py: intended staging identifier columns",
+        "evidence_of_dependence": "`srcname=n` followed by `e=f'try_cast(\"{srcname}\" AS {typ})'`",
+        "alternative": "The schema check explicitly reports missing direct fields including `invoice_payment_id`, `rate_plan_id`, `order_id`, `credit_balance_adjustment_id`, and `refund_invoice_payment_id`, while the material index exposes `id` in those sources.",
+        "importance": 5,
+        "reason": "Missing identifier mappings would prevent several generated staging models from executing.",
+        "updates": null
+      },
+      {
+        "statement": "Invoices whose created_date is null or cannot be parsed should be removed from staging.",
+        "about": "requirement",
+        "target": "/tmp/gen_stage.py: intended stg_zuora__invoice row population",
+        "evidence_of_dependence": "`filters.append(\"try_cast(created_date AS timestamp) IS NOT NULL AND ...\")`",
+        "alternative": "The invoice row filter explicitly permits these records: `try_cast(created_date as TIMESTAMP) is null OR (...)`; its source expression sets such dates to null.",
+        "importance": 4,
+        "reason": "The stronger filter could remove invoices that the contract requires retaining.",
+        "updates": null
+      },
+      {
+        "statement": "Casting account balance to DECIMAL(18,2) is sufficient without nullifying values outside the contract's permitted monetary range.",
+        "about": "requirement",
+        "target": "/tmp/gen_stage.py: intended stg_zuora__account.balance",
+        "evidence_of_dependence": "The generic branch produces `try_cast(\"balance\" AS DECIMAL(18,2))`, without processing the column's validation_rules.",
+        "alternative": "The account contract requires `try_cast(balance as DECIMAL(18,2)) BETWEEN -1000000 AND 1000000`, with `on_failure: nullify_field`.",
+        "importance": 4,
+        "reason": "Out-of-range but castable balances would remain available to downstream financial calculations.",
+        "updates": null
+      },
+      {
+        "statement": "Account status values need only pass the allowed-value filter and do not need canonical capitalization.",
+        "about": "requirement",
+        "target": "/tmp/gen_stage.py: intended stg_zuora__account.status",
+        "evidence_of_dependence": "The generator filters with `lower(status) IN ('active', 'draft', 'cancelled')` but selects status through the generic VARCHAR cast.",
+        "alternative": "The contract requires correcting status to `Active`, `Draft`, or `Cancelled` using its specified CASE expression.",
+        "importance": 3,
+        "reason": "Noncanonical statuses would violate the staging contract and could affect case-sensitive downstream logic.",
+        "updates": null
+      }
+    ],
+    "fewer": [
+      {
+        "target": "Contract model-name inventory printed in event 15",
+        "count": 0,
+        "reason": "The lists are read directly from the parsed contract and introduce no unsupported data or requirement interpretation."
+      },
+      {
+        "target": "Missing-direct-column diagnostic printed in event 17",
+        "count": 0,
+        "reason": "This is an explicit schema-membership diagnostic, not a claim that the listed fields are absent under every possible source mapping."
+      }
+    ]
+  }
+}

@@ -1,0 +1,643 @@
+{
+  "stg_greenhouse__candidate": {
+    "items": [
+      {
+        "problem": "Ranking duplicate keys before validating required fields and creation dates may discard a valid candidate when an invalid duplicate receives row number 1.",
+        "about": "requirement",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY {pkpart} ORDER BY {pkpart}) AS _row_num; FROM validated_rows WHERE _row_num = 1",
+        "source": "created_at <= CURRENT_TIMESTAMP; created_at >= '2000-01-01'; on_failure: delete_row",
+        "importance": 3,
+        "reason": "Losing a valid candidate also removes its applications from downstream inner joins."
+      },
+      {
+        "problem": "Conflicting duplicate candidate profiles are resolved arbitrarily rather than using a checked version-selection policy.",
+        "about": "data",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY {pkpart} ORDER BY {pkpart})",
+        "source": "primary_key: [\"candidate_id\"]",
+        "importance": 2,
+        "reason": "If duplicate identifiers have different profile values, downstream names, companies, and contact information can vary between executions."
+      }
+    ],
+    "fewer_reason": "No additional concrete candidate-specific discrepancies are supported by the visible work."
+  },
+  "stg_greenhouse__application": {
+    "items": [
+      {
+        "problem": "The rejected_at expression nullifies valid rejection timestamps on non-rejected applications even though the contract permits those timestamps.",
+        "about": "requirement",
+        "evidence_in_work": "CASE WHEN rejected_at >= applied_at AND status = 'rejected' THEN TRY_CAST(rejected_at AS TIMESTAMP) ELSE NULL END",
+        "source": "\"(status = 'rejected' AND rejected_at IS NOT NULL) OR (status != 'rejected')\"",
+        "importance": 5,
+        "reason": "This changes rejection counts and process-duration metrics in several marts."
+      },
+      {
+        "problem": "The rejected_at condition appears to test the raw status rather than the corrected lowercase, trimmed status.",
+        "about": "requirement",
+        "evidence_in_work": "LOWER(TRIM(status)); CASE WHEN rejected_at >= applied_at AND status = 'rejected'",
+        "source": "status = LOWER(TRIM(status)); on_failure: correct",
+        "importance": 4,
+        "reason": "Rejections with status casing or whitespace defects can lose otherwise valid rejection timestamps."
+      },
+      {
+        "problem": "Duplicate applications are ranked before validation, so an invalid first duplicate can suppress a valid application with the same key.",
+        "about": "requirement",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY {pkpart} ORDER BY {pkpart}); FROM validated_rows WHERE _row_num = 1",
+        "source": "status IN ('active', 'hired', 'rejected', 'withdrawn'); on_failure: delete_row",
+        "importance": 3,
+        "reason": "An entire application and its downstream metrics can disappear."
+      },
+      {
+        "problem": "The raw is_deleted flag is unused, so explicitly deleted applications may remain in the pipeline.",
+        "about": "requirement",
+        "evidence_in_work": "if raw=='application': where += [\"status IN ('active', 'hired', 'rejected', 'withdrawn')\"]",
+        "source": "delete_row examples: [\"Explicitly marked for deletion\", \"Confirmed duplicates\", \"Invalid primary keys\", \"Essential business attributes contain irrecoverable errors\"]",
+        "importance": 2,
+        "reason": "The general quality guidance suggests checking deletion markers, although no application-specific deletion rule is stated."
+      }
+    ],
+    "fewer_reason": "The remaining application mappings and explicit validations do not support further distinct concerns."
+  },
+  "stg_greenhouse__job": {
+    "items": [
+      {
+        "problem": "Duplicate jobs are ranked before required-field validation, allowing an invalid first row to suppress a valid duplicate.",
+        "about": "requirement",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY {pkpart} ORDER BY {pkpart}); FROM validated_rows WHERE _row_num = 1",
+        "source": "name, status, and created_at: constraints: [not_null]",
+        "importance": 3,
+        "reason": "A lost job disappears from job-level marts and removes context from associated applications."
+      },
+      {
+        "problem": "TRY_CAST can silently erase nonnumeric requisition identifiers without checking whether they contain meaningful business information.",
+        "about": "data",
+        "evidence_in_work": "TRY_CAST({expr} AS {typ}); 'requisition_id' data type BIGINT",
+        "source": "description: \"Cleaned job postings with status validation and requisition ID formatting\"",
+        "importance": 2,
+        "reason": "The target type is correct, but formatted source identifiers may require interpretation rather than silent nullification."
+      }
+    ],
+    "fewer_reason": "No other concrete job-specific mismatch is evident."
+  },
+  "stg_greenhouse__scorecard": {
+    "items": [
+      {
+        "problem": "Ranking duplicates before required-field validation may remove a usable scorecard when an invalid duplicate ranks first.",
+        "about": "requirement",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY {pkpart} ORDER BY {pkpart}); FROM validated_rows WHERE _row_num = 1",
+        "source": "application_id, candidate_id, submitted_by_user_id, and created_at: constraints: [not_null]",
+        "importance": 3,
+        "reason": "Missing scorecards affect ratings, interview detail, and candidate-quality metrics."
+      },
+      {
+        "problem": "Conflicting scorecard versions are selected arbitrarily without checking updated_at.",
+        "about": "data",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY {pkpart} ORDER BY {pkpart})",
+        "source": "primary_key: [\"scorecard_id\"]; last_updated_at",
+        "importance": 2,
+        "reason": "If repeated identifiers represent revisions, an outdated recommendation can be retained."
+      }
+    ],
+    "fewer_reason": "The documentation does not provide additional explicit recommendation or temporal rules to assess."
+  },
+  "stg_greenhouse__scheduled_interview": {
+    "items": [
+      {
+        "problem": "Ranking duplicate interviews before validation may suppress a valid interview when the selected duplicate lacks a required field.",
+        "about": "requirement",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY \"scheduled_interview_id\" ORDER BY \"scheduled_interview_id\"); WHERE _row_num = 1",
+        "source": "application_id and created_at: constraints: [not_null]",
+        "importance": 3,
+        "reason": "This can remove interviews from all interview counts and enrichment models."
+      },
+      {
+        "problem": "Conflicting scheduled-interview versions are selected without considering last_updated_at.",
+        "about": "data",
+        "evidence_in_work": "ORDER BY \"scheduled_interview_id\"",
+        "source": "primary_key: [\"scheduled_interview_id\"]; last_updated_at",
+        "importance": 2,
+        "reason": "Rescheduled times or updated statuses could be replaced by stale values if duplicate versions exist."
+      }
+    ],
+    "fewer_reason": "The final code fixes reserved-word quoting and implements the documented status rules; alternative source variants are not required."
+  },
+  "stg_greenhouse__eeoc": {
+    "items": [
+      {
+        "problem": "Multiple demographic submissions for an application are reduced to an arbitrary row without checking submitted_at or conflicting answers.",
+        "about": "data",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY \"application_id\" ORDER BY \"application_id\")",
+        "source": "primary_key: [\"application_id\"]; submitted_at",
+        "importance": 3,
+        "reason": "The uniqueness requirement warrants deduplication, but arbitrary selection can change demographic classifications and DEI metrics."
+      }
+    ],
+    "fewer_reason": "The explicit category trimming and nullification rules are implemented, and no further supported concerns are visible."
+  },
+  "stg_greenhouse__user": {
+    "items": [
+      {
+        "problem": "A user with a valid duplicate may be lost because row numbering precedes created_at validation.",
+        "about": "requirement",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY \"user_id\" ORDER BY \"user_id\"); WHERE \"created_at\" IS NOT NULL; WHERE _row_num = 1",
+        "source": "created_at: constraints: [not_null]",
+        "importance": 3,
+        "reason": "Lost users disappear from hiring-team inner joins and leave interview personnel fields unmatched."
+      },
+      {
+        "problem": "Conflicting duplicate user records are selected arbitrarily rather than checking their update timestamps.",
+        "about": "data",
+        "evidence_in_work": "ORDER BY \"user_id\"",
+        "source": "primary_key: [\"user_id\"]; last_updated_at",
+        "importance": 2,
+        "reason": "Names and disabled flags may come from stale records when duplicate versions exist."
+      }
+    ],
+    "fewer_reason": "Other visible user mappings match the stated contract."
+  },
+  "stg_greenhouse__source": {
+    "items": [
+      {
+        "problem": "Conflicting records for the same source identifier are resolved arbitrarily without checking whether their names or source types differ.",
+        "about": "data",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY {pkpart} ORDER BY {pkpart})",
+        "source": "primary_key: [\"source_id\"]; name; source_type_name",
+        "importance": 2,
+        "reason": "If conflicts exist, source-effectiveness groups and application attribution labels can change."
+      }
+    ],
+    "fewer_reason": "No other source-specific discrepancy is supported."
+  },
+  "stg_greenhouse__job_stage": {
+    "items": [
+      {
+        "problem": "Duplicate stage definitions are selected arbitrarily without checking updated_at or whether the job association differs.",
+        "about": "data",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY {pkpart} ORDER BY {pkpart})",
+        "source": "primary_key: [\"job_stage_id\"]; job_id; updated_at",
+        "importance": 2,
+        "reason": "Conflicting stage records would change stage labels used in applications, interviews, and history."
+      }
+    ],
+    "fewer_reason": "The identifier and timestamp mappings otherwise match the specification."
+  },
+  "stg_greenhouse__tag": {
+    "items": [],
+    "fewer_reason": "The visible mapping and key enforcement match the contract, with no concrete additional tag-specific concern."
+  },
+  "stg_greenhouse__office": {
+    "items": [],
+    "fewer_reason": "The initially incorrect external and parent field mappings were fixed, and no remaining concrete office-specific discrepancy is visible."
+  },
+  "stg_greenhouse__job_application": {
+    "items": [],
+    "fewer_reason": "The composite-key cleaning matches the staging contract; the downstream assumption that application_id alone is unique is assessed under application_info."
+  },
+  "stg_greenhouse__job_office": {
+    "items": [],
+    "fewer_reason": "The visible code maps the required junction fields and enforces the documented composite key."
+  },
+  "stg_greenhouse__hiring_team": {
+    "items": [
+      {
+        "problem": "Different roles assigned to the same job-user pair are collapsed to an arbitrary role without inspecting the discarded assignments.",
+        "about": "data",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY {pkpart} ORDER BY {pkpart}); WHERE _row_num = 1",
+        "source": "primary_key: [\"job_id\", \"user_id\"]; role",
+        "importance": 3,
+        "reason": "Although the declared key requires resolution, conflicting roles can materially change hiring-manager and recruiter lists."
+      }
+    ],
+    "fewer_reason": "No further distinct hiring-team staging issues are supported."
+  },
+  "stg_greenhouse__attachment": {
+    "items": [
+      {
+        "problem": "Conflicting attachment rows sharing an attachment_id are resolved arbitrarily, potentially changing the index or URL used for resume selection.",
+        "about": "data",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY {pkpart} ORDER BY {pkpart})",
+        "source": "primary_key: [\"attachment_id\"]; index; type; url",
+        "importance": 2,
+        "reason": "This matters if duplicate identifiers contain different metadata, though no such conflict was demonstrated."
+      }
+    ],
+    "fewer_reason": "No attachment-specific URL validation rule or other omitted transformation is documented."
+  },
+  "stg_greenhouse__user_email": {
+    "items": [],
+    "fewer_reason": "The visible code follows the staging composite key and required fields; preserving duplicates is an intermediate-layer rule, not a reason to ignore the staging key."
+  },
+  "stg_greenhouse__email_address": {
+    "items": [
+      {
+        "problem": "Rows sharing candidate_id and index are reduced arbitrarily without checking whether they contain different email addresses.",
+        "about": "data",
+        "evidence_in_work": "WHERE _row_num = 1; stg_greenhouse__email_address 1890",
+        "source": "primary_key: [\"candidate_id\", \"index\"]",
+        "importance": 2,
+        "reason": "If key conflicts represent distinct contact values, the candidate contact aggregate loses information."
+      }
+    ],
+    "fewer_reason": "No explicit email-normalization or validation rule is specified for this table."
+  },
+  "stg_greenhouse__social_media_address": {
+    "items": [
+      {
+        "problem": "Conflicting URLs at the same candidate-index key are selected arbitrarily without checking which platform or value is discarded.",
+        "about": "data",
+        "evidence_in_work": "WHERE _row_num = 1; stg_greenhouse__social_media_address 1879",
+        "source": "primary_key: [\"candidate_id\", \"index\"]",
+        "importance": 2,
+        "reason": "A discarded URL can remove a candidate's LinkedIn or GitHub link from the contact model."
+      }
+    ],
+    "fewer_reason": "The required source value-to-URL mapping is implemented, and no other explicit cleaning rule is given."
+  },
+  "stg_greenhouse__candidate_tag": {
+    "items": [],
+    "fewer_reason": "The code enforces the documented association key; there is no additional non-key payload requiring conflict resolution."
+  },
+  "stg_greenhouse__interview": {
+    "items": [],
+    "fewer_reason": "The visible fields and aliases match the stated staging contract, with no demonstrated interview-specific conflict."
+  },
+  "stg_greenhouse__activity": {
+    "items": [
+      {
+        "problem": "The blanket key deduplication may remove activity occurrences that downstream specifications explicitly expect to count as duplicates.",
+        "about": "data",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY {pkpart} ORDER BY {pkpart}); WHERE _row_num = 1",
+        "source": "Count activities per interval: Duplicates are counted",
+        "importance": 2,
+        "reason": "The staging primary key supports deduplication, but the intended meaning of repeated raw activity IDs should be checked before relying on downstream activity totals."
+      }
+    ],
+    "fewer_reason": "No other concrete activity-specific discrepancy is visible."
+  },
+  "stg_greenhouse__job_department": {
+    "items": [],
+    "fewer_reason": "The required two-column mapping and composite-key enforcement match the contract."
+  },
+  "stg_greenhouse__phone_number": {
+    "items": [
+      {
+        "problem": "Different phone values sharing a candidate-index key are reduced to an arbitrary record without checking the lost contact information.",
+        "about": "data",
+        "evidence_in_work": "WHERE _row_num = 1; stg_greenhouse__phone_number 1900",
+        "source": "primary_key: [\"candidate_id\", \"phone_index\"]; phone_type; phone_number",
+        "importance": 2,
+        "reason": "Conflicting key values would change the phone aggregate even though enforcing key uniqueness is required."
+      }
+    ],
+    "fewer_reason": "The phone aliases are correct and no explicit phone-format normalization rule is specified."
+  },
+  "stg_greenhouse__department": {
+    "items": [],
+    "fewer_reason": "The staging column names match the contract, and the intermediate model correctly adapts them to the business terminology."
+  },
+  "stg_greenhouse__scheduled_interviewer": {
+    "items": [
+      {
+        "problem": "Multiple scorecard assignments for the same scheduled interview and interviewer are collapsed to an arbitrary scorecard.",
+        "about": "data",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY {pkpart} ORDER BY {pkpart}); WHERE _row_num = 1",
+        "source": "primary_key: [\"scheduled_interview_id\", \"interviewer_user_id\"]; scorecard_id",
+        "importance": 3,
+        "reason": "If conflicting assignments exist, selecting the wrong scorecard changes recommendations and attribute detail."
+      }
+    ],
+    "fewer_reason": "The interviewer_id-to-interviewer_user_id mapping is correct, and no other distinct concern is supported."
+  },
+  "stg_greenhouse__scorecard_attribute": {
+    "items": [
+      {
+        "problem": "Conflicting versions of an attribute identifier are discarded arbitrarily without checking ratings, notes, or scorecard associations.",
+        "about": "data",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY {pkpart} ORDER BY {pkpart})",
+        "source": "primary_key: [\"scorecard_attribute_id\"]; scorecard_id; rating; note",
+        "importance": 2,
+        "reason": "Such conflicts would change attribute-level results, although none were demonstrated."
+      }
+    ],
+    "fewer_reason": "The remaining visible attribute mappings match the contract."
+  },
+  "stg_greenhouse__application_history": {
+    "items": [
+      {
+        "problem": "Different stage or status changes at the same application timestamp are reduced to an arbitrary event without checking their ordering or meaning.",
+        "about": "data",
+        "evidence_in_work": "ROW_NUMBER() OVER (PARTITION BY {pkpart} ORDER BY {pkpart}); WHERE _row_num = 1",
+        "source": "primary_key: [\"application_id\", \"updated_at\"]; new_stage_id; new_status",
+        "importance": 3,
+        "reason": "Timestamp-key conflicts could change the state assigned to an entire historical interval."
+      }
+    ],
+    "fewer_reason": "The table otherwise contains the documented fields and required timestamp validation."
+  },
+  "stg_greenhouse__job_opening": {
+    "items": [],
+    "fewer_reason": "The supplied relevant documentation does not include this table's detailed contract, and successful execution alone provides no concrete discrepancy."
+  },
+  "stg_greenhouse__job_post": {
+    "items": [],
+    "fewer_reason": "The supplied relevant documentation does not include this table's detailed contract, and no specific remaining mapping failure is visible."
+  },
+  "stg_greenhouse__prospect_pool": {
+    "items": [],
+    "fewer_reason": "No detailed contract for this produced staging table is supplied, and downstream constants intentionally do not use it."
+  },
+  "stg_greenhouse__prospect_stage": {
+    "items": [],
+    "fewer_reason": "No detailed contract for this produced staging table is supplied, and downstream constants intentionally do not use it."
+  },
+  "int_greenhouse__application_info": {
+    "items": [
+      {
+        "problem": "The job_application join increases the row count and violates the model's required one-row-per-application grain.",
+        "about": "requirement",
+        "evidence_in_work": "int_greenhouse__application_users 662; int_greenhouse__application_info 668; LEFT JOIN staging.stg_greenhouse__job_application AS ja ON au.application_id = ja.application_id",
+        "source": "grain: One row per application_id; application_id tests: not_null, unique",
+        "importance": 5,
+        "reason": "The observed increase demonstrates multiplicity that propagates into application, interview, job, and history outputs."
+      },
+      {
+        "problem": "The agent did not investigate whether the large application-to-candidate join loss reflects incompatible identifier coverage.",
+        "about": "data",
+        "evidence_in_work": "stg_greenhouse__application 1999; int_greenhouse__application_users 662",
+        "source": "Integrated application snapshot with joins to candidate, job, activity, source, stage, and EEOC datasets",
+        "importance": 3,
+        "reason": "The prescribed inner join explains the mechanics, but unexplained loss of roughly two-thirds of applications materially limits the integrated dataset."
+      }
+    ],
+    "fewer_reason": "The remaining enrichment fields, constants, aliases, and key construction visibly follow the specification."
+  },
+  "int_greenhouse__application_users": {
+    "items": [
+      {
+        "problem": "Only 662 of 1,999 staged applications survive the required candidate join, and the agent did not validate why most candidate references fail to match.",
+        "about": "data",
+        "evidence_in_work": "stg_greenhouse__application 1999; int_greenhouse__application_users 662",
+        "source": "Inner join application to candidate on candidate_id; applications without a match are excluded.",
+        "importance": 3,
+        "reason": "The join follows the contract, but its unexpectedly low coverage may indicate a consequential misunderstanding of source entity coverage."
+      }
+    ],
+    "fewer_reason": "The constants, pass-through fields, and prescribed inner-join behavior are otherwise implemented."
+  },
+  "int_greenhouse__candidate_contacts": {
+    "items": [
+      {
+        "problem": "Contact values discarded by arbitrary staging key conflict resolution may make phone, email, or social-link aggregates incomplete.",
+        "about": "data",
+        "evidence_in_work": "FROM staging.stg_greenhouse__phone_number; FROM staging.stg_greenhouse__email_address; FROM staging.stg_greenhouse__social_media_address",
+        "source": "Phones and emails: keep duplicates; Latest LinkedIn and GitHub: choose the row with the highest social_media_index per candidate",
+        "importance": 2,
+        "reason": "This depends on whether staging key collisions contain conflicting values rather than redundant records."
+      }
+    ],
+    "fewer_reason": "The initial cross-platform ranking error was fixed; the final SQL separately ranks matching LinkedIn and GitHub entries."
+  },
+  "int_greenhouse__candidate_tags": {
+    "items": [
+      {
+        "problem": "Tag-presence flags become NULL rather than FALSE when all joined tag names are NULL.",
+        "about": "requirement",
+        "evidence_in_work": "BOOL_OR(LOWER(t.name) LIKE '%technical%'); BOOL_OR(LOWER(t.name) LIKE '%experience%')",
+        "source": "has_technical_tag ... otherwise FALSE; never NULL; has_experience_tag ... otherwise FALSE; never NULL",
+        "importance": 3,
+        "reason": "Tag names are nullable, so a valid group can violate both documented Boolean defaults."
+      }
+    ],
+    "fewer_reason": "The joins, delimiter, counts, and duplicate-preserving aggregation otherwise match the model."
+  },
+  "int_greenhouse__candidate_users": {
+    "items": [],
+    "fewer_reason": "The required inner join, grouping fields, timestamp extrema, and pass-through string behavior are implemented."
+  },
+  "int_greenhouse__hiring_team": {
+    "items": [
+      {
+        "problem": "Arbitrarily retained staging roles may omit additional role categories held by the same user on a job.",
+        "about": "data",
+        "evidence_in_work": "FROM staging.stg_greenhouse__hiring_team AS ht; CASE WHEN LOWER(ht.role) LIKE '%recruiter%'",
+        "source": "A single row can contribute to multiple categories",
+        "importance": 3,
+        "reason": "If conflicting staging keys contain separate role assignments, the role-based name lists and hiring-manager indicators become incomplete."
+      }
+    ],
+    "fewer_reason": "The role substring checks, inner join, and aggregation behavior otherwise match the documented logic."
+  },
+  "int_greenhouse__interview_scorecard": {
+    "items": [
+      {
+        "problem": "An arbitrary scorecard retained for a duplicate scheduled-interviewer key can attach the wrong scorecard details to an interview.",
+        "about": "data",
+        "evidence_in_work": "LEFT JOIN staging.stg_greenhouse__scorecard AS sc ON svi.scorecard_id = sc.scorecard_id",
+        "source": "Left join scorecard using the scorecard_id from scheduled_interviewer",
+        "importance": 2,
+        "reason": "The join itself is correct, but unexamined upstream assignment conflicts would affect all scorecard-derived fields."
+      }
+    ],
+    "fewer_reason": "The final join direction, fallback name, fractional-minute calculation, and missing-interviewer key are consistent with the contract."
+  },
+  "int_greenhouse__interview_users": {
+    "items": [],
+    "fewer_reason": "The three required left joins and all interview pass-through fields are implemented without filtering or deduplication."
+  },
+  "int_greenhouse__job_departments": {
+    "items": [],
+    "fewer_reason": "The parent join, inner association join, delimiter, and null-preserving aggregations match the requirements."
+  },
+  "int_greenhouse__job_info": {
+    "items": [],
+    "fewer_reason": "The documented left joins, field selection, and office_locations alias are implemented."
+  },
+  "int_greenhouse__job_offices": {
+    "items": [],
+    "fewer_reason": "The inner join and semicolon-space aggregations match the contract; semicolons inside delimiter strings are not statement terminators."
+  },
+  "int_greenhouse__user_emails": {
+    "items": [],
+    "fewer_reason": "The minimum email, duplicate-preserving concatenation, row count, left join, and missing-value defaults match the intermediate specification."
+  },
+  "greenhouse__application_enhanced": {
+    "items": [
+      {
+        "problem": "The output inherits duplicated application IDs from application_info rather than exposing a unique application-level dataset.",
+        "about": "data",
+        "evidence_in_work": "int_greenhouse__application_users 662; int_greenhouse__application_info 668; greenhouse__application_enhanced 668",
+        "source": "Use all columns from intermediate.int_greenhouse__application_info as the base dataset.",
+        "importance": 3,
+        "reason": "Preserving source rows is correct here, but consumers can double-count applications because the upstream unique-grain requirement is not met."
+      }
+    ],
+    "fewer_reason": "The specified distinct counts, Boolean defaults, latest timestamp, and pass-through behavior are implemented."
+  },
+  "greenhouse__interview_enhanced": {
+    "items": [
+      {
+        "problem": "Joining nonunique application_info rows can multiply interview rows despite the stated one-row-per-interview_users-row grain.",
+        "about": "requirement",
+        "evidence_in_work": "LEFT JOIN intermediate.int_greenhouse__application_info AS app ON interview.application_id = app.application_id",
+        "source": "grain: One row per row in intermediate.int_greenhouse__interview_users",
+        "importance": 3,
+        "reason": "The upstream multiplicity is observed, although the displayed counts show no net expansion for the current interview set."
+      },
+      {
+        "problem": "The unexplained low coverage of application_info may leave substantial interview context missing.",
+        "about": "data",
+        "evidence_in_work": "stg_greenhouse__application 1999; int_greenhouse__application_info 668; greenhouse__interview_enhanced 2108",
+        "source": "candidate_name from application.candidate_full_name; NULL if no application match",
+        "importance": 3,
+        "reason": "The left join correctly preserves interviews, but candidate, job, and hiring-manager metrics may be unavailable for many rows."
+      }
+    ],
+    "fewer_reason": "The case-sensitive hiring-manager check and other enrichment fields follow the specification."
+  },
+  "greenhouse__interview_scorecard_detail": {
+    "items": [
+      {
+        "problem": "Any interview duplication introduced by the application-context join is repeated across every matching scorecard attribute.",
+        "about": "data",
+        "evidence_in_work": "FROM mart.greenhouse__interview_enhanced AS interview LEFT JOIN staging.stg_greenhouse__scorecard_attribute AS attr ON interview.scorecard_id = attr.scorecard_id",
+        "source": "grain: One row per interview_scorecard_key × scorecard_attribute_id",
+        "importance": 2,
+        "reason": "This is conditional on upstream join expansion, but would duplicate attribute keys and rating-detail rows."
+      }
+    ],
+    "fewer_reason": "The attribute ID alias, attribute-side scorecard_id, left join, and null-propagating key concatenation are implemented correctly."
+  },
+  "greenhouse__job_enhanced": {
+    "items": [
+      {
+        "problem": "Casting Boolean prospect values to text and comparing them with 'True' likely counts no prospects because DuckDB renders Boolean text in lowercase.",
+        "about": "requirement",
+        "evidence_in_work": "COUNT(*) FILTER (WHERE prospect::VARCHAR = 'True')",
+        "source": "Prospect applications: rows where prospect equals the string 'True'; prospect data_type: BOOLEAN",
+        "importance": 4,
+        "reason": "The contract's Boolean/string ambiguity needs explicit resolution because the chosen comparison can systematically zero this metric."
+      },
+      {
+        "problem": "days_since_created uses the current timestamp rather than the current date.",
+        "about": "requirement",
+        "evidence_in_work": "DATE_DIFF('microsecond', created_at, CURRENT_TIMESTAMP) / 86400000000.0",
+        "source": "days_since_created is the number of days between the current date and created_at",
+        "importance": 4,
+        "reason": "Every non-null value includes an extra time-of-day fraction and changes within a day rather than only daily."
+      },
+      {
+        "problem": "The model adds a direct staging scorecard dependency that is not among its declared source models.",
+        "about": "requirement",
+        "evidence_in_work": "LEFT JOIN staging.stg_greenhouse__scorecard AS sc ON interview.scorecard_id = sc.scorecard_id",
+        "source": "source_models: intermediate.int_greenhouse__job_info; intermediate.int_greenhouse__hiring_team; intermediate.int_greenhouse__application_info; intermediate.int_greenhouse__interview_scorecard",
+        "importance": 3,
+        "reason": "This violates the strict dependency requirement and redundantly bypasses scorecard fields already exposed by the intermediate model."
+      },
+      {
+        "problem": "Job application statistics cover only applications surviving the candidate inner join, without validating the large resulting coverage loss.",
+        "about": "data",
+        "evidence_in_work": "FROM intermediate.int_greenhouse__application_info; stg_greenhouse__application 1999; int_greenhouse__application_users 662",
+        "source": "Total applications: number of application rows",
+        "importance": 3,
+        "reason": "The prescribed source is used, but job totals and conversions may describe only a small matched subset of staged applications."
+      },
+      {
+        "problem": "The interview totals use all interview_scorecard rows, including interviews with no matching scorecard, despite wording that calls these counts numbers of scorecards.",
+        "about": "requirement",
+        "evidence_in_work": "COUNT(*)::BIGINT AS count_total_interviews",
+        "source": "Total interviews: number of scorecards for the job",
+        "importance": 3,
+        "reason": "The source model explicitly retains interviews without scorecards, so the intended counted entity should be checked."
+      }
+    ],
+    "fewer_reason": "The remaining rates, rating mapping, count defaults, and time-part fields do not show further distinct supported discrepancies."
+  },
+  "greenhouse__application_history": {
+    "items": [
+      {
+        "problem": "Multiple application-job rows can multiply each history interval and, when grouped attributes coincide, inflate the interval activity count.",
+        "about": "data",
+        "evidence_in_work": "INNER JOIN mart.greenhouse__application_enhanced AS app ON history.application_id = app.application_id; COUNT(activity.activity_id)::HUGEINT; GROUP BY ALL",
+        "source": "grain: One row per application_id per status-change interval",
+        "importance": 4,
+        "reason": "Upstream application multiplicity is observed and can violate history grain or multiply activity counts."
+      },
+      {
+        "problem": "History coverage may be severely restricted by the unexplained application-to-candidate join loss.",
+        "about": "data",
+        "evidence_in_work": "stg_greenhouse__application_history 2000; greenhouse__application_history 119",
+        "source": "Inner join mart.greenhouse__application_enhanced on application_id",
+        "importance": 3,
+        "reason": "The specified join is implemented, but the agent did not check why such a small history subset remains."
+      },
+      {
+        "problem": "Arbitrary resolution of same-timestamp staging changes may assign the wrong stage or status to an interval.",
+        "about": "data",
+        "evidence_in_work": "LEAD(updated_at) OVER (PARTITION BY application_id ORDER BY updated_at)",
+        "source": "For each application_id, order records by updated_at ascending.",
+        "importance": 2,
+        "reason": "The interval construction is correct for unique timestamps, but upstream conflicting events were not examined."
+      }
+    ],
+    "fewer_reason": "The half-open activity window, fractional duration, current-timestamp endpoint, and HUGEINT output are implemented."
+  },
+  "greenhouse__candidate_summary": {
+    "items": [
+      {
+        "problem": "Rejection counts can be understated because staging removes valid rejected_at values from applications whose current status is not rejected.",
+        "about": "requirement",
+        "evidence_in_work": "COUNT(*) FILTER (WHERE a.rejected_at IS NOT NULL)::BIGINT AS rejected_count",
+        "source": "rejected_count: Number of the candidate's applications where rejected_at is present, regardless of status",
+        "importance": 4,
+        "reason": "The mart expression is correct, but the upstream timestamp rule changes which applications qualify."
+      },
+      {
+        "problem": "The agent did not check whether candidate summaries omit most application activity because candidate and application identifiers have low matching coverage.",
+        "about": "data",
+        "evidence_in_work": "stg_greenhouse__application 1999; greenhouse__candidate_summary 561",
+        "source": "One row per candidate_id with total_applications > 0 or total_interviews > 0",
+        "importance": 3,
+        "reason": "The specified candidate base is used, but unmatched source coverage can substantially limit the business interpretation."
+      }
+    ],
+    "fewer_reason": "The application-level interview/scorecard fanout follows the explicit specification, and the classifications, rates, scores, filter, and ordering are implemented."
+  },
+  "greenhouse__diversity_metrics": {
+    "items": [
+      {
+        "problem": "Quarterly demographic results depend on an arbitrary EEOC submission when an application has multiple conflicting submissions.",
+        "about": "data",
+        "evidence_in_work": "LEFT JOIN staging.stg_greenhouse__eeoc AS e ON a.application_id = e.application_id",
+        "source": "Group applications are the number of rows meeting each group condition; group hires require both the group condition and is_hired = 1.",
+        "importance": 3,
+        "reason": "Unexamined staging conflict resolution can change group counts, rates, and diversity assessments."
+      }
+    ],
+    "fewer_reason": "The zero-denominator issue was fixed, and the final exact-match flags, thresholds, minimum group size, and ordering match the specification."
+  },
+  "greenhouse__recruitment_performance": {
+    "items": [
+      {
+        "problem": "Rejection counts and average process duration inherit the overly restrictive staging rejected_at nullification.",
+        "about": "requirement",
+        "evidence_in_work": "COUNT(*) FILTER (WHERE a.rejected_at IS NOT NULL); COALESCE(a.rejected_at, a.last_activity_at)",
+        "source": "rejected_count: count of applications with a rejection timestamp present; avg_process_days: ... rejected_at if present, otherwise ... last_activity_at",
+        "importance": 4,
+        "reason": "Valid rejection events can disappear and process endpoints can switch to last activity."
+      }
+    ],
+    "fewer_reason": "The non-distinct completed-interview count and application-level scorecard join follow the explicit contract; rates, tiers, flags, filter, and ordering are implemented."
+  },
+  "greenhouse__talent_pipeline_simplified": {
+    "items": [
+      {
+        "problem": "Rejection rates and process durations inherit staging's removal of valid rejection timestamps on non-rejected applications.",
+        "about": "requirement",
+        "evidence_in_work": "COUNT(*) FILTER (WHERE rejected_at IS NOT NULL); COALESCE(rejected_at, last_activity_at)",
+        "source": "rejected_applications: applications where rejected_at is present; avg_process_days: ... rejected_at if present, otherwise ... last_activity_at",
+        "importance": 4,
+        "reason": "The upstream rule can undercount rejections and change source-efficiency timing metrics."
+      }
+    ],
+    "fewer_reason": "The source filters, existence-based interviewed-application count, percentages, ranks, tiers, efficiency score, and ordering match the specification."
+  }
+}

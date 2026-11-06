@@ -1,0 +1,488 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "stg_klaviyo__campaign": {
+      "items": [
+        {
+          "problem": "The pipeline may replace the intended existing raw.campaign source with the sparse main.campaign table instead of using the indexed raw source.",
+          "about": "data",
+          "evidence_in_work": "tables = [t[0] for t in src.execute(\"SHOW TABLES\").fetchall()]; campaign [(200, 2, 2)]",
+          "source": "source_table: raw.campaign; the index lists both main.campaign and raw.campaign.",
+          "importance": 4,
+          "reason": "Only two of 200 imported rows have identifiers, so choosing the wrong source could eliminate almost the entire campaign population."
+        },
+        {
+          "problem": "Future campaign creation timestamps are safely cast but never rejected if the contract's severe timestamp quality policy applies.",
+          "about": "requirement",
+          "evidence_in_work": "try_cast(\"CREATED\" as timestamp) as created_at",
+          "source": "delete_row examples: \"Impossible timestamps in the future for created_at\"",
+          "importance": 2,
+          "reason": "The general policy suggests an omitted validation, although no future campaign timestamp is shown."
+        }
+      ],
+      "fewer_reason": "The final email-regex correction is visible, and no further independent campaign-specific problems are supported."
+    },
+    "stg_klaviyo__event": {
+      "items": [
+        {
+          "problem": "The imported event source may be main.event rather than the existing raw.event table specified by the contract.",
+          "about": "data",
+          "evidence_in_work": "src.execute(\"SHOW TABLES\"); src.execute(f\"SELECT * FROM {t}\")",
+          "source": "source_table: raw.event; the index lists separate main.event and raw.event tables.",
+          "importance": 3,
+          "reason": "A source mismatch would affect every downstream event model, but differences between the two event populations were not checked."
+        },
+        {
+          "problem": "The event timestamp mapping assumes DATETIME takes precedence over TIMESTAMP without checking whether the fields differ in meaning or completeness.",
+          "about": "data",
+          "evidence_in_work": "try_cast(coalesce(\"DATETIME\", \"TIMESTAMP\") as timestamp) occurred_at",
+          "source": "The index includes both DATETIME and TIMESTAMP in raw.event.",
+          "importance": 2,
+          "reason": "The observed sample agrees, but a different meaning or invalid non-null DATETIME could change activity dates and sessions."
+        }
+      ],
+      "fewer_reason": "The missing property_email filter and numeric-regex issue were addressed in the final edits; other concerns lack sufficient evidence."
+    },
+    "stg_klaviyo__flow": {
+      "items": [
+        {
+          "problem": "The pipeline may import the sparse main.flow table instead of the existing raw.flow source.",
+          "about": "data",
+          "evidence_in_work": "flow [(79, 1)]; src.execute(f\"SELECT * FROM {t}\")",
+          "source": "source_table: raw.flow; the index lists both main.flow and raw.flow.",
+          "importance": 4,
+          "reason": "Only one of 79 imported rows survives the identifier filter, potentially removing nearly all flow dimensions."
+        },
+        {
+          "problem": "Future created timestamps are not checked before flow records enter staging.",
+          "about": "requirement",
+          "evidence_in_work": "try_cast(created as timestamp) created_at",
+          "source": "delete_row examples: \"Impossible timestamps in the future for created_at\"",
+          "importance": 1,
+          "reason": "This is a possible omission under the general quality policy, but no offending flow timestamp is shown."
+        }
+      ],
+      "fewer_reason": "The flow projection otherwise follows the supplied table contract, with no evidence for additional distinct problems."
+    },
+    "stg_klaviyo__metric": {
+      "items": [
+        {
+          "problem": "The pipeline may import the sparse main.metric table rather than the existing raw.metric source.",
+          "about": "data",
+          "evidence_in_work": "metric [(29, 1)]; src.execute(\"SHOW TABLES\")",
+          "source": "source_table: raw.metric; the index lists both main.metric and raw.metric.",
+          "importance": 4,
+          "reason": "Keeping only one metric can leave most event integration attributes unmatched."
+        },
+        {
+          "problem": "Future metric creation timestamps are not rejected if the general severe timestamp policy is intended to apply.",
+          "about": "requirement",
+          "evidence_in_work": "try_cast(created as timestamp) created_at",
+          "source": "delete_row examples: \"Impossible timestamps in the future for created_at\"",
+          "importance": 1,
+          "reason": "The validation is absent, but there is no demonstrated future metric timestamp."
+        }
+      ],
+      "fewer_reason": "No further metric-specific discrepancies are supported by the visible contract and work."
+    },
+    "stg_klaviyo__person": {
+      "items": [
+        {
+          "problem": "The pipeline may use the sparse main.person population instead of the existing raw.person source specified by the contract.",
+          "about": "data",
+          "evidence_in_work": "person [(1200, 2, 2)]; staging.stg_klaviyo__person: 2 rows",
+          "source": "source_table: raw.person; the index lists both main.person and raw.person.",
+          "importance": 4,
+          "reason": "Only two imported people have identifiers, so a source-selection mistake would remove almost all profiles."
+        },
+        {
+          "problem": "A person with a creation timestamp in 2099 is retained without applying the general future-created-at deletion policy.",
+          "about": "requirement",
+          "evidence_in_work": "datetime.datetime(2099, 1, 1, 0, 0); try_cast(created as timestamp) created_at",
+          "source": "delete_row examples: \"Impossible timestamps in the future for created_at\"",
+          "importance": 3,
+          "reason": "The suspicious timestamp is actually present and survives into person outputs, although the policy is expressed as a general example."
+        },
+        {
+          "problem": "Overlength malformed emails are deleted by the WHERE clause rather than reaching the explicit overlength nullification rule.",
+          "about": "requirement",
+          "evidence_in_work": "case when length(cleaned_email)>255 then null else cleaned_email end email; and (email is null or regexp_full_match(...))",
+          "source": "\"when present and length(email) > 255 then nullify; otherwise lower-trim\"",
+          "importance": 2,
+          "reason": "Rule precedence is ambiguous, but this can remove whole person records that should have been retained with a null email."
+        },
+        {
+          "problem": "The observed impossible latitude is retained without any plausibility validation.",
+          "about": "data",
+          "evidence_in_work": "latitude 421.6117; try_cast(latitude as double) latitude",
+          "source": "purpose: \"Transform raw data into clean, validated, and standardized staging tables\"",
+          "importance": 2,
+          "reason": "This produces unusable geographic coordinates, although the per-column contract supplies no explicit range rule."
+        }
+      ],
+      "fewer_reason": "Only four distinct concerns are supported; the final phone, timezone, and email-format corrections otherwise follow the stated rules."
+    },
+    "int_klaviyo__event_attribution": {
+      "items": [
+        {
+          "problem": "Attribution JSON is parsed for every event rather than only events with attribution and no direct touch.",
+          "about": "requirement",
+          "evidence_in_work": "attribution_ids as (select *, ... json_extract_string(...) ... from events_base)",
+          "source": "\"Parse event_attribution only for events with event_attribution present and no direct touch\"",
+          "importance": 3,
+          "reason": "Malformed JSON on a directly attributed event can fail a model that should not parse that payload."
+        },
+        {
+          "problem": "Malformed attribution JSON is not handled as an extraction failure with null fallback.",
+          "about": "requirement",
+          "evidence_in_work": "json_extract_string(replace(event_attribution, '$', ''), '$.relationships.attributed-event.data.id')",
+          "source": "\"If extraction fails or no matching child exists, last_touch_id/session_touch_type fall back to direct values\"",
+          "importance": 3,
+          "reason": "DuckDB can raise an error for malformed JSON instead of producing the specified fallback."
+        }
+      ],
+      "fewer_reason": "The visible source-scoped lookup and final fields otherwise implement the attribution rules; speculative duplicate risks are not listed because the contract explicitly forbids deduplication."
+    },
+    "int_klaviyo__events": {
+      "items": [
+        {
+          "problem": "The shared attribution CTE parses payloads even when a direct touch exists.",
+          "about": "requirement",
+          "evidence_in_work": "from events_base in attribution_ids; and a.direct_touch_id is null appears only in the later join",
+          "source": "\"For events with event_attribution and no direct touch_id, inherit touch from the attributed child\"",
+          "importance": 3,
+          "reason": "Unnecessary parsing can fail the entire enriched event model on irrelevant malformed payloads."
+        },
+        {
+          "problem": "Malformed attribution JSON has no safe extraction path.",
+          "about": "data",
+          "evidence_in_work": "json_extract_string(replace(event_attribution, '$', ''), ...)",
+          "source": null,
+          "importance": 2,
+          "reason": "The current run succeeds, but a malformed source payload would stop event enrichment."
+        },
+        {
+          "problem": "Person, campaign, flow, and metric enrichments may be largely unmatched because the staging dimensions came from extremely sparse imported tables.",
+          "about": "data",
+          "evidence_in_work": "staging campaign 2, flow 1, metric 1, person 2; left join staging.stg_klaviyo__person p",
+          "source": "The index provides separate raw and main versions of these dimensions.",
+          "importance": 3,
+          "reason": "The joins themselves are scoped correctly, but an unchecked source mismatch could null out most descriptive fields."
+        }
+      ],
+      "fewer_reason": "The final edits fixed minute rounding and the exact 30-minute session boundary; no additional supported event-specific discrepancies remain."
+    },
+    "int_klaviyo__person_campaign_flow": {
+      "items": [
+        {
+          "problem": "Attribution parsing is performed for directly touched events as well as events eligible for inherited attribution.",
+          "about": "requirement",
+          "evidence_in_work": "attribution_ids ... from events_base",
+          "source": "\"For events where event_attribution is present and no direct touch_id\"",
+          "importance": 3,
+          "reason": "An irrelevant malformed payload can prevent all person-touch metrics from being built."
+        },
+        {
+          "problem": "Event counts are materialized as BIGINT rather than the required HUGEINT.",
+          "about": "requirement",
+          "evidence_in_work": "count(*) filter(where lower(type)='{t}') as count_{t.replace(' ','_')}",
+          "source": "count_active_on_site and the other count_* columns: data_type: HUGEINT",
+          "importance": 2,
+          "reason": "Values are small here, but the output schema does not satisfy the declared contract."
+        },
+        {
+          "problem": "Null person identifiers are grouped and retained despite the model's not-null person_id test.",
+          "about": "requirement",
+          "evidence_in_work": "from touched group by person_id,last_touch_campaign_id,last_touch_flow_id,variation_id,source_relation",
+          "source": "person_id tests: - not_null",
+          "importance": 2,
+          "reason": "Staging does not validate person_id, so null-person events could create invalid output groups."
+        }
+      ],
+      "fewer_reason": "Revenue signs, grouping, and timestamp aggregation otherwise follow the specification."
+    },
+    "int_klaviyo__campaign_flow_metrics": {
+      "items": [
+        {
+          "problem": "The shared attribution implementation parses JSON for events that already have direct touches.",
+          "about": "requirement",
+          "evidence_in_work": "attribution_ids ... from events_base",
+          "source": "\"For events without a direct touch_id but with event_attribution\"",
+          "importance": 3,
+          "reason": "Irrelevant malformed payloads can fail the entire campaign/flow aggregate."
+        },
+        {
+          "problem": "The count_* output columns use BIGINT instead of the specified HUGEINT type.",
+          "about": "requirement",
+          "evidence_in_work": "count(*) filter(where lower(type)='{t}') as count_{k}",
+          "source": "count_active_on_site and other event count columns: data_type: HUGEINT",
+          "importance": 2,
+          "reason": "This is a schema-contract mismatch even though the current counts fit both types."
+        }
+      ],
+      "fewer_reason": "The visible unique counts, signed revenue sums, grouping, and conversion-rate formulas otherwise match the requirements."
+    },
+    "int_klaviyo__person_metrics": {
+      "items": [
+        {
+          "problem": "missing_day_count is inflated by event multiplicity because the date spine is joined to every event before counting spine rows.",
+          "about": "requirement",
+          "evidence_in_work": "count(*)-count(distinct e.occurred_on) as missing_day_count; left join events e",
+          "source": "\"multiple events on a day do not change this count\"",
+          "importance": 5,
+          "reason": "Every extra event on an active day incorrectly adds a missing day, directly corrupting continuity diagnostics."
+        },
+        {
+          "problem": "The declared HUGEINT event-count columns are produced as BIGINT.",
+          "about": "requirement",
+          "evidence_in_work": "DESCRIBE: ('count_active_on_site', 'BIGINT', ...)",
+          "source": "count_active_on_site and other count_* fields: data_type: HUGEINT",
+          "importance": 2,
+          "reason": "The final inspected schema demonstrably differs from the contract."
+        },
+        {
+          "problem": "Null person identifiers can produce rows that violate the model's not-null person_id requirement.",
+          "about": "requirement",
+          "evidence_in_work": "from events group by person_id,source_relation",
+          "source": "person_id tests: - not_null",
+          "importance": 2,
+          "reason": "No upstream person_id validation or output check is shown for this model."
+        }
+      ],
+      "fewer_reason": "The other span, active-period, revenue, and rate calculations have no additional supported independent problems."
+    },
+    "int_klaviyo__campaigns_enriched": {
+      "items": [
+        {
+          "problem": "The campaign population may be incomplete because only two records survive the potentially wrong imported dimension source.",
+          "about": "data",
+          "evidence_in_work": "staging.stg_klaviyo__campaign: 2 rows; intermediate.int_klaviyo__campaigns_enriched: 2 rows",
+          "source": "The index lists both main.campaign and raw.campaign; source_table: raw.campaign.",
+          "importance": 4,
+          "reason": "An upstream source-selection error would remove campaigns entirely rather than merely null their metrics."
+        },
+        {
+          "problem": "Attribution payloads are parsed for directly touched events even though inheritance is restricted to events without direct touches.",
+          "about": "requirement",
+          "evidence_in_work": "attribution_ids ... from events_base",
+          "source": "\"For events with event_attribution present and no touch_id\"",
+          "importance": 3,
+          "reason": "Malformed payloads that should be irrelevant can prevent campaign enrichment."
+        },
+        {
+          "problem": "STATUS_ID and event count fields retain narrower types than the contract declares.",
+          "about": "requirement",
+          "evidence_in_work": "c.status_id as STATUS_ID; count(*) filter(...) count_received_email",
+          "source": "STATUS_ID: BIGINT; count_received_email and other counts: HUGEINT",
+          "importance": 2,
+          "reason": "Staging supplies INTEGER status_id and DuckDB COUNT supplies BIGINT, so the enriched schema is not compliant."
+        }
+      ],
+      "fewer_reason": "The final campaign timestamp/string casts, metric formulas, left join, and hash follow the supplied definitions."
+    },
+    "int_klaviyo__flows_enriched": {
+      "items": [
+        {
+          "problem": "The flow population may be incomplete because the imported dimension contains only one non-null flow identifier.",
+          "about": "data",
+          "evidence_in_work": "flow [(79, 1)]; intermediate.int_klaviyo__flows_enriched: 1 rows",
+          "source": "The index lists both main.flow and raw.flow; source_table: raw.flow.",
+          "importance": 4,
+          "reason": "If the existing raw table is the intended source, most flows could be absent from this result."
+        },
+        {
+          "problem": "Attribution JSON is parsed for events with direct touches as well as those eligible to inherit.",
+          "about": "requirement",
+          "evidence_in_work": "attribution_ids ... from events_base",
+          "source": "\"Identify child events lacking a touch_id but having event_attribution\"",
+          "importance": 3,
+          "reason": "Malformed irrelevant attribution can fail the entire flow model."
+        },
+        {
+          "problem": "Event-count columns are BIGINT rather than the required HUGEINT.",
+          "about": "requirement",
+          "evidence_in_work": "count(*) filter(where lower(type)='{t}') count_{t.replace(' ','_')}",
+          "source": "count_received_email and other count_* fields: data_type: HUGEINT",
+          "importance": 2,
+          "reason": "The schema differs from the declared output contract."
+        }
+      ],
+      "fewer_reason": "The final flow timestamp casts and the remaining aggregation and hash logic match the visible requirements."
+    },
+    "int_klaviyo__persons_enriched": {
+      "items": [
+        {
+          "problem": "The person population may be incomplete because the staging source retains only two of 1,200 imported rows.",
+          "about": "data",
+          "evidence_in_work": "staging.stg_klaviyo__person: 2 rows; select p.*",
+          "source": "The index lists both main.person and raw.person; source_table: raw.person.",
+          "importance": 4,
+          "reason": "A wrong upstream source would remove nearly all profiles from this profile-based result."
+        },
+        {
+          "problem": "ZIP remains VARCHAR despite the enriched model requiring BIGINT.",
+          "about": "requirement",
+          "evidence_in_work": "select p.*; staging DESCRIBE: ('zip', 'VARCHAR', ...)",
+          "source": "ZIP data_type: BIGINT",
+          "importance": 2,
+          "reason": "The pass-through does not perform the layer-specific type conversion declared in the contract."
+        },
+        {
+          "problem": "Event-count metrics are BIGINT rather than HUGEINT.",
+          "about": "requirement",
+          "evidence_in_work": "count(*) filter(where lower(type)='{t}') count_{t.replace(' ','_')}",
+          "source": "count_active_on_site and other count_* fields: data_type: HUGEINT",
+          "importance": 2,
+          "reason": "This is an output-schema mismatch across all event-count fields."
+        }
+      ],
+      "fewer_reason": "No additional independent issues are supported in the person-level aggregation and left-join logic."
+    },
+    "klaviyo__events": {
+      "items": [
+        {
+          "problem": "prev_occurred_on is selected twice, creating an extra automatically renamed column outside the required schema.",
+          "about": "requirement",
+          "evidence_in_work": "select s.*, ... prev_occurred_on,",
+          "source": "The output columns declare one prev_occurred_on field.",
+          "importance": 3,
+          "reason": "The sequenced CTE already includes this field in s.*, so the final table contains an unintended duplicate."
+        },
+        {
+          "problem": "Daily event counts are BIGINT instead of the required HUGEINT.",
+          "about": "requirement",
+          "evidence_in_work": "count(*) filter(where lower(type)='opened email') day_opened_email",
+          "source": "day_opened_email, day_clicked_email, day_placed_order, day_ordered_product: HUGEINT",
+          "importance": 2,
+          "reason": "All four daily count columns violate the declared output types."
+        },
+        {
+          "problem": "Descriptive event dimensions may be mostly null because the upstream dimension-source selection was not reconciled.",
+          "about": "data",
+          "evidence_in_work": "staging campaign 2, person 2, flow 1, metric 1; select e.*",
+          "source": "The index lists separate main and raw versions of each dimension.",
+          "importance": 2,
+          "reason": "The mart preserves upstream enrichment gaps, potentially affecting most analytical dimension fields."
+        }
+      ],
+      "fewer_reason": "The final daily join, sequencing, net-revenue formula, and zero-denominator handling otherwise follow the specification."
+    },
+    "klaviyo__campaigns": {
+      "items": [
+        {
+          "problem": "The aggregate join matches null variation identifiers using null-safe equality rather than ordinary equality on the specified join keys.",
+          "about": "requirement",
+          "evidence_in_work": "b.variation_id is not distinct from a.variation_id",
+          "source": "\"Left join these aggregates to c on campaign_id, variation_id, and source_relation\"",
+          "importance": 3,
+          "reason": "If ordinary SQL equality is intended, null-variation rows should retain null aggregate fields instead of receiving metrics."
+        },
+        {
+          "problem": "The campaign universe may be incomplete because the base inherited only two campaigns from the questionable source import.",
+          "about": "data",
+          "evidence_in_work": "marts.klaviyo__campaigns: 2 rows",
+          "source": "The index lists main.campaign and raw.campaign separately.",
+          "importance": 3,
+          "reason": "Missing base campaigns cannot be recovered by the mart's event aggregate join."
+        },
+        {
+          "problem": "The mart inherits incorrect STATUS_ID and count types and produces total_placed_orders as BIGINT rather than HUGEINT.",
+          "about": "requirement",
+          "evidence_in_work": "select b.*; count(*) filter(where lower(type)='placed order') total_placed_orders",
+          "source": "STATUS_ID: BIGINT; count_* and total_placed_orders: HUGEINT",
+          "importance": 2,
+          "reason": "Multiple output fields do not conform to the required schema."
+        }
+      ],
+      "fewer_reason": "The aggregate formulas otherwise match the contract, and no further independent campaign-mart issues are supported."
+    },
+    "klaviyo__flows": {
+      "items": [
+        {
+          "problem": "Null variation identifiers are matched even though the contract explicitly requires exact equality of join keys.",
+          "about": "requirement",
+          "evidence_in_work": "b.variation_id is not distinct from a.variation_id",
+          "source": "\"left join the aggregates to the base on exact equality of (flow_id, variation_id, source_relation)\"",
+          "importance": 4,
+          "reason": "Null-variation base rows can receive aggregates where the specified equality join would leave every added aggregate null."
+        },
+        {
+          "problem": "The flow population may be incomplete because only one imported flow identifier survived upstream.",
+          "about": "data",
+          "evidence_in_work": "marts.klaviyo__flows: 1 rows",
+          "source": "The index lists separate main.flow and raw.flow tables.",
+          "importance": 3,
+          "reason": "A source-selection error would exclude flows entirely from this dimension-based mart."
+        },
+        {
+          "problem": "Event-count fields, including total_placed_orders, have BIGINT rather than HUGEINT types.",
+          "about": "requirement",
+          "evidence_in_work": "select b.*; count(*) filter(where lower(type)='placed order') total_placed_orders",
+          "source": "count_* fields and total_placed_orders: data_type: HUGEINT",
+          "importance": 2,
+          "reason": "Both inherited and newly calculated count fields violate the output schema."
+        }
+      ],
+      "fewer_reason": "No additional supported discrepancies remain in the flow aggregate formulas or final timestamp types."
+    },
+    "klaviyo__persons": {
+      "items": [
+        {
+          "problem": "missing_day_count inherits the upstream date-spine fanout error.",
+          "about": "requirement",
+          "evidence_in_work": "pm.active_days,pm.active_weeks,pm.active_months,pm.missing_day_count",
+          "source": "missing_day_count: \"Days within the inclusive span that had zero events\"",
+          "importance": 5,
+          "reason": "Multiple events on active days inflate this displayed continuity diagnostic."
+        },
+        {
+          "problem": "The base person population may be incomplete because only two profiles survived the potentially incorrect source import.",
+          "about": "data",
+          "evidence_in_work": "marts.klaviyo__persons: 2 rows",
+          "source": "The index lists separate main.person and raw.person tables.",
+          "importance": 3,
+          "reason": "A source mismatch could remove almost all profiles and their retention analyses."
+        },
+        {
+          "problem": "The primary first_event_on and last_event_on fields come from persons_enriched while the person_metrics dates are assigned to the auxiliary fields.",
+          "about": "requirement",
+          "evidence_in_work": "select p.*,pm.first_event_on as first_event_on_1,pm.last_event_on as last_event_on_2",
+          "source": "first_event_on: \"Earliest activity date from person_metrics\"; first_event_on_1: \"Pass-through auxiliary date from persons_enriched\"",
+          "importance": 2,
+          "reason": "The sources are reversed relative to the column definitions, though the current computations normally yield identical dates."
+        },
+        {
+          "problem": "ZIP and inherited event-count fields retain VARCHAR and BIGINT types instead of BIGINT and HUGEINT respectively.",
+          "about": "requirement",
+          "evidence_in_work": "select p.*",
+          "source": "ZIP: BIGINT; count_active_on_site and other count_* fields: HUGEINT",
+          "importance": 2,
+          "reason": "The mart passes through upstream schema mismatches without correcting them."
+        }
+      ],
+      "fewer_reason": "The inclusive spans, paid-month logic, retention flags, and rate formulas otherwise follow the supplied definitions."
+    },
+    "klaviyo__person_campaign_flow": {
+      "items": [
+        {
+          "problem": "Inherited event-count fields are BIGINT rather than the required HUGEINT.",
+          "about": "requirement",
+          "evidence_in_work": "select * from intermediate.int_klaviyo__person_campaign_flow",
+          "source": "count_active_on_site and other count_* fields: data_type: HUGEINT",
+          "importance": 2,
+          "reason": "The upstream COUNT-based types pass unchanged into the mart."
+        },
+        {
+          "problem": "Null-person groups can pass through despite the mart's person_id not-null requirement.",
+          "about": "requirement",
+          "evidence_in_work": "from intermediate.int_klaviyo__person_campaign_flow",
+          "source": "person_id tests: - not_null",
+          "importance": 2,
+          "reason": "Neither this model nor its upstream aggregation prevents null-person output groups."
+        }
+      ],
+      "fewer_reason": "The required spans, rates, net revenue, and conversion flag are otherwise implemented as specified."
+    }
+  }
+}

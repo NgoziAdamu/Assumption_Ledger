@@ -1,0 +1,923 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "stg_zuora__account": {
+      "items": [
+        {
+          "problem": "The generic identifier mapping replaces bill_to_contact_id, sold_to_contact_id, and default_payment_method_id with the account's own id.",
+          "about": "requirement",
+          "evidence_in_work": "if n in pk_alias: srcname='id'",
+          "source": "The account contract separately lists account_id, bill_to_contact_id, sold_to_contact_id, and default_payment_method_id.",
+          "importance": 5,
+          "reason": "These are foreign identifiers rather than aliases of the account primary key."
+        },
+        {
+          "problem": "Comma-packed account records may be split incorrectly when text fields contain quoted commas, without any validation of field alignment.",
+          "about": "data",
+          "evidence_in_work": "split_expr = f\"string_split({col_ident}, ',')\"",
+          "source": "raw.zuora_account_data has a single comma-separated column header including name, notes, and additional_email_addresses.",
+          "importance": 3,
+          "reason": "A shifted field would corrupt many account attributes even though the SQL still executes."
+        }
+      ],
+      "fewer_reason": "The final edits address the visible balance and status validation omissions; no other distinct account-specific concerns are supported."
+    },
+    "stg_zuora__contact": {
+      "items": [
+        {
+          "problem": "account_id is mapped from the contact id instead of the source account_id, also making the account-contact recency flag partition by the wrong entity.",
+          "about": "requirement",
+          "evidence_in_work": "if n in pk_alias: srcname='id'",
+          "source": "contact_id source_expression: \"id\"; account_id is a separate source field; is_most_recent_account_contact partitions by account_id.",
+          "importance": 5,
+          "reason": "This can disconnect contacts from accounts and change which contacts qualify as current."
+        },
+        {
+          "problem": "Phone normalization uses DuckDB regexp_replace without global replacement, so a phone with multiple punctuation characters may fail normalization.",
+          "about": "data",
+          "evidence_in_work": "else: e=expr",
+          "source": "mobile_phone uses length(regexp_replace(mobile_phone, '[^0-9]', '')) and is described as phone format standardization.",
+          "importance": 3,
+          "reason": "The literal contract expression is retained, but DuckDB's default replacement behavior may not implement its stated cleaning intent."
+        },
+        {
+          "problem": "The account-contact recency window may resolve account_id to its newly aliased contact id rather than the intended source account_id.",
+          "about": "data",
+          "evidence_in_work": "try_cast(\"id\" AS VARCHAR) AS account_id; row_number() over (partition by account_id ...)",
+          "source": "is_most_recent_account_contact: row_number() over (partition by account_id order by try_cast(created_date as TIMESTAMP) desc) = 1",
+          "importance": 4,
+          "reason": "DuckDB alias resolution should be checked because the projection and window reference competing meanings of the same name."
+        }
+      ],
+      "fewer_reason": "Only three distinct contact transformation risks are evidenced."
+    },
+    "stg_zuora__invoice": {
+      "items": [
+        {
+          "problem": "The generic mapping substitutes invoice id for account_id, bill_to_contact_id, sold_to_contact_id, and default_payment_method_id.",
+          "about": "requirement",
+          "evidence_in_work": "pk_alias={'account_id', ... 'payment_method_id', ...}; if n in pk_alias: srcname='id'",
+          "source": "invoice_id source_expression: \"id\"; account_id and the contact and payment-method identifiers are separate columns.",
+          "importance": 5,
+          "reason": "Incorrect account attribution propagates into nearly every invoice-based analytical result."
+        },
+        {
+          "problem": "Invoices with missing or unparsable created_date are deleted even though the contract explicitly permits them.",
+          "about": "requirement",
+          "evidence_in_work": "try_cast(created_date AS timestamp) IS NOT NULL AND try_cast(created_date AS timestamp) <= current_timestamp",
+          "source": "try_cast(created_date as TIMESTAMP) is null OR (try_cast(created_date as TIMESTAMP) <= current_timestamp AND ...)",
+          "importance": 4,
+          "reason": "This removes invoices and their amounts instead of retaining them with null creation timestamps."
+        },
+        {
+          "problem": "The importer may misalign invoice columns when comma-packed comments or other text contain embedded commas.",
+          "about": "data",
+          "evidence_in_work": "string_split({col_ident}, ',')",
+          "source": "raw.zuora_invoice_data is indexed as one comma-separated header containing comments and tax_message.",
+          "importance": 3,
+          "reason": "Unverified parsing could alter dates, amounts, and join identifiers across an entire record."
+        }
+      ],
+      "fewer_reason": "The visible work supports three distinct invoice-specific issues rather than ten."
+    },
+    "stg_zuora__invoice_item": {
+      "items": [
+        {
+          "problem": "The generic primary-key fix also maps account_id, invoice_id, product_id, subscription_id, amendment_id, and rate-plan identifiers to the invoice item's own id.",
+          "about": "requirement",
+          "evidence_in_work": "if n in pk_alias: srcname='id'",
+          "source": "Only invoice_item_id has source_expression: \"id\"; the contract separately lists invoice_id, account_id, product_id, subscription_id, and other relationship keys.",
+          "importance": 5,
+          "reason": "This destroys the relationships used by all line-item, billing, and revenue joins."
+        },
+        {
+          "problem": "The observed processing_type values look like identifiers rather than processing codes, but the agent accepts their conversion to NULL without checking source record alignment.",
+          "about": "data",
+          "evidence_in_work": "[('0', 5), ('8ad0965d7ba11a18017ba1983ba31908', 1529), ('2c92c0946736733a016750d344222932', 1470)]",
+          "source": "processing_type is used downstream as the codes '0', '1', '2', and '3'.",
+          "importance": 5,
+          "reason": "Almost all retained records lose processing semantics, which may indicate a broader source-format problem."
+        },
+        {
+          "problem": "Casting processing_type to BOOLEAN loses codes 2 and 3 and changes 0 and 1 into values that cannot survive later VARCHAR code comparisons.",
+          "about": "data",
+          "evidence_in_work": "('processing_type', 'BOOLEAN'); staging values [(False, 5), (None, 1490)]",
+          "source": "The staging type is BOOLEAN, but modeling logic requires processing_type string codes '0', '1', '2', and '3'.",
+          "importance": 4,
+          "reason": "The contract conflict needs explicit reconciliation rather than a cast that prevents required classification."
+        }
+      ],
+      "fewer_reason": "Three supported issues cover the key mapping and the separate source-value and enum-type problems."
+    },
+    "stg_zuora__invoice_payment": {
+      "items": [
+        {
+          "problem": "invoice_id, payment_id, account_id, and payment_method_id are replaced with invoice_payment id by the generic identifier mapping.",
+          "about": "requirement",
+          "evidence_in_work": "if n in pk_alias: srcname='id'",
+          "source": "The contract separately defines invoice_payment_id, invoice_id, payment_id, account_id, and payment_method_id.",
+          "importance": 5,
+          "reason": "The join table no longer links invoices to their actual payments."
+        },
+        {
+          "problem": "A deletion filter is added although this table's provided contract specifies no row filter.",
+          "about": "requirement",
+          "evidence_in_work": "Every table with deletion metadata honors deletion ... filters.append(...)",
+          "source": "stg_zuora__invoice_payment lists columns without a row_filters section.",
+          "importance": 2,
+          "reason": "This may remove records outside the specified scope, although the intended treatment of deletion metadata is ambiguous."
+        },
+        {
+          "problem": "Casting numeric refund_amount to BOOLEAN discards its magnitude before a downstream model describes it as an unchanged numeric amount.",
+          "about": "data",
+          "evidence_in_work": "try_cast(\"refund_amount\" AS BOOLEAN) AS refund_amount",
+          "source": "staging refund_amount: BOOLEAN; int_zuora__invoice_payment_current refund_amount: BIGINT, 'numeric values are unchanged'.",
+          "importance": 2,
+          "reason": "This follows one part of a conflicting contract but may lose nonzero refund amounts."
+        }
+      ],
+      "fewer_reason": "Only these three table-specific issues are grounded in the supplied materials."
+    },
+    "stg_zuora__payment": {
+      "items": [
+        {
+          "problem": "account_id and payment_method_id are mapped from payment id rather than their actual raw fields.",
+          "about": "requirement",
+          "evidence_in_work": "if n in pk_alias: srcname='id'",
+          "source": "payment_id source_expression: \"id\"; account_id and payment_method_id are distinct contract columns.",
+          "importance": 5,
+          "reason": "Payments become disconnected from customer and payment-method records."
+        },
+        {
+          "problem": "effective_date is converted to DATE even though downstream payment-date requirements depend on the original string and its ordering.",
+          "about": "data",
+          "evidence_in_work": "e=f'try_cast(\"{srcname}\" AS {typ})'",
+          "source": "Staging effective_date is DATE, while billing_enriched requires 'earliest effective_date string (by string order)' and enhanced payment_at is 'verbatim string'.",
+          "importance": 3,
+          "reason": "The conflicting requirements are not reconciled, and timestamps or nonstandard textual representations may be lost."
+        }
+      ],
+      "fewer_reason": "Two payment-specific risks are supported; the basic latest-row pass-through logic is otherwise visible."
+    },
+    "stg_zuora__payment_method": {
+      "items": [
+        {
+          "problem": "The payment method's account_id is replaced with its own id.",
+          "about": "requirement",
+          "evidence_in_work": "if n in pk_alias: srcname='id'",
+          "source": "payment_method_id source_expression: \"id\"; account_id is separately defined.",
+          "importance": 4,
+          "reason": "The staged ownership relationship is incorrect even if not used by every current mart."
+        },
+        {
+          "problem": "The generic deletion predicate accepts arbitrary non-true strings that the table-specific predicate would exclude.",
+          "about": "requirement",
+          "evidence_in_work": "NOT IN ('true', '1', 't')",
+          "source": "coalesce(lower(cast(\"_fivetran_deleted\" as varchar)),'false') = 'false'",
+          "importance": 2,
+          "reason": "Invalid or empty deletion flags can change the retained scope."
+        }
+      ],
+      "fewer_reason": "Only two distinct issues are supported for this table."
+    },
+    "stg_zuora__product": {
+      "items": [
+        {
+          "problem": "Recency ordering may use raw textual updated_date rather than the projected timestamp, making latest selection depend on input date format.",
+          "about": "data",
+          "evidence_in_work": "e=expr for recency flags; order by updated_date desc",
+          "source": "raw.zuora_product_data updated_date is VARCHAR; the description promises a latest snapshot indicator.",
+          "importance": 2,
+          "reason": "This matches the literal window expression but can select the wrong snapshot if timestamp text is not lexically sortable."
+        }
+      ],
+      "fewer_reason": "No product-specific mapping error is visible because its primary-key source expression is explicit and it has no listed foreign keys affected by the generic mapping."
+    },
+    "stg_zuora__product_rate_plan": {
+      "items": [
+        {
+          "problem": "product_id is replaced with the product rate plan id.",
+          "about": "requirement",
+          "evidence_in_work": "if n in pk_alias: srcname='id'",
+          "source": "product_rate_plan_id source_expression: \"id\"; product_id is a separate column.",
+          "importance": 4,
+          "reason": "The product-to-rate-plan relationship is corrupted."
+        },
+        {
+          "problem": "Latest selection may sort VARCHAR updated_date values rather than timestamps.",
+          "about": "data",
+          "evidence_in_work": "row_number() over (partition by id order by updated_date desc) = 1",
+          "source": "raw.zuora_product_rate_plan_data updated_date is VARCHAR.",
+          "importance": 2,
+          "reason": "Different timestamp formats could produce a nonchronological latest record."
+        }
+      ],
+      "fewer_reason": "Only two distinct supported concerns were found."
+    },
+    "stg_zuora__rate_plan": {
+      "items": [
+        {
+          "problem": "account_id, amendment_id, product_id, product_rate_plan_id, subscription_id, and contact and payment-method keys are all substituted with rate plan id.",
+          "about": "requirement",
+          "evidence_in_work": "if n in pk_alias: srcname='id'",
+          "source": "The rate plan contract separately lists these relationship identifiers.",
+          "importance": 5,
+          "reason": "This prevents subscription-based rate-plan enrichment and corrupts the staged relationships."
+        },
+        {
+          "problem": "The model adds deletion filtering not stated in the provided rate-plan contract.",
+          "about": "requirement",
+          "evidence_in_work": "filters.append(\"coalesce(lower(cast(_fivetran_deleted AS varchar)), 'false') NOT IN ('true', '1', 't')\")",
+          "source": "The supplied stg_zuora__rate_plan section contains no row_filters.",
+          "importance": 2,
+          "reason": "The added filter may change row scope without an explicit table-specific requirement."
+        }
+      ],
+      "fewer_reason": "Two supported issues were found."
+    },
+    "stg_zuora__rate_plan_charge": {
+      "items": [
+        {
+          "problem": "The generic identifier mapping replaces the charge's account, subscription, product, rate-plan, amendment, contact, and payment-method references with charge id.",
+          "about": "requirement",
+          "evidence_in_work": "if n in pk_alias: srcname='id'",
+          "source": "Only rate_plan_charge_id explicitly maps from id; subscription_id, product_id, rate_plan_id, and other keys are separate fields.",
+          "importance": 5,
+          "reason": "This breaks subscription-charge matching and multiple analytical relationships."
+        },
+        {
+          "problem": "BOOLEAN casts collapse bill_cycle_day, segment, and price_increase_percentage even though downstream definitions require their numeric values.",
+          "about": "data",
+          "evidence_in_work": "('bill_cycle_day', 'BOOLEAN'), ('price_increase_percentage', 'BOOLEAN'), ('segment', 'BOOLEAN')",
+          "source": "int_zuora__rate_plan_charge_current defines bill_cycle_day, price_increase_percentage, and segment as BIGINT while requiring unchanged values.",
+          "importance": 3,
+          "reason": "The staging/modeling type conflict can turn distinct numeric values into indistinguishable flags."
+        }
+      ],
+      "fewer_reason": "Two distinct concerns are evidenced."
+    },
+    "stg_zuora__subscription": {
+      "items": [
+        {
+          "problem": "account_id, bill_to_contact_id, sold_to_contact_id, and default_payment_method_id are mapped to subscription id.",
+          "about": "requirement",
+          "evidence_in_work": "if n in pk_alias: srcname='id'",
+          "source": "subscription_id source_expression: \"id\"; the account, contact, and payment-method identifiers are separate fields.",
+          "importance": 5,
+          "reason": "Subscription customer ownership and account enrichment will be incorrect."
+        },
+        {
+          "problem": "The deletion predicate retains invalid flag strings that the specified equality-to-false predicate would discard.",
+          "about": "requirement",
+          "evidence_in_work": "NOT IN ('true', '1', 't')",
+          "source": "coalesce(lower(cast(_fivetran_deleted as varchar)),'false') = 'false'",
+          "importance": 2,
+          "reason": "Unexpected flag representations can change the included subscription population."
+        }
+      ],
+      "fewer_reason": "Only two distinct subscription-specific issues are supported."
+    },
+    "stg_zuora__taxation_item": {
+      "items": [
+        {
+          "problem": "invoice_id, invoice_item_id, account_id, product and subscription identifiers, and other recognized foreign keys are mapped to taxation item id.",
+          "about": "requirement",
+          "evidence_in_work": "if n in pk_alias: srcname='id'",
+          "source": "taxation_item_id source_expression: \"id\"; invoice_id and invoice_item_id are separately defined.",
+          "importance": 5,
+          "reason": "Tax amounts will not aggregate onto their actual invoices."
+        },
+        {
+          "problem": "Comma-packed taxation rows are split without CSV quoting support or field-count validation.",
+          "about": "data",
+          "evidence_in_work": "string_split({col_ident}, ',')",
+          "source": "raw.zuora_taxation_item_data is indexed as a single comma-separated header including tax_description and tax_rate_description.",
+          "importance": 3,
+          "reason": "Embedded commas could shift financial values and identifiers into the wrong columns."
+        }
+      ],
+      "fewer_reason": "Only two supported issues were identified."
+    },
+    "stg_zuora__credit_balance_adjustment": {
+      "items": [
+        {
+          "problem": "account_id, invoice_id, bill_to_contact_id, sold_to_contact_id, and default_payment_method_id are replaced by credit balance adjustment id.",
+          "about": "requirement",
+          "evidence_in_work": "if n in pk_alias: srcname='id'",
+          "source": "The contract separately defines credit_balance_adjustment_id, invoice_id, account_id, and the contact and payment-method identifiers.",
+          "importance": 5,
+          "reason": "Credit adjustments will not attach to their intended invoices."
+        },
+        {
+          "problem": "The model adds a deletion filter absent from the provided table-specific contract.",
+          "about": "requirement",
+          "evidence_in_work": "Every table with deletion metadata honors deletion",
+          "source": "The supplied credit balance adjustment contract contains no row_filters.",
+          "importance": 2,
+          "reason": "This may remove records outside the documented transformation."
+        }
+      ],
+      "fewer_reason": "Two distinct supported issues were found."
+    },
+    "stg_zuora__amendment": {
+      "items": [
+        {
+          "problem": "subscription_id is replaced with amendment id.",
+          "about": "requirement",
+          "evidence_in_work": "if n in pk_alias: srcname='id'",
+          "source": "amendment_id source_expression: \"id\"; subscription_id is a separate field.",
+          "importance": 5,
+          "reason": "Subscription overview will fail to attach the subscription's amendments."
+        },
+        {
+          "problem": "Comma-packed amendment text may be misparsed when descriptions or names include embedded commas.",
+          "about": "data",
+          "evidence_in_work": "string_split({col_ident}, ',')",
+          "source": "raw.zuora_amendment_data is indexed as one comma-separated header containing description and name.",
+          "importance": 3,
+          "reason": "Field shifts could change dates, status, and identifiers without causing execution errors."
+        }
+      ],
+      "fewer_reason": "Only two distinct concerns are supported."
+    },
+    "stg_zuora__order": {
+      "items": [
+        {
+          "problem": "The generic identifier mapping replaces account_id, contact identifiers, and default_payment_method_id with order id.",
+          "about": "data",
+          "evidence_in_work": "if n in pk_alias: srcname='id'",
+          "source": "raw.zuora_order_data separately contains id, account_id, bill_to_contact_id, sold_to_contact_id, and default_payment_method_id.",
+          "importance": 4,
+          "reason": "Distinct source relationships are overwritten even though this table is not consumed by the visible marts."
+        }
+      ],
+      "fewer_reason": "The order-specific contract was not supplied, so further transformation requirements cannot be reliably assessed."
+    },
+    "stg_zuora__refund": {
+      "items": [
+        {
+          "problem": "payment_method_id is replaced with refund id.",
+          "about": "data",
+          "evidence_in_work": "if n in pk_alias: srcname='id'",
+          "source": "raw.zuora_refund_data separately contains id and payment_method_id.",
+          "importance": 3,
+          "reason": "The staged refund loses its actual payment-method relationship."
+        }
+      ],
+      "fewer_reason": "The refund-specific contract is not provided, and no further distinct issues can be established."
+    },
+    "stg_zuora__refund_invoice_payment": {
+      "items": [],
+      "fewer_reason": "The table-specific contract is omitted, and the visible source fields do not establish a distinct remaining error after primary-key mapping was fixed."
+    },
+    "int_zuora__account_current": {
+      "items": [
+        {
+          "problem": "The pass-through preserves corrupted contact and payment-method references from the staging generator.",
+          "about": "data",
+          "evidence_in_work": "SELECT * FROM staging.stg_zuora__account WHERE is_most_recent_record = TRUE",
+          "source": "The model must preserve all source columns exactly.",
+          "importance": 4,
+          "reason": "The filter is correct, but the current snapshot inherits incorrect foreign identifiers."
+        }
+      ],
+      "fewer_reason": "No independent error is visible in the required pass-through implementation."
+    },
+    "int_zuora__contact_current": {
+      "items": [
+        {
+          "problem": "Filtering both flags cannot recover the real account relationship after staging replaced account_id with contact id.",
+          "about": "data",
+          "evidence_in_work": "is_most_recent_record = TRUE AND is_most_recent_account_contact = TRUE",
+          "source": "Contacts must be associated with their account_id and satisfy both source recency flags.",
+          "importance": 5,
+          "reason": "The resulting contact profile can fail every account-based mart join."
+        }
+      ],
+      "fewer_reason": "The filter itself matches the contract; the supported concern is inherited staging corruption."
+    },
+    "int_zuora__invoice_base": {
+      "items": [
+        {
+          "problem": "The model passes through account_id values that staging incorrectly replaced with invoice id.",
+          "about": "data",
+          "evidence_in_work": "invoice_id, account_id, created_date AS created_at",
+          "source": "account_id: Account linked to the invoice.",
+          "importance": 5,
+          "reason": "All account-level invoice attribution can be wrong."
+        },
+        {
+          "problem": "The input is missing invoices with null or unparsable creation timestamps because staging used a stricter filter than specified.",
+          "about": "requirement",
+          "evidence_in_work": "FROM staging.stg_zuora__invoice WHERE is_most_recent_record = TRUE",
+          "source": "The invoice row filter allows try_cast(created_date as TIMESTAMP) is null.",
+          "importance": 4,
+          "reason": "Invoice totals and date coverage can be understated before this model runs."
+        }
+      ],
+      "fewer_reason": "The visible unpaid and past-due expressions otherwise implement the documented row-wise logic."
+    },
+    "int_zuora__invoice_item_base": {
+      "items": [
+        {
+          "problem": "Pass-through invoice, account, product, subscription, and rate-plan keys inherit the staging substitution of invoice item id.",
+          "about": "data",
+          "evidence_in_work": "SELECT ii.*",
+          "source": "Pass through all source fields unchanged.",
+          "importance": 5,
+          "reason": "Every downstream enrichment using these keys can fail or misattribute records."
+        },
+        {
+          "problem": "The discount comparison relies on implicit BOOLEAN coercion rather than the specified string-code comparison.",
+          "about": "data",
+          "evidence_in_work": "CASE WHEN processing_type = '1' THEN ...",
+          "source": "When processing_type equals the string '1', derive the discount amounts.",
+          "importance": 3,
+          "reason": "The staging/modeling type mismatch makes discount classification dependent on DuckDB coercion instead of preserved codes."
+        }
+      ],
+      "fewer_reason": "The visible date buckets and null-preserving discount branches otherwise follow the specification."
+    },
+    "int_zuora__billing_enriched": {
+      "items": [
+        {
+          "problem": "Grouping uses invoice_id values that staging replaced with each invoice item's id rather than its invoice reference.",
+          "about": "data",
+          "evidence_in_work": "GROUP BY invoice_id; billing_enriched: 1495 rows",
+          "source": "grain: One row per invoice_id present in most-recent invoice items.",
+          "importance": 5,
+          "reason": "Per-invoice item counts and aggregates are effectively grouped by the wrong entity."
+        },
+        {
+          "problem": "The payment join uses payment_id values overwritten with invoice-payment id, while tax and credit invoice references are also overwritten.",
+          "about": "data",
+          "evidence_in_work": "JOIN staging.stg_zuora__payment AS p ON ip.payment_id = p.payment_id",
+          "source": "Join invoice_payment to payment on payment_id and left join taxes and credit aggregates on invoice_id.",
+          "importance": 5,
+          "reason": "Payment, tax, and credit metrics can all become unmatched NULLs."
+        },
+        {
+          "problem": "payment_methods counts invoice_payment.payment_method_id instead of the payment's payment_method_id.",
+          "about": "requirement",
+          "evidence_in_work": "SELECT ip.invoice_id, ip.payment_id, ip.payment_method_id",
+          "source": "payment_methods: number of unique payment_method_id across linked payments.",
+          "importance": 3,
+          "reason": "These two source fields may differ, changing the distinct method count."
+        },
+        {
+          "problem": "Payment date aggregates are emitted as DATE rather than the required VARCHAR values and string ordering.",
+          "about": "requirement",
+          "evidence_in_work": "min(effective_date) AS first_payment_date, max(effective_date) AS most_recent_payment_date",
+          "source": "first_payment_date and most_recent_payment_date: VARCHAR; effective_date string ordered by string order.",
+          "importance": 3,
+          "reason": "The output type is wrong, and noncanonical source dates may have different extrema."
+        },
+        {
+          "problem": "Discount aggregation tests a staged BOOLEAN against string '1', while the observed source processing values were mostly identifier-like and became NULL.",
+          "about": "data",
+          "evidence_in_work": "sum(CASE WHEN processing_type = '1' THEN ... ELSE 0 END)",
+          "source": "discount_charges uses processing_type equals '1' with a string compare.",
+          "importance": 3,
+          "reason": "A successful aggregate does not establish that actual discount records were classified."
+        }
+      ],
+      "fewer_reason": "Five distinct high-impact risks are supported without inventing additional aggregation errors."
+    },
+    "int_zuora__transactions_grouped": {
+      "items": [
+        {
+          "problem": "Account grouping and invoice-item matching use identifiers overwritten by staging's generic id mapping.",
+          "about": "data",
+          "evidence_in_work": "LEFT JOIN item_counts ic USING (invoice_id); GROUP BY account_id",
+          "source": "grain: One row per account_id per date_day; item counts join to invoices by invoice_id.",
+          "importance": 5,
+          "reason": "Daily rows can be grouped under invoice ids and have missing item counts."
+        },
+        {
+          "problem": "Invoices with null invoice_date are explicitly excluded even though the business logic does not specify that filter.",
+          "about": "requirement",
+          "evidence_in_work": "WHERE invoice_date IS NOT NULL",
+          "source": "Group by account_id and the four time buckets; keep only records flagged as most recent.",
+          "importance": 3,
+          "reason": "This changes intermediate row scope and drops associated financial amounts, although a not-null test suggests an unresolved contract tension."
+        },
+        {
+          "problem": "The stricter upstream creation-date filter removes otherwise permitted invoices from daily totals.",
+          "about": "requirement",
+          "evidence_in_work": "FROM staging.stg_zuora__invoice i",
+          "source": "The staging invoice filter allows null try_cast(created_date as TIMESTAMP).",
+          "importance": 3,
+          "reason": "Transactions with valid invoice dates but missing creation dates will be omitted."
+        }
+      ],
+      "fewer_reason": "Three distinct issues are visible; the sums and zero-default item-count logic otherwise match."
+    },
+    "int_zuora__transaction_date_spine": {
+      "items": [
+        {
+          "problem": "Date bounds may be shortened because upstream staging wrongly excludes invoices with missing or unparsable created_date.",
+          "about": "requirement",
+          "evidence_in_work": "SELECT min(CAST(invoice_date AS DATE)), max(CAST(invoice_date AS DATE)) FROM staging.stg_zuora__invoice",
+          "source": "Bounds must use all most-recent staging invoices, including those allowed by the null-created-date row filter.",
+          "importance": 3,
+          "reason": "If an excluded invoice supplies an endpoint, dates and the sequential index change."
+        }
+      ],
+      "fewer_reason": "The inclusive series, null bounds, calendar buckets, and one-based index otherwise match the supplied requirements."
+    },
+    "int_zuora__mrr_date_spine": {
+      "items": [
+        {
+          "problem": "The required ascending output order is not explicitly enforced.",
+          "about": "requirement",
+          "evidence_in_work": "row_number() OVER (ORDER BY date_day) AS date_index FROM days",
+          "source": "The output has one unique row per date_day, ordered ascending.",
+          "importance": 2,
+          "reason": "Ordering inside a window defines index assignment but does not guarantee final result order."
+        }
+      ],
+      "fewer_reason": "No other distinct issue is visible in its bounds or daily-series logic."
+    },
+    "int_zuora__payment_current": {
+      "items": [
+        {
+          "problem": "The pass-through inherits incorrect account and payment-method identifiers from staging.",
+          "about": "data",
+          "evidence_in_work": "SELECT * FROM staging.stg_zuora__payment",
+          "source": "account_id: Owning account ID; payment_method_id: Payment method ID.",
+          "importance": 4,
+          "reason": "Downstream payment-method and customer enrichment can fail."
+        }
+      ],
+      "fewer_reason": "The current-record filter and unchanged projection implement the stated intermediate logic."
+    },
+    "int_zuora__payment_method_current": {
+      "items": [
+        {
+          "problem": "The staged account_id copied into this table is the payment method's own id rather than its owner account.",
+          "about": "data",
+          "evidence_in_work": "SELECT * FROM staging.stg_zuora__payment_method",
+          "source": "account_id: Owning account identifier.",
+          "importance": 3,
+          "reason": "The current snapshot preserves an invalid ownership relationship."
+        }
+      ],
+      "fewer_reason": "No independent transformation error is visible in this pass-through."
+    },
+    "int_zuora__amendment_current": {
+      "items": [
+        {
+          "problem": "subscription_id is inherited from staging as amendment id rather than the actual subscription reference.",
+          "about": "data",
+          "evidence_in_work": "SELECT * FROM staging.stg_zuora__amendment",
+          "source": "subscription_id: Subscription ID.",
+          "importance": 4,
+          "reason": "Subscription-level amendment joins will miss their intended records."
+        }
+      ],
+      "fewer_reason": "The current-row filter otherwise matches the required pass-through."
+    },
+    "int_zuora__product_current": {
+      "items": [],
+      "fewer_reason": "The visible model is exactly the required SELECT * filtered to TRUE; the supplied staging window is also retained literally."
+    },
+    "int_zuora__product_rate_plan_current": {
+      "items": [
+        {
+          "problem": "product_id is inherited from staging as product rate plan id instead of its actual product reference.",
+          "about": "data",
+          "evidence_in_work": "SELECT * FROM staging.stg_zuora__product_rate_plan",
+          "source": "product_id: Zuora product identifier.",
+          "importance": 3,
+          "reason": "The current table exposes a corrupted product relationship."
+        }
+      ],
+      "fewer_reason": "The intermediate filter and projection themselves follow the contract."
+    },
+    "int_zuora__rate_plan_current": {
+      "items": [
+        {
+          "problem": "The current table inherits subscription_id and other foreign keys overwritten with rate plan id.",
+          "about": "data",
+          "evidence_in_work": "SELECT * FROM staging.stg_zuora__rate_plan",
+          "source": "subscription_id: Subscription identifier; values and data types must be preserved from staging.",
+          "importance": 5,
+          "reason": "Subscription-based plan enrichment will not find the intended rate plans."
+        }
+      ],
+      "fewer_reason": "No independent error is visible in its required pass-through logic."
+    },
+    "int_zuora__rate_plan_charge_current": {
+      "items": [
+        {
+          "problem": "The current snapshot inherits subscription_id and other relationship keys replaced by rate plan charge id.",
+          "about": "data",
+          "evidence_in_work": "SELECT * FROM staging.stg_zuora__rate_plan_charge",
+          "source": "subscription_id: Subscription ID; account_id: Account owning the charge.",
+          "importance": 5,
+          "reason": "Subscription-charge enrichment is disconnected from the correct entities."
+        },
+        {
+          "problem": "Numeric segment, bill-cycle-day, and percentage fields remain BOOLEAN despite the model's listed BIGINT output types.",
+          "about": "requirement",
+          "evidence_in_work": "SELECT * FROM staging.stg_zuora__rate_plan_charge",
+          "source": "bill_cycle_day, price_increase_percentage, and segment: BIGINT; no transformations or casts.",
+          "importance": 3,
+          "reason": "The conflicting contract sections are unresolved and downstream charge_segment has the wrong type."
+        }
+      ],
+      "fewer_reason": "Two distinct inherited issues are supported."
+    },
+    "int_zuora__subscription_current": {
+      "items": [
+        {
+          "problem": "The current subscription's account_id is inherited as subscription id rather than the actual account reference.",
+          "about": "data",
+          "evidence_in_work": "SELECT * FROM staging.stg_zuora__subscription",
+          "source": "account_id: Owning account identifier.",
+          "importance": 5,
+          "reason": "Account attribution and customer enrichment for subscriptions can fail."
+        }
+      ],
+      "fewer_reason": "The current-row pass-through itself matches the explicit business logic."
+    },
+    "int_zuora__invoice_payment_current": {
+      "items": [
+        {
+          "problem": "The current mapping table inherits invoice_id, payment_id, and payment_method_id overwritten with invoice-payment id.",
+          "about": "data",
+          "evidence_in_work": "SELECT * FROM staging.stg_zuora__invoice_payment",
+          "source": "invoice_id: Invoice identifier; payment_id: Payment identifier; payment_method_id: Payment method identifier.",
+          "importance": 5,
+          "reason": "It no longer represents the invoice-payment relationships needed by marts."
+        },
+        {
+          "problem": "refund_amount remains BOOLEAN rather than the listed BIGINT numeric amount.",
+          "about": "requirement",
+          "evidence_in_work": "SELECT * FROM staging.stg_zuora__invoice_payment",
+          "source": "refund_amount data_type: BIGINT; 'numeric values are unchanged'.",
+          "importance": 2,
+          "reason": "The unresolved staging/modeling type conflict may discard refund magnitude."
+        }
+      ],
+      "fewer_reason": "Only two distinct issues are supported."
+    },
+    "zuora__account_overview": {
+      "items": [
+        {
+          "problem": "Account joins use contact and invoice account_id values overwritten with each record's own id upstream.",
+          "about": "data",
+          "evidence_in_work": "LEFT JOIN ... contact_current AS c ON a.account_id = c.account_id; LEFT JOIN per_invoice AS pi ON a.account_id = pi.account_id",
+          "source": "Combine current account fields, current contact fields, invoice aggregates, and invoice item counts by account_id.",
+          "importance": 5,
+          "reason": "Most profile and financial enrichment may be NULL despite existing related source records."
+        },
+        {
+          "problem": "items_by_account uses an inner join, so accounts with invoices but no matching items receive NULL rather than the required zero item count.",
+          "about": "requirement",
+          "evidence_in_work": "JOIN intermediate.int_zuora__invoice_item_base AS ii ON inv.invoice_id = ii.invoice_id",
+          "source": "If an account has invoices but none have items, the count is 0.",
+          "importance": 4,
+          "reason": "This violates an explicit distinction between no invoices and invoices without items."
+        },
+        {
+          "problem": "Account credit balance, MRR, and auto-pay fields are cast to VARCHAR despite the explicit no-casting pass-through rule.",
+          "about": "requirement",
+          "evidence_in_work": "CAST(a.credit_balance AS VARCHAR); CAST(a.mrr AS VARCHAR); CAST(a.auto_pay AS VARCHAR)",
+          "source": "No zero-coalescing, rounding, or casting; select pass-through account fields.",
+          "importance": 2,
+          "reason": "The code resolves contradictory listed types by changing values and types rather than preserving upstream fields."
+        }
+      ],
+      "fewer_reason": "Three distinct supported risks cover the joins, missing-zero case, and projection fidelity."
+    },
+    "zuora__billing_history": {
+      "items": [
+        {
+          "problem": "The invoice-to-billing join may fail because billing_enriched groups on overwritten invoice-item identifiers rather than real invoice ids.",
+          "about": "data",
+          "evidence_in_work": "LEFT JOIN intermediate.int_zuora__billing_enriched AS b ON i.invoice_id = b.invoice_id",
+          "source": "Join invoice_base with billing_enriched on invoice_id.",
+          "importance": 5,
+          "reason": "Item, payment, tax, and credit metrics can all be missing on otherwise valid invoice rows."
+        },
+        {
+          "problem": "account_id is inherited as invoice id rather than the account linked to the invoice.",
+          "about": "data",
+          "evidence_in_work": "i.invoice_id, i.account_id",
+          "source": "account_id: Account identifier.",
+          "importance": 4,
+          "reason": "The invoice snapshot can be attributed to nonexistent or incorrect customers."
+        },
+        {
+          "problem": "first_payment_date and most_recent_payment_date are inherited as DATE rather than the required VARCHAR.",
+          "about": "requirement",
+          "evidence_in_work": "b.first_payment_date, b.most_recent_payment_date",
+          "source": "first_payment_date and most_recent_payment_date data_type: VARCHAR.",
+          "importance": 2,
+          "reason": "The output schema does not meet the contract even if dates display similarly."
+        }
+      ],
+      "fewer_reason": "The left join and unpaid-home-currency subtraction otherwise match the specified local logic."
+    },
+    "zuora__line_item_history": {
+      "items": [
+        {
+          "problem": "Most enrichment joins use foreign identifiers replaced upstream with invoice item id.",
+          "about": "data",
+          "evidence_in_work": "ON ii.invoice_id = inv.invoice_id; ON ii.product_id = prod.product_id; ON ii.rate_plan_charge_id = rpc.rate_plan_charge_id",
+          "source": "Enrich invoice line items using their invoice, product, rate plan charge, subscription, and amendment identifiers.",
+          "importance": 5,
+          "reason": "Invoice and product attributes, charge metadata, and amendment details can all be missing or misjoined."
+        },
+        {
+          "problem": "charge_segment is emitted as BOOLEAN rather than the specified BIGINT segment number.",
+          "about": "requirement",
+          "evidence_in_work": "rpc.segment AS charge_segment",
+          "source": "charge_segment data_type: BIGINT; description: Charge segment number.",
+          "importance": 3,
+          "reason": "Upstream BOOLEAN conversion has lost the original numeric segment value."
+        },
+        {
+          "problem": "The projection omits many ii.* columns despite the business logic explicitly requiring all source line-item fields.",
+          "about": "requirement",
+          "evidence_in_work": "SELECT ii.invoice_item_id, ii.account_id, ... ii.tax_amount, ii.transaction_currency, ii.unit_price, ii.uom",
+          "source": "All ii.* columns are passed through exactly as stored in int_zuora__invoice_item_base.",
+          "importance": 3,
+          "reason": "Fields such as invoice_id, processing_type, quantity, and source audit columns are absent, although the listed output columns are narrower than that prose requirement."
+        },
+        {
+          "problem": "Product effective dates are explicitly cast despite the stated no-casting enrichment rule.",
+          "about": "requirement",
+          "evidence_in_work": "CAST(prod.effective_start_date AS VARCHAR) AS product_start_date",
+          "source": "No defaulting, casting, rounding, or recomputation is applied.",
+          "importance": 2,
+          "reason": "This addresses conflicting listed VARCHAR types by changing the upstream DATE fields instead of passing them through."
+        }
+      ],
+      "fewer_reason": "Four distinct supported concerns were found."
+    },
+    "zuora__line_item_enhanced": {
+      "items": [
+        {
+          "problem": "The final payment_method_id comes from payment rather than invoice_payment, and the correctly sourced invoice-payment method field was deliberately removed.",
+          "about": "requirement",
+          "evidence_in_work": "p.payment_method_id AS payment_method_id; 'invoice payment method is not projected; method is taken from the matched payment'",
+          "source": "payment_method_id: Payment method id from invoice_payments.payment_method_id.",
+          "importance": 5,
+          "reason": "The output reports the wrong business field and becomes NULL when an invoice-payment exists without a matched payment."
+        },
+        {
+          "problem": "Foreign keys overwritten in staging undermine invoice, payment, customer, product, subscription, and rate-plan enrichment.",
+          "about": "data",
+          "evidence_in_work": "LEFT JOIN ... inv ON ii.invoice_id = inv.invoice_id; LEFT JOIN ... c ON ii.account_id = c.account_id",
+          "source": "Start from invoice line items and enrich via LEFT JOINs using their invoice, account, product, and subscription relationships.",
+          "importance": 5,
+          "reason": "The result can contain valid line-item ids but almost no correct enrichment."
+        },
+        {
+          "problem": "Casting BOOLEAN processing_type to VARCHAR yields 'true' or 'false', not the required '0' and '1' codes, so even valid staged charges and discounts are unmapped.",
+          "about": "requirement",
+          "evidence_in_work": "CASE CAST(ii.processing_type AS VARCHAR) WHEN '0' THEN 'charge' WHEN '1' THEN 'discount'",
+          "source": "transaction_type: '0'→charge, '1'→discount, '2'→prepayment, '3'→tax.",
+          "importance": 4,
+          "reason": "The execution fix removes the conversion error but prevents the required classifications."
+        },
+        {
+          "problem": "The discount branch uses the same BOOLEAN-to-VARCHAR comparison and therefore misses staged TRUE discount records.",
+          "about": "requirement",
+          "evidence_in_work": "CASE WHEN CAST(ii.processing_type AS VARCHAR) = '1' THEN try_cast(ii.charge_amount AS DOUBLE) ELSE 0.0 END",
+          "source": "For discount rows processing_type='1', set discount_amount to charge_amount as DOUBLE.",
+          "importance": 4,
+          "reason": "Discount values can silently become zero."
+        },
+        {
+          "problem": "quantity, unit_amount, tax_amount, total_amount, and payment_at have numeric or DATE types instead of the required verbatim VARCHAR outputs.",
+          "about": "requirement",
+          "evidence_in_work": "ii.quantity, ii.unit_price AS unit_amount, ii.tax_amount, ii.charge_amount AS total_amount, p.effective_date AS payment_at",
+          "source": "These columns are described as verbatim strings, with data_type VARCHAR.",
+          "importance": 3,
+          "reason": "The unresolved upstream type conflicts change the required output schema and may lose original formatting."
+        }
+      ],
+      "fewer_reason": "Five distinct supported issues were identified; the final-result row-number placement itself follows the required grain."
+    },
+    "zuora__monthly_recurring_revenue": {
+      "items": [
+        {
+          "problem": "rate_plan_charge_id and account_id were replaced with invoice item id upstream, so charge classification and customer attribution can both fail.",
+          "about": "data",
+          "evidence_in_work": "ON ii.rate_plan_charge_id = rpc.rate_plan_charge_id; GROUP BY ms.account_id, ms.account_month",
+          "source": "Classify invoice items using their current rate plan charge and aggregate per account_id and account_month.",
+          "importance": 5,
+          "reason": "Missing charge matches contribute zero to both categories, potentially making the revenue result silently empty of amounts."
+        },
+        {
+          "problem": "The month spine drops null service dates although the contract says to retain every distinct account/month pair from invoice items.",
+          "about": "requirement",
+          "evidence_in_work": "WHERE service_start_day IS NOT NULL",
+          "source": "Build the month spine as distinct pairs of account_id and month of service_start_day; output includes every pair from the month spine.",
+          "importance": 3,
+          "reason": "Accounts with unknown service month lose their required null-month output row."
+        },
+        {
+          "problem": "Revenue uses integer-cast charge amounts and quantities from staging without checking whether fractional raw monetary values were lost.",
+          "about": "data",
+          "evidence_in_work": "coalesce(try_cast(ii.charge_amount AS DOUBLE), 0.0)",
+          "source": "The model describes charge_amount conversion to DOUBLE with no rounding, while staging defines charge_amount as BIGINT.",
+          "importance": 2,
+          "reason": "The staging/modeling conflict can affect monetary totals if source charges contain fractions."
+        }
+      ],
+      "fewer_reason": "Three distinct supported issues were found; the recurring/nonrecurring CASE logic otherwise follows the contract."
+    },
+    "zuora__subscription_overview": {
+      "items": [
+        {
+          "problem": "The subscription-to-charge, subscription-to-amendment, and account joins use foreign keys overwritten with each staging row's own id.",
+          "about": "data",
+          "evidence_in_work": "ON s.subscription_id = rpc.subscription_id; ON s.subscription_id = amd.subscription_id; ON s.account_id = a.account_id",
+          "source": "Left join charges and amendments on subscription_id and accounts on account_id.",
+          "importance": 5,
+          "reason": "Account names, charge metadata, and amendment attributes can all be missing."
+        },
+        {
+          "problem": "Several output fields retain BOOLEAN, BIGINT, or TIMESTAMP types where the listed subscription overview schema requires VARCHAR.",
+          "about": "requirement",
+          "evidence_in_work": "s.auto_renew, s.current_term, s.initial_term, s.is_latest_version, s.subscription_start_date, s.subscription_end_date",
+          "source": "auto_renew, current_term, initial_term, is_latest_version, subscription_start_date, and subscription_end_date data_type: VARCHAR.",
+          "importance": 2,
+          "reason": "The contract's pass-through prose conflicts with its listed types, and the implementation does not resolve that schema discrepancy."
+        },
+        {
+          "problem": "Amendment date fields are cast even though the business logic explicitly prohibits casting.",
+          "about": "requirement",
+          "evidence_in_work": "CAST(amd.booking_date AS VARCHAR); CAST(amd.contract_effective_date AS VARCHAR); CAST(amd.service_activation_date AS VARCHAR)",
+          "source": "Values are passed through as stored in sources ... no casting.",
+          "importance": 2,
+          "reason": "These casts follow the listed output types but violate the model's explicit fidelity rule."
+        }
+      ],
+      "fewer_reason": "Three distinct supported concerns were found."
+    },
+    "zuora__account_daily_overview": {
+      "items": [
+        {
+          "problem": "Daily account_id values are actually invoice ids upstream, so the account overview join can fail even when the real account exists.",
+          "about": "data",
+          "evidence_in_work": "LEFT JOIN account_overview AS o ON rt.account_id = o.account_id",
+          "source": "account_id: Zuora account identifier from transactions_grouped; join key to account profile.",
+          "importance": 5,
+          "reason": "Daily metrics can be attributed to the wrong entity with all customer fields missing."
+        },
+        {
+          "problem": "Contact profile and first-charge fields are built using upstream contact and invoice account references overwritten with their own record ids.",
+          "about": "data",
+          "evidence_in_work": "ON a.account_id = c.account_id; ON a.account_id = i.account_id",
+          "source": "Join current contacts and invoice_base to accounts on account_id.",
+          "importance": 5,
+          "reason": "Even correctly matched account rows may lack their actual contact and earliest invoice date."
+        },
+        {
+          "problem": "Daily amounts and date-index coverage inherit the wrongful exclusion of invoices with null or unparsable creation timestamps.",
+          "about": "requirement",
+          "evidence_in_work": "FROM intermediate.int_zuora__transactions_grouped AS rt JOIN intermediate.int_zuora__transaction_date_spine AS spine",
+          "source": "Staging invoice row filters permit null try_cast(created_date as TIMESTAMP).",
+          "importance": 3,
+          "reason": "Permitted transactions can disappear from daily metrics and may change spine bounds."
+        }
+      ],
+      "fewer_reason": "The local grouping, spine inner join, profile left join, and email lowercasing otherwise match the model requirements."
+    },
+    "result.md": {
+      "items": [
+        {
+          "problem": "The implementation note says other fields follow configured mappings, but the generic primary-key fix also overwrites foreign identifiers.",
+          "about": "data",
+          "evidence_in_work": "Fivetran 源表以 `id` 提供若干实体标识，故映射到对应契约目标键",
+          "source": "The contract distinguishes each entity primary key from its account, invoice, product, subscription, and payment references.",
+          "importance": 4,
+          "reason": "The note obscures a systemic mapping risk that execution and uniqueness checks do not detect."
+        },
+        {
+          "problem": "The note describes text conversion as resolving processing_type comparisons, although BOOLEAN-to-VARCHAR conversion cannot reproduce the required numeric string codes.",
+          "about": "data",
+          "evidence_in_work": "在业务比较时对枚举做文本转换",
+          "source": "transaction_type uses string codes '0', '1', '2', and '3'.",
+          "importance": 3,
+          "reason": "The reported fix addresses execution but leaves classification semantics unresolved."
+        },
+        {
+          "problem": "The explanation of tied latest records may imply that multiple tied snapshots are marked TRUE, while ROW_NUMBER selects only one per id.",
+          "about": "data",
+          "evidence_in_work": "最新记录出现并列时按源更新时间标记，不额外去重",
+          "source": "is_most_recent_record uses row_number() over (partition by id order by updated_date desc) = 1.",
+          "importance": 2,
+          "reason": "This can mislead reviewers about tie handling and determinism, although intermediate models correctly avoid additional deduplication."
+        }
+      ],
+      "fewer_reason": "Only three specific implementation explanations warrant checking; successful execution is not itself disputed."
+    }
+  }
+}

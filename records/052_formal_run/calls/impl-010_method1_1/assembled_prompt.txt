@@ -1,0 +1,814 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+
+
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for HubSpot CRM analytics platform"
+  author: "Data Engineering Team"
+  created_date: "2025-09-11"
+  last_updated: "2025-09-11"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+  business_domain: "Customer Relationship Management (CRM)"
+  source_system: "HubSpot"
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw HubSpot data into clean, validated staging tables with standardized data types, consistent formatting, and data quality validation. This phase ensures data integrity and prepares datasets for business logic application."
+
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "standardize timezone formats", "normalize phone numbers"]
+    
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform staging data into business-ready models that support marketing analytics, sales performance management, and customer service operations. Apply sophisticated business logic including customer lifecycle analysis, sales forecasting, and marketing attribution."
+
+  design_principles:
+    intermediate_purpose: "Create reusable, business-centric data models that encapsulate complex calculations and serve as building blocks for multiple downstream marts"
+    sales_purpose: "Provide sales analysis-ready tables optimized for deal tracking, sales performance, and revenue forecasting"
+    service_purpose: "Provide service analysis-ready tables for support operations, SLA tracking, and customer satisfaction"
+    marketing_purpose: "Provide marketing analysis-ready tables for campaign performance, lead scoring, and attribution"
+    grain_importance: "Every model must have an explicitly defined grain (one row per X) to ensure data integrity and proper aggregation"
+    modularity: "Models should be designed for reusability across multiple business domains"
+    performance: "Complex calculations should be materialized in intermediate models to optimize mart performance"
+
+  intermediate_models:
+  marketing_models:
+  sales_models:
+  service_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-010/agent/dacomp-de-impl-010/hubspot_start.duckdb
+{"table": "raw.company_data", "columns": ["id", "is_deleted", "property_name", "property_description", "property_createdate", "property_industry", "property_address", "property_address_2", "property_city", "property_state", "property_country", "property_annualrevenue", "property_hs_all-funky-a9384-syntax"]}
+{"table": "raw.company_data_databricks", "columns": ["id", "is_deleted", "property_name", "property_description", "property_createdate", "property_industry", "property_address", "property_address_2", "property_city", "property_state", "property_country", "property_annualrevenue", "`property_hs_all-funky-a9384-syntax`"]}
+{"table": "raw.company_data_postgres", "columns": ["id", "is_deleted", "property_name", "property_description", "property_createdate", "property_industry", "property_address", "property_address_2", "property_city", "property_state", "property_country", "property_annualrevenue", "\"property_hs_all-funky-a9384-syntax\""]}
+{"table": "raw.company_data_snowflake", "columns": ["id", "is_deleted", "property_name", "property_description", "property_createdate", "property_industry", "property_address", "property_address_2", "property_city", "property_state", "property_country", "property_annualrevenue", "\"PROPERTY_HS_ALL-FUNKY-A833\""]}
+{"table": "raw.company_property_history_data", "columns": ["company_id", "timestamp", "source", "source_id", "name", "value"]}
+{"table": "raw.contact_data", "columns": ["property_email", "id", "property_company", "property_firstname", "property_lastname", "property_email_1", "property_createdate", "property_jobtitle", "property_annualrevenue", "property_hs_calculated_merged_vids", "property_created_at", "property_first_conversion_date"]}
+{"table": "raw.contact_form_submission_data", "columns": ["timestamp", "form_id", "contact_id", "conversion_id", "page_id", "page_url", "portal_id", "title"]}
+{"table": "raw.contact_list_data", "columns": ["id", "created_at", "updated_at", "name", "created_by_id", "object_type_id", "processing_status", "processing_type", "list_version", "filters_updated_at"]}
+{"table": "raw.contact_list_member_data", "columns": ["contact_id", "contact_list_id", "added_at"]}
+{"table": "raw.contact_merge_audit_data", "columns": ["canonical_vid", "contact_id", "vid_to_merge", "entity_id", "first_name", "last_name", "num_properties_moved", "timestamp", "user_id"]}
+{"table": "raw.contact_property_history_data", "columns": ["contact_id", "timestamp", "source", "name", "value", "source_id"]}
+{"table": "raw.deal_company_data", "columns": ["company_id", "deal_id", "type_id", "category"]}
+{"table": "raw.deal_contact_data", "columns": ["contact_id", "deal_id", "type_id", "category"]}
+{"table": "raw.deal_data", "columns": ["deal_id", "is_deleted", "deal_pipeline_id", "deal_pipeline_stage_id", "owner_id", "portal_id", "property_dealname", "property_description", "property_amount", "property_closedate", "property_createdate"]}
+{"table": "raw.deal_pipeline_data", "columns": ["pipeline_id", "active", "display_order", "label", "created_at", "updated_at"]}
+{"table": "raw.deal_pipeline_stage_data", "columns": ["stage_id", "pipeline_id", "label", "display_order", "probability", "active", "closed_won", "created_at", "updated_at", "is_closed"]}
+{"table": "raw.deal_property_history_data", "columns": ["deal_id", "timestamp", "source", "name", "source_id", "value"]}
+{"table": "raw.deal_stage_data", "columns": ["deal_id", "date_entered", "source", "source_id", "value"]}
+{"table": "raw.email_campaign_data", "columns": ["id", "app_id", "content_id", "num_included", "num_queued", "sub_type", "type", "app_name", "name", "subject"]}
+{"table": "raw.email_event_bounce_data", "columns": ["id", "category", "status", "response"]}
+{"table": "raw.email_event_click_data", "columns": ["id", "referer", "browser", "location", "ip_address", "url", "user_agent"]}
+{"table": "raw.email_event_data", "columns": ["id", "app_id", "caused_by_created", "caused_by_id", "created", "email_campaign_id", "obsoleted_by_created", "obsoleted_by_id", "portal_id", "sent_by_created", "sent_by_id", "type", "filtered_event", "recipient"]}
+{"table": "raw.email_event_deferred_data", "columns": ["id", "attempt", "response"]}
+{"table": "raw.email_event_delivered_data", "columns": ["id", "response", "smtp_id"]}
+{"table": "raw.email_event_dropped_data", "columns": ["id", "drop_reason", "bcc", "cc", "drop_message", "from", "reply_to", "subject"]}
+{"table": "raw.email_event_dropped_data_postgres", "columns": ["id", "drop_reason", "bcc", "cc", "drop_message", "\"from\"", "reply_to", "subject"]}
+{"table": "raw.email_event_dropped_data_snowflake", "columns": ["id", "drop_reason", "bcc", "cc", "drop_message", "\"FROM\"", "reply_to", "subject"]}
+{"table": "raw.email_event_forward_data", "columns": ["id", "browser", "ip_address", "location", "user_agent"]}
+{"table": "raw.email_event_open_data", "columns": ["id", "duration", "browser", "ip_address", "location", "user_agent"]}
+{"table": "raw.email_event_print_data", "columns": ["id", "browser", "ip_address", "location", "user_agent"]}
+{"table": "raw.email_event_sent_data", "columns": ["id", "bcc", "cc", "from", "reply_to", "subject"]}
+{"table": "raw.email_event_sent_data_postgres", "columns": ["id", "bcc", "cc", "\"from\"", "reply_to", "subject"]}
+{"table": "raw.email_event_sent_data_snowflake", "columns": ["id", "bcc", "cc", "\"FROM\"", "reply_to", "subject"]}
+{"table": "raw.email_event_spam_report_data", "columns": ["id", "ip_address", "user_agent"]}
+{"table": "raw.email_event_status_change_data", "columns": ["id", "bounced", "portal_subscription_status", "requested_by", "source", "subscriptions"]}
+{"table": "raw.engagement_call_data", "columns": ["engagement_id", "property_hs_createdate", "property_hs_timestamp", "type"]}
+{"table": "raw.engagement_communication_data", "columns": ["engagement_id", "property_hs_createdate", "property_hs_timestamp", "type"]}
+{"table": "raw.engagement_company_data", "columns": ["company_id", "engagement_id", "engagement_type", "type_id", "category"]}
+{"table": "raw.engagement_contact_data", "columns": ["contact_id", "engagement_id", "engagement_type", "type_id", "category"]}
+{"table": "raw.engagement_data", "columns": ["id", "type", "portal_id"]}
+{"table": "raw.engagement_deal_data", "columns": ["deal_id", "engagement_id", "engagement_type", "type_id", "category"]}
+{"table": "raw.engagement_email_data", "columns": ["engagement_id", "property_hs_all_owner_ids", "property_hs_all_team_ids", "property_hs_createdate", "property_hs_email_subject", "property_hs_email_text", "property_hs_lastmodifieddate", "property_hs_modified_by", "property_hs_timestamp", "property_hubspot_owner_id", "property_hubspot_team_id", "type"]}
+{"table": "raw.engagement_meeting_data", "columns": ["engagement_id", "created_from_link_id", "end_time", "pre_meeting_prospect_reminders", "source", "source_id", "start_time", "web_conference_meeting_id", "meeting_outcome", "body", "external_url", "title"]}
+{"table": "raw.engagement_note_data", "columns": ["engagement_id", "property_hs_body_preview", "property_hs_createdate", "property_hs_lastmodifieddate", "property_hs_note_body", "property_hs_timestamp", "property_hubspot_owner_id", "property_hubspot_team_id", "type"]}
+{"table": "raw.engagement_task_data", "columns": ["engagement_id", "property_hs_createdate", "property_hs_object_id", "property_hs_task_type", "property_hs_timestamp", "property_hubspot_owner_id", "property_hubspot_team_id", "type", "task_type", "property_hs_engagement_source"]}
+{"table": "raw.form_data", "columns": ["guid", "portal_id", "name", "form_type", "method", "action", "redirect", "lead_nurturing_campaign_id", "follow_up_id", "created_at", "updated_at", "css_class", "notify_recipients", "submit_text"]}
+{"table": "raw.merged_deal_data", "columns": ["deal_id", "merged_deal_id"]}
+{"table": "raw.owner_data", "columns": ["owner_id", "created_at", "portal_id", "type", "updated_at", "email", "first_name", "last_name", "active_user_id"]}
+{"table": "raw.owner_team_data", "columns": ["owner_id", "team_id", "is_team_primary"]}
+{"table": "raw.property_data", "columns": ["calculated", "created_at", "description", "field_type", "group_name", "hubspot_defined", "hubspot_object", "label", "name", "show_currency_symbol", "type", "updated_at"]}
+{"table": "raw.property_option_data", "columns": ["label", "property_id", "display_order", "hidden", "value"]}
+{"table": "raw.role_data", "columns": ["id", "name", "requires_billing_write"]}
+{"table": "raw.team_data", "columns": ["id", "name"]}
+{"table": "raw.team_user_data", "columns": ["user_id", "team_id", "is_secondary_user"]}
+{"table": "raw.ticket_company_data", "columns": ["ticket_id", "company_id", "category"]}
+{"table": "raw.ticket_contact_data", "columns": ["ticket_id", "contact_id", "category"]}
+{"table": "raw.ticket_data", "columns": ["id", "is_deleted", "property_closed_date", "property_createdate", "property_first_agent_reply_date", "property_hs_pipeline", "property_hs_pipeline_stage", "property_hs_ticket_category", "property_hs_ticket_priority", "property_hubspot_owner_id", "property_subject", "property_content"]}
+{"table": "raw.ticket_deal_data", "columns": ["ticket_id", "deal_id", "category"]}
+{"table": "raw.ticket_engagement_data", "columns": ["ticket_id", "engagement_id", "category"]}
+{"table": "raw.ticket_pipeline_data", "columns": ["pipeline_id", "object_type_id", "label", "display_order", "active", "created_at", "updated_at"]}
+{"table": "raw.ticket_pipeline_stage_data", "columns": ["stage_id", "pipeline_id", "label", "ticket_state", "display_order", "active", "is_closed", "created_at", "updated_at"]}
+{"table": "raw.ticket_property_history_data", "columns": ["ticket_id", "name", "source", "source_id", "timestamp_instant", "value"]}
+{"table": "raw.users_data", "columns": ["id", "primary_team_id", "role_id", "email", "first_name", "last_name"]}
+
+
+=== Relevant specification and documentation ===
+
+
+=== Premises recorded in earlier reviews ===
+(none)
+
+=== Agent steps since the last review ===
+### event 5
+
+## 命令原文
+
+pwd && ls -la && find sql -maxdepth 3 -type f | sort | head -100 && ls docs config
+
+## agent 实际看到的执行结果
+
+/home/katherine/dac/runs/20261025_de_official_batch_01/impl-010/agent/dacomp-de-impl-010
+total 35912
+drwxr-xr-x 8 katherine katherine     4096 Oct 25 02:08 .
+drwx------ 3 katherine katherine       60 Oct 25 02:08 ..
+drwxr-xr-x 3 katherine katherine     4096 Oct 25 02:08 .agent-python
+drwxr-xr-x 2 katherine katherine     4096 Oct 25 02:08 .tmp
+drwxr-xr-x 2 katherine katherine     4096 Oct 17 17:41 config
+drwxr-xr-x 2 katherine katherine     4096 Oct 17 17:41 docs
+-rw-r--r-- 1 katherine katherine 36712448 Oct 17 17:41 hubspot_start.duckdb
+-rw-r--r-- 1 katherine katherine    11385 Oct 17 17:41 hubspot_start.yaml
+drwxr-xr-x 2 katherine katherine     4096 Oct 17 17:41 raw_data
+-rw-r--r-- 1 katherine katherine    13639 Oct 17 17:41 run.py
+drwxr-xr-x 7 katherine katherine     4096 Oct 17 17:41 sql
+-rw-r--r-- 1 katherine katherine     3738 Oct 17 17:41 test_single_sql.py
+config:
+layer_dependencies.yaml
+
+docs:
+data_contract.yaml
+
+
+### event 7
+
+## 命令原文
+
+find sql -maxdepth 3 -type f -printf '%p %s bytes\n' | sort
+
+## agent 实际看到的执行结果
+
+
+
+### event 9
+
+## 命令原文
+
+cat config/layer_dependencies.yaml && sed -n '1,260p' run.py
+
+## agent 实际看到的执行结果
+
+# Data layer execution dependencies for HubSpot data pipeline
+# This file defines the execution order for SQL transformations
+
+layers:
+  staging:
+    description: "Raw data standardization and cleaning"
+    tables:
+      # Core entities
+      - stg_hubspot__contact
+      - stg_hubspot__company
+      - stg_hubspot__deal
+      - stg_hubspot__ticket
+      - stg_hubspot__owner
+      
+      # Email events
+      - stg_hubspot__email_event
+      - stg_hubspot__email_event_sent
+      - stg_hubspot__email_event_click
+      - stg_hubspot__email_event_open
+      - stg_hubspot__email_event_status_change
+      
+      # Engagements
+      - stg_hubspot__engagement
+      - stg_hubspot__engagement_email
+      
+      # Pipelines and stages
+      - stg_hubspot__deal_pipeline
+      - stg_hubspot__deal_pipeline_stage
+      - stg_hubspot__ticket_pipeline
+      - stg_hubspot__ticket_pipeline_stage
+      
+      # Relationships
+      - stg_hubspot__deal_contact
+      - stg_hubspot__ticket_company
+      - stg_hubspot__ticket_contact
+      
+      # Forms
+      - stg_hubspot__form
+
+  intermediate:
+    description: "Business logic and advanced analytics preparation"
+    dependencies: ["staging"]
+    tables:
+      - int_hubspot__contact_merge_adjust
+      - int_hubspot__owners_enhanced
+      - int_hubspot__deals_enhanced
+      - int_hubspot__email_event_aggregates
+      - int_hubspot__email_aggregate_status_change
+      - int_hubspot__contact_lifecycle_metrics
+      - int_hubspot__deal_performance_metrics
+      - int_hubspot__owner_performance_metrics
+      - int_hubspot__email_marketing_attribution
+
+  marketing:
+    description: "Marketing analytics and campaign performance"
+    dependencies: ["intermediate"]
+    tables:
+      - hubspot__email_event_sent
+      - hubspot__email_sends
+      - hubspot__contacts
+      - hubspot__contact_engagement_analysis
+      - hubspot__campaign_performance_analysis
+
+  sales:
+    description: "Sales analytics and performance management"
+    dependencies: ["intermediate"]
+    tables:
+      - hubspot__companies
+      - hubspot__deals
+      - hubspot__sales_performance_dashboard
+      - hubspot__sales_rep_performance
+
+  service:
+    description: "Customer service and support analytics"
+    dependencies: ["intermediate"]
+    tables:
+      - hubspot__tickets
+      - hubspot__customer_support_analytics
+
+# Execution order within each layer (if specific order needed)
+execution_order:
+  intermediate:
+    - int_hubspot__owners_enhanced
+    - int_hubspot__contact_merge_adjust
+    - int_hubspot__deals_enhanced
+    - int_hubspot__email_event_aggregates
+    - int_hubspot__email_aggregate_status_change
+    - int_hubspot__contact_lifecycle_metrics
+    - int_hubspot__deal_performance_metrics
+    - int_hubspot__owner_performance_metrics
+    - int_hubspot__email_marketing_attribution
+  
+  marketing:
+    - hubspot__email_event_sent
+    - hubspot__email_sends
+    - hubspot__contacts
+    - hubspot__contact_engagement_analysis
+    - hubspot__campaign_performance_analysis
+  
+  sales:
+    - hubspot__companies
+    - hubspot__deals
+    - hubspot__sales_performance_dashboard
+    - hubspot__sales_rep_performance
+  
+  service:
+    - hubspot__tickets
+    - hubspot__customer_support_analytics#!/usr/bin/env python3
+import os
+import yaml
+import duckdb
+from pathlib import Path
+from typing import List, Optional
+import logging
+import re
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+class HubSpotDataPipeline:
+    """HubSpot data pipeline orchestrator - supports Schema layered architecture"""
+    
+    def __init__(self, 
+                 source_db_path: str = "hubspot_start.duckdb", 
+                 target_db_path: str = "hubspot.duckdb",
+                 config_path: str = "config/layer_dependencies.yaml"):
+        self.source_db_path = source_db_path
+        self.target_db_path = target_db_path
+        self.config_path = config_path
+        self.config = self._load_config()
+        self.sql_dir = Path("sql")
+        
+          
+        self.schema_config = {
+            'raw': 'raw',                                
+            'staging': 'staging',                                     
+            'intermediate': 'intermediate',                             
+            'marketing': 'marketing',                               
+            'sales': 'sales',                                  
+            'service': 'service'                                 
+        }
+        
+          
+        self.conn = None
+        
+    def _load_config(self) -> dict:
+        """Load configuration file"""
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f)
+        except FileNotFoundError:
+            logger.error(f"Configuration file {self.config_path} does not exist")
+            raise
+        except yaml.YAMLError as e:
+            logger.error(f"Configuration file parsing error: {e}")
+            raise
+    
+    def _initialize_database(self):
+        """Initialize working database, create schema layered architecture and import raw data"""
+        logger.info(f"📥 Creating new layered database: {self.target_db_path}")
+        
+          
+        if not os.path.exists(self.source_db_path):
+            raise FileNotFoundError(f"Source database file does not exist: {self.source_db_path}")
+        
+        self.conn = duckdb.connect(self.target_db_path)
+        
+          
+        self._create_schemas()
+        
+          
+        self._import_raw_data()
+        
+        logger.info(f"✓ Layered database initialization complete: {self.target_db_path}")
+    
+    def _create_schemas(self):
+        """Create data layer schemas"""
+        logger.info("🏗️ Creating Schema layered architecture")
+        
+        for layer, schema_name in self.schema_config.items():
+            try:
+                self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
+                logger.info(f"  ✓ Created schema: {schema_name}")
+            except Exception as e:
+                logger.error(f"  ✗ Failed to create schema {schema_name}: {e}")
+                raise
+    
+    def _import_raw_data(self):
+        """Import raw data from source database to raw schema"""
+        logger.info("📥 Importing raw data to raw schema")
+        
+          
+        try:
+            source_conn = duckdb.connect(self.source_db_path)
+        except Exception as e:
+            logger.error(f"Unable to connect to source database {self.source_db_path}: {e}")
+            raise
+        
+        try:
+      
+            tables_result = source_conn.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'raw'").fetchall()
+            source_tables = [table[0] for table in tables_result]
+            
+            logger.info(f"Found {len(source_tables)} raw tables")
+            
+                  
+            self.conn.execute(f"ATTACH '{self.source_db_path}' AS source_db")
+            
+                  
+            for table_name in source_tables:
+                try:
+              
+                    copy_sql = f"CREATE OR REPLACE TABLE raw.{table_name} AS SELECT * FROM source_db.raw.{table_name}"
+                    self.conn.execute(copy_sql)
+                    
+                                  
+                    count_result = self.conn.execute(f"SELECT COUNT(*) FROM raw.{table_name}").fetchone()
+                    row_count = count_result[0] if count_result else 0
+                    
+                    logger.info(f"  ✓ raw.{table_name}: {row_count:,} rows")
+                    
+                except Exception as e:
+                    logger.error(f"  ✗ Failed to import table {table_name}: {e}")
+        
+        finally:
+            source_conn.close()
+        
+        logger.info("✓ Raw data import complete")
+    
+    def _load_sql_file(self, file_path: Path) -> str:
+        """Load SQL file content"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except FileNotFoundError:
+            logger.error(f"SQL file {file_path} does not exist")
+            raise
+    
+    def _execute_sql(self, sql: str, table_name: str, layer_name: str) -> bool:
+        """Execute SQL and create table in specified schema"""
+        try:
+      
+            target_schema = self.schema_config[layer_name]
+            full_table_name = f"{target_schema}.{table_name}"
+            
+                  
+            processed_sql = self._process_sql_references(sql, layer_name)
+            
+                  
+            create_table_sql = f"CREATE OR REPLACE TABLE {full_table_name} AS ({processed_sql})"
+            
+            logger.info(f"Executing: {full_table_name}")
+            self.conn.execute(create_table_sql)
+            
+                  
+            count_result = self.conn.execute(f"SELECT COUNT(*) FROM {full_table_name}").fetchone()
+            row_count = count_result[0] if count_result else 0
+            
+            logger.info(f"✓ {full_table_name}: {row_count:,} rows")
+            return True
+            
+        except Exception as e:
+            logger.error(f"✗ {full_table_name}: {e}")
+            return False
+    
+    def _process_sql_references(self, sql: str, current_layer: str) -> str:
+        """Process table references in SQL, convert to schema.table format"""
+        processed_sql = sql
+        
+          
+        processed_sql = re.sub(r'\bfrom\s+staging\.', 'from staging.', processed_sql, flags=re.IGNORECASE)
+        processed_sql = re.sub(r'\bfrom\s+intermediate\.', 'from intermediate.', processed_sql, flags=re.IGNORECASE)
+        processed_sql = re.sub(r'\bfrom\s+marketing\.', 'from marketing.', processed_sql, flags=re.IGNORECASE)
+        processed_sql = re.sub(r'\bfrom\s+sales\.', 'from sales.', processed_sql, flags=re.IGNORECASE)
+        processed_sql = re.sub(r'\bfrom\s+service\.', 'from service.', processed_sql, flags=re.IGNORECASE)
+        processed_sql = re.sub(r'\bfrom\s+raw\.', 'from raw.', processed_sql, flags=re.IGNORECASE)
+        
+        return processed_sql
+    
+    def _execute_layer(self, layer_name: str) -> bool:
+        """Execute all tables in specified layer"""
+        layer_config = self.config['layers'][layer_name]
+        tables = layer_config.get('tables', [])
+        
+          
+        execution_order = self.config.get('execution_order', {}).get(layer_name, tables)
+        
+        logger.info(f"\n=== Executing {layer_name.upper()} layer ===")
+        logger.info(f"Description: {layer_config.get('description', '')}")
+        
+        success_count = 0
+        total_count = len(execution_order)
+        
+        for table_name in execution_order:
+      
+            sql_file_path = self.sql_dir / layer_name / f"{table_name}.sql"
+            
+            if not sql_file_path.exists():
+                logger.warning(f"Skip {table_name}: SQL file does not exist ({sql_file_path})")
+                continue
+            
+            sql_content = self._load_sql_file(sql_file_path)
+            if self._execute_sql(sql_content, table_name, layer_name):
+                success_count += 1
+        
+        logger.info(f"{layer_name.upper()} layer complete: {success_count}/{total_count} tables successfully created")
+        return success_count == total_count
+    
+    def _clean_generated_tables(self):
+        """Clean all generated tables, preserve raw data schema"""
+        logger.info("🧼 Cleaning previously generated schemas and tables...")
+        
+          
+        schemas_to_clean = ['staging', 'intermediate', 'marketing', 'sales', 'service']
+        
+        for schema_name in schemas_to_clean:
+            try:
+          
+                result = self.conn.execute(f"SELECT schema_name FROM information_schema.schemata WHERE schema_name = '{schema_name}'").fetchall()
+                if result:
+                    self.conn.execute(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE")
+                    logger.info(f"✓ Deleted schema: {schema_name}")
+            except Exception as e:
+                logger.warning(f"Failed to delete schema {schema_name}: {e}")
+        
+        logger.info("Cleanup complete")
+
+    def run_pipeline(self, layers: Optional[List[str]] = None) -> bool:
+        """Run complete data pipeline"""
+        if layers is None:
+            layers = list(self.config['layers'].keys())
+        
+        logger.info("🚀 Starting HubSpot data pipeline execution")
+        logger.info(f"Source database: {self.source_db_path}")
+        logger.info(f"Target database: {self.target_db_path}")
+        
+          
+        if not os.path.exists(self.target_db_path):
+            logger.info("Target database does not exist, starting initialization...")
+            try:
+          
+                self._initialize_database()
+            except Exception as e:
+                logger.error(f"Database initialization failed: {e}")
+                logger.info("Trying to continue with existing database...")
+        else:
+            logger.info("Found existing target database, using directly...")
+      
+            self.conn = duckdb.connect(self.target_db_path)
+        
+        self._clean_generated_tables()
+        
+          
+        self._create_schemas()
+        
+        total_success = True
+        
+        for layer_name in layers:
+            if layer_name not in self.config['layers']:
+                logger.error(f"Unknown layer: {layer_name}")
+                total_success = False
+                continue
+            
+
+
+### event 11
+
+## 命令原文
+
+python - <<'PY'
+import duckdb
+c=duckdb.connect('hubspot_start.duckdb',read_only=True)
+print(c.execute("select schema_name from information_schema.schemata").fetchall())
+for s,n,_,_ in c.execute('show all tables').fetchall(): print(s,n)
+PY
+
+## agent 实际看到的执行结果
+
+[('main',), ('raw',), ('information_schema',), ('main',), ('pg_catalog',), ('main',)]
+Traceback (most recent call last):
+  File "<stdin>", line 4, in <module>
+ValueError: too many values to unpack (expected 4)
+
+
+### event 13
+
+## 命令原文
+
+python - <<'PY'
+import duckdb
+c=duckdb.connect('hubspot_start.duckdb',read_only=True)
+for row in c.execute("select table_name from information_schema.tables where table_schema='raw' order by 1").fetchall():
+ t=row[0]; cols=c.execute(f"describe raw.{t}").fetchall(); print('\n'+t+': '+', '.join(x[0]+':'+x[1] for x in cols))
+PY
+
+## agent 实际看到的执行结果
+
+
+company_data: id:BIGINT, is_deleted:BOOLEAN, property_name:VARCHAR, property_description:VARCHAR, property_createdate:VARCHAR, property_industry:VARCHAR, property_address:VARCHAR, property_address_2:VARCHAR, property_city:VARCHAR, property_state:VARCHAR, property_country:VARCHAR, property_annualrevenue:BIGINT, property_hs_all-funky-a9384-syntax:BIGINT
+
+company_data_databricks: id:VARCHAR, is_deleted:BOOLEAN, property_name:VARCHAR, property_description:VARCHAR, property_createdate:VARCHAR, property_industry:VARCHAR, property_address:VARCHAR, property_address_2:VARCHAR, property_city:VARCHAR, property_state:VARCHAR, property_country:VARCHAR, property_annualrevenue:BIGINT, `property_hs_all-funky-a9384-syntax`:BIGINT
+
+company_data_postgres: id:VARCHAR, is_deleted:BOOLEAN, property_name:VARCHAR, property_description:VARCHAR, property_createdate:VARCHAR, property_industry:VARCHAR, property_address:VARCHAR, property_address_2:VARCHAR, property_city:VARCHAR, property_state:VARCHAR, property_country:VARCHAR, property_annualrevenue:BIGINT, "property_hs_all-funky-a9384-syntax":BIGINT
+
+company_data_snowflake: id:VARCHAR, is_deleted:BOOLEAN, property_name:VARCHAR, property_description:VARCHAR, property_createdate:VARCHAR, property_industry:VARCHAR, property_address:VARCHAR, property_address_2:VARCHAR, property_city:VARCHAR, property_state:VARCHAR, property_country:VARCHAR, property_annualrevenue:BIGINT, "PROPERTY_HS_ALL-FUNKY-A833":BIGINT
+
+company_property_history_data: company_id:BIGINT, timestamp:VARCHAR, source:VARCHAR, source_id:VARCHAR, name:VARCHAR, value:VARCHAR
+
+contact_data: property_email:VARCHAR, id:VARCHAR, property_company:VARCHAR, property_firstname:VARCHAR, property_lastname:VARCHAR, property_email_1:VARCHAR, property_createdate:VARCHAR, property_jobtitle:VARCHAR, property_annualrevenue:DOUBLE, property_hs_calculated_merged_vids:VARCHAR, property_created_at:VARCHAR, property_first_conversion_date:VARCHAR
+
+contact_form_submission_data: timestamp:VARCHAR, form_id:BIGINT, contact_id:BIGINT, conversion_id:BIGINT, page_id:BIGINT, page_url:VARCHAR, portal_id:BIGINT, title:VARCHAR
+
+contact_list_data: id:BIGINT, created_at:VARCHAR, updated_at:VARCHAR, name:VARCHAR, created_by_id:BIGINT, object_type_id:VARCHAR, processing_status:VARCHAR, processing_type:VARCHAR, list_version:BIGINT, filters_updated_at:VARCHAR
+
+contact_list_member_data: contact_id:BIGINT, contact_list_id:BIGINT, added_at:VARCHAR
+
+contact_merge_audit_data: canonical_vid:BIGINT, contact_id:VARCHAR, vid_to_merge:BIGINT, entity_id:BIGINT, first_name:BIGINT, last_name:BIGINT, num_properties_moved:BIGINT, timestamp:VARCHAR, user_id:VARCHAR
+
+contact_property_history_data: contact_id:BIGINT, timestamp:VARCHAR, source:VARCHAR, name:VARCHAR, value:VARCHAR, source_id:VARCHAR
+
+deal_company_data: company_id:BIGINT, deal_id:BIGINT, type_id:BIGINT, category:VARCHAR
+
+deal_contact_data: contact_id:BIGINT, deal_id:BIGINT, type_id:BIGINT, category:VARCHAR
+
+deal_data: deal_id:BIGINT, is_deleted:BOOLEAN, deal_pipeline_id:VARCHAR, deal_pipeline_stage_id:BIGINT, owner_id:BIGINT, portal_id:BIGINT, property_dealname:VARCHAR, property_description:VARCHAR, property_amount:DOUBLE, property_closedate:VARCHAR, property_createdate:VARCHAR
+
+deal_pipeline_data: pipeline_id:VARCHAR, active:BOOLEAN, display_order:BIGINT, label:VARCHAR, created_at:VARCHAR, updated_at:VARCHAR
+
+deal_pipeline_stage_data: stage_id:BIGINT, pipeline_id:VARCHAR, label:VARCHAR, display_order:BIGINT, probability:DOUBLE, active:BOOLEAN, closed_won:BOOLEAN, created_at:VARCHAR, updated_at:VARCHAR, is_closed:VARCHAR
+
+deal_property_history_data: deal_id:BIGINT, timestamp:VARCHAR, source:VARCHAR, name:VARCHAR, source_id:VARCHAR, value:VARCHAR
+
+deal_stage_data: deal_id:BIGINT, date_entered:VARCHAR, source:VARCHAR, source_id:VARCHAR, value:VARCHAR
+
+email_campaign_data: id:VARCHAR, app_id:BIGINT, content_id:BIGINT, num_included:BIGINT, num_queued:BIGINT, sub_type:BIGINT, type:VARCHAR, app_name:VARCHAR, name:VARCHAR, subject:VARCHAR
+
+email_event_bounce_data: id:VARCHAR, category:VARCHAR, status:BIGINT, response:VARCHAR
+
+email_event_click_data: id:VARCHAR, referer:BIGINT, browser:VARCHAR, location:VARCHAR, ip_address:BIGINT, url:VARCHAR, user_agent:VARCHAR
+
+email_event_data: id:VARCHAR, app_id:BIGINT, caused_by_created:BIGINT, caused_by_id:BIGINT, created:VARCHAR, email_campaign_id:BIGINT, obsoleted_by_created:BIGINT, obsoleted_by_id:BIGINT, portal_id:BIGINT, sent_by_created:VARCHAR, sent_by_id:BIGINT, type:VARCHAR, filtered_event:VARCHAR, recipient:VARCHAR
+
+email_event_deferred_data: id:VARCHAR, attempt:VARCHAR, response:BIGINT
+
+email_event_delivered_data: id:VARCHAR, response:VARCHAR, smtp_id:VARCHAR
+
+email_event_dropped_data: id:VARCHAR, drop_reason:VARCHAR, bcc:VARCHAR, cc:VARCHAR, drop_message:VARCHAR, from:VARCHAR, reply_to:VARCHAR, subject:VARCHAR
+
+email_event_dropped_data_postgres: id:VARCHAR, drop_reason:VARCHAR, bcc:VARCHAR, cc:VARCHAR, drop_message:VARCHAR, "from":VARCHAR, reply_to:VARCHAR, subject:VARCHAR
+
+email_event_dropped_data_snowflake: id:VARCHAR, drop_reason:VARCHAR, bcc:VARCHAR, cc:VARCHAR, drop_message:VARCHAR, "FROM":VARCHAR, reply_to:VARCHAR, subject:VARCHAR
+
+email_event_forward_data: id:VARCHAR, browser:VARCHAR, ip_address:BIGINT, location:VARCHAR, user_agent:VARCHAR
+
+email_event_open_data: id:VARCHAR, duration:BIGINT, browser:VARCHAR, ip_address:BIGINT, location:VARCHAR, user_agent:VARCHAR
+
+email_event_print_data: id:VARCHAR, browser:VARCHAR, ip_address:BIGINT, location:VARCHAR, user_agent:VARCHAR
+
+email_event_sent_data: id:VARCHAR, bcc:VARCHAR, cc:VARCHAR, from:VARCHAR, reply_to:VARCHAR, subject:VARCHAR
+
+email_event_sent_data_postgres: id:VARCHAR, bcc:VARCHAR, cc:VARCHAR, "from":VARCHAR, reply_to:VARCHAR, subject:VARCHAR
+
+email_event_sent_data_snowflake: id:VARCHAR, bcc:VARCHAR, cc:VARCHAR, "FROM":VARCHAR, reply_to:VARCHAR, subject:VARCHAR
+
+email_event_spam_report_data: id:VARCHAR, ip_address:BIGINT, user_agent:BIGINT
+
+email_event_status_change_data: id:VARCHAR, bounced:BIGINT, portal_subscription_status:VARCHAR, requested_by:BIGINT, source:VARCHAR, subscriptions:VARCHAR
+
+engagement_call_data: engagement_id:BIGINT, property_hs_createdate:VARCHAR, property_hs_timestamp:VARCHAR, type:VARCHAR
+
+engagement_communication_data: engagement_id:BIGINT, property_hs_createdate:VARCHAR, property_hs_timestamp:VARCHAR, type:VARCHAR
+
+engagement_company_data: company_id:BIGINT, engagement_id:BIGINT, engagement_type:VARCHAR, type_id:BIGINT, category:VARCHAR
+
+engagement_contact_data: contact_id:VARCHAR, engagement_id:BIGINT, engagement_type:VARCHAR, type_id:BIGINT, category:VARCHAR
+
+engagement_data: id:VARCHAR, type:VARCHAR, portal_id:BIGINT
+
+engagement_deal_data: deal_id:BIGINT, engagement_id:BIGINT, engagement_type:VARCHAR, type_id:BIGINT, category:VARCHAR
+
+engagement_email_data: engagement_id:BIGINT, property_hs_all_owner_ids:BIGINT, property_hs_all_team_ids:BIGINT, property_hs_createdate:VARCHAR, property_hs_email_subject:VARCHAR, property_hs_email_text:VARCHAR, property_hs_lastmodifieddate:VARCHAR, property_hs_modified_by:BIGINT, property_hs_timestamp:VARCHAR, property_hubspot_owner_id:BIGINT, property_hubspot_team_id:BIGINT, type:VARCHAR
+
+engagement_meeting_data: engagement_id:BIGINT, created_from_link_id:BIGINT, end_time:VARCHAR, pre_meeting_prospect_reminders:VARCHAR, source:VARCHAR, source_id:VARCHAR, start_time:VARCHAR, web_conference_meeting_id:BIGINT, meeting_outcome:BIGINT, body:VARCHAR, external_url:VARCHAR, title:VARCHAR
+
+engagement_note_data: engagement_id:BIGINT, property_hs_body_preview:VARCHAR, property_hs_createdate:VARCHAR, property_hs_lastmodifieddate:VARCHAR, property_hs_note_body:VARCHAR, property_hs_timestamp:VARCHAR, property_hubspot_owner_id:BIGINT, property_hubspot_team_id:BIGINT, type:VARCHAR
+
+engagement_task_data: engagement_id:BIGINT, property_hs_createdate:VARCHAR, property_hs_object_id:BIGINT, property_hs_task_type:VARCHAR, property_hs_timestamp:VARCHAR, property_hubspot_owner_id:BIGINT, property_hubspot_team_id:BIGINT, type:VARCHAR, task_type:VARCHAR, property_hs_engagement_source:VARCHAR
+
+form_data: guid:VARCHAR, portal_id:INTEGER, name:VARCHAR, form_type:VARCHAR, method:VARCHAR, action:VARCHAR, redirect:VARCHAR, lead_nurturing_campaign_id:VARCHAR, follow_up_id:VARCHAR, created_at:VARCHAR, updated_at:VARCHAR, css_class:VARCHAR, notify_recipients:VARCHAR, submit_text:VARCHAR
+
+merged_deal_data: deal_id:BIGINT, merged_deal_id:BIGINT
+
+owner_data: owner_id:BIGINT, created_at:VARCHAR, portal_id:BIGINT, type:VARCHAR, updated_at:VARCHAR, email:VARCHAR, first_name:VARCHAR, last_name:VARCHAR, active_user_id:BIGINT
+
+owner_team_data: owner_id:VARCHAR, team_id:BIGINT, is_team_primary:VARCHAR
+
+property_data: calculated:VARCHAR, created_at:VARCHAR, description:VARCHAR, field_type:VARCHAR, group_name:VARCHAR, hubspot_defined:VARCHAR, hubspot_object:VARCHAR, label:VARCHAR, name:VARCHAR, show_currency_symbol:VARCHAR, type:VARCHAR, updated_at:VARCHAR
+
+property_option_data: label:VARCHAR, property_id:VARCHAR, display_order:BIGINT, hidden:VARCHAR, value:VARCHAR
+
+role_data: id:VARCHAR, name:VARCHAR, requires_billing_write:VARCHAR
+
+team_data: id:VARCHAR, name:VARCHAR
+
+team_user_data: user_id:BIGINT, team_id:BIGINT, is_secondary_user:VARCHAR
+
+ticket_company_data: ticket_id:BIGINT, company_id:BIGINT, category:VARCHAR
+
+ticket_contact_data: ticket_id:BIGINT, contact_id:BIGINT, category:VARCHAR
+
+ticket_data: id:VARCHAR, is_deleted:VARCHAR, property_closed_date:VARCHAR, property_createdate:VARCHAR, property_first_agent_reply_date:VARCHAR, property_hs_pipeline:VARCHAR, property_hs_pipeline_stage:VARCHAR, property_hs_ticket_category:VARCHAR, property_hs_ticket_priority:BIGINT, property_hubspot_owner_id:BIGINT, property_subject:VARCHAR, property_content:VARCHAR
+
+ticket_deal_data: ticket_id:BIGINT, deal_id:BIGINT, category:VARCHAR
+
+ticket_engagement_data: ticket_id:BIGINT, engagement_id:BIGINT, category:VARCHAR
+
+ticket_pipeline_data: pipeline_id:VARCHAR, object_type_id:VARCHAR, label:VARCHAR, display_order:BIGINT, active:BOOLEAN, created_at:VARCHAR, updated_at:VARCHAR
+
+ticket_pipeline_stage_data: stage_id:VARCHAR, pipeline_id:VARCHAR, label:VARCHAR, ticket_state:VARCHAR, display_order:BIGINT, active:BOOLEAN, is_closed:BOOLEAN, created_at:VARCHAR, updated_at:VARCHAR
+
+ticket_property_history_data: ticket_id:BIGINT, name:VARCHAR, source:VARCHAR, source_id:VARCHAR, timestamp_instant:VARCHAR, value:VARCHAR
+
+users_data: id:VARCHAR, primary_team_id:BIGINT, role_id:VARCHAR, email:VARCHAR, first_name:VARCHAR, last_name:VARCHAR
+
+
+

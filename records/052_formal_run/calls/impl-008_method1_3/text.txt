@@ -1,0 +1,146 @@
+{
+  "premises": [
+    {
+      "statement": "Counting crossed calendar-day boundaries is equivalent to counting full elapsed days for task open-length and assignment-duration metrics.",
+      "about": "requirement",
+      "target": "intermediate.int_asana__task_open_length",
+      "evidence_of_dependence": "DATE_DIFF('day', t.created_at, CASE WHEN t.is_completed THEN t.completed_at ELSE CURRENT_TIMESTAMP END)",
+      "alternative": "The contract says \"integer number of full days (partial days are not counted)\", whereas DATE_DIFF counts day boundaries even when less than a full day has elapsed.",
+      "importance": 5,
+      "reason": "This affects all three duration metrics and downstream averages, validity checks, and performance results.",
+      "updates": null
+    },
+    {
+      "statement": "The latest story timestamp, or task creation timestamp when no story exists, is sufficient to determine last_activity_at without considering modified_at.",
+      "about": "requirement",
+      "target": "intermediate.int_asana__task_performance_metrics",
+      "evidence_of_dependence": "COALESCE((SELECT MAX(s.created_at) ...), t.created_at) AS latest_story_at; latest_story_at AS last_activity_at",
+      "alternative": "The contract requires \"the later of modified_at and the latest story timestamp for the task\".",
+      "importance": 5,
+      "reason": "Ignoring recent task modifications can change activity scores, health scores, and the reported activity timestamp.",
+      "updates": null
+    },
+    {
+      "statement": "Completion timeliness can be determined from calendar dates alone without comparing completion and due times within the same day.",
+      "about": "requirement",
+      "target": "intermediate.int_asana__task_performance_metrics",
+      "evidence_of_dependence": "WHEN is_completed AND completed_at::DATE <= due_date::DATE THEN 'completed_on_time'",
+      "alternative": "The contract specifies \"completed_at on or before due_date\" and \"completed_at after due_date\", reserving explicit calendar-date comparison for open-task overdue checks.",
+      "importance": 4,
+      "reason": "Tasks completed after their due time on the same day receive a different lifecycle category.",
+      "updates": null
+    },
+    {
+      "statement": "An overdue open task should receive urgency_score 5 regardless of how many days overdue it is.",
+      "about": "requirement",
+      "target": "intermediate.int_asana__task_performance_metrics",
+      "evidence_of_dependence": "WHEN DATE_DIFF('day',CURRENT_DATE,due_date::DATE)<=1 THEN 5",
+      "alternative": "The contract specifies \"due in 0–1 days → 5\" and \"else 1\", which supports treating negative days-until-due as outside the listed ranges.",
+      "importance": 4,
+      "reason": "All overdue open tasks enter the highest urgency bucket under the implementation.",
+      "updates": null
+    },
+    {
+      "statement": "A missing response_time_days value contributes zero responsiveness points to health_score.",
+      "about": "requirement",
+      "target": "intermediate.int_asana__task_performance_metrics",
+      "evidence_of_dependence": "WHEN response_time_days IS NULL THEN 0",
+      "alternative": null,
+      "importance": 3,
+      "reason": "The contract permits missing response times but does not explicitly define their health-score contribution.",
+      "updates": null
+    },
+    {
+      "statement": "The performance-metrics output does not need an explicit ordering.",
+      "about": "requirement",
+      "target": "intermediate.int_asana__task_performance_metrics",
+      "evidence_of_dependence": "FROM classified WHERE is_valid_record",
+      "alternative": "The contract requires \"Sort by health_score (descending), then urgency_score (descending), then task_id.\"",
+      "importance": 3,
+      "reason": "The query omits the required ordering even if its row values otherwise satisfy the contract.",
+      "updates": null
+    },
+    {
+      "statement": "Passing staging task timestamps through unchanged satisfies the timezone-aware timestamp types required by the task-assignee model.",
+      "about": "requirement",
+      "target": "intermediate.int_asana__task_assignee",
+      "evidence_of_dependence": "SELECT t.*, (t.assignee_user_id IS NOT NULL) AS has_assignee",
+      "alternative": "Staging task timestamps are declared \"TIMESTAMP\", while task-assignee timestamp columns are declared \"TIMESTAMP WITH TIME ZONE\".",
+      "importance": 3,
+      "reason": "The selected columns retain staging types rather than establishing the intermediate model's declared types.",
+      "updates": null
+    },
+    {
+      "statement": "Passing parent task timestamps through unchanged satisfies the timezone-aware timestamp types required by the subtask-parent model.",
+      "about": "requirement",
+      "target": "intermediate.int_asana__subtask_parent",
+      "evidence_of_dependence": "parent.due_date AS parent_due_date, parent.created_at AS parent_created_at",
+      "alternative": "The contract declares parent_due_date and parent_created_at as \"TIMESTAMP WITH TIME ZONE\", while their staging sources are declared \"TIMESTAMP\".",
+      "importance": 3,
+      "reason": "The output inherits timezone-naive staging types without addressing the model's timezone-preservation requirement.",
+      "updates": null
+    }
+  ],
+  "fewer": [
+    {
+      "target": "intermediate.int_asana__task_story",
+      "count": 0,
+      "reason": "The joins, classification, and preservation of duplicates directly follow the supplied model specification."
+    },
+    {
+      "target": "intermediate.int_asana__task_assignee",
+      "count": 1,
+      "reason": "Apart from timestamp typing, the left join and assignee flag are explicitly specified."
+    },
+    {
+      "target": "intermediate.int_asana__task_open_length",
+      "count": 1,
+      "reason": "The full-day interpretation is unsupported; the remaining aggregation, join, and null handling follow the contract."
+    },
+    {
+      "target": "intermediate.int_asana__task_comments",
+      "count": 0,
+      "reason": "Filtering, ordering, delimiter, row counting, and null handling follow the explicit specification."
+    },
+    {
+      "target": "intermediate.int_asana__task_followers",
+      "count": 0,
+      "reason": "The staging identifier types support the join, and the aggregation implements the specified duplicate and null policies."
+    },
+    {
+      "target": "intermediate.int_asana__task_tags",
+      "count": 0,
+      "reason": "The left join, type alignment, name aggregation, and joined-row count are explicitly required."
+    },
+    {
+      "target": "intermediate.int_asana__task_first_modifier",
+      "count": 0,
+      "reason": "The contract explicitly permits arbitrary tie selection and specifies the user lookup."
+    },
+    {
+      "target": "intermediate.int_asana__subtask_parent",
+      "count": 1,
+      "reason": "Apart from timestamp typing, the parent and optional user joins match the explicit specification."
+    },
+    {
+      "target": "intermediate.int_asana__task_projects",
+      "count": 0,
+      "reason": "The specified joins and aggregation rules support the implementation without additional identifiable assumptions."
+    },
+    {
+      "target": "intermediate.int_asana__project_task_metrics",
+      "count": 0,
+      "reason": "The inner joins, conditional counts, and averages directly implement the documented rules."
+    },
+    {
+      "target": "intermediate.int_asana__project_user",
+      "count": 0,
+      "reason": "Resolving the stacked sources by role priority gives the specified result without requiring source-level uniqueness."
+    },
+    {
+      "target": "intermediate.int_asana__user_task_metrics",
+      "count": 0,
+      "reason": "The source join, assignee filter, counts, and averages are explicitly specified."
+    }
+  ]
+}

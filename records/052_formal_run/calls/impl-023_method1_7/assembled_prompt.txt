@@ -1,0 +1,905 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Social Media Reporting source system. This YAML is the single source of truth describing what transformations must occur from raw to staging to intermediate and marts. It defines table purposes, validation actions, and business logic in natural language."
+  author: "Data Engineering Team"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw social media data into clean, validated staging tables that are standardized across platforms, with data quality steps applied before business modeling."
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as casing, whitespace trimming, protocol normalization for URLs, and standardized date/timezone formats."
+      examples: ["LOWER(TRIM(screen_name))", "normalize phone numbers", "ensure https:// protocol for URL fields", "standardize valid IANA timezones when pattern matches"]
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["screen_name contains disallowed characters and cannot be corrected", "invalid primary keys", "timezone not in allowed list AND malformed format", "phone numbers with impossible format"]
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful downstream."
+      examples: ["optional URL fails regex but record otherwise usable", "emails array malformed for page metadata", "non-essential descriptive fields corrupted"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Apply business logic and generate analysis-ready models using strictly layered dependencies."
+  design_principles:
+    - "Staging layer must only reference raw tables."
+    - "Intermediate layer must only reference staging tables."
+    - "Marts layer must only reference intermediate tables."
+    - "Cross-layer and same-layer dependencies are prohibited."
+    - "Grain must be explicit and unique per model."
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-023/agent/dacomp-de-impl-023/social_media_reporting_start.duckdb
+{"table": "raw.account_history", "columns": ["id", "updated_at", "_fivetran_synced", "approval_status", "business_id", "business_name", "created_at", "deleted", "industry_type", "name", "salt", "timezone", "timezone_switch_at"]}
+{"table": "raw.facebook_pages_daily_page_metrics", "columns": ["date", "page_id", "_fivetran_synced", "page_actions_post_reactions_anger_total", "page_actions_post_reactions_haha_total", "page_actions_post_reactions_like_total", "page_actions_post_reactions_love_total", "page_actions_post_reactions_sorry_total", "page_actions_post_reactions_total", "page_actions_post_reactions_wow_total", "page_fan_adds", "page_fan_removes", "page_fans", "page_impressions", "page_impressions_nonviral", "page_impressions_organic", "page_impressions_paid", "page_impressions_viral", "page_negative_feedback", "page_places_checkin_total", "page_post_engagements", "page_posts_impressions", "page_posts_impressions_nonviral", "page_posts_impressions_organic", "page_posts_impressions_paid", "page_posts_impressions_viral", "page_total_actions", "page_video_complete_views_30_s", "page_video_complete_views_30_s_autoplayed", "page_video_complete_views_30_s_click_to_play", "page_video_complete_views_30_s_organic", "page_video_complete_views_30_s_paid", "page_video_complete_views_30_s_repeat_views", "page_video_repeat_views", "page_video_view_time", "page_video_views", "page_video_views_10_s", "page_video_views_10_s_autoplayed", "page_video_views_10_s_click_to_play", "page_video_views_10_s_organic", "page_video_views_10_s_paid", "page_video_views_10_s_repeat", "page_video_views_autoplayed", "page_video_views_click_to_play", "page_video_views_organic", "page_video_views_paid", "page_views_total", "page_fans_online_per_day"]}
+{"table": "raw.facebook_pages_lifetime_post_metrics", "columns": ["date", "post_id", "_fivetran_synced", "post_clicks", "post_engaged_fan", "post_engaged_users", "post_impressions", "post_impressions_fan", "post_impressions_nonviral", "post_impressions_organic", "post_impressions_paid", "post_impressions_viral", "post_negative_feedback", "post_reactions_anger_total", "post_reactions_haha_total", "post_reactions_like_total", "post_reactions_love_total", "post_reactions_sorry_total", "post_reactions_wow_total", "post_video_avg_time_watched", "post_video_complete_views_30_s_autoplayed", "post_video_complete_views_30_s_clicked_to_play", "post_video_complete_views_30_s_organic", "post_video_complete_views_30_s_paid", "post_video_complete_views_organic", "post_video_complete_views_paid", "post_video_view_time", "post_video_view_time_organic", "post_video_views", "post_video_views_10_s", "post_video_views_10_s_autoplayed", "post_video_views_10_s_clicked_to_play", "post_video_views_10_s_organic", "post_video_views_10_s_paid", "post_video_views_10_s_sound_on", "post_video_views_autoplayed", "post_video_views_clicked_to_play", "post_video_views_organic", "post_video_views_paid", "post_video_views_sound_on", "post_video_length", "post_video_views_15_s"]}
+{"table": "raw.facebook_pages_page_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "affiliation", "app_id", "artists_we_like", "attire", "awards", "band_interests", "band_members", "bio", "birthday", "booking_agent", "built", "can_checkin", "can_post", "category", "category_list", "checkins", "company_overview", "culinary_team", "current_location", "description", "directed_by", "display_subtext", "emails", "fan_count", "features", "food_styles", "founded", "general_info", "general_manager", "genre", "global_brand_page_name", "has_added_app", "has_whatsapp_number", "hometown", "impressum", "influences", "is_always_open", "is_chain", "is_community_page", "is_eligible_for_branded_content", "is_messenger_bot_get_started_enabled", "is_messenger_platform_bot", "is_owned", "is_permanently_closed", "is_published", "is_unclaimed", "members", "mission", "mpg", "name", "network", "new_like_count", "overall_star_rating", "personal_info", "personal_interests", "pharma_safety_info", "phone", "place_type", "plot_outline", "press_contact", "price_range", "produced_by", "products", "promotion_eligible", "promotion_ineligible_reason", "public_transit", "rating_count", "record_label", "release_date", "schedule", "screenplay_by", "season", "single_line_address", "starring", "store_number", "studio", "talking_about_count", "username", "website", "were_here_count", "whatsapp_number", "written_by", "has_transitioned_to_new_page_experience", "about", "website_url", "created_time"]}
+{"table": "raw.facebook_pages_post_history", "columns": ["id", "updated_time", "_fivetran_synced", "created_time", "page_id", "status_type", "message", "share_count", "is_published", "privacy_value", "is_hidden", "is_eligible_for_promotion", "is_instagram_eligible"]}
+{"table": "raw.instagram_business_media_history", "columns": ["_fivetran_id", "_fivetran_synced", "id", "ig_id", "user_id", "username", "media_type", "caption", "created_time", "media_url", "permalink"]}
+{"table": "raw.instagram_business_media_insights", "columns": ["_fivetran_id", "_fivetran_synced", "carousel_album_engagement", "carousel_album_reach", "carousel_album_saved", "carousel_album_shares", "carousel_album_views", "comment_count", "id", "like_count", "story_exits", "story_reach", "story_replies", "story_taps_back", "story_taps_forward", "story_shares", "story_views", "video_photo_engagement", "video_photo_reach", "video_photo_saved", "video_photo_shares", "video_photo_views", "reel_comments", "reel_likes", "reel_reach", "reel_shares", "reel_total_interactions", "reel_views", "source_relation", "carousel_album_impressions", "carousel_album_video_views", "story_impressions", "video_photo_impressions", "video_views", "reel_plays"]}
+{"table": "raw.instagram_business_user_history", "columns": ["_fivetran_id", "_fivetran_synced", "followers_count", "follows_count", "id", "ig_id", "media_count", "name", "username", "website"]}
+{"table": "raw.linkedin_pages_organization", "columns": ["id", "_fivetran_synced", "cover_photo_v_2_crop_info_height", "cover_photo_v_2_crop_info_width", "cover_photo_v_2_crop_info_x", "cover_photo_v_2_crop_info_y", "cover_photo_v_2_cropped", "cover_photo_v_2_original", "default_locale_country", "default_locale_language", "description_preferred_locale_country", "description_preferred_locale_language", "founded_on_day", "founded_on_month", "founded_on_year", "logo_v_2_crop_info_height", "logo_v_2_crop_info_width", "logo_v_2_crop_info_x", "logo_v_2_crop_info_y", "logo_v_2_cropped", "logo_v_2_original", "name_preferred_locale_country", "name_preferred_locale_language", "organization_status", "organization_type", "overview_photo_v_2_crop_info_height", "overview_photo_v_2_crop_info_width", "overview_photo_v_2_crop_info_x", "overview_photo_v_2_crop_info_y", "overview_photo_v_2_cropped", "overview_photo_v_2_original", "parent_relationship_parent_id", "parent_relationship_status", "parent_relationship_type", "primary_organization_type", "school_attributes_hierarchy_classification", "school_attributes_legacy_school", "school_attributes_type", "school_attributes_year_level", "staff_count_range", "version_tag", "website_preferred_locale_country", "website_preferred_locale_language", "description_localized", "localized_description", "localized_name", "localized_website", "name_localized", "vanity_name", "website_localized"]}
+{"table": "raw.linkedin_pages_organization_ugc_post", "columns": ["organiation_id", "ugc_post_id", "_fivetran_synced"]}
+{"table": "raw.linkedin_pages_post_content", "columns": ["_fivetran_synced", "_fivetran_id", "post_id", "type", "article_title", "media_id", "media_title", "media_alt_text"]}
+{"table": "raw.linkedin_pages_share_statistic", "columns": ["_fivetran_id", "_fivetran_synced", "_organization_entity_urn", "_share_entity_urn", "click_count", "comment_count", "engagement", "impression_count", "like_count", "share_count"]}
+{"table": "raw.linkedin_pages_ugc_post_history", "columns": ["_fivetran_synced", "author", "commentary", "container_entity", "created_actor", "created_time", "distribution_external_distribution_channels", "distribution_feed_distribution", "first_published_at", "id", "last_modified_actor", "last_modified_time", "lifecycle_state", "response_context_parent", "response_context_root", "visibility"]}
+{"table": "raw.linkedin_pages_ugc_post_share_statistic", "columns": ["share_statistic_id", "ugc_post_id", "_fivetran_synced"]}
+{"table": "raw.organic_tweet_report", "columns": ["account_id", "date", "organic_tweet_id", "placement", "_fivetran_synced", "app_clicks", "card_engagements", "carousel_swipes", "clicks", "engagements", "follows", "impressions", "likes", "poll_card_vote", "qualified_impressions", "replies", "retweets", "tweets_send", "unfollows", "url_clicks", "video_15_s_views", "video_3_s_100_pct_views", "video_6_s_views", "video_content_starts", "video_cta_clicks", "video_total_views", "video_views_100", "video_views_25", "video_views_50", "video_views_75"]}
+{"table": "raw.tweet", "columns": ["id", "_fivetran_synced", "account_id", "created_at", "full_test", "favorite_count", "retweet_count", "user_id", "lang", "source"]}
+{"table": "raw.twitter_user_history", "columns": ["id", "_fivetran_synced", "contributors_enabled", "created_at", "default_profile", "default_profile_image", "description", "favourites_count", "followers_count", "friends_count", "geo_enabled", "is_translation_enabled", "is_translator", "lang", "listed_count", "location", "name", "profile_background_image_url", "profile_background_image_url_https", "profile_background_tile", "profile_banner_url", "profile_image_url", "profile_image_url_https", "profile_use_background_image", "protected_user", "screen_name", "statuses_count", "time_zone", "url", "utc_offset", "verified"]}
+{"table": "raw.youtube_channel_basic", "columns": ["_fivetran_id", "date", "_fivetran_synced", "annotation_click_through_rate", "annotation_clickable_impressions", "annotation_clicks", "annotation_closable_impressions", "annotation_close_rate", "annotation_closes", "annotation_impressions", "average_view_duration_percentage", "average_view_duration_seconds", "card_click_rate", "card_clicks", "card_impressions", "card_teaser_click_rate", "card_teaser_clicks", "card_teaser_impressions", "channel_id", "comments", "country_code", "dislikes", "likes", "live_or_on_demand", "red_views", "red_watch_time_minutes", "shares", "subscribed_status", "subscribers_gained", "subscribers_lost", "video_id", "videos_added_to_playlists", "videos_removed_from_playlists", "views", "watch_time_minutes", "channel_display_name", "channel_subscribers", "channel_views", "channel_watch_time_minutes", "channel_estimated_partner_revenue", "channel_annotations_ctr"]}
+{"table": "raw.youtube_channel_demographics", "columns": ["_fivetran_id", "date", "_fivetran_synced", "age_group", "channel_id", "country_code", "gender", "live_or_on_demand", "subscribed_status", "video_id", "views_percentage"]}
+{"table": "raw.youtube_video", "columns": ["id", "_fivetran_synced", "content_details_caption", "content_details_definition", "content_details_dimension", "content_details_duration", "content_details_has_custom_thumbnail", "content_details_licensed_content", "content_details_projection", "content_details_region_restriction", "etag", "kind", "player_embed_height", "player_embed_html", "player_embed_width", "privacy_status", "snippet_category_id", "snippet_channel_id", "snippet_channel_title", "snippet_default_audio_language", "snippet_default_language", "snippet_description", "snippet_live_broadcast_content", "snippet_localized", "snippet_published_at", "snippet_tags", "snippet_thumbnails", "snippet_title", "statistics_comment_count", "statistics_dislike_count", "statistics_favorite_count", "statistics_like_count", "statistics_view_count", "status_embeddable", "status_failure_reason", "status_license", "status_made_for_kids", "status_public_stats_viewable", "status_publish_at", "status_rejection_reason", "status_self_declared_made_for_kids", "upload_status"]}
+
+
+=== Relevant specification and documentation ===
+## stg_social_media__linkedin_posts
+
+    - name: stg_social_media__linkedin_posts
+      description: "Minimal staging representation of LinkedIn organization UGC posts with standardized identifiers and URL."
+      source_table: raw.linkedin_pages_organization_ugc_post
+      columns:
+        - name: organization_id
+          data_type: VARCHAR
+        - name: post_id
+          data_type: VARCHAR
+        - name: created_timestamp
+          data_type: TIMESTAMP
+        - name: platform
+          data_type: VARCHAR
+        - name: post_message
+          data_type: VARCHAR
+        - name: content_type
+          data_type: VARCHAR
+        - name: post_url
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "post_url RLIKE '^https://www.linkedin.com/feed/update/.+'"
+              on_failure: correct
+
+
+
+## social_media_reporting__linkedin_posts_reporting
+
+    - name: social_media_reporting__linkedin_posts_reporting
+      description: Standardized LinkedIn organization posts with filters, normalized metrics, derived URL, category, and engagement rate.
+      grain: One row per LinkedIn post_id per organization_id
+      source_models:
+      - staging.stg_social_media__linkedin_posts
+      business_logic: '- Source: staging.stg_social_media__linkedin_posts (fields used: organization_id, post_id, created_timestamp, post_message, content_type). - Row filters: include only rows where organization_id is not null, created_timestamp is not null, and created_timestamp is within the last 4 years from the current date. - Identifiers: page_id equals organization_id; page_name uses organization_id unless its trimmed value is an empty string, in which case page_name is set to null; otherwise whitespace is preserved. - Post identity: post_id is converted to text; platform is the constant ''linkedin''. - Message: post_message is the first non-null of post_title or post_message; if both are null it defaults to ''LinkedIn Post''; post_title is sourced from post_message; casing and whitespace are preserved. - Metrics: clicks, impressions, likes, shares, comments set to 0 when null; integers are otherwise preserved (including negatives if present); no scaling or rounding. - URL: post_url is ''https://www.linkedin.com/feed/update/'' followed by post_id; if post_id is null then post_url is null. - Category: content_type is mapped exactly (case-sensitive) as follows: ''article''→''Article'', ''share''→''Shared Content'', ''media''→''Media Post'', ''poll''→''Poll''; all other or null values map to ''Text Post''. - Engagement rate: if the source engagement_rate is positive, use it; otherwise, if impressions are greater than 0, compute (clicks + likes + comments + shares) divided by impressions as a floating-point value; else return 0.0; no rounding; zero or negative impressions produce 0.0. - No aggregation or de-duplication; if the source has multiple rows for the same (organization_id, post_id), all are retained; output order is unspecified.'
+      columns:
+      - name: page_id
+        data_type: VARCHAR
+        description: LinkedIn organization_id copied from source; non-null due to filter
+        tests:
+        - not_null
+      - name: page_name
+        data_type: VARCHAR
+        description: Set to organization_id unless its trimmed value is empty, then null; otherwise original whitespace is preserved
+      - name: post_id
+        data_type: VARCHAR
+        description: Post identifier converted to text; used to build post_url
+        tests:
+        - not_null
+      - name: post_message
+        data_type: VARCHAR
+        description: First non-null of post_title or post_message, else 'LinkedIn Post'; original casing and whitespace preserved
+      - name: created_timestamp
+        data_type: TIMESTAMP
+        description: Source creation timestamp filtered to not null and within the last 4 years
+        tests:
+        - not_null
+      - name: platform
+        data_type: VARCHAR
+        description: Constant platform label 'linkedin'
+      - name: clicks
+        data_type: INTEGER
+        description: Click count; null becomes 0; negatives (if any) are preserved
+      - name: impressions
+        data_type: INTEGER
+        description: Impression count; null becomes 0; negatives are preserved; used as denominator when greater than 0
+      - name: likes
+        data_type: INTEGER
+        description: Like count; null becomes 0
+      - name: shares
+        data_type: INTEGER
+        description: Share count; null becomes 0
+      - name: comments
+        data_type: INTEGER
+        description: Comment count; null becomes 0
+      - name: post_url
+        data_type: VARCHAR
+        description: Built as 'https://www.linkedin.com/feed/update/' plus post_id; null if post_id is null
+      - name: post_category
+        data_type: VARCHAR
+        description: 'Mapped from content_type: article→Article, share→Shared Content, media→Media Post, poll→Poll, else Text Post; case-sensitive'
+      - name: calculated_engagement_rate
+        data_type: DOUBLE
+        description: If source engagement_rate is positive use it; else if impressions > 0 use (clicks+likes+comments+shares)/impressions; otherwise 0.0; double precision with no rounding
+
+
+
+
+=== Premises recorded in earlier reviews ===
+[
+  {
+    "statement": "Account timezone values require no deterministic trimming or casing correction before applying the deletion rule.",
+    "about": "data",
+    "target": "staging.stg_social_media__account_history",
+    "evidence_of_dependence": "and regexp_matches(timezone, '^[A-Z][a-z]+/[A-Z][a-z_]+$')",
+    "alternative": "The general staging quality actions require automatically fixing \"casing, whitespace trimming\" and \"standardize valid IANA timezones when pattern matches\".",
+    "importance": 3,
+    "reason": "Correctable timezone values would otherwise cause entire account records to be discarded.",
+    "updates": null,
+    "id": "c3-1",
+    "call": 3
+  },
+  {
+    "statement": "All non-null account timestamp and boolean values are directly castable to their declared output types.",
+    "about": "data",
+    "target": "staging.stg_social_media__account_history",
+    "evidence_of_dependence": "updated_at::timestamp ... created_at::timestamp ... deleted::boolean ... timezone_switch_at::timestamp",
+    "alternative": null,
+    "importance": 3,
+    "reason": "An invalid value could prevent the staging SQL and pipeline from executing.",
+    "updates": null,
+    "id": "c3-2",
+    "call": 3
+  },
+  {
+    "statement": "Twitter screen names containing harmful characters may be retained if removing those characters produces a nonempty name.",
+    "about": "requirement",
+    "target": "staging.stg_social_media__twitter_user_history",
+    "evidence_of_dependence": "regexp_replace(screen_name, '[^A-Za-z0-9_]', '', 'g') ... and screen_name <> ''",
+    "alternative": "The description says \"rows with NULL/blank or harmful characters are removed\", which could require testing harmful characters in the original value.",
+    "importance": 4,
+    "reason": "The interpretation determines whether potentially unsafe source records survive staging.",
+    "updates": null,
+    "id": "c3-3",
+    "call": 3
+  },
+  {
+    "statement": "A Twitter URL with a valid-looking prefix remains acceptable even when the rest of the value is not a valid URL.",
+    "about": "requirement",
+    "target": "staging.stg_social_media__twitter_user_history",
+    "evidence_of_dependence": "regexp_matches(url, '^(https?://)?[A-Za-z0-9.-]+\\.[A-Za-z]{2,}(/.*)?')",
+    "alternative": "The staging quality documentation describes nullifying an \"optional URL fails regex\", which may mean validating the whole field rather than a prefix.",
+    "importance": 2,
+    "reason": "The unanchored ending can retain malformed optional URL values.",
+    "updates": null,
+    "id": "c3-4",
+    "call": 3
+  },
+  {
+    "statement": "All non-null Twitter profile timestamp and boolean fields used in direct casts are castable to the declared types.",
+    "about": "data",
+    "target": "staging.stg_social_media__twitter_user_history",
+    "evidence_of_dependence": "_fivetran_synced::timestamp ... created_at::timestamp ... verified::boolean",
+    "alternative": null,
+    "importance": 3,
+    "reason": "Malformed source values would make execution fail rather than produce cleaned profiles.",
+    "updates": null,
+    "id": "c3-5",
+    "call": 3
+  },
+  {
+    "statement": "Organic report account_id identifies the Twitter user whose profile should enrich the tweet.",
+    "about": "data",
+    "target": "staging.stg_social_media__twitter_organic_tweets",
+    "evidence_of_dependence": "left join users u on u.id = o.account_id and u.row_num = 1",
+    "alternative": "The material index also exposes raw.tweet.user_id and raw.tweet.account_id; tweet.user_id could be the required profile join key.",
+    "importance": 5,
+    "reason": "Using an account identifier as a user identifier can leave most profiles missing or attach the wrong users.",
+    "updates": null,
+    "id": "c3-6",
+    "call": 3
+  },
+  {
+    "statement": "raw.tweet.full_test contains the tweet text referred to as full_text in the contract.",
+    "about": "data",
+    "target": "staging.stg_social_media__twitter_organic_tweets",
+    "evidence_of_dependence": "full_test as tweet_text",
+    "alternative": "The contract explicitly says \"Tweet text joined from raw.tweet.full_text\", while the material index lists only full_test.",
+    "importance": 4,
+    "reason": "The implementation resolves a schema discrepancy without establishing the substitute field's meaning.",
+    "updates": null,
+    "id": "c3-7",
+    "call": 3
+  },
+  {
+    "statement": "Each tweet identifier has at most one matching row in raw.tweet after conversion to BIGINT.",
+    "about": "data",
+    "target": "staging.stg_social_media__twitter_organic_tweets",
+    "evidence_of_dependence": "left join tweets t on try_cast(o.organic_tweet_id as bigint) = t.tweet_id",
+    "alternative": null,
+    "importance": 4,
+    "reason": "Duplicate matches would multiply report rows and their downstream metrics.",
+    "updates": null,
+    "id": "c3-8",
+    "call": 3
+  },
+  {
+    "statement": "The most recently synced Twitter profile is the intended profile for every report date, and no conflicting profiles tie at that sync time.",
+    "about": "requirement",
+    "target": "staging.stg_social_media__twitter_organic_tweets",
+    "evidence_of_dependence": "row_number() over (partition by id order by _fivetran_synced desc nulls last) ... u.row_num = 1",
+    "alternative": "The source is named twitter_user_history and reports contain date; the contract says only that user attributes are \"joined from raw.twitter_user_history\" without defining latest versus historical selection.",
+    "importance": 3,
+    "reason": "Profile attribution can change across historical reports or become nondeterministic on ties.",
+    "updates": null,
+    "id": "c3-9",
+    "call": 3
+  },
+  {
+    "statement": "The organic tweet output should strip disallowed characters from raw user screen names rather than preserve the joined source value.",
+    "about": "requirement",
+    "target": "staging.stg_social_media__twitter_organic_tweets",
+    "evidence_of_dependence": "regexp_replace(u.screen_name, '[^A-Za-z0-9_]', '', 'g')::varchar as screen_name",
+    "alternative": "This model's screen_name description says \"From raw.twitter_user_history.screen_name\"; the explicit screen-name cleaning rules are specified separately for stg_social_media__twitter_user_history.",
+    "importance": 2,
+    "reason": "This changes the reported identity text and can create empty names without the profile model's row filtering.",
+    "updates": null,
+    "id": "c3-10",
+    "call": 3
+  },
+  {
+    "statement": "Facebook staging impressions should use the maximum lifetime metric rather than the specified staging default of zero.",
+    "about": "requirement",
+    "target": "staging.stg_social_media__facebook_posts",
+    "evidence_of_dependence": "max(post_impressions) as impressions ... coalesce(pm.impressions, 0)::bigint as impressions",
+    "alternative": "The contract defines impressions as \"Default 0 in staging\" and lists only post history and page data as this model's source tables.",
+    "importance": 5,
+    "reason": "This introduces an additional source and changes a core performance metric for matched posts.",
+    "updates": null,
+    "id": "c3-11",
+    "call": 3
+  },
+  {
+    "statement": "Every qualifying Facebook post has at most one row in raw.facebook_pages_post_history.",
+    "about": "data",
+    "target": "staging.stg_social_media__facebook_posts",
+    "evidence_of_dependence": "from raw.facebook_pages_post_history p",
+    "alternative": "The source includes updated_time and is named post_history, so multiple versions may require selecting a version.",
+    "importance": 4,
+    "reason": "Repeated versions would produce duplicate posts and potentially retain outdated visibility states.",
+    "updates": null,
+    "id": "c3-12",
+    "call": 3
+  },
+  {
+    "statement": "The latest synced Facebook page record is the intended page metadata for all posts, regardless of deletion status.",
+    "about": "requirement",
+    "target": "staging.stg_social_media__facebook_posts",
+    "evidence_of_dependence": "partition by id order by _fivetran_synced desc nulls last ... pg.row_num = 1",
+    "alternative": "raw.facebook_pages_page_data includes _fivetran_deleted, which is not consulted when selecting page metadata.",
+    "importance": 3,
+    "reason": "Deleted or historically inappropriate page versions could supply names and follower counts.",
+    "updates": null,
+    "id": "c3-13",
+    "call": 3
+  },
+  {
+    "statement": "A Facebook post with a null is_hidden value should count as visible.",
+    "about": "requirement",
+    "target": "staging.stg_social_media__facebook_posts",
+    "evidence_of_dependence": "and not coalesce(p.is_hidden, false)",
+    "alternative": "The contract describes the model as \"Published, visible Facebook posts\" but does not define whether unknown visibility qualifies.",
+    "importance": 3,
+    "reason": "This determines whether posts with unknown visibility enter reporting.",
+    "updates": null,
+    "id": "c3-14",
+    "call": 3
+  },
+  {
+    "statement": "Facebook post created_time and the numeric and boolean fields directly cast by this query contain only compatible values.",
+    "about": "data",
+    "target": "staging.stg_social_media__facebook_posts",
+    "evidence_of_dependence": "p.created_time::timestamp ... coalesce(p.share_count, 0)::bigint ... p.is_eligible_for_promotion::boolean",
+    "alternative": null,
+    "importance": 3,
+    "reason": "An incompatible source value could abort the model rather than be corrected or nullified.",
+    "updates": null,
+    "id": "c3-15",
+    "call": 3
+  },
+  {
+    "statement": "Instagram metrics should select the first non-null media-specific field in a fixed priority order independent of the post's media_type.",
+    "about": "requirement",
+    "target": "staging.stg_social_media__instagram_posts",
+    "evidence_of_dependence": "coalesce(carousel_album_impressions, video_photo_impressions, story_impressions, video_views, reel_plays, 0)",
+    "alternative": "The contract refers to normalized \"mi.impressions\" and other normalized metrics without defining this priority; the inspected rows contain simultaneous non-null carousel, story, photo/video, and reel metrics.",
+    "importance": 5,
+    "reason": "The chosen priority can select the wrong metric family for most non-carousel posts.",
+    "updates": null,
+    "id": "c3-16",
+    "call": 3
+  },
+  {
+    "statement": "Each media identifier has at most one matching Instagram insights row across all source_relation values.",
+    "about": "data",
+    "target": "staging.stg_social_media__instagram_posts",
+    "evidence_of_dependence": "left join insights i on m.id = i.id",
+    "alternative": "The insights table exposes both source_relation and _fivetran_id, but neither participates in the join or deduplication.",
+    "importance": 4,
+    "reason": "Multiple matches would multiply posts and metrics.",
+    "updates": null,
+    "id": "c3-17",
+    "call": 3
+  },
+  {
+    "statement": "Each qualifying Instagram media identifier occurs only once in media history.",
+    "about": "data",
+    "target": "staging.stg_social_media__instagram_posts",
+    "evidence_of_dependence": "from raw.instagram_business_media_history m",
+    "alternative": "The history source includes _fivetran_id and _fivetran_synced, but no media-version selection is performed.",
+    "importance": 4,
+    "reason": "Multiple historical versions would create duplicate post outputs.",
+    "updates": null,
+    "id": "c3-18",
+    "call": 3
+  },
+  {
+    "statement": "The latest synced Instagram user record supplies the intended account metadata for every historical media post.",
+    "about": "requirement",
+    "target": "staging.stg_social_media__instagram_posts",
+    "evidence_of_dependence": "row_number() over (partition by id order by _fivetran_synced desc nulls last) ... u.row_num = 1",
+    "alternative": "The contract requests account details \"from user history\" but does not specify latest rather than post-time values.",
+    "importance": 3,
+    "reason": "Account names, follower counts, and media counts can differ materially across versions.",
+    "updates": null,
+    "id": "c3-19",
+    "call": 3
+  },
+  {
+    "statement": "Instagram media user_id and user-history id identify accounts in the same identifier namespace.",
+    "about": "data",
+    "target": "staging.stg_social_media__instagram_posts",
+    "evidence_of_dependence": "left join users u on m.user_id = u.id",
+    "alternative": "The material index exposes both id and ig_id in Instagram user history, and their relationship to media user_id has not been checked.",
+    "importance": 3,
+    "reason": "A namespace mismatch would remove account enrichment from otherwise valid posts.",
+    "updates": null,
+    "id": "c3-20",
+    "call": 3
+  },
+  {
+    "statement": "LinkedIn post_message should prefer article_title, then media_title, and use commentary only as a fallback.",
+    "about": "requirement",
+    "target": "staging.stg_social_media__linkedin_posts",
+    "evidence_of_dependence": "coalesce(pc.article_title, pc.media_title, h.commentary)::varchar as post_message",
+    "alternative": "The contract lists post_message without defining this priority; the available history source contains commentary, which could instead be the post message.",
+    "importance": 4,
+    "reason": "The priority can replace the actual post commentary with a content title.",
+    "updates": null,
+    "id": "c3-21",
+    "call": 3
+  },
+  {
+    "statement": "Each LinkedIn post has at most one matching post-content row.",
+    "about": "data",
+    "target": "staging.stg_social_media__linkedin_posts",
+    "evidence_of_dependence": "left join raw.linkedin_pages_post_content pc on pc.post_id = regexp_replace(o.ugc_post_id, '^urn:li:share:', 'urn:li:share:')",
+    "alternative": "The content source includes media_id and _fivetran_id, which could distinguish multiple content items for one post.",
+    "importance": 4,
+    "reason": "A post with multiple content items would be emitted multiple times.",
+    "updates": null,
+    "id": "c3-22",
+    "call": 3
+  },
+  {
+    "statement": "Each LinkedIn post has at most one matching UGC history row.",
+    "about": "data",
+    "target": "staging.stg_social_media__linkedin_posts",
+    "evidence_of_dependence": "left join raw.linkedin_pages_ugc_post_history h on h.id = o.ugc_post_id",
+    "alternative": "The source is a history table with last_modified_time and _fivetran_synced, but the query selects no single version.",
+    "importance": 4,
+    "reason": "Multiple versions would duplicate posts and produce conflicting messages or timestamps.",
+    "updates": null,
+    "id": "c3-23",
+    "call": 3
+  },
+  {
+    "statement": "LinkedIn organization-post identifiers can be matched literally to history and content identifiers without reconciling share and ugcPost URNs.",
+    "about": "data",
+    "target": "staging.stg_social_media__linkedin_posts",
+    "evidence_of_dependence": "h.id = o.ugc_post_id ... regexp_replace(o.ugc_post_id, '^urn:li:share:', 'urn:li:share:')",
+    "alternative": "The samples show organization-post IDs beginning \"urn:li:share:\" and history IDs beginning \"urn:li:ugcPost:\"; the implemented replacement leaves the identifier unchanged.",
+    "importance": 4,
+    "reason": "Unreconciled identifier forms could leave messages and creation timestamps missing across many posts.",
+    "updates": null,
+    "id": "c3-24",
+    "call": 3
+  },
+  {
+    "statement": "LinkedIn organization-post records with null organization identifiers should be deleted from staging.",
+    "about": "requirement",
+    "target": "staging.stg_social_media__linkedin_posts",
+    "evidence_of_dependence": "where o.organiation_id is not null",
+    "alternative": "The contract declares organization_id as VARCHAR without a not_null constraint or delete_row rule.",
+    "importance": 2,
+    "reason": "This adds an undocumented row-exclusion rule.",
+    "updates": null,
+    "id": "c3-25",
+    "call": 3
+  },
+  {
+    "statement": "The maximum channel_subscribers across all YouTube channel-basic records is the intended subscriber count for every video on that channel.",
+    "about": "requirement",
+    "target": "staging.stg_social_media__youtube_videos",
+    "evidence_of_dependence": "select channel_id, max(channel_subscribers) as channel_subscribers ... group by channel_id",
+    "alternative": "The channel-basic source includes date, while the contract specifies only \"COALESCE(channel_info.channel_subscribers, 0)\" and does not define maximum-over-time selection.",
+    "importance": 4,
+    "reason": "A historical maximum can systematically overstate subscriber counts.",
+    "updates": null,
+    "id": "c3-26",
+    "call": 3
+  },
+  {
+    "statement": "Each qualifying YouTube video identifier occurs only once in raw.youtube_video.",
+    "about": "data",
+    "target": "staging.stg_social_media__youtube_videos",
+    "evidence_of_dependence": "from raw.youtube_video v",
+    "alternative": null,
+    "importance": 3,
+    "reason": "Duplicate source identifiers would produce duplicate videos and metrics.",
+    "updates": null,
+    "id": "c3-27",
+    "call": 3
+  },
+  {
+    "statement": "All YouTube publication timestamps and numeric metric values used by the query are compatible with its casts and arithmetic.",
+    "about": "data",
+    "target": "staging.stg_social_media__youtube_videos",
+    "evidence_of_dependence": "v.snippet_published_at::timestamp ... coalesce(v.statistics_view_count, 0)::bigint ... v.statistics_like_count / 10.0",
+    "alternative": null,
+    "importance": 3,
+    "reason": "Malformed values could prevent pipeline execution.",
+    "updates": null,
+    "id": "c3-28",
+    "call": 3
+  },
+  {
+    "statement": "A missing YouTube channel title should produce the literal page_name 'Unknown Channel'.",
+    "about": "requirement",
+    "target": "staging.stg_social_media__youtube_videos",
+    "evidence_of_dependence": "coalesce(v.snippet_channel_title, 'Unknown Channel')::varchar as page_name",
+    "alternative": "The contract declares page_name as VARCHAR but provides no default or correction rule for it.",
+    "importance": 1,
+    "reason": "This changes only the labeling of records with missing titles.",
+    "updates": null,
+    "id": "c3-29",
+    "call": 3
+  },
+  {
+    "statement": "The earliest tweet_created_at in each Twitter group equals the earliest report date required for created_timestamp.",
+    "about": "data",
+    "target": "intermediate.social_media_reporting__twitter_posts_reporting",
+    "evidence_of_dependence": "min(tweet_created_at) as created_timestamp",
+    "alternative": "The contract specifies \"created_timestamp: earliest date in the group\"; staging exposes date separately from tweet_created_at.",
+    "importance": 5,
+    "reason": "Tweet publication time and report date can differ, changing timestamps and downstream date-based reporting.",
+    "updates": null,
+    "id": "c4-1",
+    "call": 4
+  },
+  {
+    "statement": "LinkedIn interaction metrics can be treated as absent for every staging record and therefore replaced with constant zeros.",
+    "about": "requirement",
+    "target": "intermediate.social_media_reporting__linkedin_posts_reporting",
+    "evidence_of_dependence": "coalesce(0, 0)::integer as clicks, 0::integer as impressions, 0::integer as likes, 0::integer as shares, 0::integer as comments",
+    "alternative": "The reporting contract says metrics are \"set to 0 when null; integers are otherwise preserved\", although the minimal staging schema does not declare these metrics.",
+    "importance": 4,
+    "reason": "This resolves a contract inconsistency by discarding any possibility of nonzero LinkedIn performance.",
+    "updates": null,
+    "id": "c4-2",
+    "call": 4
+  },
+  {
+    "statement": "A positive source engagement_rate is unavailable for every LinkedIn staging record, so its specified precedence requires no implementation.",
+    "about": "requirement",
+    "target": "intermediate.social_media_reporting__linkedin_posts_reporting",
+    "evidence_of_dependence": "case when impressions > 0 then (clicks + likes + comments + shares)::double / impressions else 0.0 end as calculated_engagement_rate",
+    "alternative": "The reporting contract requires \"if the source engagement_rate is positive, use it\", while the staging column list does not include engagement_rate.",
+    "importance": 3,
+    "reason": "If source rates are intended to be supplied, the omitted branch changes all positive-rate records.",
+    "updates": null,
+    "id": "c4-3",
+    "call": 4
+  },
+  {
+    "statement": "Twitter screen_name, user_name, and account_id contain no whitespace-only values that must be treated as missing when choosing page_name.",
+    "about": "data",
+    "target": "intermediate.social_media_reporting__twitter_posts_reporting",
+    "evidence_of_dependence": "coalesce(nullif(screen_name, ''), nullif(user_name, ''), account_id::varchar) as page_name_candidate",
+    "alternative": "The contract requires the \"first non-blank\" candidate and says \"blank strings treated as missing\"; whitespace-only strings could therefore require a trimmed emptiness check without trimming the retained value.",
+    "importance": 3,
+    "reason": "Whitespace-only candidates can suppress valid fallback names and produce unusable canonical URLs.",
+    "updates": null,
+    "id": "c4-4",
+    "call": 4
+  },
+  {
+    "statement": "Facebook staging impressions always fit within the INTEGER range required by the reporting cast.",
+    "about": "data",
+    "target": "intermediate.social_media_reporting__facebook_posts_reporting",
+    "evidence_of_dependence": "coalesce(impressions, 0)::integer as impressions",
+    "alternative": "The staging contract declares impressions as BIGINT, whereas the reporting contract declares INTEGER.",
+    "importance": 3,
+    "reason": "An out-of-range staging value would abort execution rather than produce the reporting table.",
+    "updates": null,
+    "id": "c4-5",
+    "call": 4
+  },
+  {
+    "statement": "Facebook impressions never contain negative values for which the contract requires division rather than a zero engagement rate.",
+    "about": "data",
+    "target": "intermediate.social_media_reporting__facebook_posts_reporting",
+    "evidence_of_dependence": "case when impressions > 0 then shares::double / impressions else 0.0 end as engagement_rate",
+    "alternative": "The business logic says \"engagement_rate is 0.0 when impressions are 0; otherwise\" divide, although the denominator column description instead says \"when greater than 0\".",
+    "importance": 2,
+    "reason": "Negative values expose a difference between the implemented guard and one explicit contract definition.",
+    "updates": null,
+    "id": "c4-6",
+    "call": 4
+  },
+  {
+    "statement": "Daily aggregated clicks plus likes, shares, and comments never exceed aggregated impressions when impressions are positive.",
+    "about": "data",
+    "target": "marts.social_media_reporting__daily_kpis",
+    "evidence_of_dependence": "case when impressions > 0 then (clicks + likes + shares + comments)::double / impressions else 0.0 end as engagement_rate",
+    "alternative": "The daily contract requires \"engagement_rate BETWEEN 0 AND 1\", while the YouTube contract defines both clicks and impressions as views and allows additional interactions.",
+    "importance": 4,
+    "reason": "Groups exceeding this bound would violate the declared validation test despite implementing the stated ratio.",
+    "updates": null,
+    "id": "c5-1",
+    "call": 5
+  },
+  {
+    "statement": "Every recently dated intermediate record has non-null page_id and post_id.",
+    "about": "data",
+    "target": "marts.social_media_reporting__rollup_report",
+    "evidence_of_dependence": "where created_timestamp is not null",
+    "alternative": "The rollup declares not_null tests for both identifiers, but Facebook permits null page_id and Twitter and YouTube also permit null page_id.",
+    "importance": 4,
+    "reason": "The rollup does not exclude or repair missing identifiers, so upstream nulls can violate its output contract.",
+    "updates": null,
+    "id": "c5-2",
+    "call": 5
+  },
+  {
+    "statement": "Pages with null page_id should be removed before creating retention cohorts.",
+    "about": "requirement",
+    "target": "marts.social_media_reporting__retention_kpis",
+    "evidence_of_dependence": "from page_activity\n    where page_id is not null",
+    "alternative": "The retention contract says to \"only keep rows where created_timestamp is present\" and defines cohorts \"For each (page_id, platform)\" without an identifier exclusion.",
+    "importance": 3,
+    "reason": "Removing null identifiers can eliminate cohort weeks that the documented grouping would otherwise emit.",
+    "updates": null,
+    "id": "c5-3",
+    "call": 5
+  },
+  {
+    "statement": "Records without created_timestamp should be excluded entirely from monthly CTR reporting.",
+    "about": "requirement",
+    "target": "marts.social_media_reporting__ctr_by_platform",
+    "evidence_of_dependence": "from platform_posts\n    where created_timestamp is not null",
+    "alternative": "The business logic says \"Union all posts\" and \"posts_count: number of rows (union-all, no de-duplication)\", although the month column also has a not_null test.",
+    "importance": 3,
+    "reason": "This resolves an undocumented missing-date policy by dropping records and their metrics.",
+    "updates": null,
+    "id": "c5-4",
+    "call": 5
+  },
+  {
+    "statement": "Records without created_timestamp should be excluded before daily aggregation and date-spine construction.",
+    "about": "requirement",
+    "target": "marts.social_media_reporting__daily_kpis",
+    "evidence_of_dependence": "from platform_posts\n    where created_timestamp is not null",
+    "alternative": "The daily business logic says to ingest all five models and normalize their dates without an explicit missing-date filter, while its output day has a not_null test.",
+    "importance": 2,
+    "reason": "The choice affects whether undated activity participates in normalization and whether platforms with only undated activity appear.",
+    "updates": null,
+    "id": "c5-5",
+    "call": 5
+  },
+  {
+    "statement": "The rollup's recent-data windows permit future-dated posts without an upper date boundary.",
+    "about": "requirement",
+    "target": "marts.social_media_reporting__rollup_report",
+    "evidence_of_dependence": "created_timestamp >= current_date - interval '4 years' ... created_timestamp >= current_date - interval '2 years'",
+    "alternative": "The contract says \"keep the last 4 years\" and \"keep the last 2 years\", which could instead mean a window ending at the current date.",
+    "importance": 2,
+    "reason": "Future-dated records would enter the rollup and alter its rankings under this interpretation.",
+    "updates": null,
+    "id": "c5-6",
+    "call": 5
+  }
+]
+
+=== Agent steps since the last review ===
+### event 37
+
+## 命令原文
+
+grep 'staging\.|intermediate\.|marts\.' /tmp/pipeline.log | tail -35; python - <<'PY'
+import duckdb
+c=duckdb.connect('social_media_reporting.duckdb',read_only=True)
+for schema in ['staging','intermediate','marts']:
+ for t,n in c.execute(f"select table_name, (select count(*) from "+schema+".\""+"'"+"'"+") from information_schema.tables where table_schema='"+schema+"'").fetchall() if False else []: pass
+ for (t,) in c.execute(f"select table_name from information_schema.tables where table_schema='{schema}'").fetchall():
+  print(schema,t,c.execute(f'select count(*) from {schema}."{t}"').fetchone()[0])
+PY
+ls -l sql/staging
+
+## agent 实际看到的执行结果
+
+staging stg_social_media__account_history 0
+staging stg_social_media__facebook_posts 0
+staging stg_social_media__instagram_posts 0
+staging stg_social_media__linkedin_posts 100
+staging stg_social_media__twitter_organic_tweets 0
+staging stg_social_media__twitter_user_history 1
+staging stg_social_media__youtube_videos 0
+intermediate social_media_reporting__facebook_posts_reporting 0
+intermediate social_media_reporting__instagram_posts_reporting 0
+intermediate social_media_reporting__linkedin_posts_reporting 0
+intermediate social_media_reporting__twitter_posts_reporting 0
+intermediate social_media_reporting__youtube_videos_reporting 0
+marts social_media_reporting__ctr_by_platform 0
+marts social_media_reporting__daily_kpis 0
+marts social_media_reporting__retention_kpis 0
+marts social_media_reporting__rollup_report 0
+total 28
+-rw-r--r-- 1 katherine katherine  635 Oct 25 05:12 stg_social_media__account_history.sql
+-rw-r--r-- 1 katherine katherine 1457 Oct 25 05:12 stg_social_media__facebook_posts.sql
+-rw-r--r-- 1 katherine katherine 2755 Oct 25 05:12 stg_social_media__instagram_posts.sql
+-rw-r--r-- 1 katherine katherine 1142 Oct 25 05:12 stg_social_media__linkedin_posts.sql
+-rw-r--r-- 1 katherine katherine 2705 Oct 25 05:12 stg_social_media__twitter_organic_tweets.sql
+-rw-r--r-- 1 katherine katherine 1449 Oct 25 05:12 stg_social_media__twitter_user_history.sql
+-rw-r--r-- 1 katherine katherine 1770 Oct 25 05:12 stg_social_media__youtube_videos.sql
+
+
+### event 39
+
+## 命令原文
+
+python - <<'PY'
+import duckdb
+c=duckdb.connect('social_media_reporting_start.duckdb',read_only=True)
+for t,col in [('account_history','timezone'),('facebook_pages_post_history','created_time'),('instagram_business_media_history','created_time'),('organic_tweet_report','date'),('youtube_video','snippet_published_at'),('linkedin_pages_ugc_post_history','created_time')]:
+ print(t,c.execute(f'select count(*), min({col}), max({col}) from raw.{t}').fetchone())
+ print(c.execute(f'select {col} from raw.{t} limit 3').fetchall())
+PY
+
+
+## agent 实际看到的执行结果
+
+account_history (2500, ' ', 'invalid/timezone')
+[('America/Los_Angeles',), ('America/Los_Angeles',), ('America/Los_Angeles',)]
+facebook_pages_post_history (2500, datetime.datetime(2020, 1, 1, 21, 16, 42), datetime.datetime(2023, 12, 29, 23, 45))
+[(datetime.datetime(2021, 10, 2, 22, 2, 4),), (datetime.datetime(2023, 6, 15, 5, 45, 48),), (datetime.datetime(2021, 3, 5, 11, 12, 8),)]
+instagram_business_media_history (2500, datetime.datetime(2020, 1, 1, 4, 6, 47), datetime.datetime(2023, 12, 30, 22, 14, 49))
+[(datetime.datetime(2022, 7, 5, 21, 4, 12),), (datetime.datetime(2023, 5, 5, 3, 53, 50),), (datetime.datetime(2021, 8, 5, 2, 52, 36),)]
+organic_tweet_report (2500, datetime.datetime(2020, 1, 2, 23, 34, 1), datetime.datetime(2023, 12, 30, 5, 1, 6))
+[(datetime.datetime(2023, 11, 13, 1, 5, 38),), (datetime.datetime(2023, 11, 27, 2, 29, 56),), (datetime.datetime(2023, 1, 13, 5, 3, 25),)]
+youtube_video (2500, datetime.datetime(2020, 1, 1, 23, 10, 44), datetime.datetime(2023, 12, 29, 20, 10, 30))
+[(datetime.datetime(2020, 10, 27, 22, 48, 14),), (datetime.datetime(2020, 10, 27, 21, 45, 35),), (datetime.datetime(2020, 10, 27, 21, 34, 10),)]
+linkedin_pages_ugc_post_history (75, datetime.datetime(2023, 7, 17, 18, 41, 22, 854000), datetime.datetime(2023, 10, 13, 17, 38, 2, 514000))
+[(datetime.datetime(2023, 10, 13, 17, 32, 47, 678000),), (datetime.datetime(2023, 10, 5, 22, 0, 4, 871000),), (datetime.datetime(2023, 10, 13, 17, 34, 23, 935000),)]
+
+
+### event 41
+
+## 命令原文
+
+python - <<'PY'
+import duckdb
+c=duckdb.connect('social_media_reporting.duckdb',read_only=True)
+for t in ['stg_social_media__linkedin_posts','social_media_reporting__linkedin_posts_reporting']:
+ print(t,c.execute(f'select * from '+('staging' if t.startswith('stg') else 'intermediate')+f'.{t} limit 3').fetchdf().to_string(index=False))
+PY
+
+## agent 实际看到的执行结果
+
+stg_social_media__linkedin_posts organization_id                          post_id created_timestamp platform post_message content_type                                                              post_url
+          10429 urn:li:share:5822385697620762630               NaT linkedin         None         None https://www.linkedin.com/feed/update/urn:li:share:5822385697620762630
+          10429 urn:li:share:5886781801694789632               NaT linkedin         None         None https://www.linkedin.com/feed/update/urn:li:share:5886781801694789632
+          10429          urn:li:share:1047228292               NaT linkedin         None         None          https://www.linkedin.com/feed/update/urn:li:share:1047228292
+social_media_reporting__linkedin_posts_reporting Empty DataFrame
+Columns: [page_id, page_name, post_id, post_message, created_timestamp, platform, clicks, impressions, likes, shares, comments, post_url, post_category, calculated_engagement_rate]
+Index: []
+
+
+### event 43
+
+## 命令原文
+
+python - <<'PY'
+import duckdb
+c=duckdb.connect('social_media_reporting_start.duckdb',read_only=True)
+for t in ['account_history','organic_tweet_report','youtube_video','instagram_business_media_history','facebook_pages_post_history']:
+ print('\n',t,c.execute(f'select * from raw.{t} limit 1').fetchdf().to_string(index=False))
+PY
+
+## agent 实际看到的执行结果
+
+
+ account_history          id          updated_at        _fivetran_synced approval_status business_id business_name          created_at  deleted industry_type     name salt            timezone  timezone_switch_at
+18ce54lbsn8 2021-09-30 15:48:49 2021-10-07 20:21:15.938        ACCEPTED        None          None 2017-10-25 16:26:16    False          None Fivetran None America/Los_Angeles 2017-10-24 07:00:00
+
+ organic_tweet_report      account_id                date  organic_tweet_id      placement           _fivetran_synced  app_clicks  card_engagements  carousel_swipes  clicks  engagements  follows  impressions  likes  poll_card_vote  qualified_impressions  replies  retweets  tweets_send  unfollows  url_clicks  video_15_s_views  video_3_s_100_pct_views  video_6_s_views  video_content_starts  video_cta_clicks  video_total_views  video_views_100  video_views_25  video_views_50  video_views_75
+default_account 2023-11-13 01:05:38      1.095761e+24 ALL_ON_TWITTER 2025-10-17 12:53:55.331895          69                36               22      19          838        0        25422    695               4                  22879      114       208            0          0        1142               632                      118              133                   642                48                439               91             344              34              32
+
+ youtube_video          id    _fivetran_synced  content_details_caption content_details_definition content_details_dimension content_details_duration  content_details_has_custom_thumbnail  content_details_licensed_content content_details_projection content_details_region_restriction  etag          kind player_embed_height player_embed_html player_embed_width privacy_status  snippet_category_id       snippet_channel_id snippet_channel_title snippet_default_audio_language snippet_default_language snippet_description snippet_live_broadcast_content        snippet_localized snippet_published_at snippet_tags snippet_thumbnails snippet_title  statistics_comment_count  statistics_dislike_count  statistics_favorite_count  statistics_like_count  statistics_view_count  status_embeddable status_failure_reason status_license  status_made_for_kids  status_public_stats_viewable status_publish_at status_rejection_reason  status_self_declared_made_for_kids upload_status
+t91FEgxdojg 2023-12-01 19:37:55                    False                         hd                        2d                 PT49M19S                                 False                             False                rectangular                               None e1111 youtube#video                None              None               None         public                   28 UC2vW_-qeIhF1ESszzuH2pyw              Fivetran                           None                     None        Cool video 1                           none {"title":"cool video 1"}  2020-10-27 22:48:14         None               None  Cool video 1                         0                         0                        0.0                     25                   2038               True                  None        youtube                 False                          True              None                    None                               False     processed
+
+ instagram_business_media_history                         _fivetran_id           _fivetran_synced               id            ig_id           user_id    username media_type                                                                                                                                                                                          caption        created_time                                 media_url                                 permalink
+490f0e36-5560-4e8d-9dde-1cd1718cb029 2025-10-17 12:53:50.802028 9760717460111188 9760717460111188 17841439536869286 user_111188      IMAGE RGFza2ZwaWluIHJkZHFkcyBmZmlleHBmIG1hY3p6eWFzIHByc3FneWwgZ3V4bGhycCB3aXRoIEFQSSBxZWJjZSBpbnRlZ3JhdGlvbiBldG91YWhtIG91ciBueWcgb2JpbmJya2JnYiBpbnRlZ3JhdGlvbiBqYm8ganh2cHZxcG4gYXV0b21hdGlvbiBpbi4= 2022-07-05 21:04:12 https://instagram.com/p/9760717460111188/ https://instagram.com/p/9760717460111188/
+
+ facebook_pages_post_history                               id        updated_time    _fivetran_synced        created_time         page_id status_type                                                                                                                                          message  share_count  is_published privacy_value  is_hidden  is_eligible_for_promotion  is_instagram_eligible
+514435155250654_9478370117065904 2021-10-02 22:02:04 2021-10-03 03:02:04 2021-10-02 22:02:04 514435155249255   wall_post T3J3amZya2N5ZSBvbiByZWFjaCByZWFjaCBmaHV5eHpub3Mgb3FzenZhdCBtbGFyamcgZW5nYWdlbWVudCBhcmthIGVuZ2FnZW1lbnQgc29jaWFsIGZuenR4bWogdXJ2eWVvcCB6aGdpZHou           18          True   ALL_FRIENDS      False                       True                   True
+
+
+### event 45
+
+## 命令原文
+
+python - <<'PY'
+import duckdb
+c=duckdb.connect('social_media_reporting_start.duckdb')
+print('ids linkedin match',c.execute("select count(*) from raw.linkedin_pages_organization_ugc_post o join raw.linkedin_pages_ugc_post_history h on regexp_extract(o.ugc_post_id,'[0-9]+$')=regexp_extract(h.id,'[0-9]+$')").fetchone())
+print('raw rows date recent as today',c.execute("select count(*) from raw.facebook_pages_post_history where created_time >= current_date - interval '2 years'").fetchone())
+print('tweet join',c.execute('select count(*) from raw.organic_tweet_report o join raw.tweet t on o.organic_tweet_id=t.id').fetchone())
+print('users ids',c.execute('select distinct id from raw.twitter_user_history limit 5').fetchall())
+print('linkedin post assoc',c.execute('select * from raw.linkedin_pages_organization_ugc_post limit 5').fetchall())
+PY
+
+## agent 实际看到的执行结果
+
+ids linkedin match (0,)
+raw rows date recent as today (0,)
+tweet join (2500,)
+users ids [('100071333',), ('false853637124',), ('False',), ('True',)]
+linkedin post assoc [(10429, 'urn:li:share:5975571345575022592', datetime.datetime(2021, 10, 27, 14, 40, 9, 984000)), (10429, 'urn:li:share:5994461776131948545', datetime.datetime(2021, 10, 27, 14, 40, 9, 984000)), (10429, 'urn:li:share:5986812882107527168', datetime.datetime(2021, 10, 27, 14, 40, 9, 984000)), (10429, 'urn:li:share:1035074525', datetime.datetime(2021, 10, 27, 14, 40, 10, 560000)), (10429, 'urn:li:share:1034687017', datetime.datetime(2021, 10, 27, 14, 40, 10, 560000))]
+
+
+

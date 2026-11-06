@@ -1,0 +1,1397 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "staging.stg_jira__user": {
+      "items": [
+        {
+          "problem": "Duplicate user IDs are not removed or otherwise reconciled despite the required uniqueness constraint.",
+          "about": "requirement",
+          "evidence_in_work": "from raw.user where id is not null",
+          "source": "user_id ... constraints: [not_null, unique]",
+          "importance": 3,
+          "reason": "Duplicates would multiply comments, issues, and downstream user metrics, although the sampled output had unique IDs."
+        },
+        {
+          "problem": "Missing or blank display names are replaced with IDs and existing names are trimmed rather than simply validating the required display name.",
+          "about": "requirement",
+          "evidence_in_work": "coalesce(nullif(trim(name), ''), cast(id as varchar)) user_display_name",
+          "source": "user_display_name ... constraints: [not_null]",
+          "importance": 2,
+          "reason": "This invents display names and changes text used in profiles and conversations without an explicit correction rule."
+        }
+      ],
+      "fewer_reason": "Only two concrete concerns are supported by the visible user transformation and contract."
+    },
+    "staging.stg_jira__project": {
+      "items": [
+        {
+          "problem": "Duplicate project IDs are resolved by an arbitrary tied ordering that may retain an incorrect project record.",
+          "about": "data",
+          "evidence_in_work": "row_number() over(partition by id order by id)=1",
+          "source": "project_id ... constraints: [not_null, unique]",
+          "importance": 2,
+          "reason": "Conflicting duplicate attributes could change project names and lead assignments, but duplicates were not demonstrated."
+        }
+      ],
+      "fewer_reason": "The explicit key and name validation rules otherwise appear implemented."
+    },
+    "staging.stg_jira__issue": {
+      "items": [
+        {
+          "problem": "Estimate and time-spent fields prefer underscore-prefixed columns without establishing whether those columns are the intended seconds measures.",
+          "about": "data",
+          "evidence_in_work": "coalesce(_original_estimate,original_estimate)",
+          "source": "raw.issue columns include _original_estimate, original_estimate, _remaining_estimate, remaining_estimate, _time_spent, time_spent",
+          "importance": 4,
+          "reason": "Choosing the wrong parallel measure would affect estimates, hours, and financial metrics throughout the pipeline."
+        },
+        {
+          "problem": "Timezone suffixes are stripped rather than interpreted when converting issue timestamps.",
+          "about": "data",
+          "evidence_in_work": "regexp_replace(created, ' [+-][0-9]{4}$', '')",
+          "source": "standardized timestamps",
+          "importance": 4,
+          "reason": "The observed +0800 values become naive local times, potentially shifting runtime ages and comparisons across offsets."
+        },
+        {
+          "problem": "Required issue keys and successfully parsed required timestamps are not validated.",
+          "about": "requirement",
+          "evidence_in_work": "where id is not null and created is not null and updated is not null and project is not null",
+          "source": "issue_key, created_at, updated_at ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "A non-null malformed timestamp can become NULL through try_cast, while a NULL key passes the filter."
+        },
+        {
+          "problem": "Negative estimates, time spent, and work ratios are carried into downstream models whose contracts require non-negative values.",
+          "about": "requirement",
+          "evidence_in_work": "cast(work_ratio as double) work_ratio",
+          "source": "original_estimate_seconds IS NULL OR original_estimate_seconds >= 0; work_ratio IS NULL OR work_ratio >= 0",
+          "importance": 3,
+          "reason": "Invalid measures would violate analytical model tests and distort duration and investment summaries."
+        },
+        {
+          "problem": "Duplicate issues are selected using lexicographic raw timestamp ordering rather than parsed chronological ordering.",
+          "about": "data",
+          "evidence_in_work": "partition by id order by updated desc nulls last",
+          "source": "raw.issue.updated ... VARCHAR",
+          "importance": 2,
+          "reason": "Mixed timestamp formats or offsets could select an older duplicate, although sampled issue IDs were unique."
+        }
+      ],
+      "fewer_reason": "Five distinct supported concerns were found; additional source-mapping errors cannot be established from the supplied material."
+    },
+    "staging.stg_jira__sprint": {
+      "items": [
+        {
+          "problem": "Sprint timestamps lose their timezone offsets during parsing.",
+          "about": "data",
+          "evidence_in_work": "regexp_replace(start_date, ' [+-][0-9]{4}$', '')",
+          "source": "Cleaned sprint data with validated date ranges and consistent naming",
+          "importance": 3,
+          "reason": "Sprint boundaries and runtime active flags can be shifted when offsets are meaningful."
+        },
+        {
+          "problem": "Sprint ID uniqueness is not enforced.",
+          "about": "requirement",
+          "evidence_in_work": "from raw.sprint where id is not null and trim(id)<>''",
+          "source": "sprint_id ... constraints: [not_null, unique]",
+          "importance": 3,
+          "reason": "Duplicate sprints would change synthetic assignments and could duplicate sprint-level outputs."
+        },
+        {
+          "problem": "Reversed sprint date ranges are not checked before downstream non-negative duration calculations.",
+          "about": "requirement",
+          "evidence_in_work": "try_cast(... end_date ... as timestamp) ended_at",
+          "source": "planned_duration_days IS NULL OR planned_duration_days >= 0",
+          "importance": 2,
+          "reason": "Invalid ranges could produce negative planned durations and incorrect snapshot selection."
+        }
+      ],
+      "fewer_reason": "Three supported concerns were found."
+    },
+    "staging.stg_jira__comment": {
+      "items": [
+        {
+          "problem": "Comment timezone offsets are discarded rather than normalized.",
+          "about": "data",
+          "evidence_in_work": "regexp_replace(created, ' [+-][0-9]{4}$', '')",
+          "source": "consistent timestamps",
+          "importance": 3,
+          "reason": "Activity dates and seven-day interaction intervals may be wrong across differing offsets."
+        },
+        {
+          "problem": "The required created_at field may become NULL after parsing even though the raw created string is non-null.",
+          "about": "requirement",
+          "evidence_in_work": "created is not null ... try_cast",
+          "source": "created_at ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Malformed dates can survive staging and disappear from conversations or create invalid activity dates."
+        },
+        {
+          "problem": "Duplicate comment IDs are resolved by earliest raw creation text with no check for conflicting bodies or updates.",
+          "about": "data",
+          "evidence_in_work": "row_number() over(partition by id order by created)=1",
+          "source": "comment_id ... constraints: [not_null, unique]",
+          "importance": 2,
+          "reason": "The retained comment may not represent the latest valid content."
+        }
+      ],
+      "fewer_reason": "Only three concrete concerns are supported."
+    },
+    "staging.stg_jira__issue_field_history": {
+      "items": [
+        {
+          "problem": "History timestamps discard timezone offsets.",
+          "about": "data",
+          "evidence_in_work": "regexp_replace(time, ' [+-][0-9]{4}$', '')",
+          "source": "validated field references and timestamps",
+          "importance": 3,
+          "reason": "Event ordering, assignment durations, and daily snapshots can be incorrect when offsets differ."
+        },
+        {
+          "problem": "NULL is_active values are retained despite the non-null constraint.",
+          "about": "requirement",
+          "evidence_in_work": "field_value,is_active from raw.issue_field_history",
+          "source": "is_active ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Unvalidated activity flags can silently exclude history from active-field analyses."
+        },
+        {
+          "problem": "Filtering non-null raw time strings does not guarantee a non-null parsed updated_at.",
+          "about": "requirement",
+          "evidence_in_work": "where ... time is not null",
+          "source": "updated_at ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Malformed times can survive into latest-event selection and date-based metrics."
+        }
+      ],
+      "fewer_reason": "Three distinct concerns are supported."
+    },
+    "staging.stg_jira__field": {
+      "items": [
+        {
+          "problem": "NULL field names are not rejected despite the required non-null field_name.",
+          "about": "requirement",
+          "evidence_in_work": "name field_name ... where id is not null",
+          "source": "field_name ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Name-based Epic, sprint, and story-point identification would fail for these fields."
+        },
+        {
+          "problem": "Conflicting duplicate field definitions are selected arbitrarily.",
+          "about": "data",
+          "evidence_in_work": "partition by id order by id",
+          "source": "field_id ... constraints: [not_null, unique]",
+          "importance": 2,
+          "reason": "The chosen name can change all history interpretation for that field."
+        }
+      ],
+      "fewer_reason": "Two supported concerns were identified."
+    },
+    "staging.stg_jira__field_option": {
+      "items": [],
+      "fewer_reason": "The visible mapping, types, and required-key filters match the supplied field-option contract; no specific additional concern is supported."
+    },
+    "staging.stg_jira__issue_link": {
+      "items": [
+        {
+          "problem": "The mapping of inward_issue_id to issue_id and outward_issue_id to related_issue_id is assumed without verifying the link-direction convention.",
+          "about": "data",
+          "evidence_in_work": "inward_issue_id ... issue_id ... outward_issue_id ... related_issue_id",
+          "source": "raw.issue_link columns: inward_issue_id, outward_issue_id, issue_link_type_id",
+          "importance": 2,
+          "reason": "Direction-sensitive consumers could reverse relationships, although most shown metrics inspect both endpoints."
+        }
+      ],
+      "fewer_reason": "Only the unverified directional interpretation presents a concrete uncertainty."
+    },
+    "staging.stg_jira__status": {
+      "items": [
+        {
+          "problem": "Rows with NULL status names are retained.",
+          "about": "requirement",
+          "evidence_in_work": "name status_name ... where id is not null",
+          "source": "status_name ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Required status labels can remain missing throughout issue reporting."
+        },
+        {
+          "problem": "Duplicate status IDs with conflicting attributes are resolved by arbitrary tied ordering.",
+          "about": "data",
+          "evidence_in_work": "partition by id order by id",
+          "source": "status_id ... constraints: [not_null, unique]",
+          "importance": 2,
+          "reason": "The selected category and label may not be the correct definition."
+        }
+      ],
+      "fewer_reason": "Two supported concerns were found."
+    },
+    "staging.stg_jira__priority": {
+      "items": [
+        {
+          "problem": "NULL priority names survive staging despite their non-null constraint.",
+          "about": "requirement",
+          "evidence_in_work": "name priority_name ... where id is not null",
+          "source": "priority_name ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Missing labels can affect downstream priority-based classification."
+        },
+        {
+          "problem": "Conflicting duplicate priority definitions are selected arbitrarily.",
+          "about": "data",
+          "evidence_in_work": "partition by id order by id",
+          "source": "priority_id ... constraints: [not_null, unique]",
+          "importance": 2,
+          "reason": "An arbitrary retained label could alter high/critical priority interpretation."
+        }
+      ],
+      "fewer_reason": "Two supported concerns were found."
+    },
+    "staging.stg_jira__resolution": {
+      "items": [
+        {
+          "problem": "NULL resolution names are not filtered or corrected.",
+          "about": "requirement",
+          "evidence_in_work": "name resolution_name ... where id is not null",
+          "source": "resolution_name ... constraints: [not_null]",
+          "importance": 2,
+          "reason": "Required resolution labels may be missing in enriched issues."
+        },
+        {
+          "problem": "Duplicate resolution definitions are resolved by an arbitrary tied ordering.",
+          "about": "data",
+          "evidence_in_work": "partition by id order by id",
+          "source": "resolution_id ... constraints: [not_null, unique]",
+          "importance": 2,
+          "reason": "Conflicting duplicate descriptions or names may be selected unpredictably."
+        }
+      ],
+      "fewer_reason": "Two supported concerns were found."
+    },
+    "staging.stg_jira__issue_type": {
+      "items": [
+        {
+          "problem": "NULL issue-type names remain despite the non-null constraint.",
+          "about": "requirement",
+          "evidence_in_work": "name issue_type_name ... where id is not null",
+          "source": "issue_type_name ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Epic detection and issue-value weighting rely on these names."
+        },
+        {
+          "problem": "Conflicting duplicate issue-type IDs are resolved arbitrarily.",
+          "about": "data",
+          "evidence_in_work": "partition by id order by id",
+          "source": "issue_type_id ... constraints: [not_null, unique]",
+          "importance": 2,
+          "reason": "The chosen name or subtask flag could change hierarchy interpretation."
+        }
+      ],
+      "fewer_reason": "The raw subtask mapping was fixed; only two remaining supported concerns were found."
+    },
+    "staging.stg_jira__component": {
+      "items": [
+        {
+          "problem": "NULL component names are retained despite the non-null requirement.",
+          "about": "requirement",
+          "evidence_in_work": "name component_name ... where id is not null",
+          "source": "component_name ... constraints: [not_null]",
+          "importance": 2,
+          "reason": "Components can disappear from name-based counts and project summaries."
+        },
+        {
+          "problem": "Conflicting duplicate components are selected arbitrarily by ID.",
+          "about": "data",
+          "evidence_in_work": "partition by id order by id",
+          "source": "component_id ... constraints: [not_null, unique]",
+          "importance": 2,
+          "reason": "A different retained project association could shift component metrics between projects."
+        }
+      ],
+      "fewer_reason": "Two supported concerns were found."
+    },
+    "staging.stg_jira__status_category": {
+      "items": [
+        {
+          "problem": "NULL category names are not validated.",
+          "about": "requirement",
+          "evidence_in_work": "name status_category_name ... where id is not null",
+          "source": "status_category_name ... constraints: [not_null]",
+          "importance": 2,
+          "reason": "Required category labels may remain missing in issue joins."
+        },
+        {
+          "problem": "Duplicate category IDs are resolved using an arbitrary tied ordering.",
+          "about": "data",
+          "evidence_in_work": "partition by id order by id",
+          "source": "status_category_id ... constraints: [not_null, unique]",
+          "importance": 1,
+          "reason": "Conflicting labels could be retained, but only three source categories were observed."
+        }
+      ],
+      "fewer_reason": "Two supported concerns were found."
+    },
+    "staging.stg_jira__version": {
+      "items": [
+        {
+          "problem": "version_id is not trimmed in the output despite the explicit correction rule.",
+          "about": "requirement",
+          "evidence_in_work": "cast(id as varchar) version_id",
+          "source": "version_id = TRIM(version_id) ... on_failure: correct",
+          "importance": 4,
+          "reason": "Whitespace can prevent version-history joins from matching otherwise valid IDs."
+        },
+        {
+          "problem": "Version ID uniqueness is not enforced.",
+          "about": "requirement",
+          "evidence_in_work": "from raw.version where id is not null",
+          "source": "version_id ... constraints: [not_null, unique]",
+          "importance": 3,
+          "reason": "Duplicate definitions could multiply concatenated version names."
+        },
+        {
+          "problem": "Version date correction removes timezone offsets instead of interpreting them.",
+          "about": "data",
+          "evidence_in_work": "regexp_replace(release_date, ' [+-][0-9]{4}$', '')",
+          "source": "standardize timezone formats",
+          "importance": 2,
+          "reason": "Release and start instants can change when offsets are significant."
+        },
+        {
+          "problem": "Archived and released flags are passed through without addressing values that fail the explicit true/false rule.",
+          "about": "requirement",
+          "evidence_in_work": "archived is_archived,released is_released",
+          "source": "is_archived IN (TRUE,FALSE) ... on_failure: correct",
+          "importance": 2,
+          "reason": "Raw BOOLEAN typing limits invalid values, but NULL flags are not reconciled if the rule is intended to exclude them."
+        }
+      ],
+      "fewer_reason": "Four supported concerns were found."
+    },
+    "staging.stg_jira__issue_multiselect_history": {
+      "items": [
+        {
+          "problem": "Multiselect history timestamps discard timezone offsets.",
+          "about": "data",
+          "evidence_in_work": "regexp_replace(time, ' [+-][0-9]{4}$', '')",
+          "source": "Cleaned issue multiselect field change history",
+          "importance": 3,
+          "reason": "Latest-version selection and daily field ordering can be incorrect across differing offsets."
+        },
+        {
+          "problem": "NULL active flags are retained despite the non-null requirement.",
+          "about": "requirement",
+          "evidence_in_work": "field_value,is_active from raw.issue_multiselect_history",
+          "source": "is_active ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "The staged result can violate its declared schema guarantees."
+        },
+        {
+          "problem": "Malformed non-null time strings can produce NULL updated_at values that survive staging.",
+          "about": "requirement",
+          "evidence_in_work": "try_cast ... where ... time is not null",
+          "source": "updated_at ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "NULL parsed times undermine latest-event and daily-pivot calculations."
+        }
+      ],
+      "fewer_reason": "Three supported concerns were found."
+    },
+    "intermediate.int_jira__user_metrics": {
+      "items": [
+        {
+          "problem": "Average durations divide by the number of non-missing durations rather than by all closed or open issues.",
+          "about": "requirement",
+          "evidence_in_work": "round(avg(epoch(resolved_at)-epoch(last_assigned_at)) filter(...)) ac",
+          "source": "divide the sum of close durations by the closed issue count",
+          "importance": 5,
+          "reason": "Users with partially missing assignment history receive overstated averages."
+        },
+        {
+          "problem": "Counts and rounded duration columns are not cast to the specified HUGEINT and DECIMAL(18,0) output types.",
+          "about": "requirement",
+          "evidence_in_work": "count(*) filter(...) count_closed_issues ... avg_close_time_seconds",
+          "source": "count_closed_issues: HUGEINT; avg_close_time_seconds: DECIMAL(18,0)",
+          "importance": 3,
+          "reason": "The output schema differs from the contract and propagates into user marts."
+        },
+        {
+          "problem": "Runtime open ages compare current timestamps with upstream timestamps whose offsets were stripped.",
+          "about": "data",
+          "evidence_in_work": "epoch(current_timestamp)-epoch(last_assigned_at)",
+          "source": "Open age: time between last_assigned_at and the query runtime",
+          "importance": 3,
+          "reason": "Systematic timezone shifts can affect rounded seconds and day boundaries."
+        }
+      ],
+      "fewer_reason": "Three distinct concerns are supported; zero-count and missing-median behavior otherwise appears implemented."
+    },
+    "intermediate.int_jira__project_metrics": {
+      "items": [
+        {
+          "problem": "Median days are calculated from unrounded median seconds instead of the rounded seconds metric.",
+          "about": "requirement",
+          "evidence_in_work": "round(med_close/86400) median_close_time_days",
+          "source": "convert the corresponding seconds metric to days by dividing by 86400 and rounding",
+          "importance": 3,
+          "reason": "Values close to half-day boundaries can differ from the mandated two-stage rounding."
+        },
+        {
+          "problem": "Count and duration outputs are not cast to the required HUGEINT and DECIMAL(18,0) types.",
+          "about": "requirement",
+          "evidence_in_work": "count(*) filter(...) count_closed_issues ... round(med_close)",
+          "source": "count_closed_issues: HUGEINT; median_close_time_seconds: DECIMAL(18,0)",
+          "importance": 3,
+          "reason": "All project metric consumers inherit a schema inconsistent with the contract."
+        },
+        {
+          "problem": "Assigned open-age sums exclude currently unassigned issues even when first_assigned_at exists.",
+          "about": "requirement",
+          "evidence_in_work": "resolved_at is null and assignee_user_id is not null and first_assigned_at is not null",
+          "source": "Age of currently open and assigned: seconds from first_assigned_at ... for open issues where first_assigned_at exists",
+          "importance": 3,
+          "reason": "The prose numerator condition differs from the implementation and should be checked for previously assigned issues."
+        },
+        {
+          "problem": "Negative source durations are not handled despite the model's non-negative average and median guarantees.",
+          "about": "requirement",
+          "evidence_in_work": "epoch(resolved_at)-epoch(created_at)",
+          "source": "avg_close_time_seconds >= 0; median_close_time_seconds IS NULL OR median_close_time_seconds >= 0",
+          "importance": 3,
+          "reason": "Reversed timestamps or future creations can violate required metric tests."
+        }
+      ],
+      "fewer_reason": "Four concrete concerns were found."
+    },
+    "intermediate.int_jira__issue_sprint": {
+      "items": [
+        {
+          "problem": "The required error when no sprints exist is not implemented explicitly and modulo-by-zero may instead produce unmatched assignments.",
+          "about": "requirement",
+          "evidence_in_work": "s.seq=mod(i.h,sn.n)+1",
+          "source": "At least one sprint is required; if there are no sprints, this model will error",
+          "importance": 2,
+          "reason": "The observed data contains sprints, but an empty source would not reliably exhibit the specified failure behavior."
+        }
+      ],
+      "fewer_reason": "The hash-based mapping and inclusion filter otherwise match the specification."
+    },
+    "intermediate.int_jira__issue_comments": {
+      "items": [
+        {
+          "problem": "Conversation text may lose original author-name spacing because upstream user staging trims names.",
+          "about": "requirement",
+          "evidence_in_work": "u.user_display_name||': '||c.body",
+          "source": "original casing and spacing are preserved; no trimming or normalization is applied",
+          "importance": 2,
+          "reason": "Conversation strings can differ even though this aggregation itself does not trim text."
+        }
+      ],
+      "fewer_reason": "The inner join, count, delimiter, and NULL-line behavior otherwise match the contract."
+    },
+    "intermediate.int_jira__issue_join": {
+      "items": [
+        {
+          "problem": "is_active_sprint becomes NULL rather than false for issues without a sprint start.",
+          "about": "requirement",
+          "evidence_in_work": "(sp.sprint_started_at<=current_timestamp and (...)) is_active_sprint",
+          "source": "true when sprint_started_at is present ... otherwise false",
+          "importance": 4,
+          "reason": "Roughly two-thirds of issues are excluded from the synthetic mapping and can receive NULL flags."
+        },
+        {
+          "problem": "The output inherits the wrong parent field and lacks the required issue_id_1 and parent_issue_id_1 columns.",
+          "about": "requirement",
+          "evidence_in_work": "select iu.*",
+          "source": "issue_id_1 ... Alternate or secondary issue identifier; parent_issue_id_1 ... Secondary parent issue identifier",
+          "importance": 4,
+          "reason": "The upstream user-enrichment projection does not construct the contracted schema or revised parent output."
+        }
+      ],
+      "fewer_reason": "Two direct issues are supported; the remaining listed joins and coalesced counts match the specification."
+    },
+    "intermediate.int_jira__issue_field_history": {
+      "items": [],
+      "fewer_reason": "The visible inner join, unchanged history columns, and lowercased field name match the model-specific contract."
+    },
+    "intermediate.int_jira__issue_multiselect_history": {
+      "items": [],
+      "fewer_reason": "The visible inner join and pass-through projection match the supplied model-specific contract."
+    },
+    "intermediate.int_jira__issue_assign_resolution": {
+      "items": [],
+      "fewer_reason": "The case-insensitive filter, case-sensitive aggregate conditions, and non-null value filter match the unusually specific contract."
+    },
+    "intermediate.int_jira__issue_epic": {
+      "items": [],
+      "fewer_reason": "The name pattern, descending latest-record selection, and preservation of NULL selected values match the contract."
+    },
+    "intermediate.int_jira__issue_type_parents": {
+      "items": [
+        {
+          "problem": "The parent self-join uses an already enriched base that may contain multiple rows per issue rather than verifying its required issue-level grain.",
+          "about": "data",
+          "evidence_in_work": "from base b left join base p",
+          "source": "grain: One row per issue_id",
+          "importance": 2,
+          "reason": "Upstream non-unique lookup rows could compound fan-out, although observed output IDs were unique."
+        },
+        {
+          "problem": "Negative time and ratio values are passed through without satisfying this model's explicit non-negative tests.",
+          "about": "requirement",
+          "evidence_in_work": "select i.*",
+          "source": "time_spent_seconds IS NULL OR time_spent_seconds >= 0; work_ratio IS NULL OR work_ratio >= 0",
+          "importance": 2,
+          "reason": "No visible earlier step validates these measures."
+        }
+      ],
+      "fewer_reason": "Two supported concerns were found; the revised-parent and parent-type logic otherwise follows the contract."
+    },
+    "intermediate.int_jira__issue_users": {
+      "items": [
+        {
+          "problem": "The revised parent identifier is emitted as parent_issue_id_derived instead of replacing parent_issue_id.",
+          "about": "requirement",
+          "evidence_in_work": "coalesce(i.revised_parent_issue_id,i.parent_issue_id) parent_issue_id_derived",
+          "source": "Derive parent_issue_id by taking revised_parent_issue_id when present",
+          "importance": 4,
+          "reason": "Epic-linked issues retain the original NULL parent in the business-facing parent column."
+        },
+        {
+          "problem": "The required duplicate source identifiers issue_id_1 and parent_issue_id_1 are not produced.",
+          "about": "requirement",
+          "evidence_in_work": "select i.*,coalesce(...) parent_issue_id_derived",
+          "source": "the output includes duplicate source versions named issue_id_1 and parent_issue_id_1",
+          "importance": 4,
+          "reason": "The contracted schema is missing columns that are also specified in downstream marts."
+        }
+      ],
+      "fewer_reason": "Two direct discrepancies were found; the two user left joins otherwise match."
+    },
+    "intermediate.int_jira__issue_versions": {
+      "items": [
+        {
+          "problem": "The parsed integer history version ID is converted back to text before joining an unnormalized text version ID.",
+          "about": "data",
+          "evidence_in_work": "cast(l.version_id as varchar)=ver.version_id",
+          "source": "Convert field_value to an integer version_id and join to the version table",
+          "importance": 3,
+          "reason": "Whitespace and leading-zero IDs can fail to match, especially because version staging omits required ID trimming."
+        },
+        {
+          "problem": "The empty version result was not investigated to distinguish legitimate absence from a field-ID or identifier mismatch.",
+          "about": "data",
+          "evidence_in_work": "int_jira__issue_versions: 0 rows",
+          "source": "Filter issue multiselect history to records where field_id is 'versions' or 'fixVersions'",
+          "importance": 2,
+          "reason": "A mismatch would silently remove all affected and fix version information, but the empty result may be legitimate."
+        }
+      ],
+      "fewer_reason": "Two concrete uncertainties are supported; latest-timestamp ties and duplicate names are otherwise preserved."
+    },
+    "intermediate.int_jira__user_activity_metrics": {
+      "items": [
+        {
+          "problem": "Activity score sums infer lower-precision decimal types rather than the specified DECIMAL(38,1).",
+          "about": "requirement",
+          "evidence_in_work": "sum(weight) daily_activity_score",
+          "source": "daily_activity_score ... DECIMAL(38,1); rolling_7d_activity_score ... DECIMAL(38,1)",
+          "importance": 2,
+          "reason": "The daily score schema may differ even though observed values are representable."
+        },
+        {
+          "problem": "No final ordering by user_id and activity_date is applied.",
+          "about": "requirement",
+          "evidence_in_work": "at_churn_risk from v",
+          "source": "ordering is by user_id, activity_date",
+          "importance": 1,
+          "reason": "This affects direct SQL presentation rather than computed metric values."
+        }
+      ],
+      "fewer_reason": "The revised window implementation follows the specified row-based behavior; only two remaining concerns are supported."
+    },
+    "intermediate.int_jira__issue_lifecycle_analysis": {
+      "items": [
+        {
+          "problem": "Joining interval rows back to history only on issue_id creates a many-to-many expansion before summarization.",
+          "about": "requirement",
+          "evidence_in_work": "from h join a using(issue_id) where h.previous_change_time is not null",
+          "source": "total_field_changes: the count of retained changes (number of consecutive intervals)",
+          "importance": 5,
+          "reason": "An issue with n intervals can be counted n squared times, changing risk classifications and standard deviation."
+        },
+        {
+          "problem": "The final output is not ordered by issue_id.",
+          "about": "requirement",
+          "evidence_in_work": "from b left join s using(issue_id)",
+          "source": "the final result is ordered by issue_id ascending",
+          "importance": 1,
+          "reason": "Direct SQL row ordering differs, without changing calculated values."
+        }
+      ],
+      "fewer_reason": "Two distinct supported issues were found; the fan-out captures the related count and variance errors together."
+    },
+    "intermediate.int_jira__project_health_scoring": {
+      "items": [
+        {
+          "problem": "All health scores and the overall grade are hard-coded rather than derived from project metrics.",
+          "about": "requirement",
+          "evidence_in_work": "25::integer delivery_health_score ... 100::integer overall_health_score,'A+' health_grade",
+          "source": "overall_health_score = sum of the four health scores",
+          "importance": 5,
+          "reason": "Every project is represented as perfectly healthy regardless of its data."
+        },
+        {
+          "problem": "All five risk flags are fixed to zero.",
+          "about": "requirement",
+          "evidence_in_work": "0::integer backlog_risk ... 0::integer throughput_risk",
+          "source": "backlog_risk = 1 if open_issues > 2 × resolved_issues",
+          "importance": 5,
+          "reason": "Actual backlog, delivery, quality, resource, and throughput risks are never surfaced."
+        },
+        {
+          "problem": "Recent and prior resolution and creation counts are fixed to zero.",
+          "about": "requirement",
+          "evidence_in_work": "0::bigint issues_resolved_30d,0::bigint issues_created_30d",
+          "source": "issues_resolved_30d counts issues resolved in the last 30 days",
+          "importance": 4,
+          "reason": "All velocity trends and throughput inputs are absent."
+        },
+        {
+          "problem": "History and comment sources are unused, replacing reopened counts and comment averages with defaults.",
+          "about": "requirement",
+          "evidence_in_work": "0::bigint reopened_issues_count,null::double avg_comments_per_issue",
+          "source": "reopened_issues_count counts all history records whose field value contains 'reopen'",
+          "importance": 4,
+          "reason": "Required quality signals and their score deductions cannot be calculated."
+        },
+        {
+          "problem": "Per-assignee workload aggregation is omitted.",
+          "about": "requirement",
+          "evidence_in_work": "null::double workload_distribution_stddev,null::bigint max_user_issues",
+          "source": "derived from per-assignee issue counts on assigned issues",
+          "importance": 4,
+          "reason": "Team imbalance remains invisible even for projects with assigned issues."
+        },
+        {
+          "problem": "Issue links are never read and total_issue_links is always zero.",
+          "about": "requirement",
+          "evidence_in_work": "0::bigint total_issue_links",
+          "source": "total_issue_links equals 1 if any project issue participates in any issue link",
+          "importance": 4,
+          "reason": "Projects with linked issues receive a false process signal."
+        },
+        {
+          "problem": "velocity_change_percent and trajectory_status are constants instead of calculations from recent and prior resolution counts.",
+          "about": "requirement",
+          "evidence_in_work": "0::double velocity_change_percent ... 'Stable' trajectory_status",
+          "source": "velocity_change_percent is the percent change in resolved count vs the prior 30 days",
+          "importance": 4,
+          "reason": "Improving and deteriorating projects cannot be distinguished."
+        },
+        {
+          "problem": "primary_risk_factor is always Delivery rather than the lowest-scoring dimension.",
+          "about": "requirement",
+          "evidence_in_work": "'Delivery' primary_risk_factor",
+          "source": "dimension with the lowest health score; ties resolve in order Delivery → Quality → Team → Process",
+          "importance": 3,
+          "reason": "The risk-driver field would remain wrong when real score calculations are implemented."
+        },
+        {
+          "problem": "Sprint participation counts rows instead of distinct sprint IDs.",
+          "about": "requirement",
+          "evidence_in_work": "(select count(*) from staging.stg_jira__sprint)",
+          "source": "number of distinct sprints in the sprint source",
+          "importance": 2,
+          "reason": "Duplicate staged sprint IDs would inflate the reported participation count."
+        },
+        {
+          "problem": "The required descending health-score ordering is omitted.",
+          "about": "requirement",
+          "evidence_in_work": "group by p.project_id,p.project_key,p.project_name",
+          "source": "Final result is ordered by overall_health_score descending",
+          "importance": 1,
+          "reason": "This changes direct SQL presentation, although the currently constant scores conceal the issue."
+        }
+      ],
+      "fewer_reason": null
+    },
+    "intermediate.int_jira__field_history_scd": {
+      "items": [
+        {
+          "problem": "Upstream replacement of unchanged fields with is_null prevents this model from forward-filling previous values.",
+          "about": "requirement",
+          "evidence_in_work": "count(status) over(...) gs",
+          "source": "on NULL days the count does not change",
+          "importance": 5,
+          "reason": "Each unchanged field is non-null text upstream, so update groups restart and prior values are lost."
+        }
+      ],
+      "fewer_reason": "The forward-fill algorithm itself appears appropriate; its major supported failure originates in the pivot input."
+    },
+    "intermediate.int_jira__sprint_performance_analytics": {
+      "items": [
+        {
+          "problem": "Story points are fixed at one instead of extracted from the latest active matching field history.",
+          "about": "requirement",
+          "evidence_in_work": "1.0 points from snapshots s join staging.stg_jira__issue",
+          "source": "take the latest active field value whose field name contains 'story' and 'point'",
+          "importance": 5,
+          "reason": "All point-based sprint metrics ignore available estimates."
+        },
+        {
+          "problem": "The global LIMIT 1000 is applied after expanding sprint start and end snapshots rather than to sprint-issue pairs.",
+          "about": "requirement",
+          "evidence_in_work": "from snapshots s join staging.stg_jira__issue ... limit 1000",
+          "source": "Create sprint_issues ... Apply a global LIMIT 1000 ... Snapshots ... For each sprint, create",
+          "importance": 5,
+          "reason": "The limit can select different issues per snapshot or omit one snapshot, creating artificial scope changes."
+        },
+        {
+          "problem": "sprint_health_score is always 100.",
+          "about": "requirement",
+          "evidence_in_work": "100::integer sprint_health_score",
+          "source": "subtract 30 if Behind Schedule ... clamp to [0,100]",
+          "importance": 5,
+          "reason": "Behind-schedule and unhealthy sprints are reported as fully healthy."
+        },
+        {
+          "problem": "The moving velocity trend and predicted completion day are never computed.",
+          "about": "requirement",
+          "evidence_in_work": "null::double velocity_trend_3d,null::double predicted_completion_day",
+          "source": "velocity_trend_3d: moving average of daily_velocity ... predicted_completion_day ... forecast",
+          "importance": 4,
+          "reason": "Required forecasting and trend outputs are entirely missing."
+        },
+        {
+          "problem": "Velocity categories use a single snapshot difference instead of velocity_trend_3d and treat first-snapshot NULL velocity as zero.",
+          "about": "requirement",
+          "evidence_in_work": "case when coalesce(prev_remaining-remaining,0)>5",
+          "source": "Velocity tier from velocity_trend_3d ... Negative on null",
+          "importance": 4,
+          "reason": "Both first-snapshot classifications and subsequent trend-based categories differ."
+        },
+        {
+          "problem": "Issue creation timestamps are truncated to dates before testing sprint membership.",
+          "about": "requirement",
+          "evidence_in_work": "cast(i.created_at as date) between s.start_date and coalesce(...)",
+          "source": "issue.created_at falls between sprint.started_at and coalesce(...)",
+          "importance": 4,
+          "reason": "Issues created before the sprint start time on the same day can be included."
+        },
+        {
+          "problem": "Sprints without selected issues disappear because snapshot metrics use an inner issue join.",
+          "about": "requirement",
+          "evidence_in_work": "from snapshots s join staging.stg_jira__issue i",
+          "source": "For each sprint, create ... Start snapshot",
+          "importance": 3,
+          "reason": "Empty or limit-excluded sprints may lack their required snapshot rows."
+        },
+        {
+          "problem": "NULL completed or remaining sums are coalesced only in the output, not before velocity and variance calculations.",
+          "about": "requirement",
+          "evidence_in_work": "sum(points) filter(...) remaining ... remaining-ideal burndown_variance",
+          "source": "burndown_variance ... tests: not_null",
+          "importance": 3,
+          "reason": "Fully completed sprints can receive NULL burndown and velocity metrics instead of zero-based calculations."
+        },
+        {
+          "problem": "Daily velocity uses uncoalesced remaining sums and can be NULL even after the first snapshot.",
+          "about": "requirement",
+          "evidence_in_work": "lag(remaining) ... prev_remaining-remaining",
+          "source": "daily_velocity: previous snapshot’s story_points_remaining minus current",
+          "importance": 3,
+          "reason": "A snapshot with no remaining issues should contribute zero remaining points, not erase velocity."
+        },
+        {
+          "problem": "The required sprint_id and day_number ordering is omitted.",
+          "about": "requirement",
+          "evidence_in_work": "end sprint_phase from x",
+          "source": "Output is ordered by sprint_id then day_number",
+          "importance": 1,
+          "reason": "Direct SQL presentation is not the specified snapshot sequence."
+        }
+      ],
+      "fewer_reason": null
+    },
+    "intermediate.int_jira__issue_calendar_spine": {
+      "items": [
+        {
+          "problem": "Unresolved issues use field-history dates when present instead of always using today as open_until.",
+          "about": "requirement",
+          "evidence_in_work": "coalesce(cast(valid_starting_on as date),current_date) open_until",
+          "source": "Set open_until to today if the issue is unresolved",
+          "importance": 5,
+          "reason": "Open issues can lose recent calendar rows and receive incorrect earliest-open dates."
+        },
+        {
+          "problem": "Resolved issues without field history receive today as open_until rather than the specified field-history date.",
+          "about": "requirement",
+          "evidence_in_work": "coalesce(cast(valid_starting_on as date),current_date)",
+          "source": "otherwise to the calendar date of the field-history valid_starting_on",
+          "importance": 4,
+          "reason": "The fallback can emit years of extra rows for resolved issues with no matching history."
+        }
+      ],
+      "fewer_reason": "Two substantive boundary errors were found; generating only through today is equivalent after the required final date filter."
+    },
+    "intermediate.int_jira__pivot_daily_field_history": {
+      "items": [
+        {
+          "problem": "Fields that did not change on a date are incorrectly replaced with the literal is_null.",
+          "about": "requirement",
+          "evidence_in_work": "coalesce(status,'is_null') status,coalesce(sprint,'is_null') sprint",
+          "source": "Unchanged fields on that date remain NULL; fields changed to true NULL appear as 'is_null'",
+          "importance": 5,
+          "reason": "This conflates no change with explicit clearing and breaks downstream forward-fill."
+        },
+        {
+          "problem": "NULL changes can be lost when several field IDs map to the same pivoted name because replacement occurs after MAX.",
+          "about": "requirement",
+          "evidence_in_work": "max(field_value) filter(where lower(field_name)='story points')",
+          "source": "Replace a NULL field value with the literal 'is_null' ... Pivot",
+          "importance": 2,
+          "reason": "Multiple matching fields could cause a non-null value to mask a selected explicit NULL."
+        }
+      ],
+      "fewer_reason": "Two supported discrepancies were found; timestamp validity-period derivation is omitted but is not independently consequential to the visible daily output."
+    },
+    "marts.jira__issue_enhanced": {
+      "items": [
+        {
+          "problem": "The output inherits the incorrect parent_issue_id and missing secondary identifier columns from issue_users.",
+          "about": "requirement",
+          "evidence_in_work": "select i.*",
+          "source": "parent_issue_id; issue_id_1; parent_issue_id_1",
+          "importance": 4,
+          "reason": "The final issue dataset lacks contracted columns and can omit revised Epic parents."
+        },
+        {
+          "problem": "Runtime durations use timestamps whose timezone offsets were removed upstream.",
+          "about": "data",
+          "evidence_in_work": "epoch(coalesce(i.resolved_at,current_timestamp)-i.created_at)",
+          "source": "if unresolved, measured to the query-time current timestamp",
+          "importance": 3,
+          "reason": "Open and assignment ages may be systematically shifted from actual elapsed time."
+        },
+        {
+          "problem": "Negative durations are not validated against the explicit non-negative output tests.",
+          "about": "requirement",
+          "evidence_in_work": "epoch(coalesce(i.resolved_at,current_timestamp)-i.last_assigned_at)",
+          "source": "last_assignment_duration_seconds IS NULL OR last_assignment_duration_seconds >= 0",
+          "importance": 3,
+          "reason": "Assignments after resolution or reversed source dates can violate the contracted output."
+        }
+      ],
+      "fewer_reason": "Three supported concerns were found; latest-history selection and duration formulas otherwise match."
+    },
+    "marts.jira__user_enhanced": {
+      "items": [
+        {
+          "problem": "User average duration metrics inherit the upstream non-missing-duration denominator instead of the total issue count.",
+          "about": "requirement",
+          "evidence_in_work": "m.avg_close_time_days ... m.avg_close_time_seconds",
+          "source": "divide the sum of close durations by the closed issue count",
+          "importance": 4,
+          "reason": "Final user profiles can overstate average close and open ages when assignment timestamps are partially missing."
+        },
+        {
+          "problem": "Pass-through metric types remain inconsistent with the specified HUGEINT counts and zero-scale decimals.",
+          "about": "requirement",
+          "evidence_in_work": "coalesce(m.count_closed_issues,0) ... m.median_close_time_seconds",
+          "source": "count_closed_issues: HUGEINT; median_close_time_seconds: DECIMAL(18,0)",
+          "importance": 2,
+          "reason": "The final user dataset does not explicitly restore the required metric schema."
+        }
+      ],
+      "fewer_reason": "Two supported inherited issues were found; project-name deduplication and left-join behavior match."
+    },
+    "marts.jira__project_enhanced": {
+      "items": [
+        {
+          "problem": "Metric columns inherit non-contract types from project_metrics.",
+          "about": "requirement",
+          "evidence_in_work": "m.avg_close_time_days ... m.median_close_time_seconds",
+          "source": "avg_close_time_days ... DECIMAL(18,0); count_closed_issues ... HUGEINT",
+          "importance": 3,
+          "reason": "The final project schema differs from the explicitly declared types."
+        },
+        {
+          "problem": "Median-day values inherit upstream conversion from unrounded seconds rather than the rounded seconds metric.",
+          "about": "requirement",
+          "evidence_in_work": "m.median_close_time_days",
+          "source": "convert the corresponding seconds metric to days by dividing by 86400 and rounding",
+          "importance": 2,
+          "reason": "Near half-day boundaries, final project medians can differ by a day."
+        }
+      ],
+      "fewer_reason": "Two inherited concerns were found; project lead, Epic, component, and missing-count logic otherwise matches."
+    },
+    "marts.jira__sprint_enhanced": {
+      "items": [
+        {
+          "problem": "All committed story-point metrics and issues_committed are hard-coded NULL rather than calculated from start snapshots.",
+          "about": "requirement",
+          "evidence_in_work": "null::hugeint story_points_committed ... null::bigint issues_committed",
+          "source": "Filter rows where date_day equals the sprint start date ... story_points_committed ... issues_committed",
+          "importance": 5,
+          "reason": "Sprint commitments are absent even when valid start snapshots exist."
+        },
+        {
+          "problem": "All end-of-sprint and completed-point metrics are hard-coded NULL.",
+          "about": "requirement",
+          "evidence_in_work": "null::hugeint story_points_end ... null::hugeint story_points_completed",
+          "source": "End-of-sprint metrics (snapshot on the sprint end date)",
+          "importance": 5,
+          "reason": "The primary sprint delivery outputs are never calculated."
+        },
+        {
+          "problem": "Estimate and spent-time sums aggregate every daily row instead of distinct metadata rows.",
+          "about": "requirement",
+          "evidence_in_work": "sum(coalesce(original_estimate_seconds,0))",
+          "source": "sum across all distinct metadata rows for each sprint_id",
+          "importance": 5,
+          "reason": "Static issue estimates are counted repeatedly across days, substantially inflating sprint hours."
+        },
+        {
+          "problem": "Resolved issue counts inherit a flag that permits resolution without a sprint end date.",
+          "about": "requirement",
+          "evidence_in_work": "count(distinct issue_id) filter(where is_issue_resolved_in_sprint)",
+          "source": "resolution timestamp is on or before the sprint end",
+          "importance": 3,
+          "reason": "Sprints with missing ends may receive resolved counts that do not meet the required condition."
+        }
+      ],
+      "fewer_reason": "Four distinct supported concerns were found."
+    },
+    "marts.jira__daily_sprint_issue_history": {
+      "items": [
+        {
+          "problem": "The global date spine always extends at least to today, even when every issue is resolved earlier.",
+          "about": "requirement",
+          "evidence_in_work": "greatest(coalesce(max(cast(resolved_at as date)),current_date),current_date) mx",
+          "source": "end_date is the latest of the issue resolution date, or today for unresolved issues",
+          "importance": 3,
+          "reason": "An all-resolved dataset can emit unnecessary later sprint-day rows."
+        },
+        {
+          "problem": "Issues can be marked resolved in a sprint whose end date is missing.",
+          "about": "requirement",
+          "evidence_in_work": "(sprint_ended_at is null or cast(issue_resolved_at as date)<=cast(sprint_ended_at as date))",
+          "source": "resolution occurred on or before the sprint end; otherwise false",
+          "importance": 4,
+          "reason": "The missing-end case becomes true rather than false and inflates sprint resolution metrics."
+        },
+        {
+          "problem": "The required final sprint_id, issue_id, date_day ordering is absent.",
+          "about": "requirement",
+          "evidence_in_work": "sprint_issue_day_id from enriched",
+          "source": "order rows by sprint_id, issue_id, and date_day",
+          "importance": 1,
+          "reason": "Direct SQL presentation does not follow the specified chronological grouping."
+        }
+      ],
+      "fewer_reason": "Three direct concerns were found; the synthetic story points and other daily flags match the stated definitions."
+    },
+    "marts.jira__team_performance_dashboard_simple": {
+      "items": [
+        {
+          "problem": "Average close-time days inherit the incorrect user-metric denominator for partially missing assignment durations.",
+          "about": "requirement",
+          "evidence_in_work": "m.avg_close_time_days",
+          "source": "divide the sum of close durations by the closed issue count",
+          "importance": 4,
+          "reason": "The dashboard can overstate average close times for displayed users."
+        },
+        {
+          "problem": "The required descending closed-issue ordering is omitted.",
+          "about": "requirement",
+          "evidence_in_work": "where m.count_closed_issues>0",
+          "source": "Order the result by um.count_closed_issues descending",
+          "importance": 1,
+          "reason": "The SQL does not present users in the specified performance order."
+        }
+      ],
+      "fewer_reason": "Two supported concerns were found; the inner join, positive-count filter, and constant tier match."
+    },
+    "marts.jira__issue_intelligence_simple": {
+      "items": [
+        {
+          "problem": "The required descending open-duration ordering is omitted.",
+          "about": "requirement",
+          "evidence_in_work": "from marts.jira__issue_enhanced",
+          "source": "Order rows by open_duration_seconds descending",
+          "importance": 1,
+          "reason": "Direct SQL output does not prioritize the oldest issues."
+        }
+      ],
+      "fewer_reason": "The risk, probability, NULL, and fractional-day formulas match the supplied contract."
+    },
+    "marts.jira__project_risk_simple": {
+      "items": [
+        {
+          "problem": "The required descending open-issue ordering is omitted.",
+          "about": "requirement",
+          "evidence_in_work": "join staging.stg_jira__project p using(project_id)",
+          "source": "sort by count_open_issues in descending order",
+          "importance": 1,
+          "reason": "Direct SQL output does not follow the requested project ordering."
+        },
+        {
+          "problem": "Pass-through counts and average days inherit upstream types inconsistent with this mart's declared schema.",
+          "about": "requirement",
+          "evidence_in_work": "pm.count_closed_issues,pm.count_open_issues,pm.avg_close_time_days",
+          "source": "count_closed_issues: HUGEINT; avg_close_time_days: DECIMAL(18,0)",
+          "importance": 2,
+          "reason": "Values may look integral while their stored types still violate the contract."
+        }
+      ],
+      "fewer_reason": "Only two supported concerns were found; the inner join and risk/value precedence match."
+    },
+    "marts.jira__team_performance_dashboard": {
+      "items": [
+        {
+          "problem": "The dashboard starts from all users rather than an inner match between user metrics and users.",
+          "about": "requirement",
+          "evidence_in_work": "from staging.stg_jira__user u left join intermediate.int_jira__user_metrics m",
+          "source": "Join user metrics to users on user_id",
+          "importance": 4,
+          "reason": "The output has 6,000 users while user metrics has 4,374, potentially expanding the required scope."
+        },
+        {
+          "problem": "Overall performance scores are fixed at zero instead of applying the component scoring rules.",
+          "about": "requirement",
+          "evidence_in_work": "0::integer overall_performance_score",
+          "source": "Quality (20%): ... 5 points ... else",
+          "importance": 5,
+          "reason": "Even unavailable quality data should enter the specified fallback scoring rather than force a zero total."
+        },
+        {
+          "problem": "User growth analysis is omitted and real project, issue-type, and reported-issue counts are replaced with zero.",
+          "about": "requirement",
+          "evidence_in_work": "0::bigint projects_contributed_to,0::bigint issue_types_worked_on ... 0::bigint leadership_indicator",
+          "source": "Consider issues where the user is assignee, reporter, or creator",
+          "importance": 5,
+          "reason": "These fields should contain meaningful activity history even when all_projects joins miss collaboration data."
+        },
+        {
+          "problem": "days_since_first_issue is always NULL rather than derived from the earliest related issue.",
+          "about": "requirement",
+          "evidence_in_work": "null::double days_since_first_issue",
+          "source": "days_since_first_issue ... days ... first_issue_date",
+          "importance": 4,
+          "reason": "User tenure information is entirely absent."
+        },
+        {
+          "problem": "Collaboration metrics are never built from recent issues, links, and comments.",
+          "about": "requirement",
+          "evidence_in_work": "null::bigint total_assigned_issues ... null::bigint unique_collaborators_on_issues",
+          "source": "Build team_collaboration_metrics from issues created in the last 90 days",
+          "importance": 4,
+          "reason": "The required processing is absent, although ordinary project IDs may make the final all_projects joins NULL anyway."
+        },
+        {
+          "problem": "Sprint history, sprint metadata, and active story-point fields are unused.",
+          "about": "requirement",
+          "evidence_in_work": "null::bigint sprint_count ... null::decimal(38,3) total_story_points_delivered",
+          "source": "Build sprint_participation_analysis from recent sprints ... raw.issue_sprint_history",
+          "importance": 3,
+          "reason": "Required sprint processing is omitted and would fail to populate any legitimate matching project group."
+        },
+        {
+          "problem": "Missing average close-time metrics are converted to zero without a specified fallback.",
+          "about": "requirement",
+          "evidence_in_work": "coalesce(m.avg_close_time_days,0)::decimal(18,0)",
+          "source": "Set avg_daily_activity_score and avg_weekly_activity_score from average close time days",
+          "importance": 3,
+          "reason": "Missing duration information is presented as a genuine zero activity score."
+        },
+        {
+          "problem": "performance_tier is hard-coded rather than classified from the computed score.",
+          "about": "requirement",
+          "evidence_in_work": "'Needs Improvement'::varchar performance_tier",
+          "source": "Top Performer (score ≥85), Strong Performer (≥70), Average Performer (≥50), else Needs Improvement",
+          "importance": 3,
+          "reason": "The implementation cannot reflect improved scores if data produces them."
+        },
+        {
+          "problem": "poor_estimation is fixed false rather than evaluated from estimate accuracy.",
+          "about": "requirement",
+          "evidence_in_work": "false poor_estimation",
+          "source": "poor_estimation is true when estimate accuracy ratio > 2",
+          "importance": 3,
+          "reason": "Eligible poor-estimation signals can never be surfaced."
+        },
+        {
+          "problem": "The required score, project-name, and user-name ordering is omitted.",
+          "about": "requirement",
+          "evidence_in_work": "left join intermediate.int_jira__user_metrics m using(user_id)",
+          "source": "ordered by overall_performance_score descending, then project_name, then user_display_name",
+          "importance": 1,
+          "reason": "Direct SQL presentation differs from the dashboard contract."
+        }
+      ],
+      "fewer_reason": null
+    },
+    "marts.jira__daily_issue_field_history": {
+      "items": [],
+      "fewer_reason": "The deliberately simplified created-date snapshot, NULL constants, status join, and hash construction match the supplied contract."
+    },
+    "marts.jira__issue_intelligence_analytics": {
+      "items": [
+        {
+          "problem": "The required project self-join and its duplicate output rows are omitted.",
+          "about": "requirement",
+          "evidence_in_work": "from marts.jira__issue_enhanced",
+          "source": "One or more identical rows per issue_id (project-level self-join propagates duplicates)",
+          "importance": 5,
+          "reason": "The output grain and row multiplicity differ substantially from the explicitly required result."
+        },
+        {
+          "problem": "Comparative lifecycle and comment metrics are not computed, leaving deviation and outlier fields NULL.",
+          "about": "requirement",
+          "evidence_in_work": "null::double lifecycle_deviation_ratio,null::varchar lifecycle_outlier_status",
+          "source": "project average/median/p75 lifecycle days ... project average comments",
+          "importance": 5,
+          "reason": "Anomaly detection and its downstream decisions lack their required inputs."
+        },
+        {
+          "problem": "Deviation risk and collaboration and efficiency opportunities are fixed at zero.",
+          "about": "requirement",
+          "evidence_in_work": "0::integer deviation_risk_score ... 0::integer efficiency_opportunity_score",
+          "source": "deviation_risk_score: 7 if lifecycle_deviation_ratio > 1",
+          "importance": 5,
+          "reason": "Total risk and opportunity scores omit meaningful components."
+        },
+        {
+          "problem": "intelligence_score is fixed at 50 instead of using risks, opportunities, and completion probability.",
+          "about": "requirement",
+          "evidence_in_work": "50::integer intelligence_score",
+          "source": "50 + 2×total_opportunity_score − total_risk_score ... clamp",
+          "importance": 5,
+          "reason": "The main ranking metric cannot distinguish issues."
+        },
+        {
+          "problem": "health_status is always Healthy despite nonzero calculated risk scores.",
+          "about": "requirement",
+          "evidence_in_work": "'Healthy'::varchar health_status",
+          "source": "≥25 Critical; ≥15 High Risk; ≥8 Medium Risk; >0 Low Risk; else Healthy",
+          "importance": 5,
+          "reason": "At-risk issues are explicitly mislabeled as healthy."
+        },
+        {
+          "problem": "recommended_action is always Monitor Progress.",
+          "about": "requirement",
+          "evidence_in_work": "'Monitor Progress'::varchar recommended_action",
+          "source": "age_risk_score>0 and assignment_risk_score>0 → 'Urgent: Assign and Expedite'",
+          "importance": 5,
+          "reason": "Urgent assignment and collaboration interventions are suppressed."
+        },
+        {
+          "problem": "intervention_urgency is always Regular Monitoring.",
+          "about": "requirement",
+          "evidence_in_work": "'Regular Monitoring'::varchar intervention_urgency",
+          "source": "if unresolved and total_risk_score≥15 → 'Within 24 Hours'",
+          "importance": 4,
+          "reason": "The output cannot prioritize time-sensitive issues."
+        },
+        {
+          "problem": "strategic_importance is always Standard rather than recognizing critical priorities and Epics.",
+          "about": "requirement",
+          "evidence_in_work": "'Standard'::varchar strategic_importance",
+          "source": "current_priority ... 'critical' or 'high' → 'Strategic'; issue_type ... 'epic' → 'Strategic'",
+          "importance": 4,
+          "reason": "Strategically important work is not identified."
+        },
+        {
+          "problem": "Completion timeframe tests assignee_name rather than assignee_user_id for the Normal lifecycle branch.",
+          "about": "requirement",
+          "evidence_in_work": "when assignee_name is null then 'Requires Assignment' else 'Within 2 Weeks'",
+          "source": "lifecycle_pattern='Normal' and assignee present → 'Within 2 Weeks'",
+          "importance": 3,
+          "reason": "Assigned issues whose user lookup fails can be incorrectly treated as requiring assignment."
+        },
+        {
+          "problem": "The required intelligence-score and risk-score ordering is absent.",
+          "about": "requirement",
+          "evidence_in_work": "from marts.jira__issue_enhanced",
+          "source": "ordered by intelligence_score DESC, total_risk_score DESC",
+          "importance": 1,
+          "reason": "Direct SQL output does not provide the specified prioritized ranking."
+        }
+      ],
+      "fewer_reason": null
+    },
+    "marts.jira__project_risk_assessment": {
+      "items": [
+        {
+          "problem": "Schedule risk is fixed at zero even though delayed issues are calculated.",
+          "about": "requirement",
+          "evidence_in_work": "coalesce(iv.delayed,0) high_delay_cost_issues ... 0::integer schedule_risk_score",
+          "source": "high_delay_cost_issues > total_issues × 30% → 20",
+          "importance": 5,
+          "reason": "Projects with old unresolved issues can receive materially understated total risk."
+        },
+        {
+          "problem": "Resource risk and team stability are constants rather than using recent active-assignee counts.",
+          "about": "requirement",
+          "evidence_in_work": "100.0::double team_stability_percentage ... 20::integer resource_risk_score",
+          "source": "resource_risk_score ... active_assignees_30d",
+          "importance": 5,
+          "reason": "All projects are assigned maximum resource risk regardless of team size."
+        },
+        {
+          "problem": "Recent and prior issue trend calculations are omitted and net growth and velocity change are fixed to zero.",
+          "about": "requirement",
+          "evidence_in_work": "0::bigint net_issue_growth_30d,0::double resolution_velocity_change_percent",
+          "source": "30-day windows relative to current_date",
+          "importance": 5,
+          "reason": "Growth and delivery changes cannot influence risk or reporting."
+        },
+        {
+          "problem": "Scope risk is hard-coded zero rather than calculated from net growth and total issues.",
+          "about": "requirement",
+          "evidence_in_work": "0::integer scope_risk_score",
+          "source": "net growth ... > −10% → 5; else → 0",
+          "importance": 5,
+          "reason": "Even zero net growth normally maps to a nonzero scope bucket for nonempty projects."
+        },
+        {
+          "problem": "Issue links, components, and sprint history are unused and complexity outputs are fixed to zero.",
+          "about": "requirement",
+          "evidence_in_work": "0::bigint unique_components,0::bigint total_external_links,0.0::double sprint_adoption_rate",
+          "source": "project_complexity_analysis ... staging.stg_jira__issue_link ... raw.issue_sprint_history",
+          "importance": 5,
+          "reason": "Complexity risk and adoption metrics ignore all required relationship data."
+        },
+        {
+          "problem": "unique_issue_types is fixed zero despite issue type data already being read.",
+          "about": "requirement",
+          "evidence_in_work": "0::bigint unique_issue_types",
+          "source": "unique_issue_types = distinct issue_type_id count",
+          "importance": 4,
+          "reason": "A directly computable project complexity measure is absent."
+        },
+        {
+          "problem": "Primary risk driver and intervention are constants instead of classifications from the computed risk dimensions.",
+          "about": "requirement",
+          "evidence_in_work": "'Resource Constraints' primary_risk_driver,'Regular Monitoring and Minor Adjustments' recommended_intervention",
+          "source": "primary_risk_driver = label of the maximum among the five risk scores",
+          "importance": 4,
+          "reason": "Recommendations cannot respond to schedule, scope, or complexity problems."
+        },
+        {
+          "problem": "strategic_priority_recommendation is always Standard Priority.",
+          "about": "requirement",
+          "evidence_in_work": "'Standard Priority' strategic_priority_recommendation",
+          "source": "success_probability ≥ 0.8 and estimated_project_value_points > 50 → 'High Priority - High Success'",
+          "importance": 4,
+          "reason": "High-value projects can miss an explicitly required prioritization rule."
+        },
+        {
+          "problem": "Timeline and budget predictions implement only a subset of the required ordered rules.",
+          "about": "requirement",
+          "evidence_in_work": "'Moderate Delay Risk' timeline_prediction ... else 'Within Budget Expectations'",
+          "source": "schedule_risk_score ≥ 15 → 'Moderate Budget Impact'; total_risk_score > 70 → 'Significant Delay Risk'",
+          "importance": 4,
+          "reason": "Predictions would remain incorrect once actual risk scores vary."
+        },
+        {
+          "problem": "The required descending total-risk and ascending success-probability ordering is omitted.",
+          "about": "requirement",
+          "evidence_in_work": "strategic_priority_recommendation from prob",
+          "source": "ordered by total_risk_score descending, then success_probability ascending",
+          "importance": 1,
+          "reason": "The direct SQL result does not prioritize project risk as requested."
+        }
+      ],
+      "fewer_reason": null
+    },
+    "marts.jira__stakeholder_engagement_insights": {
+      "items": [
+        {
+          "problem": "The commenter interaction network and its three-interaction filter are not constructed.",
+          "about": "requirement",
+          "evidence_in_work": "0::bigint direct_network_connections",
+          "source": "Pair comments by different authors ... within 7 days ... Keep only pairs with at least 3 interaction instances",
+          "importance": 5,
+          "reason": "The core engagement network is replaced by an assumption that every stakeholder has no connections."
+        },
+        {
+          "problem": "Outbound and inbound influence metrics are always NULL.",
+          "about": "requirement",
+          "evidence_in_work": "null::double avg_outbound_influence_strength,null::decimal(38,2) total_outbound_influence",
+          "source": "Compute interaction strength ... total inbound interaction strength",
+          "importance": 5,
+          "reason": "Influential collaborators cannot be identified or scored."
+        },
+        {
+          "problem": "Every stakeholder is labeled a Slow responder without calculating assigned resolution days.",
+          "about": "requirement",
+          "evidence_in_work": "'Slow' response_pattern_type",
+          "source": "Rapid (≤7), Timely (≤14), Standard (≤30), else Slow",
+          "importance": 5,
+          "reason": "Response quality and delivery-risk classifications lose their required basis."
+        },
+        {
+          "problem": "Engagement depth and total engagement are always NULL instead of being calculated when network data exists.",
+          "about": "requirement",
+          "evidence_in_work": "null::double engagement_depth_score ... null::double total_engagement_score",
+          "source": "Total engagement score = breadth + depth + quality + impact",
+          "importance": 5,
+          "reason": "The main engagement measure is unavailable for every active user."
+        },
+        {
+          "problem": "Quality and impact scores are fixed zero even where issue workload alone should award impact points.",
+          "about": "requirement",
+          "evidence_in_work": "0::integer engagement_quality_score,0::integer engagement_impact_score",
+          "source": "issues assigned (>50: 10; >20: 7; >5: 3; else 0)",
+          "importance": 5,
+          "reason": "Known assignment counts are not used in mandatory scoring."
+        },
+        {
+          "problem": "Breadth scoring omits the direct-network-connection contribution.",
+          "about": "requirement",
+          "evidence_in_work": "least(25,coalesce(a.total_projects_involved,0)*8)",
+          "source": "3 points per project involved + 5 points per cross-functional project + up to 10 points for direct connections",
+          "importance": 4,
+          "reason": "Stakeholders with few projects but strong networks can be materially underscored."
+        },
+        {
+          "problem": "Stakeholder archetype and influence level are constants rather than ordered classifications.",
+          "about": "requirement",
+          "evidence_in_work": "'Standard Participant' stakeholder_archetype,'Minimal' influence_level",
+          "source": "Heavy Executor (issues assigned >20); Requirements Driver (issues reported >20)",
+          "importance": 5,
+          "reason": "Even classifications supported by the already calculated issue counts are not applied."
+        },
+        {
+          "problem": "Engagement risk is always Healthy Engagement, suppressing delivery and isolation conditions.",
+          "about": "requirement",
+          "evidence_in_work": "'Healthy Engagement' engagement_risk_status",
+          "source": "Delivery Risk (Slow responder and issues assigned >10); Isolation Risk (connections <2 and projects involved >1)",
+          "importance": 5,
+          "reason": "Stakeholders meeting the model's own risk inputs are still labeled healthy."
+        },
+        {
+          "problem": "Strategic value, engagement strategy, and development opportunity are hard-coded instead of using the required ordered mappings.",
+          "about": "requirement",
+          "evidence_in_work": "30::integer strategic_value_score ... 'Advanced Leadership Opportunities' development_opportunity",
+          "source": "Network Building (connections <3); ... recommended strategy ... Performance Support",
+          "importance": 4,
+          "reason": "The final actionable recommendations do not reflect calculated stakeholder characteristics."
+        },
+        {
+          "problem": "The required strategic-value and total-engagement ordering is absent.",
+          "about": "requirement",
+          "evidence_in_work": "left join cm on u.user_id=cm.author_user_id",
+          "source": "ordered by strategic value score descending, then total engagement score descending",
+          "importance": 1,
+          "reason": "Direct SQL presentation is not the requested prioritization."
+        }
+      ],
+      "fewer_reason": null
+    }
+  }
+}

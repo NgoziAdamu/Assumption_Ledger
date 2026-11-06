@@ -1,0 +1,2392 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Zuora source system (Fivetran extracts). This document defines the single source of truth for data cleaning, validation, standardization, and business modeling."
+  author: "Data Engineering Team"
+  source_system: "Zuora"
+  raw_ingest: "Fivetran CSV -> DuckDB"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw Zuora-extracted tables into clean, validated, and standardized staging tables. Enforce data quality actions deterministically and surface a 'is_most_recent_record' flag for latest snapshots."
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, phone formatting, and standardized date casts."
+      examples: ["LOWER(TRIM(work_email))", "standardize phone format to (XXX) XXX-XXXX", "safe TIMESTAMP casts with try_cast"]
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Invalid or out-of-range essential dates (future or pre-2000)", "Account status outside allowed set"]
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and the record can still be useful."
+      examples: ["Out-of-range monetary amounts", "Unparsable optional timestamps"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform staging data into business-ready models with clearly defined grains, consistent dependencies, and deterministic business logic."
+  design_principles:
+    staging_layer_only_references: "Staging models only reference raw tables."
+    intermediate_layer_only_references: "Intermediate models only reference staging models."
+    marts_layer_only_references: "Marts models only reference intermediate models."
+    dependency_rules: "No cross-layer or same-layer circular dependencies."
+    grain_definition_required: "Each model must define a single, unambiguous grain."
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-030/agent/dacomp-de-impl-030/zuora_start.duckdb
+{"table": "raw.zuora_account_data", "columns": ["id,_fivetran_deleted,_fivetran_synced,account_number,additional_email_addresses,allow_invoice_edit,auto_pay,balance,bcd_setting_option,bill_cycle_day,bill_to_contact_id,bill_to_id,communication_profile_id,created_by_id,created_date,credit_balance,crm_id,currency,customer_service_rep_name,default_payment_method_id,invoice_delivery_prefs_email,invoice_delivery_prefs_print,invoice_template_id,last_invoice_date,mrr,name,notes,parent_account_id,parent_id,payment_gateway,payment_term,purchase_order_number,sales_rep_name,sequence_set_id,sold_to_contact_id,sold_to_id,status,tax_company_code,tax_exempt_certificate_id,tax_exempt_certificate_type,tax_exempt_description,tax_exempt_effective_date,tax_exempt_entity_use_code,tax_exempt_expiration_date,tax_exempt_issuing_jurisdiction,tax_exempt_status,testcustom_1_c,testcustom_2_c,total_debit_memo_balance,total_invoice_balance,unapplied_balance,unapplied_credit_memo_amount,updated_by_id,updated_date,vatid,batch"]}
+{"table": "raw.zuora_amendment_data", "columns": ["id,_fivetran_deleted,_fivetran_synced,auto_renew,booking_date,code,contract_effective_date,created_by_id,created_date,current_term,current_term_period_type,customer_acceptance_date,description,effective_date,effective_policy,name,new_rate_plan_id,removed_rate_plan_id,renewal_setting,renewal_term,renewal_term_period_type,resume_date,service_activation_date,specific_update_date,status,sub_type,subscription_id,suspend_date,term_start_date,term_type,type,updated_by_id,updated_date"]}
+{"table": "raw.zuora_contact_data", "columns": ["id,_fivetran_deleted,_fivetran_synced,account_id,address_1,address_2,city,country,county,created_by_id,created_date,description,fax,first_name,home_phone,last_name,mobile_phone,nick_name,other_phone,other_phone_type,personal_email,postal_code,state,tax_region,updated_by_id,updated_date,work_email,work_phone"]}
+{"table": "raw.zuora_credit_balance_adjustment_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "account_id", "account_receivable_accounting_code_id", "accounting_code", "accounting_period_id", "adjustment_date", "amount", "amount_currency_rounding", "amount_home_currency", "bill_to_contact_id", "cancelled_on", "comment", "created_by_id", "created_date", "customer_cash_on_account_accounting_code_id", "default_payment_method_id", "exchange_rate", "exchange_rate_date", "home_currency", "invoice_id", "journal_entry_id", "journal_run_id", "number", "parent_account_id", "provider_exchange_rate_date", "reason_code", "reference_id", "sold_to_contact_id", "source_transaction_id", "source_transaction_number", "source_transaction_type", "status", "transaction_currency", "transferred_to_accounting", "type", "updated_by_id", "updated_date"]}
+{"table": "raw.zuora_invoice_data", "columns": ["id,_fivetran_deleted,_fivetran_synced,account_id,adjustment_amount,amount,amount_currency_rounding,amount_home_currency,amount_without_tax,amount_without_tax_currency_rounding,amount_without_tax_home_currency,auto_pay,balance,bill_to_contact_id,comments,created_by_id,created_date,credit_balance_adjustment_amount,default_payment_method_id,due_date,exchange_rate,exchange_rate_date,home_currency,includes_one_time,includes_recurring,includes_usage,invoice_date,invoice_number,last_email_sent_date,parent_account_id,payment_amount,payment_term,posted_by,posted_date,provider_exchange_rate_date,refund_amount,reversed,sold_to_contact_id,source,source_id,source_type,status,target_date,tax_amount,tax_exempt_amount,tax_message,tax_status,template_id,transaction_currency,transferred_to_accounting,updated_by_id,updated_date,sequence_set_id,credit_memo_amount"]}
+{"table": "raw.zuora_invoice_item_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "account_id", "account_receivable_accounting_code_id", "accounting_code", "accounting_period_id", "amendment_id", "applied_to_invoice_item_id", "balance", "bill_to_contact_id", "booking_reference", "charge_amount", "charge_amount_currency_rounding", "charge_amount_home_currency", "charge_date", "charge_name", "created_by_id", "created_date", "default_payment_method_id", "deferred_revenue_accounting_code_id", "exchange_rate", "exchange_rate_date", "exclude_item_billing_from_revenue_accounting", "home_currency", "invoice_id", "journal_entry_id", "journal_run_id", "parent_account_id", "processing_type", "product_id", "product_rate_plan_charge_id", "product_rate_plan_id", "provider_exchange_rate_date", "quantity", "rate_plan_charge_id", "rate_plan_id", "recognized_revenue_accounting_code_id", "rev_rec_start_date", "service_end_date", "service_start_date", "sku", "sold_to_contact_id", "source_item_type", "subscription_id", "tax_amount", "tax_code", "tax_exempt_amount", "tax_mode", "transaction_currency", "unit_price", "uom", "updated_by_id", "updated_date"]}
+{"table": "raw.zuora_invoice_payment_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "account_id", "account_receivable_accounting_code_id", "accounting_period_id", "amount", "amount_currency_rounding", "amount_home_currency", "bill_to_contact_id", "cash_accounting_code_id", "created_by_id", "created_date", "default_payment_method_id", "exchange_rate", "exchange_rate_date", "home_currency", "invoice_id", "journal_entry_id", "journal_run_id", "parent_account_id", "payment_id", "payment_method_id", "provider_exchange_rate_date", "refund_amount", "sold_to_contact_id", "transaction_currency", "updated_by_id", "updated_date"]}
+{"table": "raw.zuora_order_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "account_id", "bill_to_contact_id", "created_by_id", "created_by_migration", "created_date", "default_payment_method_id", "description", "order_date", "order_number", "parent_account_id", "sold_to_contact_id", "state", "status", "updated_by_id", "updated_date", "category", "error_message", "scheduled_date_policy", "response", "error_code", "scheduled_date"]}
+{"table": "raw.zuora_payment_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "account_id", "accounting_code", "amount", "amount_currency_rounding", "amount_home_currency", "applied_amount", "applied_credit_balance_amount", "auth_transaction_id", "bank_identification_number", "bill_to_contact_id", "cancelled_on", "comment", "created_by_id", "created_date", "currency", "default_payment_method_id", "effective_date", "exchange_rate", "exchange_rate_date", "gateway", "gateway_order_id", "gateway_reconciliation_reason", "gateway_reconciliation_status", "gateway_response", "gateway_response_code", "gateway_state", "home_currency", "is_standalone", "marked_for_submission_on", "parent_account_id", "payment_method_id", "payment_number", "payout_id", "provider_exchange_rate_date", "reference_id", "referenced_payment_id", "refund_amount", "second_payment_reference_id", "settled_on", "soft_descriptor", "soft_descriptor_phone", "sold_to_contact_id", "source", "source_name", "status", "submitted_on", "transaction_currency", "transferred_to_accounting", "type", "unapplied_amount", "updated_by_id", "updated_date"]}
+{"table": "raw.zuora_payment_method_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "account_id", "ach_aba_code", "ach_account_name", "ach_account_number_mask", "ach_account_type", "ach_address_1", "ach_address_2", "ach_bank_name", "ach_city", "ach_country", "ach_postal_code", "ach_state", "active", "bank_branch_code", "bank_check_digit", "bank_city", "bank_code", "bank_identification_number", "bank_name", "bank_postal_code", "bank_street_name", "bank_street_number", "bank_transfer_account_name", "bank_transfer_account_number_mask", "bank_transfer_account_type", "bank_transfer_type", "business_identification_code", "city", "company_name", "country", "created_by_id", "created_date", "credit_card_address_1", "credit_card_address_2", "credit_card_city", "credit_card_country", "credit_card_expiration_month", "credit_card_expiration_year", "credit_card_holder_name", "credit_card_mask_number", "credit_card_postal_code", "credit_card_state", "credit_card_type", "device_session_id", "email", "existing_mandate", "first_name", "iban", "identity_number", "ipaddress", "is_company", "last_failed_sale_transaction_date", "last_name", "last_transaction_date_time", "last_transaction_status", "mandate_creation_date", "mandate_id", "mandate_reason", "mandate_received", "mandate_status", "mandate_update_date", "max_consecutive_payment_failures", "method_reference_id", "method_specific_data", "_name", "num_consecutive_failures", "payment_method_status", "payment_retry_window", "paypal_baid", "paypal_email", "paypal_preapproval_key", "paypal_type", "phone", "postal_code", "second_token_id", "state", "street_name", "street_number", "sub_type", "token_id", "total_number_of_error_payments", "total_number_of_processed_payments", "_type", "updated_by_id", "updated_date", "use_default_retry_rule", "user_reference_id"]}
+{"table": "raw.zuora_product_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "allow_feature_changes", "category", "created_by_id", "created_date", "description", "effective_end_date", "effective_start_date", "name", "sku", "updated_by_id", "updated_date"]}
+{"table": "raw.zuora_product_rate_plan_charge_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "account_receivable_accounting_code_id", "accounting_code", "apply_discount_to", "bill_cycle_day", "bill_cycle_type", "billing_period", "billing_period_alignment", "billing_timing", "charge_model", "charge_type", "created_by_id", "created_date", "default_quantity", "deferred_revenue_account", "deferred_revenue_accounting_code_id", "description", "discount_class_id", "discount_level", "end_date_condition", "exclude_item_billing_from_revenue_accounting", "exclude_item_booking_from_revenue_accounting", "included_units", "legacy_revenue_reporting", "list_price_base", "max_quantity", "min_quantity", "name", "number_of_period", "overage_calculation_option", "overage_unused_units_credit_option", "price_change_option", "price_increase_percentage", "product_id", "product_rate_plan_id", "rating_group", "recognized_revenue_account", "recognized_revenue_accounting_code_id", "rev_rec_code", "rev_rec_trigger_condition", "revenue_recognition_rule_name", "smoothing_model", "specific_billing_period", "tax_code", "tax_mode", "taxable", "trigger_event", "uom", "up_to_periods", "up_to_periods_type", "updated_by_id", "updated_date", "usage_record_rating_option", "use_discount_specific_accounting_code", "use_tenant_default_for_price_change", "weekly_bill_cycle_day", "specific_list_price_base", "price_upsell_quantity_stacked", "is_stacked_discount"]}
+{"table": "raw.zuora_product_rate_plan_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "created_by_id", "created_date", "description", "effective_end_date", "effective_start_date", "external_id_source_system", "name", "product_id", "promotion_code_c", "updated_by_id", "updated_date"]}
+{"table": "raw.zuora_rate_plan_charge_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "account_id", "account_receivable_accounting_code_id", "accounting_code", "amended_by_order_on", "amendment_id", "apply_discount_to", "bill_cycle_day", "bill_cycle_type", "bill_to_contact_id", "bill_to_contact_snapshot_id", "billing_period", "billing_period_alignment", "billing_timing", "booking_exchange_rate", "booking_exchange_rate_date", "booking_provider_exchange_rate_date", "charge_model", "charge_number", "charge_type", "charged_through_date", "created_by_id", "created_date", "default_payment_method_id", "deferred_revenue_accounting_code_id", "description", "discount_level", "dmrc", "dmrccurrency_rounding", "dmrchome_currency", "drawdown_rate", "drawdown_uom", "dtcv", "dtcvcurrency_rounding", "dtcvhome_currency", "effective_end_date", "effective_start_date", "end_date_condition", "exchange_rate", "exchange_rate_date", "exclude_item_billing_from_revenue_accounting", "exclude_item_booking_from_revenue_accounting", "home_currency", "is_last_segment", "is_prepaid", "is_processed", "list_price_base", "mrr", "mrrcurrency_rounding", "mrrhome_currency", "name", "number_of_periods", "original_id", "original_order_date", "overage_calculation_option", "overage_unused_units_credit_option", "parent_account_id", "payment_term_snapshot", "prepaid_operation_type", "prepaid_quantity", "prepaid_total_quantity", "prepaid_uom", "price_change_option", "price_increase_percentage", "processed_through_date", "product_id", "product_rate_plan_charge_id", "product_rate_plan_id", "provider_exchange_rate_date", "quantity", "rate_plan_id", "rating_group", "recognized_revenue_accounting_code_id", "rev_rec_code", "rev_rec_trigger_condition", "revenue_recognition_rule_name", "segment", "sold_to_contact_id", "sold_to_contact_snapshot_id", "specific_billing_period", "specific_end_date", "subscription_id", "tcv", "tcvcurrency_rounding", "tcvhome_currency", "transaction_currency", "trigger_date", "trigger_event", "uom", "up_to_periods", "up_to_periods_type", "updated_by_id", "updated_date", "validity_period_type", "version", "weekly_bill_cycle_day", "invoice_owner_id", "subscription_owner_id", "credit_option", "rollover_apply", "rollover_periods", "is_rollover", "specific_list_price_base"]}
+{"table": "raw.zuora_rate_plan_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "account_id", "amendment_id", "amendment_type", "bill_to_contact_id", "created_by_id", "created_date", "default_payment_method_id", "externally_managed_plan_id", "invoice_owner_id", "name", "parent_account_id", "product_id", "product_rate_plan_id", "sold_to_contact_id", "subscription_id", "subscription_owner_id", "subscription_version_amendment_id", "updated_by_id", "updated_date", "original_rate_plan_id"]}
+{"table": "raw.zuora_refund_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "accounting_code", "amount", "cancelled_on", "comment", "created_by_id", "created_date", "gateway", "gateway_reconciliation_reason", "gateway_reconciliation_status", "gateway_response", "gateway_response_code", "gateway_state", "marked_for_submission_on", "method_type", "payment_method_id", "payout_id", "reason_code", "reference_id", "refund_date", "refund_number", "refund_transaction_time", "second_refund_reference_id", "soft_descriptor", "soft_descriptor_phone", "source_type", "status", "submitted_on", "transferred_to_accounting", "type", "updated_by_id", "updated_date"]}
+{"table": "raw.zuora_refund_invoice_payment_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "created_by_id", "created_date", "refund_amount", "updated_by_id", "updated_date"]}
+{"table": "raw.zuora_subscription_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "account_id", "auto_renew", "bill_to_contact_id", "cancelled_date", "contract_acceptance_date", "contract_effective_date", "cpq_bundle_json_id_qt", "created_by_id", "created_date", "creator_account_id", "creator_invoice_owner_id", "current_term", "current_term_period_type", "default_payment_method_id", "initial_term", "initial_term_period_type", "invoice_owner_id", "is_invoice_separate", "_name", "notes", "opportunity_close_date_qt", "opportunity_name_qt", "original_created_date", "original_id", "parent_account_id", "previous_subscription_id", "quote_business_type_qt", "quote_number_qt", "quote_type_qt", "renewal_setting", "renewal_term", "renewal_term_period_type", "service_activation_date", "sold_to_contact_id", "status", "subscription_end_date", "subscription_start_date", "subscription_version_amendment_id", "term_end_date", "term_start_date", "term_type", "updated_by_id", "updated_date", "_version", "is_latest_version", "cancel_reason", "externally_managed_by", "payment_term", "testcustomaakash_c", "last_booking_date", "revision", "custom_date_field_c", "invoice_template_id", "sequence_set_id"]}
+{"table": "raw.zuora_taxation_item_data", "columns": ["id,_fivetran_deleted,_fivetran_synced,account_id,account_receivable_accounting_code_id,accounting_code,accounting_period_id,amendment_id,balance,bill_to_contact_id,created_by_id,created_date,credit_amount,default_payment_method_id,exchange_rate,exchange_rate_date,exempt_amount,exempt_amount_currency_rounding,exempt_amount_home_currency,home_currency,invoice_id,invoice_item_id,journal_entry_id,journal_run_id,jurisdiction,location_code,name,payment_amount,product_id,product_rate_plan_charge_id,product_rate_plan_id,provider_exchange_rate_date,rate_plan_charge_id,rate_plan_id,sales_tax_payable_accounting_code_id,sold_to_contact_id,subscription_id,tax_amount,tax_amount_currency_rounding,tax_amount_home_currency,tax_code,tax_code_description,tax_date,tax_mode,tax_rate,tax_rate_description,tax_rate_type,transaction_currency,updated_by_id,updated_date,parent_account_id,seller_registration,tax_description,customer_code,tax_rule_id,exempt_certificate"]}
+
+
+=== Relevant specification and documentation ===
+## int_zuora__account_current
+
+    - name: int_zuora__account_current
+      description: Pass-through of staging.stg_zuora__account rows flagged as most recent; all source columns preserved.
+      grain: One row per staging.stg_zuora__account row where is_most_recent_record is TRUE
+      source_models:
+      - staging.stg_zuora__account
+      business_logic: '- Input: all rows from staging.stg_zuora__account. - Filter: keep only rows where is_most_recent_record is TRUE; rows where it is FALSE or NULL are excluded. - Projection: select all columns exactly as in the source; no transformations, casts, or recalculations. - Deduplication: none; if multiple source rows are flagged TRUE for the same account_id, all are preserved. - Data fidelity: NULLs, casing, and whitespace are preserved exactly as stored in the source. - Ordering: not specified; downstream consumers must not rely on row order. - Result invariant: is_most_recent_record is always TRUE in this table.'
+      columns:
+      - name: account_id
+        data_type: VARCHAR
+        description: Zuora account identifier from staging
+        tests:
+        - not_null
+      - name: account_number
+        data_type: VARCHAR
+        description: Zuora account number as in staging
+        tests: []
+      - name: auto_pay
+        data_type: VARCHAR
+        description: Auto-pay flag as ingested (text)
+        tests: []
+      - name: balance
+        data_type: DECIMAL(18,2)
+        description: Account balance passthrough with two decimal places
+        tests: []
+      - name: batch
+        data_type: VARCHAR
+        description: Billing batch code as in staging
+        tests: []
+      - name: bill_cycle_day
+        data_type: VARCHAR
+        description: Bill cycle day as text from staging
+        tests: []
+      - name: bill_to_contact_id
+        data_type: VARCHAR
+        description: Bill-to contact ID
+        tests: []
+      - name: created_by_id
+        data_type: VARCHAR
+        description: Creator user ID
+        tests: []
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Account creation timestamp
+        tests: []
+      - name: credit_balance
+        data_type: VARCHAR
+        description: Credit balance as ingested (text)
+        tests: []
+      - name: crm_id
+        data_type: VARCHAR
+        description: Upstream CRM account ID
+        tests: []
+      - name: currency
+        data_type: VARCHAR
+        description: Account currency code as in staging
+        tests: []
+      - name: default_payment_method_id
+        data_type: VARCHAR
+        description: Default payment method ID
+        tests: []
+      - name: last_invoice_date
+        data_type: TIMESTAMP
+        description: Last invoice date as in staging
+        tests: []
+      - name: mrr
+        data_type: VARCHAR
+        description: Monthly recurring revenue as ingested (text)
+        tests: []
+      - name: name
+        data_type: VARCHAR
+        description: Account name
+        tests: []
+      - name: notes
+        data_type: VARCHAR
+        description: Freeform account notes
+        tests: []
+      - name: parent_account_id
+        data_type: VARCHAR
+        description: Parent account ID
+        tests: []
+      - name: payment_term
+        data_type: VARCHAR
+        description: Payment term code or description
+        tests: []
+      - name: sold_to_contact_id
+        data_type: VARCHAR
+        description: Sold-to contact ID
+        tests: []
+      - name: status
+        data_type: VARCHAR
+        description: Account status as in staging
+        tests: []
+      - name: tax_exempt_effective_date
+        data_type: TIMESTAMP
+        description: Tax exemption effective date
+        tests: []
+      - name: tax_exempt_expiration_date
+        data_type: TIMESTAMP
+        description: Tax exemption expiration date
+        tests: []
+      - name: tax_exempt_status
+        data_type: VARCHAR
+        description: Tax exemption status
+        tests: []
+      - name: total_debit_memo_balance
+        data_type: VARCHAR
+        description: Total debit memo balance as ingested (text)
+        tests: []
+      - name: total_invoice_balance
+        data_type: VARCHAR
+        description: Total invoice balance as ingested (text)
+        tests: []
+      - name: updated_by_id
+        data_type: VARCHAR
+        description: Last updater user ID
+        tests: []
+      - name: updated_date
+        data_type: TIMESTAMP
+        description: Last update timestamp
+        tests: []
+      - name: vatid
+        data_type: VARCHAR
+        description: VAT identifier
+        tests: []
+      - name: is_most_recent_record
+        data_type: BOOLEAN
+        description: Latest snapshot flag from staging; always TRUE in this table
+        tests: []
+
+
+## int_zuora__contact_current
+
+    - name: int_zuora__contact_current
+      description: Contacts from staging.stg_zuora__contact where both recency flags are TRUE; all fields are passed through without transformation.
+      grain: One row per source contact record that satisfies both flags; duplicates from source are preserved.
+      source_models:
+      - staging.stg_zuora__contact
+      business_logic: '- Start from staging.stg_zuora__contact. - Keep only rows where both is_most_recent_record and is_most_recent_account_contact are TRUE. - Rows with NULL or FALSE in either flag are excluded. - Select all columns exactly as in the source; values and NULLs are preserved. - No aggregation, deduplication, or explicit ordering is applied; output row order is not guaranteed.'
+      columns:
+      - name: contact_id
+        data_type: VARCHAR
+        description: Contact identifier.
+        tests: []
+      - name: account_id
+        data_type: VARCHAR
+        description: Associated account identifier.
+        tests: []
+      - name: address_1
+        data_type: VARCHAR
+        description: Address line 1.
+        tests: []
+      - name: address_2
+        data_type: VARCHAR
+        description: Address line 2.
+        tests: []
+      - name: city
+        data_type: VARCHAR
+        description: City.
+        tests: []
+      - name: country
+        data_type: VARCHAR
+        description: Country.
+        tests: []
+      - name: created_by_id
+        data_type: VARCHAR
+        description: Creator user identifier.
+        tests: []
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Creation timestamp.
+        tests: []
+      - name: description
+        data_type: VARCHAR
+        description: Freeform description.
+        tests: []
+      - name: first_name
+        data_type: VARCHAR
+        description: First name.
+        tests: []
+      - name: last_name
+        data_type: VARCHAR
+        description: Last name.
+        tests: []
+      - name: postal_code
+        data_type: VARCHAR
+        description: Postal or ZIP code.
+        tests: []
+      - name: state
+        data_type: VARCHAR
+        description: State or region.
+        tests: []
+      - name: updated_by_id
+        data_type: VARCHAR
+        description: Last updater user identifier.
+        tests: []
+      - name: updated_date
+        data_type: TIMESTAMP
+        description: Last update timestamp.
+        tests: []
+      - name: work_email
+        data_type: VARCHAR
+        description: Work email.
+        tests: []
+      - name: work_phone
+        data_type: VARCHAR
+        description: Work phone.
+        tests: []
+      - name: mobile_phone
+        data_type: VARCHAR
+        description: Mobile phone.
+        tests: []
+      - name: is_most_recent_record
+        data_type: BOOLEAN
+        description: Always TRUE in this table; rows with NULL or FALSE are excluded by filtering.
+        tests: []
+      - name: is_most_recent_account_contact
+        data_type: BOOLEAN
+        description: Always TRUE in this table; rows with NULL or FALSE are excluded by filtering.
+        tests: []
+
+
+## int_zuora__invoice_base
+
+    - name: int_zuora__invoice_base
+      description: Invoice headers from the latest Zuora records with type casts and explicit past-due logic
+      grain: One row per invoice_id from stg_zuora__invoice where is_most_recent_record = true
+      source_models:
+      - staging.stg_zuora__invoice
+      business_logic: '- Filter to rows where is_most_recent_record is true. - Cast created_date to TIMESTAMP as created_at; cast due_date to DATE; invoice_date is passed through. - Map fields: invoice_amount = amount; invoice_amount_home_currency = amount_home_currency; invoice_amount_paid = payment_amount; purchase_type = source_type. - Compute invoice_amount_unpaid as amount minus payment_amount; if either input is NULL, the result is NULL; can be negative if payments exceed the amount. - Pass through tax_amount, refund_amount, transaction_currency, home_currency, exchange_rate_date, status, account_id, invoice_number. - Compute total_amount_past_due using today''s calendar date (time ignored): - If today is strictly after due_date and amount differs from payment_amount, set total_amount_past_due to balance; otherwise set to 0.0. - If due_date is NULL, or amount or payment_amount is NULL, treat as not past due → 0.0. - If past due and balance is NULL, total_amount_past_due is NULL. - No aggregation or sorting; output is a direct row-wise transform of the filtered source.'
+      columns:
+      - name: invoice_id
+        data_type: VARCHAR
+        description: Unique invoice identifier; one row per latest invoice_id
+        tests:
+        - not_null
+        - unique
+      - name: account_id
+        data_type: VARCHAR
+        description: Account linked to the invoice
+        tests: []
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Timestamp derived from created_date
+        tests: []
+      - name: invoice_number
+        data_type: VARCHAR
+        description: Human-readable invoice number
+        tests: []
+      - name: invoice_date
+        data_type: DATE
+        description: Invoice date from source
+        tests: []
+      - name: invoice_amount
+        data_type: DOUBLE
+        description: Total invoice amount in transaction currency
+        tests: []
+      - name: invoice_amount_home_currency
+        data_type: DOUBLE
+        description: Total invoice amount in home currency
+        tests: []
+      - name: invoice_amount_paid
+        data_type: DOUBLE
+        description: Amount paid to date in transaction currency
+        tests: []
+      - name: invoice_amount_unpaid
+        data_type: DOUBLE
+        description: Amount minus payment_amount; NULL if either is NULL; may be negative
+        tests: []
+      - name: tax_amount
+        data_type: DOUBLE
+        description: Tax amount in transaction currency
+        tests: []
+      - name: refund_amount
+        data_type: DOUBLE
+        description: Refund amount in transaction currency
+        tests: []
+      - name: transaction_currency
+        data_type: VARCHAR
+        description: ISO currency of transaction amounts
+        tests: []
+      - name: home_currency
+        data_type: VARCHAR
+        description: ISO home/reporting currency
+        tests: []
+      - name: exchange_rate_date
+        data_type: VARCHAR
+        description: Exchange rate date from source as text
+        tests: []
+      - name: due_date
+        data_type: DATE
+        description: Invoice due date cast to DATE
+        tests: []
+      - name: status
+        data_type: VARCHAR
+        description: Invoice status from source
+        tests: []
+      - name: purchase_type
+        data_type: VARCHAR
+        description: Purchase type from source_type
+        tests: []
+      - name: total_amount_past_due
+        data_type: DOUBLE
+        description: 0.0 unless today is after due_date and amount differs from payment_amount, then equals balance; NULL if balance is NULL when past due
+        tests: []
+
+
+## int_zuora__invoice_item_base
+
+    - name: int_zuora__invoice_item_base
+      description: Invoice line items filtered to latest records, with charge/service date buckets and discount amounts derived when processing_type='1'.
+      grain: One row per source record where is_most_recent_record = TRUE
+      source_models:
+      - staging.stg_zuora__invoice_item
+      business_logic: '- Start from staging.stg_zuora__invoice_item and keep only rows where is_most_recent_record is true. - Pass through all source fields unchanged. - Derive charge_day, charge_week, charge_month from charge_date: - charge_day is the calendar day; charge_week is the start date of the ISO week (Monday); charge_month is the first day of the calendar month. - If charge_date is null, all charge buckets are null. - Derive service_start_day, service_start_week, service_start_month from service_start_date with the same rules and null handling. - Compute discounts: - When processing_type equals the string ''1'', discount_amount_home_currency is the numeric value of charge_amount_home_currency and discount_amount is the numeric value of charge_amount. - When processing_type is not ''1'', both discount fields are set to 0.0. - If processing_type is ''1'' and the source amount is null, the corresponding discount field is null. No rounding or sign changes are applied. - No aggregation, deduplication, or ordering is performed; one output row per filtered source row.'
+      columns:
+      - name: invoice_item_id
+        data_type: VARCHAR
+        description: Unique invoice line item identifier from source; model includes only rows marked as most recent.
+        tests:
+        - not_null
+      - name: account_id
+        data_type: VARCHAR
+        description: Owning account identifier from source.
+        tests: []
+      - name: account_receivable_accounting_code_id
+        data_type: VARCHAR
+        description: Receivable accounting code identifier from source.
+        tests: []
+      - name: accounting_code
+        data_type: VARCHAR
+        description: Accounting code value from source.
+        tests: []
+      - name: amendment_id
+        data_type: VARCHAR
+        description: Amendment identifier associated with the item.
+        tests: []
+      - name: applied_to_invoice_item_id
+        data_type: VARCHAR
+        description: Invoice item identifier this item applies to (e.g., adjustment).
+        tests: []
+      - name: balance
+        data_type: VARCHAR
+        description: Item balance as loaded from source (string).
+        tests: []
+      - name: bill_to_contact_id
+        data_type: VARCHAR
+        description: Bill-to contact identifier.
+        tests: []
+      - name: charge_amount
+        data_type: VARCHAR
+        description: Charge amount in transaction currency as loaded (string).
+        tests: []
+      - name: charge_amount_home_currency
+        data_type: VARCHAR
+        description: Charge amount in home currency as loaded (string).
+        tests: []
+      - name: charge_date
+        data_type: TIMESTAMP
+        description: Timestamp when the charge was applied; source value passed through.
+        tests: []
+      - name: charge_name
+        data_type: VARCHAR
+        description: Charge name or label from source.
+        tests: []
+      - name: created_by_id
+        data_type: VARCHAR
+        description: Identifier of the user who created the record.
+        tests: []
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Record creation timestamp from source.
+        tests: []
+      - name: deferred_revenue_accounting_code_id
+        data_type: VARCHAR
+        description: Deferred revenue accounting code identifier.
+        tests: []
+      - name: exchange_rate
+        data_type: VARCHAR
+        description: Exchange rate value as loaded (string).
+        tests: []
+      - name: exchange_rate_date
+        data_type: VARCHAR
+        description: Exchange rate date as loaded (string).
+        tests: []
+      - name: home_currency
+        data_type: VARCHAR
+        description: Home currency code from source.
+        tests: []
+      - name: invoice_id
+        data_type: VARCHAR
+        description: Parent invoice identifier from source.
+        tests: []
+      - name: journal_entry_id
+        data_type: VARCHAR
+        description: Journal entry identifier linked to the item.
+        tests: []
+      - name: parent_account_id
+        data_type: VARCHAR
+        description: Parent account identifier from source.
+        tests: []
+      - name: processing_type
+        data_type: VARCHAR
+        description: Processing type code; '1' indicates discount per this model's logic.
+        tests: []
+      - name: product_id
+        data_type: VARCHAR
+        description: Product identifier from source.
+        tests: []
+      - name: product_rate_plan_charge_id
+        data_type: VARCHAR
+        description: Product rate plan charge identifier.
+        tests: []
+      - name: product_rate_plan_id
+        data_type: VARCHAR
+        description: Product rate plan identifier.
+        tests: []
+      - name: quantity
+        data_type: VARCHAR
+        description: Quantity as loaded (string).
+        tests: []
+      - name: rate_plan_charge_id
+        data_type: VARCHAR
+        description: Rate plan charge identifier.
+        tests: []
+      - name: rate_plan_id
+        data_type: VARCHAR
+        description: Rate plan identifier.
+        tests: []
+      - name: recognized_revenue_accounting_code_id
+        data_type: VARCHAR
+        description: Recognized revenue accounting code identifier.
+        tests: []
+      - name: rev_rec_start_date
+        data_type: TIMESTAMP
+        description: Revenue recognition start timestamp from source.
+        tests: []
+      - name: service_end_date
+        data_type: DATE
+        description: Service period end date from source.
+        tests: []
+      - name: service_start_date
+        data_type: DATE
+        description: Service period start date from source.
+        tests: []
+      - name: sku
+        data_type: VARCHAR
+        description: SKU associated with the charge.
+        tests: []
+      - name: sold_to_contact_id
+        data_type: VARCHAR
+        description: Sold-to contact identifier.
+        tests: []
+      - name: source_item_type
+        data_type: VARCHAR
+        description: Source item type classification.
+        tests: []
+      - name: subscription_id
+        data_type: VARCHAR
+        description: Subscription identifier related to the item.
+        tests: []
+      - name: tax_amount
+        data_type: VARCHAR
+        description: Tax amount as loaded (string).
+        tests: []
+      - name: tax_mode
+        data_type: VARCHAR
+        description: Tax mode from source.
+        tests: []
+      - name: transaction_currency
+        data_type: VARCHAR
+        description: Transaction currency code from source.
+        tests: []
+      - name: unit_price
+        data_type: VARCHAR
+        description: Unit price as loaded (string).
+        tests: []
+      - name: uom
+        data_type: VARCHAR
+        description: Unit of measure for the charge.
+        tests: []
+      - name: updated_by_id
+        data_type: VARCHAR
+        description: Identifier of the user who last updated the record.
+        tests: []
+      - name: updated_date
+        data_type: TIMESTAMP
+        description: Record last update timestamp from source.
+        tests: []
+      - name: is_most_recent_record
+        data_type: BOOLEAN
+        description: Latest snapshot flag; only true rows are included in this model.
+        tests: []
+      - name: charge_day
+        data_type: DATE
+        description: Calendar day derived from charge_date; null if charge_date is null.
+        tests: []
+      - name: charge_week
+        data_type: DATE
+        description: Start date of the ISO week (Monday) for charge_date; null if charge_date is null.
+        tests: []
+      - name: charge_month
+        data_type: DATE
+        description: First day of the calendar month for charge_date; null if charge_date is null.
+        tests: []
+      - name: discount_amount_home_currency
+        data_type: DOUBLE
+        description: Numeric discount in home currency set from charge_amount_home_currency when processing_type='1', else 0.0; null if source amount is null and processing_type='1'.
+        tests: []
+      - name: discount_amount
+        data_type: DOUBLE
+        description: Numeric discount in transaction currency set from charge_amount when processing_type='1', else 0.0; null if source amount is null and processing_type='1'.
+        tests: []
+      - name: service_start_day
+        data_type: DATE
+        description: Calendar day derived from service_start_date; null if service_start_date is null.
+        tests: []
+      - name: service_start_week
+        data_type: DATE
+        description: Start date of the ISO week (Monday) for service_start_date; null if service_start_date is null.
+        tests: []
+      - name: service_start_month
+        data_type: DATE
+        description: First day of the calendar month for service_start_date; null if service_start_date is null.
+        tests: []
+
+
+## int_zuora__billing_enriched
+
+    - name: int_zuora__billing_enriched
+      description: Per-invoice aggregates from most-recent invoice items, taxes, payments, and credit balance adjustments
+      grain: One row per invoice_id present in most-recent invoice items
+      source_models:
+      - staging.stg_zuora__invoice_item
+      - staging.stg_zuora__invoice_payment
+      - staging.stg_zuora__payment
+      - staging.stg_zuora__credit_balance_adjustment
+      - staging.stg_zuora__taxation_item
+      business_logic: '- Keep only rows marked as most recent in each staging source. - Aggregate invoice items by invoice_id: - invoice_items: number of unique invoice_item_id; NULLs ignored. - products: number of unique product_id; NULLs ignored. - subscriptions: number of unique subscription_id; NULLs ignored. - discount_charges: total charge_amount for items where processing_type equals ''1'' (string compare); items not matching contribute 0; result is NULL if all qualifying amounts are NULL. - discount_charges_home_currency: same logic using charge_amount_home_currency. - units: total of quantity; NULLs ignored; NULL if all quantities are NULL. - first_charge_date: earliest charge_date; NULLs ignored. - most_recent_charge_date: latest charge_date; NULLs ignored. - invoice_service_start_date: earliest service_start_date; NULLs ignored. - invoice_service_end_date: latest service_end_date; NULLs ignored. - Taxes: per invoice_id, total tax_amount_home_currency across taxation items; NULLs ignored; NULL if no taxation items or all amounts are NULL. - Payments: join invoice_payment to payment on payment_id, then aggregate per invoice_id: - payments: number of unique payment_id; NULLs ignored. - invoice_amount_paid_home_currency: total of amount_home_currency with NULL or non-numeric treated as 0; NULL if no matched payments exist. - first_payment_date: earliest effective_date string (by string order); NULLs ignored; NULL if none. - most_recent_payment_date: latest effective_date string (by string order); NULLs ignored; NULL if none. - payment_methods: number of unique payment_method_id; NULLs ignored; 0 if all method IDs are NULL; NULL if no matched payments exist. - Credit balance adjustments: per invoice_id aggregate: - credit_balance_adjustments: number of unique credit_balance_adjustment_id; NULLs ignored. - credit_balance_adjustment_amount_home_currency: total of amount_home_currency; NULLs ignored; NULL if none or all amounts are NULL. - first_credit_balance_adjustment_date: earliest adjustment_date; NULLs ignored; NULL if none. - most_recent_credit_balance_adjustment_date: latest adjustment_date; NULLs ignored; NULL if none. - Final output starts from invoices with at least one most-recent invoice item and left joins taxes, payments, and credit aggregates on invoice_id; unmatched joins produce NULLs.'
+      columns:
+      - name: invoice_id
+        data_type: VARCHAR
+        description: Invoice identifier; one row per invoice_id from most-recent invoice items
+        tests:
+        - not_null
+        - unique
+      - name: invoice_items
+        data_type: BIGINT
+        description: Unique invoice_item_id count from most-recent invoice items; NULLs ignored
+        tests: []
+      - name: products
+        data_type: BIGINT
+        description: Unique product_id count from most-recent invoice items; NULLs ignored
+        tests: []
+      - name: subscriptions
+        data_type: BIGINT
+        description: Unique subscription_id count from most-recent invoice items; NULLs ignored
+        tests: []
+      - name: discount_charges
+        data_type: DOUBLE
+        description: Total charge_amount for items where processing_type='1'; non-matching items add 0; NULL if all qualifying amounts are NULL
+        tests: []
+      - name: discount_charges_home_currency
+        data_type: DOUBLE
+        description: Total charge_amount_home_currency for items where processing_type='1'; non-matching items add 0; NULL if all qualifying amounts are NULL
+        tests: []
+      - name: units
+        data_type: DOUBLE
+        description: Total quantity across items; NULLs ignored; NULL if all quantities are NULL
+        tests: []
+      - name: first_charge_date
+        data_type: TIMESTAMP
+        description: Earliest non-null charge_date across items; NULL if all are NULL
+        tests: []
+      - name: most_recent_charge_date
+        data_type: TIMESTAMP
+        description: Latest non-null charge_date across items; NULL if all are NULL
+        tests: []
+      - name: invoice_service_start_date
+        data_type: DATE
+        description: Earliest non-null service_start_date across items; NULL if all are NULL
+        tests: []
+      - name: invoice_service_end_date
+        data_type: DATE
+        description: Latest non-null service_end_date across items; NULL if all are NULL
+        tests: []
+      - name: tax_amount_home_currency
+        data_type: DOUBLE
+        description: Total tax_amount_home_currency from taxation items; NULL if none or all amounts are NULL
+        tests: []
+      - name: payments
+        data_type: BIGINT
+        description: Unique payment_id count from payments linked via invoice_payment; NULL if none
+        tests: []
+      - name: invoice_amount_paid_home_currency
+        data_type: DOUBLE
+        description: Total of payment amounts in home currency with NULL or non-numeric treated as 0; NULL if no linked payments
+        tests: []
+      - name: first_payment_date
+        data_type: VARCHAR
+        description: Earliest effective_date string among linked payments (string order); NULL if none
+        tests: []
+      - name: most_recent_payment_date
+        data_type: VARCHAR
+        description: Latest effective_date string among linked payments (string order); NULL if none
+        tests: []
+      - name: payment_methods
+        data_type: BIGINT
+        description: Unique payment_method_id count across linked payments; 0 if all method IDs are NULL; NULL if none
+        tests: []
+      - name: credit_balance_adjustments
+        data_type: BIGINT
+        description: Unique credit_balance_adjustment_id count for the invoice_id; NULL if none
+        tests: []
+      - name: credit_balance_adjustment_amount_home_currency
+        data_type: DOUBLE
+        description: Total amount_home_currency across credit balance adjustments; NULL if none or all amounts are NULL
+        tests: []
+      - name: first_credit_balance_adjustment_date
+        data_type: DATE
+        description: Earliest non-null adjustment_date across credit balance adjustments; NULL if none
+        tests: []
+      - name: most_recent_credit_balance_adjustment_date
+        data_type: DATE
+        description: Latest non-null adjustment_date across credit balance adjustments; NULL if none
+        tests: []
+
+
+## int_zuora__amendment_current
+
+    - name: int_zuora__amendment_current
+      description: Pass-through of current amendment rows from staging filtered to is_most_recent_record true.
+      grain: One row per staging amendment record where is_most_recent_record is true.
+      source_models:
+      - staging.stg_zuora__amendment
+      business_logic: '- Select rows from staging.stg_zuora__amendment where is_most_recent_record is true. - Include all columns unchanged; types and values are preserved. - No aggregation, sorting, or deduplication; upstream duplicates remain. - NULL values are retained as received.'
+      columns:
+      - name: amendment_id
+        data_type: VARCHAR
+        description: Zuora amendment identifier.
+        tests:
+        - not_null
+      - name: auto_renew
+        data_type: VARCHAR
+        description: Auto-renewal setting as provided by Zuora.
+      - name: booking_date
+        data_type: VARCHAR
+        description: Booking date text.
+      - name: code
+        data_type: VARCHAR
+        description: Amendment code.
+      - name: contract_effective_date
+        data_type: VARCHAR
+        description: Contract effective date text.
+      - name: created_by_id
+        data_type: VARCHAR
+        description: User ID who created the amendment.
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Timestamp when the amendment was created.
+      - name: current_term
+        data_type: VARCHAR
+        description: Current term length text.
+      - name: current_term_period_type
+        data_type: VARCHAR
+        description: Unit for current term period.
+      - name: customer_acceptance_date
+        data_type: VARCHAR
+        description: Customer acceptance date text.
+      - name: description
+        data_type: VARCHAR
+        description: Amendment description.
+      - name: effective_date
+        data_type: VARCHAR
+        description: Effective date text.
+      - name: name
+        data_type: VARCHAR
+        description: Amendment name.
+      - name: new_rate_plan_id
+        data_type: VARCHAR
+        description: New rate plan ID.
+      - name: removed_rate_plan_id
+        data_type: VARCHAR
+        description: Removed rate plan ID.
+      - name: renewal_setting
+        data_type: VARCHAR
+        description: Renewal setting.
+      - name: renewal_term
+        data_type: VARCHAR
+        description: Renewal term length text.
+      - name: renewal_term_period_type
+        data_type: VARCHAR
+        description: Unit for renewal term period.
+      - name: resume_date
+        data_type: VARCHAR
+        description: Resume date text.
+      - name: service_activation_date
+        data_type: VARCHAR
+        description: Service activation date text.
+      - name: specific_update_date
+        data_type: VARCHAR
+        description: Specific update date text.
+      - name: status
+        data_type: VARCHAR
+        description: Amendment status.
+      - name: subscription_id
+        data_type: VARCHAR
+        description: Subscription ID.
+      - name: suspend_date
+        data_type: VARCHAR
+        description: Suspend date text.
+      - name: term_start_date
+        data_type: VARCHAR
+        description: Term start date text.
+      - name: term_type
+        data_type: VARCHAR
+        description: Term type.
+      - name: type
+        data_type: VARCHAR
+        description: Amendment type.
+      - name: updated_by_id
+        data_type: VARCHAR
+        description: User ID who last updated the amendment.
+      - name: updated_date
+        data_type: TIMESTAMP
+        description: Timestamp when the amendment was last updated.
+      - name: is_most_recent_record
+        data_type: BOOLEAN
+        description: True if this is the latest snapshot for the amendment; all rows here are true.
+
+
+## int_zuora__product_current
+
+    - name: int_zuora__product_current
+      description: Pass-through of Zuora product rows flagged as most recent.
+      grain: One row per source row with is_most_recent_record true; duplicates by product_id may exist.
+      source_models:
+      - staging.stg_zuora__product
+      business_logic: '- Read all columns from staging.stg_zuora__product. - Keep only rows where is_most_recent_record is true; rows where it is false or NULL are excluded. - No transformations or casts are applied; values are retained exactly as in the source. - NULLs and empty strings are preserved. - No deduplication or aggregation is performed. - No ordering is applied; output row order is not guaranteed.'
+      columns:
+      - name: product_id
+        data_type: VARCHAR
+        description: Zuora product identifier
+        tests:
+        - not_null
+      - name: category
+        data_type: VARCHAR
+        description: Product category label
+        tests: []
+      - name: created_by_id
+        data_type: VARCHAR
+        description: User ID that created the product
+        tests: []
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Timestamp when the product was created
+        tests: []
+      - name: description
+        data_type: VARCHAR
+        description: Product description text
+        tests: []
+      - name: effective_end_date
+        data_type: VARCHAR
+        description: Effective end date as string
+        tests: []
+      - name: effective_start_date
+        data_type: VARCHAR
+        description: Effective start date as string
+        tests: []
+      - name: name
+        data_type: VARCHAR
+        description: Product name
+        tests: []
+      - name: sku
+        data_type: VARCHAR
+        description: Stock keeping unit code
+        tests: []
+      - name: updated_by_id
+        data_type: VARCHAR
+        description: User ID that last updated the product
+        tests: []
+      - name: updated_date
+        data_type: TIMESTAMP
+        description: Timestamp when the product was last updated
+        tests: []
+      - name: is_most_recent_record
+        data_type: BOOLEAN
+        description: Most-recent flag; always true in this model; false and NULL are excluded by the filter
+        tests: []
+
+
+## int_zuora__product_rate_plan_current
+
+    - name: int_zuora__product_rate_plan_current
+      description: Latest snapshot of Zuora product rate plans filtered to rows flagged as most recent
+      grain: One row per staging row with is_most_recent_record = TRUE
+      source_models:
+      - staging.stg_zuora__product_rate_plan
+      business_logic: Read from staging.stg_zuora__product_rate_plan and keep only rows where is_most_recent_record is TRUE; rows where the flag is FALSE or NULL are excluded. Select all source columns unchanged with no casting, trimming, deduplication, calculations, or renaming; values, casing, whitespace, and NULLs are preserved. If multiple rows share the same product_rate_plan_id and the flag is TRUE, all such rows are retained. No ordering is applied; the output row order is determined by the engine.
+      columns:
+      - name: product_rate_plan_id
+        data_type: VARCHAR
+        description: Zuora product rate plan identifier
+        tests:
+        - not_null
+      - name: created_by_id
+        data_type: VARCHAR
+        description: Zuora user ID that created the plan
+        tests: []
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Creation timestamp from Zuora
+        tests: []
+      - name: description
+        data_type: VARCHAR
+        description: Free-form plan description
+        tests: []
+      - name: effective_end_date
+        data_type: VARCHAR
+        description: Effective end date as loaded
+        tests: []
+      - name: effective_start_date
+        data_type: VARCHAR
+        description: Effective start date as loaded
+        tests: []
+      - name: name
+        data_type: VARCHAR
+        description: Product rate plan name
+        tests: []
+      - name: product_id
+        data_type: VARCHAR
+        description: Zuora product identifier
+        tests: []
+      - name: updated_by_id
+        data_type: VARCHAR
+        description: Zuora user ID that last updated the plan
+        tests: []
+      - name: updated_date
+        data_type: TIMESTAMP
+        description: Last update timestamp from Zuora
+        tests: []
+      - name: is_most_recent_record
+        data_type: BOOLEAN
+        description: Boolean flag from staging; always TRUE here due to the filter
+        tests: []
+
+
+## int_zuora__rate_plan_current
+
+    - name: int_zuora__rate_plan_current
+      description: Filtered view of stg_zuora__rate_plan containing only rows flagged as most recent
+      grain: One row per staging rate plan record where is_most_recent_record = TRUE (no de-duplication enforced)
+      source_models:
+      - staging.stg_zuora__rate_plan
+      business_logic: '- Return all columns from staging.stg_zuora__rate_plan where is_most_recent_record is TRUE; rows with FALSE or NULL in this flag are excluded. - No additional filters, joins, transformations, casting, or trimming; values, NULLs, and data types are preserved exactly as in staging. - Do not deduplicate by any key; multiple rows may exist if present upstream. - No sorting is applied; output row order is not defined. - The is_most_recent_record column is TRUE for all rows in the output due to the filter.'
+      columns:
+      - name: rate_plan_id
+        data_type: VARCHAR
+        description: Rate plan identifier.
+        tests:
+        - not_null
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier.
+        tests: []
+      - name: amendment_id
+        data_type: VARCHAR
+        description: Amendment identifier.
+        tests: []
+      - name: bill_to_contact_id
+        data_type: VARCHAR
+        description: Bill-to contact identifier.
+        tests: []
+      - name: created_by_id
+        data_type: VARCHAR
+        description: Creator user identifier.
+        tests: []
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Creation timestamp.
+        tests: []
+      - name: default_payment_method_id
+        data_type: VARCHAR
+        description: Default payment method identifier.
+        tests: []
+      - name: name
+        data_type: VARCHAR
+        description: Rate plan name.
+        tests: []
+      - name: original_rate_plan_id
+        data_type: VARCHAR
+        description: Original rate plan identifier.
+        tests: []
+      - name: product_id
+        data_type: VARCHAR
+        description: Product identifier.
+        tests: []
+      - name: product_rate_plan_id
+        data_type: VARCHAR
+        description: Product rate plan identifier.
+        tests: []
+      - name: sold_to_contact_id
+        data_type: VARCHAR
+        description: Sold-to contact identifier.
+        tests: []
+      - name: subscription_id
+        data_type: VARCHAR
+        description: Subscription identifier.
+        tests: []
+      - name: updated_by_id
+        data_type: VARCHAR
+        description: Last updater user identifier.
+        tests: []
+      - name: updated_date
+        data_type: TIMESTAMP
+        description: Last update timestamp.
+        tests: []
+      - name: is_most_recent_record
+        data_type: BOOLEAN
+        description: Most recent record flag; always TRUE in this model.
+        tests: []
+
+
+## int_zuora__rate_plan_charge_current
+
+    - name: int_zuora__rate_plan_charge_current
+      description: Latest snapshot of Zuora rate plan charges; passthrough of staging rows with is_most_recent_record true
+      grain: One row per staging.stg_zuora__rate_plan_charge record with is_most_recent_record true
+      source_models:
+      - staging.stg_zuora__rate_plan_charge
+      business_logic: '- Read all columns from staging.stg_zuora__rate_plan_charge. - Filter to rows where is_most_recent_record is true; rows with false or null are excluded. - No transformations, casts, aggregations, deduplication, or sorting; values and NULLs are preserved exactly as in staging. - If multiple rows are flagged as most recent for the same rate_plan_charge_id, all such rows are included (duplicates preserved). - Result row order is unspecified.'
+      columns:
+      - name: rate_plan_charge_id
+        data_type: VARCHAR
+        description: Unique rate plan charge identifier.
+        tests:
+        - not_null
+      - name: account_id
+        data_type: VARCHAR
+        description: Account owning the charge.
+        tests: []
+      - name: account_receivable_accounting_code_id
+        data_type: VARCHAR
+        description: Accounts receivable accounting code ID.
+        tests: []
+      - name: accounting_code
+        data_type: VARCHAR
+        description: Accounting code.
+        tests: []
+      - name: amended_by_order_on
+        data_type: DATE
+        description: Date the charge was amended by an order.
+        tests: []
+      - name: amendment_id
+        data_type: VARCHAR
+        description: Amendment ID for the charge.
+        tests: []
+      - name: apply_discount_to
+        data_type: VARCHAR
+        description: Target the discount applies to.
+        tests: []
+      - name: bill_cycle_day
+        data_type: BIGINT
+        description: Bill cycle day number.
+        tests: []
+      - name: bill_cycle_type
+        data_type: VARCHAR
+        description: Billing cycle type.
+        tests: []
+      - name: bill_to_contact_id
+        data_type: VARCHAR
+        description: Bill-to contact ID.
+        tests: []
+      - name: bill_to_contact_snapshot_id
+        data_type: VARCHAR
+        description: Bill-to contact snapshot ID.
+        tests: []
+      - name: billing_period
+        data_type: VARCHAR
+        description: Billing period.
+        tests: []
+      - name: billing_timing
+        data_type: VARCHAR
+        description: Billing timing.
+        tests: []
+      - name: booking_exchange_rate
+        data_type: BIGINT
+        description: Exchange rate at booking.
+        tests: []
+      - name: booking_exchange_rate_date
+        data_type: DATE
+        description: Date of the booking exchange rate.
+        tests: []
+      - name: charge_model
+        data_type: VARCHAR
+        description: Pricing model of the charge.
+        tests: []
+      - name: charge_number
+        data_type: VARCHAR
+        description: Charge number.
+        tests: []
+      - name: charge_type
+        data_type: VARCHAR
+        description: Charge type.
+        tests: []
+      - name: charged_through_date
+        data_type: DATE
+        description: Date through which the charge has been billed.
+        tests: []
+      - name: created_by_id
+        data_type: VARCHAR
+        description: User ID that created the charge.
+        tests: []
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Timestamp the charge was created.
+        tests: []
+      - name: credit_option
+        data_type: VARCHAR
+        description: Credit option.
+        tests: []
+      - name: default_payment_method_id
+        data_type: VARCHAR
+        description: Default payment method ID.
+        tests: []
+      - name: deferred_revenue_accounting_code_id
+        data_type: VARCHAR
+        description: Deferred revenue accounting code ID.
+        tests: []
+      - name: description
+        data_type: VARCHAR
+        description: Charge description.
+        tests: []
+      - name: discount_level
+        data_type: VARCHAR
+        description: Discount level.
+        tests: []
+      - name: dmrc
+        data_type: BIGINT
+        description: DMRC amount.
+        tests: []
+      - name: dmrchome_currency
+        data_type: BIGINT
+        description: DMRC amount in home currency.
+        tests: []
+      - name: dtcv
+        data_type: BIGINT
+        description: DTCV amount.
+        tests: []
+      - name: dtcvhome_currency
+        data_type: BIGINT
+        description: DTCV amount in home currency.
+        tests: []
+      - name: effective_end_date
+        data_type: DATE
+        description: Effective end date.
+        tests: []
+      - name: effective_start_date
+        data_type: DATE
+        description: Effective start date.
+        tests: []
+      - name: end_date_condition
+        data_type: VARCHAR
+        description: End date condition.
+        tests: []
+      - name: exchange_rate
+        data_type: BIGINT
+        description: Transaction exchange rate.
+        tests: []
+      - name: exchange_rate_date
+        data_type: DATE
+        description: Date of the exchange rate.
+        tests: []
+      - name: home_currency
+        data_type: VARCHAR
+        description: Home currency code.
+        tests: []
+      - name: is_prepaid
+        data_type: BOOLEAN
+        description: Prepaid flag.
+        tests: []
+      - name: is_processed
+        data_type: BOOLEAN
+        description: Processed flag.
+        tests: []
+      - name: mrr
+        data_type: BIGINT
+        description: Monthly recurring revenue amount.
+        tests: []
+      - name: mrrhome_currency
+        data_type: BIGINT
+        description: MRR amount in home currency.
+        tests: []
+      - name: name
+        data_type: VARCHAR
+        description: Charge name.
+        tests: []
+      - name: number_of_periods
+        data_type: VARCHAR
+        description: Number of periods.
+        tests: []
+      - name: original_id
+        data_type: VARCHAR
+        description: Original charge ID.
+        tests: []
+      - name: original_order_date
+        data_type: DATE
+        description: Original order date.
+        tests: []
+      - name: price_change_option
+        data_type: VARCHAR
+        description: Price change option.
+        tests: []
+      - name: price_increase_percentage
+        data_type: BIGINT
+        description: Price increase percentage.
+        tests: []
+      - name: processed_through_date
+        data_type: DATE
+        description: Date through which the charge has been processed.
+        tests: []
+      - name: product_id
+        data_type: VARCHAR
+        description: Product ID.
+        tests: []
+      - name: product_rate_plan_charge_id
+        data_type: VARCHAR
+        description: Product rate plan charge ID.
+        tests: []
+      - name: product_rate_plan_id
+        data_type: VARCHAR
+        description: Product rate plan ID.
+        tests: []
+      - name: quantity
+        data_type: BIGINT
+        description: Charge quantity.
+        tests: []
+      - name: rate_plan_id
+        data_type: VARCHAR
+        description: Rate plan ID.
+        tests: []
+      - name: recognized_revenue_accounting_code_id
+        data_type: VARCHAR
+        description: Recognized revenue accounting code ID.
+        tests: []
+      - name: segment
+        data_type: BIGINT
+        description: Segment value.
+        tests: []
+      - name: sold_to_contact_id
+        data_type: VARCHAR
+        description: Sold-to contact ID.
+        tests: []
+      - name: specific_billing_period
+        data_type: VARCHAR
+        description: Specific billing period.
+        tests: []
+      - name: specific_end_date
+        data_type: VARCHAR
+        description: Specific end date text.
+        tests: []
+      - name: specific_list_price_base
+        data_type: VARCHAR
+        description: Specific list price base.
+        tests: []
+      - name: subscription_id
+        data_type: VARCHAR
+        description: Subscription ID.
+        tests: []
+      - name: tcv
+        data_type: BIGINT
+        description: Total contract value amount.
+        tests: []
+      - name: tcvhome_currency
+        data_type: BIGINT
+        description: TCV amount in home currency.
+        tests: []
+      - name: transaction_currency
+        data_type: VARCHAR
+        description: Transaction currency code.
+        tests: []
+      - name: trigger_date
+        data_type: VARCHAR
+        description: Charge trigger date (text).
+        tests: []
+      - name: trigger_event
+        data_type: VARCHAR
+        description: Charge trigger event.
+        tests: []
+      - name: uom
+        data_type: VARCHAR
+        description: Unit of measure.
+        tests: []
+      - name: up_to_periods
+        data_type: VARCHAR
+        description: Up-to periods value.
+        tests: []
+      - name: up_to_periods_type
+        data_type: VARCHAR
+        description: Up-to periods type.
+        tests: []
+      - name: updated_by_id
+        data_type: VARCHAR
+        description: User ID that last updated the charge.
+        tests: []
+      - name: updated_date
+        data_type: TIMESTAMP
+        description: Timestamp of last update.
+        tests: []
+      - name: version
+        data_type: BIGINT
+        description: Record version number.
+        tests: []
+      - name: weekly_bill_cycle_day
+        data_type: VARCHAR
+        description: Weekly bill cycle day.
+        tests: []
+      - name: is_most_recent_record
+        data_type: BOOLEAN
+        description: Flag indicating the row is the most recent snapshot; always true in this table.
+        tests:
+        - not_null
+
+
+## int_zuora__subscription_current
+
+    - name: int_zuora__subscription_current
+      description: Current snapshot of Zuora subscriptions as a direct passthrough of staging.stg_zuora__subscription filtered to rows where is_most_recent_record is TRUE
+      grain: One row per source row in staging.stg_zuora__subscription where is_most_recent_record is TRUE
+      source_models:
+      - staging.stg_zuora__subscription
+      business_logic: '- Read all columns from staging.stg_zuora__subscription without transformation. - Filter to rows where is_most_recent_record is TRUE; rows with FALSE or NULL are excluded. - Do not deduplicate by subscription_id; if multiple source rows have is_most_recent_record TRUE, all are retained. - Preserve source data types, values, and NULLs; no casting, rounding, or formatting changes. - Do not impose ordering; output row order is unspecified unless an ORDER BY is applied downstream.'
+      columns:
+      - name: subscription_id
+        data_type: VARCHAR
+        description: Subscription identifier from Zuora
+        tests:
+        - not_null
+      - name: account_id
+        data_type: VARCHAR
+        description: Owning account identifier
+        tests: []
+      - name: auto_renew
+        data_type: VARCHAR
+        description: Auto-renew flag as loaded (text)
+        tests: []
+      - name: bill_to_contact_id
+        data_type: VARCHAR
+        description: Bill-to contact identifier
+        tests: []
+      - name: cancel_reason
+        data_type: VARCHAR
+        description: Cancellation reason
+        tests: []
+      - name: cancelled_date
+        data_type: TIMESTAMP
+        description: Cancellation timestamp
+        tests: []
+      - name: contract_acceptance_date
+        data_type: TIMESTAMP
+        description: Contract acceptance timestamp
+        tests: []
+      - name: contract_effective_date
+        data_type: TIMESTAMP
+        description: Contract effective timestamp
+        tests: []
+      - name: created_by_id
+        data_type: VARCHAR
+        description: Creator user identifier
+        tests: []
+      - name: created_date
+        data_type: TIMESTAMP
+        description: Record creation timestamp
+        tests: []
+      - name: current_term
+        data_type: VARCHAR
+        description: Current term value as loaded (text)
+        tests: []
+      - name: current_term_period_type
+        data_type: VARCHAR
+        description: Current term period type
+        tests: []
+      - name: default_payment_method_id
+        data_type: VARCHAR
+        description: Default payment method identifier
+        tests: []
+      - name: externally_managed_by
+        data_type: VARCHAR
+        description: External management system
+        tests: []
+      - name: initial_term
+        data_type: VARCHAR
+        description: Initial term value as loaded (text)
+        tests: []
+      - name: initial_term_period_type
+        data_type: VARCHAR
+        description: Initial term period type
+        tests: []
+      - name: invoice_owner_id
+        data_type: VARCHAR
+        description: Invoice owner account identifier
+        tests: []
+      - name: is_invoice_separate
+        data_type: VARCHAR
+        description: Invoice separate flag as loaded (text)
+        tests: []
+      - name: is_latest_version
+        data_type: VARCHAR
+        description: Latest version flag as loaded (text)
+        tests: []
+      - name: last_booking_date
+        data_type: VARCHAR
+        description: Last booking date as loaded (text)
+        tests: []
+      - name: subscription_name
+        data_type: VARCHAR
+        description: Subscription name
+        tests: []
+      - name: notes
+        data_type: VARCHAR
+        description: Freeform notes
+        tests: []
+      - name: original_created_date
+        data_type: TIMESTAMP
+        description: Original creation timestamp
+        tests: []
+      - name: original_id
+        data_type: VARCHAR
+        description: Original subscription identifier
+        tests: []
+      - name: parent_account_id
+        data_type: VARCHAR
+        description: Parent account identifier
+        tests: []
+      - name: payment_term
+        data_type: VARCHAR
+        description: Payment term
+        tests: []
+      - name: previous_subscription_id
+        data_type: VARCHAR
+        description: Previous subscription identifier
+        tests: []
+      - name: renewal_term
+        data_type: VARCHAR
+        description: Renewal term value as loaded (text)
+        tests: []
+      - name: renewal_term_period_type
+        data_type: VARCHAR
+        description: Renewal term period type
+        tests: []
+      - name: revision
+        data_type: VARCHAR
+        description: Revision value as loaded (text)
+        tests: []
+      - name: service_activation_date
+        data_type: TIMESTAMP
+        description: Service activation timestamp
+        tests: []
+      - name: sold_to_contact_id
+        data_type: VARCHAR
+        description: Sold-to contact identifier
+        tests: []
+      - name: status
+        data_type: VARCHAR
+        description: Subscription status
+        tests: []
+      - name: subscription_end_date
+        data_type: VARCHAR
+        description: Subscription end date as loaded (text)
+        tests: []
+      - name: subscription_start_date
+        data_type: VARCHAR
+        description: Subscription start date as loaded (text)
+        tests: []
+      - name: term_end_date
+        data_type: TIMESTAMP
+        description: Term end timestamp
+        tests: []
+      - name: term_start_date
+        data_type: TIMESTAMP
+        description: Term start timestamp
+        tests: []
+      - name: term_type
+        data_type: VARCHAR
+        description: Term type
+        tests: []
+      - name: updated_by_id
+        data_type: VARCHAR
+        description: Last updater user identifier
+        tests: []
+      - name: updated_date
+        data_type: TIMESTAMP
+        description: Last update timestamp
+        tests: []
+      - name: version
+        data_type: VARCHAR
+        description: Version value as loaded (text)
+        tests: []
+      - name: is_most_recent_record
+        data_type: BOOLEAN
+        description: Boolean from source used for filtering; only rows with TRUE are included, so this field is TRUE for all output rows
+        tests: []
+
+
+## zuora__account_overview
+
+    - name: zuora__account_overview
+      description: Account-level overview combining current account fields, current contact fields, invoice aggregates, and invoice item counts
+      grain: One row per account_id present in int_zuora__account_current
+      source_models:
+      - intermediate.int_zuora__account_current
+      - intermediate.int_zuora__contact_current
+      - intermediate.int_zuora__invoice_base
+      - intermediate.int_zuora__invoice_item_base
+      - intermediate.int_zuora__billing_enriched
+      business_logic: '- Base: Start from intermediate.int_zuora__account_current (assumed one current row per account_id). - Contact: Left join intermediate.int_zuora__contact_current on account_id; if no contact row, all contact fields are NULL. - Invoice item count: - Build items_by_account by joining intermediate.int_zuora__invoice_base to intermediate.int_zuora__invoice_item_base on invoice_id, then counting distinct invoice_item_id per account_id. - Left join items_by_account to accounts. The count reflects distinct item IDs across all invoices of the account. If an account has invoices but none have items, the count is 0. If an account has no invoices, there is no items_by_account row and the joined count is NULL. - Invoice aggregates: - Build per_invoice by left joining intermediate.int_zuora__billing_enriched to intermediate.int_zuora__invoice_base on invoice_id, then grouping by account_id to compute: - first_charge_date: earliest non-NULL first_charge_date across the account’s invoices. - total_amount_paid: sum of invoice_amount_paid. - total_amount_not_paid: sum of invoice_amount_unpaid. - total_taxes: sum of tax_amount. - total_invoice_amount: sum of invoice_amount. - Summations skip NULL inputs per row; if an account has invoices but all values for a summed field are NULL, the result is NULL. If an account has no invoices, no per_invoice row exists and all joined aggregates are NULL. - Invoice count: - Compute per account_id using a correlated subquery over intermediate.int_zuora__invoice_base that counts distinct invoices; returns 0 when no invoices exist. - Output: - Select pass-through account fields, joined contact fields, per_invoice.first_charge_date as first_charge_processed_at, items_by_account.invoice_item_count, the scalar invoice_count, and the per_invoice totals. No zero-coalescing, rounding, or casting; all joins from accounts are left joins.'
+      columns:
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier from int_zuora__account_current; exactly one output row per account_id
+        tests:
+        - not_null
+        - unique
+      - name: account_created_at
+        data_type: TIMESTAMP
+        description: Account created_date from int_zuora__account_current
+      - name: account_name
+        data_type: VARCHAR
+        description: Account name from int_zuora__account_current
+      - name: account_number
+        data_type: VARCHAR
+        description: Account number from int_zuora__account_current
+      - name: account_credit_balance
+        data_type: VARCHAR
+        description: Raw credit_balance from int_zuora__account_current (string as stored; no casting)
+      - name: account_zuora_calculated_mrr
+        data_type: VARCHAR
+        description: Raw mrr from int_zuora__account_current (Zuora-calculated MRR; string as stored)
+      - name: account_status
+        data_type: VARCHAR
+        description: Account status from int_zuora__account_current
+      - name: is_auto_pay
+        data_type: VARCHAR
+        description: Raw auto_pay flag from int_zuora__account_current (string as stored)
+      - name: account_country
+        data_type: VARCHAR
+        description: Country from int_zuora__contact_current.country (NULL if no contact)
+      - name: account_city
+        data_type: VARCHAR
+        description: City from int_zuora__contact_current.city (NULL if no contact)
+      - name: account_email
+        data_type: VARCHAR
+        description: Work email from int_zuora__contact_current.work_email (NULL if no contact)
+      - name: account_first_name
+        data_type: VARCHAR
+        description: First name from int_zuora__contact_current.first_name (NULL if no contact)
+      - name: account_last_name
+        data_type: VARCHAR
+        description: Last name from int_zuora__contact_current.last_name (NULL if no contact)
+      - name: account_postal_code
+        data_type: VARCHAR
+        description: Postal code from int_zuora__contact_current.postal_code (NULL if no contact)
+      - name: account_state
+        data_type: VARCHAR
+        description: State from int_zuora__contact_current.state (NULL if no contact)
+      - name: first_charge_processed_at
+        data_type: TIMESTAMP
+        description: Earliest non-NULL first_charge_date from billing_enriched across all invoices for the account; NULL if no invoices or all values NULL
+      - name: invoice_item_count
+        data_type: BIGINT
+        description: Distinct count of invoice_item_id across all invoices for the account; 0 if invoices exist but no items; NULL if the account has no invoices
+      - name: invoice_count
+        data_type: BIGINT
+        description: Distinct count of invoices for the account; returns 0 when no invoices exist
+      - name: total_taxes
+        data_type: DOUBLE
+        description: Sum of tax_amount across all invoices for the account; NULL if no invoices or if all values are NULL
+      - name: total_invoice_amount
+        data_type: DOUBLE
+        description: Sum of invoice_amount across all invoices for the account; NULL if no invoices or if all values are NULL
+      - name: total_amount_paid
+        data_type: DOUBLE
+        description: Sum of invoice_amount_paid across all invoices for the account; NULL if no invoices or if all values are NULL
+      - name: total_amount_not_paid
+        data_type: DOUBLE
+        description: Sum of invoice_amount_unpaid across all invoices for the account; NULL if no invoices or if all values are NULL
+
+
+## zuora__billing_history
+
+    - name: zuora__billing_history
+      description: Invoice-level snapshot joining invoice_base with billing_enriched; includes invoice attributes plus item, tax, payment, and credit metrics.
+      grain: One row per invoice_id from intermediate.int_zuora__invoice_base
+      source_models:
+      - intermediate.int_zuora__invoice_base
+      - intermediate.int_zuora__billing_enriched
+      business_logic: '- Load invoices from intermediate.int_zuora__invoice_base and billing metrics from intermediate.int_zuora__billing_enriched. - Left join on invoice_id, retaining all invoices; if no billing match exists, all billing-derived fields are NULL. - Project all selected invoice_base fields unchanged. - Project all selected billing_enriched fields unchanged. - Compute invoice_amount_unpaid_home_currency as the invoice home-currency amount minus the paid amount in home currency; if either input is NULL, the result is NULL; no rounding or currency conversion is applied. - No explicit row ordering is applied.'
+      columns:
+      - name: invoice_id
+        data_type: VARCHAR
+        description: Unique invoice identifier.
+        tests:
+        - not_null
+        - unique
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier.
+        tests: []
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Invoice creation timestamp.
+        tests: []
+      - name: invoice_number
+        data_type: VARCHAR
+        description: Invoice number.
+        tests: []
+      - name: invoice_date
+        data_type: DATE
+        description: Invoice date.
+        tests: []
+      - name: invoice_amount
+        data_type: DOUBLE
+        description: Total amount in transaction currency.
+        tests: []
+      - name: invoice_amount_home_currency
+        data_type: DOUBLE
+        description: Total amount in home currency.
+        tests: []
+      - name: invoice_amount_paid
+        data_type: DOUBLE
+        description: Amount paid to date in transaction currency.
+        tests: []
+      - name: invoice_amount_unpaid
+        data_type: DOUBLE
+        description: Unpaid amount in transaction currency.
+        tests: []
+      - name: tax_amount
+        data_type: DOUBLE
+        description: Tax amount in transaction currency.
+        tests: []
+      - name: refund_amount
+        data_type: DOUBLE
+        description: Refund amount in transaction currency.
+        tests: []
+      - name: transaction_currency
+        data_type: VARCHAR
+        description: Transaction currency code.
+        tests: []
+      - name: home_currency
+        data_type: VARCHAR
+        description: Home currency code.
+        tests: []
+      - name: exchange_rate_date
+        data_type: VARCHAR
+        description: Exchange rate date as string.
+        tests: []
+      - name: due_date
+        data_type: DATE
+        description: Invoice due date.
+        tests: []
+      - name: status
+        data_type: VARCHAR
+        description: Invoice status.
+        tests: []
+      - name: purchase_type
+        data_type: VARCHAR
+        description: Purchase type.
+        tests: []
+      - name: invoice_items
+        data_type: BIGINT
+        description: Count of invoice items.
+        tests: []
+      - name: products
+        data_type: BIGINT
+        description: Product count.
+        tests: []
+      - name: subscriptions
+        data_type: BIGINT
+        description: Subscription count.
+        tests: []
+      - name: discount_charges
+        data_type: DOUBLE
+        description: Total discount in transaction currency.
+        tests: []
+      - name: discount_charges_home_currency
+        data_type: DOUBLE
+        description: Total discount in home currency.
+        tests: []
+      - name: units
+        data_type: DOUBLE
+        description: Total quantity across items.
+        tests: []
+      - name: first_charge_date
+        data_type: TIMESTAMP
+        description: Earliest charge timestamp.
+        tests: []
+      - name: most_recent_charge_date
+        data_type: TIMESTAMP
+        description: Latest charge timestamp.
+        tests: []
+      - name: invoice_service_start_date
+        data_type: DATE
+        description: Earliest service start date.
+        tests: []
+      - name: invoice_service_end_date
+        data_type: DATE
+        description: Latest service end date.
+        tests: []
+      - name: payments
+        data_type: BIGINT
+        description: Payment count.
+        tests: []
+      - name: invoice_amount_paid_home_currency
+        data_type: DOUBLE
+        description: Total amount paid in home currency.
+        tests: []
+      - name: invoice_amount_unpaid_home_currency
+        data_type: DOUBLE
+        description: Unpaid amount in home currency computed as invoice home amount minus paid home amount; NULL if either input is NULL.
+        tests: []
+      - name: first_payment_date
+        data_type: VARCHAR
+        description: First payment date as string.
+        tests: []
+      - name: most_recent_payment_date
+        data_type: VARCHAR
+        description: Most recent payment date as string.
+        tests: []
+      - name: payment_methods
+        data_type: BIGINT
+        description: Count of payment methods used.
+        tests: []
+      - name: tax_amount_home_currency
+        data_type: DOUBLE
+        description: Tax amount in home currency.
+        tests: []
+      - name: credit_balance_adjustments
+        data_type: BIGINT
+        description: Credit balance adjustment count.
+        tests: []
+      - name: credit_balance_adjustment_amount_home_currency
+        data_type: DOUBLE
+        description: Total credit balance adjustment amount in home currency.
+        tests: []
+      - name: first_credit_balance_adjustment_date
+        data_type: DATE
+        description: Earliest credit balance adjustment date.
+        tests: []
+      - name: most_recent_credit_balance_adjustment_date
+        data_type: DATE
+        description: Most recent credit balance adjustment date.
+        tests: []
+
+
+## zuora__line_item_history
+
+    - name: zuora__line_item_history
+      description: Historical invoice line items enriched with invoice, product, rate plan charge, subscription, and amendment attributes from current snapshots.
+      grain: One row per invoice_item_id; duplicates may occur if joined tables have multiple matches.
+      source_models:
+      - int_zuora__invoice_item_base
+      - int_zuora__invoice_base
+      - int_zuora__product_current
+      - int_zuora__product_rate_plan_current
+      - int_zuora__rate_plan_charge_current
+      - int_zuora__rate_plan_current
+      - int_zuora__subscription_current
+      - int_zuora__amendment_current
+      business_logic: '- Start with all rows from int_zuora__invoice_item_base (alias ii); the row grain is the line item (invoice_item_id); no aggregation or de-duplication. - Left join int_zuora__invoice_base (inv) on ii.invoice_id = inv.invoice_id; select: - inv.created_at → account_created_at - inv.status → account_status - inv.invoice_number, inv.invoice_date, inv.due_date → invoice_due_date - Left join int_zuora__rate_plan_charge_current (rpc) on ii.rate_plan_charge_id = rpc.rate_plan_charge_id; select: - rpc.name → rate_plan_charge_name - rpc.billing_period → charge_billing_period - rpc.billing_timing → charge_billing_timing - rpc.charge_model → charge_model - rpc.charge_type → charge_type - rpc.effective_start_date → charge_effective_start_date - rpc.effective_end_date → charge_effective_end_date - rpc.segment → charge_segment - rpc.mrr → charge_mrr - rpc.mrrhome_currency → charge_mrr_home_currency - Left join int_zuora__amendment_current (amd) on ii.amendment_id = amd.amendment_id; select amd.name → amendment_name, amd.type → amendment_type, amd.status → amendment_status. - Left join int_zuora__product_current (prod) on ii.product_id = prod.product_id; select prod.name → product_name, prod.category → product_category, prod.description → product_description, prod.effective_start_date → product_start_date, prod.effective_end_date → product_end_date. - Left join int_zuora__product_rate_plan_current (prp) on ii.product_rate_plan_id = prp.product_rate_plan_id; select prp.name → product_rate_plan_name, prp.description → product_rate_plan_description. - Left join int_zuora__rate_plan_current (rate_plan) on ii.rate_plan_id = rate_plan.rate_plan_id; no fields selected. - Left join int_zuora__subscription_current (sub) on ii.subscription_id = sub.subscription_id; no fields selected. - All joins are LEFT JOINs (no row filtering). If a joined table has multiple rows per key, the output will fan out accordingly; duplicates are preserved. - Columns from joined tables are NULL when no match exists; no defaulting, casting, rounding, or recomputation is applied. - All ii.* columns are passed through exactly as stored in int_zuora__invoice_item_base; date truncation fields (charge_day/charge_week/charge_month, service_start_day/service_start_week/service_start_month) are used as provided.'
+      columns:
+      - name: invoice_item_id
+        data_type: VARCHAR
+        description: Line item identifier; row grain is per invoice_item_id and may duplicate when 1:N joins occur.
+        tests:
+        - not_null
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier from invoice_item_base.
+        tests: []
+      - name: account_created_at
+        data_type: TIMESTAMP
+        description: Invoice created_at timestamp from invoice_base.
+        tests: []
+      - name: account_status
+        data_type: VARCHAR
+        description: Invoice status from invoice_base.
+        tests: []
+      - name: amendment_id
+        data_type: VARCHAR
+        description: Amendment identifier from invoice_item_base used to join amendment_current.
+        tests: []
+      - name: balance
+        data_type: VARCHAR
+        description: Remaining balance as loaded (string) from invoice_item_base.
+        tests: []
+      - name: charge_amount
+        data_type: VARCHAR
+        description: Charge amount in transaction currency as loaded (string) from invoice_item_base.
+        tests: []
+      - name: charge_amount_home_currency
+        data_type: VARCHAR
+        description: Charge amount in home currency as loaded (string) from invoice_item_base.
+        tests: []
+      - name: charge_date
+        data_type: TIMESTAMP
+        description: Charge timestamp from invoice_item_base.
+        tests: []
+      - name: charge_day
+        data_type: DATE
+        description: Precomputed charge_date truncated to day from invoice_item_base.
+        tests: []
+      - name: charge_week
+        data_type: DATE
+        description: Precomputed charge_date truncated to week start from invoice_item_base.
+        tests: []
+      - name: charge_month
+        data_type: DATE
+        description: Precomputed charge_date truncated to first day of month from invoice_item_base.
+        tests: []
+      - name: charge_name
+        data_type: VARCHAR
+        description: Charge name from invoice_item_base.
+        tests: []
+      - name: discount_amount
+        data_type: DOUBLE
+        description: Discount amount in transaction currency (numeric) from invoice_item_base.
+        tests:
+        - discount_amount >= 0
+      - name: discount_amount_home_currency
+        data_type: DOUBLE
+        description: Discount amount in home currency (numeric) from invoice_item_base.
+        tests:
+        - discount_amount_home_currency >= 0
+      - name: invoice_number
+        data_type: VARCHAR
+        description: Invoice number from invoice_base.
+        tests: []
+      - name: invoice_date
+        data_type: DATE
+        description: Invoice date from invoice_base.
+        tests: []
+      - name: invoice_due_date
+        data_type: DATE
+        description: Invoice due date from invoice_base.
+        tests: []
+      - name: product_id
+        data_type: VARCHAR
+        description: Product identifier from invoice_item_base.
+        tests: []
+      - name: product_rate_plan_id
+        data_type: VARCHAR
+        description: Product rate plan identifier from invoice_item_base.
+        tests: []
+      - name: product_rate_plan_charge_id
+        data_type: VARCHAR
+        description: Product rate plan charge identifier from invoice_item_base.
+        tests: []
+      - name: rate_plan_charge_id
+        data_type: VARCHAR
+        description: Rate plan charge identifier from invoice_item_base used to join rate_plan_charge_current.
+        tests: []
+      - name: service_start_day
+        data_type: DATE
+        description: Service start date (day precision) from invoice_item_base.
+        tests: []
+      - name: service_start_week
+        data_type: DATE
+        description: Service start date truncated to week start from invoice_item_base.
+        tests: []
+      - name: service_start_month
+        data_type: DATE
+        description: Service start date truncated to first day of month from invoice_item_base.
+        tests: []
+      - name: service_end_date
+        data_type: DATE
+        description: Service end date from invoice_item_base.
+        tests: []
+      - name: subscription_id
+        data_type: VARCHAR
+        description: Subscription identifier from invoice_item_base (joined to subscription_current; no fields selected).
+        tests: []
+      - name: sku
+        data_type: VARCHAR
+        description: SKU from invoice_item_base.
+        tests: []
+      - name: tax_amount
+        data_type: VARCHAR
+        description: Tax amount as loaded (string) from invoice_item_base.
+        tests: []
+      - name: transaction_currency
+        data_type: VARCHAR
+        description: Transaction currency code from invoice_item_base.
+        tests: []
+      - name: unit_price
+        data_type: VARCHAR
+        description: Unit price as loaded (string) from invoice_item_base.
+        tests: []
+      - name: uom
+        data_type: VARCHAR
+        description: Unit of measure from invoice_item_base.
+        tests: []
+      - name: rate_plan_charge_name
+        data_type: VARCHAR
+        description: Rate plan charge name from rate_plan_charge_current.
+        tests: []
+      - name: charge_billing_period
+        data_type: VARCHAR
+        description: Billing period of the charge from rate_plan_charge_current.
+        tests: []
+      - name: charge_billing_timing
+        data_type: VARCHAR
+        description: Billing timing of the charge from rate_plan_charge_current.
+        tests: []
+      - name: charge_model
+        data_type: VARCHAR
+        description: Charge model from rate_plan_charge_current.
+        tests: []
+      - name: charge_type
+        data_type: VARCHAR
+        description: Charge type from rate_plan_charge_current.
+        tests: []
+      - name: charge_effective_start_date
+        data_type: DATE
+        description: Effective start date of the charge from rate_plan_charge_current.
+        tests: []
+      - name: charge_effective_end_date
+        data_type: DATE
+        description: Effective end date of the charge from rate_plan_charge_current.
+        tests: []
+      - name: charge_segment
+        data_type: BIGINT
+        description: Charge segment number from rate_plan_charge_current.
+        tests: []
+      - name: charge_mrr
+        data_type: BIGINT
+        description: Monthly recurring revenue of the charge from rate_plan_charge_current.
+        tests:
+        - charge_mrr >= 0
+      - name: charge_mrr_home_currency
+        data_type: BIGINT
+        description: MRR in home currency from rate_plan_charge_current.
+        tests:
+        - charge_mrr_home_currency >= 0
+      - name: amendment_name
+        data_type: VARCHAR
+        description: Amendment name from amendment_current.
+        tests: []
+      - name: amendment_type
+        data_type: VARCHAR
+        description: Amendment type from amendment_current.
+        tests: []
+      - name: amendment_status
+        data_type: VARCHAR
+        description: Amendment status from amendment_current.
+        tests: []
+      - name: product_name
+        data_type: VARCHAR
+        description: Product name from product_current.
+        tests: []
+      - name: product_category
+        data_type: VARCHAR
+        description: Product category from product_current.
+        tests: []
+      - name: product_description
+        data_type: VARCHAR
+        description: Product description from product_current.
+        tests: []
+      - name: product_start_date
+        data_type: VARCHAR
+        description: Product effective start date as loaded (string) from product_current.
+        tests: []
+      - name: product_end_date
+        data_type: VARCHAR
+        description: Product effective end date as loaded (string) from product_current.
+        tests: []
+      - name: product_rate_plan_name
+        data_type: VARCHAR
+        description: Product rate plan name from product_rate_plan_current.
+        tests: []
+      - name: product_rate_plan_description
+        data_type: VARCHAR
+        description: Product rate plan description from product_rate_plan_current.
+        tests: []
+
+
+
+
+=== Premises recorded in earlier reviews ===
+[
+  {
+    "statement": "Raw source tables expose the individual fields referenced by the generated SQL as separate columns, without requiring CSV parsing first.",
+    "about": "data",
+    "target": "/tmp/gen_stage.py: intended staging SQL",
+    "evidence_of_dependence": "The generator uses `FROM {src}` with direct field references, although the schema check reports many fields missing from account, contact, invoice, taxation item, and amendment.",
+    "alternative": "The material index shows a single comma-delimited column name for these tables, for example `\"id,_fivetran_deleted,_fivetran_synced,account_number,...\"` for raw.zuora_account_data; these sources may require unpacking before field-level transformations.",
+    "importance": 5,
+    "reason": "If the raw records are packed into one column, numerous generated models cannot execute.",
+    "updates": null,
+    "id": "c2-1",
+    "call": 2
+  },
+  {
+    "statement": "A contract column without a source_expression can always be read from a raw column with the same name.",
+    "about": "data",
+    "target": "/tmp/gen_stage.py: intended staging identifier columns",
+    "evidence_of_dependence": "`srcname=n` followed by `e=f'try_cast(\"{srcname}\" AS {typ})'`",
+    "alternative": "The schema check explicitly reports missing direct fields including `invoice_payment_id`, `rate_plan_id`, `order_id`, `credit_balance_adjustment_id`, and `refund_invoice_payment_id`, while the material index exposes `id` in those sources.",
+    "importance": 5,
+    "reason": "Missing identifier mappings would prevent several generated staging models from executing.",
+    "updates": null,
+    "id": "c2-2",
+    "call": 2
+  },
+  {
+    "statement": "Invoices whose created_date is null or cannot be parsed should be removed from staging.",
+    "about": "requirement",
+    "target": "/tmp/gen_stage.py: intended stg_zuora__invoice row population",
+    "evidence_of_dependence": "`filters.append(\"try_cast(created_date AS timestamp) IS NOT NULL AND ...\")`",
+    "alternative": "The invoice row filter explicitly permits these records: `try_cast(created_date as TIMESTAMP) is null OR (...)`; its source expression sets such dates to null.",
+    "importance": 4,
+    "reason": "The stronger filter could remove invoices that the contract requires retaining.",
+    "updates": null,
+    "id": "c2-3",
+    "call": 2
+  },
+  {
+    "statement": "Casting account balance to DECIMAL(18,2) is sufficient without nullifying values outside the contract's permitted monetary range.",
+    "about": "requirement",
+    "target": "/tmp/gen_stage.py: intended stg_zuora__account.balance",
+    "evidence_of_dependence": "The generic branch produces `try_cast(\"balance\" AS DECIMAL(18,2))`, without processing the column's validation_rules.",
+    "alternative": "The account contract requires `try_cast(balance as DECIMAL(18,2)) BETWEEN -1000000 AND 1000000`, with `on_failure: nullify_field`.",
+    "importance": 4,
+    "reason": "Out-of-range but castable balances would remain available to downstream financial calculations.",
+    "updates": null,
+    "id": "c2-4",
+    "call": 2
+  },
+  {
+    "statement": "Account status values need only pass the allowed-value filter and do not need canonical capitalization.",
+    "about": "requirement",
+    "target": "/tmp/gen_stage.py: intended stg_zuora__account.status",
+    "evidence_of_dependence": "The generator filters with `lower(status) IN ('active', 'draft', 'cancelled')` but selects status through the generic VARCHAR cast.",
+    "alternative": "The contract requires correcting status to `Active`, `Draft`, or `Cancelled` using its specified CASE expression.",
+    "importance": 3,
+    "reason": "Noncanonical statuses would violate the staging contract and could affect case-sensitive downstream logic.",
+    "updates": null,
+    "id": "c2-5",
+    "call": 2
+  },
+  {
+    "statement": "Every non-null account deletion flag not represented as 'true', '1', or 't' denotes false.",
+    "about": "data",
+    "target": "sql/staging/stg_zuora__account.sql",
+    "evidence_of_dependence": "WHERE coalesce(lower(cast(_fivetran_deleted AS varchar)), 'false') NOT IN ('true', '1', 't')",
+    "alternative": "The contract permits only `_fivetran_deleted IS NULL OR _fivetran_deleted = false`; unrecognized non-null values need not denote false.",
+    "importance": 2,
+    "reason": "Unexpected flag values would cause the generated filter to retain records that do not satisfy the contract.",
+    "updates": null,
+    "id": "c4-1",
+    "call": 4
+  },
+  {
+    "statement": "Commas inside the packed raw records occur only as field delimiters, not inside quoted or escaped field values.",
+    "about": "data",
+    "target": "raw_zuora_account_data, raw_zuora_amendment_data, raw_zuora_contact_data, raw_zuora_invoice_data, raw_zuora_taxation_item_data",
+    "evidence_of_dependence": "split=f\"string_split({q}, ',')\"",
+    "alternative": null,
+    "importance": 5,
+    "reason": "An embedded comma would shift subsequent field values into the wrong columns, potentially corrupting many staging inputs.",
+    "updates": null,
+    "id": "c5-1",
+    "call": 5
+  },
+  {
+    "statement": "Every packed record contains fields in precisely the order and positions specified by its comma-separated column header.",
+    "about": "data",
+    "target": "raw_zuora_account_data, raw_zuora_amendment_data, raw_zuora_contact_data, raw_zuora_invoice_data, raw_zuora_taxation_item_data",
+    "evidence_of_dependence": "cols=[x.strip() for x in header.split(',') if x.strip()]; ... list_extract({split},{i}) AS {x}",
+    "alternative": null,
+    "importance": 4,
+    "reason": "Positional extraction silently misassigns or loses values when record layouts differ from the header.",
+    "updates": null,
+    "id": "c5-2",
+    "call": 5
+  },
+  {
+    "statement": "Leading and trailing whitespace is insignificant for every field extracted from the packed raw records.",
+    "about": "data",
+    "target": "raw_zuora_account_data, raw_zuora_amendment_data, raw_zuora_contact_data, raw_zuora_invoice_data, raw_zuora_taxation_item_data",
+    "evidence_of_dependence": "trim(list_extract({split},{i})) AS {x}",
+    "alternative": null,
+    "importance": 2,
+    "reason": "Unconditional trimming changes source values before any column-specific contract transformations are applied.",
+    "updates": null,
+    "id": "c5-3",
+    "call": 5
+  },
+  {
+    "statement": "The payment-method count in billing enrichment should use invoice_payment.payment_method_id rather than payment.payment_method_id.",
+    "about": "requirement",
+    "target": "int_zuora__billing_enriched.payment_methods",
+    "evidence_of_dependence": "SELECT ip.invoice_id, ip.payment_id, ip.payment_method_id",
+    "alternative": "The contract describes counting payment methods \"across linked payments\"; this could mean the payment_method_id on staging.stg_zuora__payment rather than the invoice-payment mapping.",
+    "importance": 4,
+    "reason": "The two sources can produce different method counts when their identifiers differ or one is null.",
+    "updates": null,
+    "id": "c6-1",
+    "call": 6
+  },
+  {
+    "statement": "Payment-date aggregation and output may use staged DATE values without converting them to the strings required by the billing-enrichment contract.",
+    "about": "requirement",
+    "target": "int_zuora__billing_enriched.first_payment_date and most_recent_payment_date",
+    "evidence_of_dependence": "p.effective_date ... min(effective_date) AS first_payment_date, max(effective_date) AS most_recent_payment_date",
+    "alternative": "The contract specifies \"earliest effective_date string (by string order)\" and declares both output columns as VARCHAR, whereas staging declares effective_date as DATE.",
+    "importance": 4,
+    "reason": "Omitting string conversion changes the declared output types and potentially the intended ordering semantics.",
+    "updates": null,
+    "id": "c6-2",
+    "call": 6
+  },
+  {
+    "statement": "Most-recent invoices with null invoice_date should be excluded from the daily transaction aggregates.",
+    "about": "requirement",
+    "target": "int_zuora__transactions_grouped",
+    "evidence_of_dependence": "FROM invoice_rows WHERE invoice_date IS NOT NULL",
+    "alternative": "The business logic specifies keeping most-recent invoices and grouping by account and date without an additional date filter, although the date_day column also has a not_null test.",
+    "importance": 3,
+    "reason": "This additional filter removes invoice amounts and counts instead of retaining a null-date group.",
+    "updates": null,
+    "id": "c6-3",
+    "call": 6
+  },
+  {
+    "statement": "Non-discount items contributing zero should make a discount aggregate zero when every qualifying discount amount is null.",
+    "about": "requirement",
+    "target": "int_zuora__billing_enriched.discount_charges and discount_charges_home_currency",
+    "evidence_of_dependence": "sum(CASE WHEN processing_type = '1' THEN try_cast(charge_amount AS DOUBLE) ELSE 0 END)",
+    "alternative": "The contract says both \"items not matching contribute 0\" and \"result is NULL if all qualifying amounts are NULL\"; the latter could require null even when nonmatching items exist.",
+    "importance": 3,
+    "reason": "The unresolved null-policy interpretation changes discount totals for mixed groups with missing discount amounts.",
+    "updates": null,
+    "id": "c6-4",
+    "call": 6
+  },
+  {
+    "statement": "Generating ascending dates and computing an ordered row_number is sufficient to guarantee ascending output order without a final ORDER BY.",
+    "about": "requirement",
+    "target": "int_zuora__mrr_date_spine",
+    "evidence_of_dependence": "row_number() OVER (ORDER BY date_day) AS date_index FROM days",
+    "alternative": "The MRR spine contract explicitly requires that output be \"ordered ascending,\" but the generated query has no final ORDER BY.",
+    "importance": 2,
+    "reason": "The date values and index can be correct while the required presentation order remains unguaranteed.",
+    "updates": null,
+    "id": "c6-5",
+    "call": 6
+  },
+  {
+    "statement": "Soft-deleted invoice-payment records must be excluded even though the invoice-payment contract specifies no row filter.",
+    "about": "requirement",
+    "target": "sql/staging/stg_zuora__invoice_payment.sql",
+    "evidence_of_dependence": "WHERE coalesce(lower(cast(_fivetran_deleted AS varchar)), 'false') NOT IN ('true', '1', 't')",
+    "alternative": "The invoice-payment section lists columns but no row_filters, whereas the account and invoice sections explicitly require deletion filtering.",
+    "importance": 3,
+    "reason": "Applying an unstated exclusion can remove payment allocations needed downstream.",
+    "updates": null,
+    "id": "c8-1",
+    "call": 8
+  },
+  {
+    "statement": "For account and invoice-payment snapshots, the most recent record is determined by updated_date rather than _fivetran_synced or another source ordering field.",
+    "about": "requirement",
+    "target": "stg_zuora__account.is_most_recent_record; stg_zuora__invoice_payment.is_most_recent_record",
+    "evidence_of_dependence": "row_number() over (partition by id order by try_cast(updated_date as timestamp) desc NULLS LAST) = 1",
+    "alternative": null,
+    "importance": 3,
+    "reason": "The contract requests latest-snapshot indicators without defining their ordering for these two models.",
+    "updates": null,
+    "id": "c8-2",
+    "call": 8
+  },
+  {
+    "statement": "Within each account or invoice-payment id, records tied for the latest parsed updated_date are interchangeable for downstream use.",
+    "about": "data",
+    "target": "stg_zuora__account.is_most_recent_record; stg_zuora__invoice_payment.is_most_recent_record",
+    "evidence_of_dependence": "row_number() over (partition by id order by try_cast(updated_date as timestamp) desc NULLS LAST) = 1",
+    "alternative": null,
+    "importance": 3,
+    "reason": "Without a tie-breaker, differing tied snapshots can receive the latest flag nondeterministically.",
+    "updates": null,
+    "id": "c8-3",
+    "call": 8
+  },
+  {
+    "statement": "Every contract column in pk_alias that lacks a source_expression represents the source row's own id, rather than a foreign-key reference.",
+    "about": "data",
+    "target": "Regenerated staging models, especially stg_zuora__account identifier columns",
+    "evidence_of_dependence": "`if n in pk_alias: srcname='id'`, where pk_alias includes `account_id`, `contact_id`, `payment_method_id`, `product_id`, and other identifiers.",
+    "alternative": "The source index exposes both `id` and separate relationship columns such as `account_id`, `product_id`, and `payment_method_id` in multiple tables; those relationship columns may need to retain their own source values rather than take the row's id.",
+    "importance": 5,
+    "reason": "The blanket mapping can replace foreign keys with primary keys throughout staging, breaking downstream joins and attribution.",
+    "updates": "c2-2",
+    "id": "c9-1",
+    "call": 9
+  }
+]
+
+=== Agent steps since the last review ===
+### event 47
+
+## 命令原文
+
+cat > sql/marts/zuora__account_overview.sql <<'SQL'
+WITH items_by_account AS (
+    SELECT inv.account_id, count(DISTINCT ii.invoice_item_id) AS invoice_item_count
+    FROM intermediate.int_zuora__invoice_base AS inv
+    JOIN intermediate.int_zuora__invoice_item_base AS ii ON inv.invoice_id = ii.invoice_id
+    GROUP BY inv.account_id
+),
+per_invoice AS (
+    SELECT inv.account_id,
+           min(be.first_charge_date) AS first_charge_processed_at,
+           sum(inv.invoice_amount_paid) AS total_amount_paid,
+           sum(inv.invoice_amount_unpaid) AS total_amount_not_paid,
+           sum(inv.tax_amount) AS total_taxes,
+           sum(inv.invoice_amount) AS total_invoice_amount
+    FROM intermediate.int_zuora__invoice_base AS inv
+    LEFT JOIN intermediate.int_zuora__billing_enriched AS be ON inv.invoice_id = be.invoice_id
+    GROUP BY inv.account_id
+)
+SELECT a.account_id,
+       a.created_date AS account_created_at,
+       a.name AS account_name,
+       a.account_number,
+       CAST(a.credit_balance AS VARCHAR) AS account_credit_balance,
+       CAST(a.mrr AS VARCHAR) AS account_zuora_calculated_mrr,
+       a.status AS account_status,
+       CAST(a.auto_pay AS VARCHAR) AS is_auto_pay,
+       c.country AS account_country,
+       c.city AS account_city,
+       c.work_email AS account_email,
+       c.first_name AS account_first_name,
+       c.last_name AS account_last_name,
+       c.postal_code AS account_postal_code,
+       c.state AS account_state,
+       pi.first_charge_processed_at,
+       iba.invoice_item_count,
+       (SELECT count(DISTINCT i.invoice_id)
+        FROM intermediate.int_zuora__invoice_base AS i
+        WHERE i.account_id = a.account_id) AS invoice_count,
+       pi.total_taxes,
+       pi.total_invoice_amount,
+       pi.total_amount_paid,
+       pi.total_amount_not_paid
+FROM intermediate.int_zuora__account_current AS a
+LEFT JOIN intermediate.int_zuora__contact_current AS c ON a.account_id = c.account_id
+LEFT JOIN items_by_account AS iba ON a.account_id = iba.account_id
+LEFT JOIN per_invoice AS pi ON a.account_id = pi.account_id
+SQL
+cat > sql/marts/zuora__billing_history.sql <<'SQL'
+SELECT
+    i.invoice_id, i.account_id, i.created_at, i.invoice_number, i.invoice_date,
+    i.invoice_amount, i.invoice_amount_home_currency, i.invoice_amount_paid,
+    i.invoice_amount_unpaid, i.tax_amount, i.refund_amount, i.transaction_currency,
+    i.home_currency, i.exchange_rate_date, i.due_date, i.status, i.purchase_type,
+    b.invoice_items, b.products, b.subscriptions, b.discount_charges,
+    b.discount_charges_home_currency, b.units, b.first_charge_date,
+    b.most_recent_charge_date, b.invoice_service_start_date, b.invoice_service_end_date,
+    b.payments, b.invoice_amount_paid_home_currency,
+    i.invoice_amount_home_currency - b.invoice_amount_paid_home_currency AS invoice_amount_unpaid_home_currency,
+    b.first_payment_date, b.most_recent_payment_date, b.payment_methods,
+    b.tax_amount_home_currency, b.credit_balance_adjustments,
+    b.credit_balance_adjustment_amount_home_currency,
+    b.first_credit_balance_adjustment_date, b.most_recent_credit_balance_adjustment_date
+FROM intermediate.int_zuora__invoice_base AS i
+LEFT JOIN intermediate.int_zuora__billing_enriched AS b ON i.invoice_id = b.invoice_id
+SQL
+cat > sql/marts/zuora__line_item_history.sql <<'SQL'
+SELECT
+    ii.invoice_item_id, ii.account_id, inv.created_at AS account_created_at,
+    inv.status AS account_status, ii.amendment_id, ii.balance, ii.charge_amount,
+    ii.charge_amount_home_currency, ii.charge_date, ii.charge_day, ii.charge_week,
+    ii.charge_month, ii.charge_name, ii.discount_amount, ii.discount_amount_home_currency,
+    inv.invoice_number, inv.invoice_date, inv.due_date AS invoice_due_date,
+    ii.product_id, ii.product_rate_plan_id, ii.product_rate_plan_charge_id,
+    ii.rate_plan_charge_id, ii.service_start_day, ii.service_start_week,
+    ii.service_start_month, ii.service_end_date, ii.subscription_id, ii.sku,
+    ii.tax_amount, ii.transaction_currency, ii.unit_price, ii.uom,
+    rpc.name AS rate_plan_charge_name, rpc.billing_period AS charge_billing_period,
+    rpc.billing_timing AS charge_billing_timing, rpc.charge_model, rpc.charge_type,
+    rpc.effective_start_date AS charge_effective_start_date,
+    rpc.effective_end_date AS charge_effective_end_date,
+    rpc.segment AS charge_segment, rpc.mrr AS charge_mrr,
+    rpc.mrrhome_currency AS charge_mrr_home_currency,
+    amd.name AS amendment_name, amd.type AS amendment_type, amd.status AS amendment_status,
+    prod.name AS product_name, prod.category AS product_category,
+    prod.description AS product_description,
+    CAST(prod.effective_start_date AS VARCHAR) AS product_start_date,
+    CAST(prod.effective_end_date AS VARCHAR) AS product_end_date,
+    prp.name AS product_rate_plan_name, prp.description AS product_rate_plan_description
+FROM intermediate.int_zuora__invoice_item_base AS ii
+LEFT JOIN intermediate.int_zuora__invoice_base AS inv ON ii.invoice_id = inv.invoice_id
+LEFT JOIN intermediate.int_zuora__rate_plan_charge_current AS rpc ON ii.rate_plan_charge_id = rpc.rate_plan_charge_id
+LEFT JOIN intermediate.int_zuora__amendment_current AS amd ON ii.amendment_id = amd.amendment_id
+LEFT JOIN intermediate.int_zuora__product_current AS prod ON ii.product_id = prod.product_id
+LEFT JOIN intermediate.int_zuora__product_rate_plan_current AS prp ON ii.product_rate_plan_id = prp.product_rate_plan_id
+LEFT JOIN intermediate.int_zuora__rate_plan_current AS rp ON ii.rate_plan_id = rp.rate_plan_id
+LEFT JOIN intermediate.int_zuora__subscription_current AS sub ON ii.subscription_id = sub.subscription_id
+SQL
+
+
+## agent 实际看到的执行结果
+
+
+
+

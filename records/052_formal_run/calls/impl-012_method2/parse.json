@@ -1,0 +1,785 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "utils.marketo__calendar_spine": {
+      "items": [
+        {
+          "problem": "The calendar's end date is assumed to be today even though no visible utility specification establishes that bound.",
+          "about": "data",
+          "evidence_in_work": "CURRENT_DATE AS max_date",
+          "source": "The upper bound of dates is defined only by the calendar spine; no additional end-date filter is applied.",
+          "importance": 2,
+          "reason": "An incorrect utility range changes the coverage of every downstream lead calendar."
+        }
+      ],
+      "fewer_reason": "No detailed utility contract is provided, so additional range assumptions cannot be assessed reliably."
+    },
+    "staging.stg_marketo__lead": {
+      "items": [
+        {
+          "problem": "Non-normalized emails are corrected and retained rather than deleted as the field-specific failure action requires.",
+          "about": "requirement",
+          "evidence_in_work": "LOWER(TRIM(email)) AS email",
+          "source": "rule: \"email = LOWER(TRIM(email))\" ... on_failure: delete_row",
+          "importance": 4,
+          "reason": "This changes which leads enter every downstream lead model."
+        },
+        {
+          "problem": "Duplicate lead IDs are resolved using textual updated_at ordering, which may not select the chronologically latest record when formats or offsets differ.",
+          "about": "data",
+          "evidence_in_work": "PARTITION BY id ORDER BY updated_at DESC NULLS LAST",
+          "source": "updated_timestamp ... data_type: VARCHAR",
+          "importance": 2,
+          "reason": "Incorrect survivor selection would propagate stale profile attributes."
+        }
+      ],
+      "fewer_reason": "The final edits handle nullable names and the visible required columns; no further independent material problems are supported."
+    },
+    "staging.stg_marketo__campaigns": {
+      "items": [
+        {
+          "problem": "Casting fractional configuration values directly to BIGINT may silently round quantities rather than validate their intended meaning.",
+          "about": "data",
+          "evidence_in_work": "CAST(max_members AS BIGINT); sample max_members: 3405.01",
+          "source": "max_members ... data_type: BIGINT",
+          "importance": 2,
+          "reason": "The observed source contains fractional values for fields whose output represents integer configuration."
+        },
+        {
+          "problem": "Boolean source interval fields are converted to 0 or 1 without checking whether the source encoding actually represents numeric intervals.",
+          "about": "data",
+          "evidence_in_work": "CAST(qualification_rule_interval AS BIGINT); CAST(recurrence_interval AS BIGINT)",
+          "source": "qualification_rule_interval ... Numeric interval used in qualification rules.",
+          "importance": 2,
+          "reason": "The source schema exposes booleans, so the intended interval information may not be recoverable by a cast."
+        },
+        {
+          "problem": "Duplicate campaigns are resolved by string timestamp ordering rather than parsed chronological ordering.",
+          "about": "data",
+          "evidence_in_work": "PARTITION BY id ORDER BY updated_at DESC NULLS LAST",
+          "source": "grain: \"One row per unique campaign in Marketo\"",
+          "importance": 1,
+          "reason": "This matters only if duplicate records have differing timestamp formats or offsets."
+        }
+      ],
+      "fewer_reason": "The final edits implement the visible name, program-ID, and active-flag rules; additional distinct concerns are not supported."
+    },
+    "staging.stg_marketo__program": {
+      "items": [
+        {
+          "problem": "Required program IDs, channels, and timestamps are not checked for nulls.",
+          "about": "requirement",
+          "evidence_in_work": "FROM raw.marketo_program",
+          "source": "program_id, channel, created_timestamp, updated_timestamp: constraints: [not_null]",
+          "importance": 3,
+          "reason": "Invalid required attributes would pass through directly into the program dimension."
+        },
+        {
+          "problem": "The unique program grain is not enforced or checked.",
+          "about": "requirement",
+          "evidence_in_work": "CAST(id AS VARCHAR) AS program_id",
+          "source": "program_id ... constraints: [not_null, unique]",
+          "importance": 3,
+          "reason": "Duplicate source IDs would create duplicate program dimension rows."
+        },
+        {
+          "problem": "Taking only the first ten characters of dates assumes an ISO year-month-day prefix and silently nullifies other formats.",
+          "about": "data",
+          "evidence_in_work": "TRY_CAST(SUBSTR(start_date, 1, 10) AS DATE)",
+          "source": "start_date ... data_type: DATE",
+          "importance": 1,
+          "reason": "This is plausible for the observed source conventions but was not checked for program dates."
+        }
+      ],
+      "fewer_reason": "Only three independent concerns are supported by the visible program specification and implementation."
+    },
+    "staging.stg_marketo__email_template_history": {
+      "items": [
+        {
+          "problem": "The required non-null template ID, name, version, and timestamps are not validated.",
+          "about": "requirement",
+          "evidence_in_work": "FROM raw.marketo_email_template_history",
+          "source": "email_template_id, email_template_name, version, created_timestamp, updated_timestamp: constraints: [not_null]",
+          "importance": 3,
+          "reason": "Invalid metadata would survive staging and affect both template selection and send enrichment."
+        },
+        {
+          "problem": "The maximum-version expression can mark multiple rows as most recent for the same template.",
+          "about": "data",
+          "evidence_in_work": "(version = MAX(version) OVER (PARTITION BY id)) AS is_most_recent_version",
+          "source": "One row per email_template_id (most recent version only)",
+          "importance": 3,
+          "reason": "Tied maximum versions make the staging flag inconsistent with the downstream single-row expectation."
+        },
+        {
+          "problem": "The from_email regex appears over-escaped in the Python-generated SQL and may nullify valid sender addresses.",
+          "about": "data",
+          "evidence_in_work": "s.replace('CAST(from_email AS VARCHAR) AS from_email', 'CASE WHEN from_email IS NULL OR from_email ~ ...')",
+          "source": "from_email IS NULL OR from_email ~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'",
+          "importance": 3,
+          "reason": "An extra backslash in the emitted DuckDB regex could remove sender addresses across the entire table."
+        },
+        {
+          "problem": "Template-version uniqueness is not enforced or tested.",
+          "about": "data",
+          "evidence_in_work": "FROM raw.marketo_email_template_history",
+          "source": "grain: \"One row per email template version\"",
+          "importance": 2,
+          "reason": "Duplicate versions can multiply send fact rows when history is joined by template ID."
+        }
+      ],
+      "fewer_reason": "The visible materials support four distinct concerns rather than ten."
+    },
+    "staging.stg_marketo__lead_describe": {
+      "items": [
+        {
+          "problem": "rest_name_xf is assumed to be an unchanged copy of restname without verifying compatibility with the tracked-field tokens.",
+          "about": "data",
+          "evidence_in_work": "CAST(restname AS VARCHAR) AS rest_name_xf",
+          "source": "Tokens → columns: 'firstname' → first_name_c ... 'leadstatus' → lead_status_c",
+          "importance": 3,
+          "reason": "Unexpected underscores, spaces, or alternate REST names would suppress historical changes for affected fields."
+        }
+      ],
+      "fewer_reason": "The other visible metadata mappings and required-field checks match the supplied contract."
+    },
+    "staging.stg_marketo__activity_send_email": {
+      "items": [
+        {
+          "problem": "email_send_id is assumed to equal the send activity's own ID without an established cross-activity send-key definition.",
+          "about": "data",
+          "evidence_in_work": "('email_send_id','id','VARCHAR')",
+          "source": "email_send_id ... Deduplication key",
+          "importance": 5,
+          "reason": "This key controls send deduplication and all subsequent engagement associations."
+        },
+        {
+          "problem": "The not-null activity_type_id constraint is not enforced.",
+          "about": "requirement",
+          "evidence_in_work": "WHERE id IS NOT NULL AND lead_id IS NOT NULL AND activity_date IS NOT NULL",
+          "source": "activity_type_id ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Rows with missing required activity types remain in the send fact."
+        },
+        {
+          "problem": "Non-null but unparseable activity dates can become null timestamps without being removed.",
+          "about": "requirement",
+          "evidence_in_work": "TRY_STRPTIME(activity_date, '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP",
+          "source": "activity_timestamp ... constraints: [not_null]",
+          "importance": 2,
+          "reason": "The current send timestamp check passes, but the SQL does not enforce the constraint for other input formats."
+        },
+        {
+          "problem": "Timestamp-with-zone parsing followed by a TIMESTAMP cast makes the resulting wall-clock time depend on the session time zone.",
+          "about": "data",
+          "evidence_in_work": "TRY_STRPTIME(activity_date, '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP",
+          "source": "quality_actions ... standardize timezone formats",
+          "importance": 2,
+          "reason": "Different execution environments could change daily and weekly assignments."
+        }
+      ],
+      "fewer_reason": "Four material issues are supported; current-data validation already ruled out null send timestamps."
+    },
+    "staging.stg_marketo__activity_open_email": {
+      "items": [
+        {
+          "problem": "The open event's own activity ID is used as email_send_id rather than a verified reference to the originating send.",
+          "about": "data",
+          "evidence_in_work": "('email_send_id','id','VARCHAR')",
+          "source": "Email open activities aggregated by email_send_id",
+          "importance": 5,
+          "reason": "Event-local IDs can prevent all opens from matching sends."
+        },
+        {
+          "problem": "The activity timestamp parser accepts only one format and retains rows whose parsing fails.",
+          "about": "data",
+          "evidence_in_work": "TRY_STRPTIME(activity_date, '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP",
+          "source": null,
+          "importance": 2,
+          "reason": "Other valid date formats would silently lose timestamps."
+        }
+      ],
+      "fewer_reason": "The detailed open staging contract is not included in the review materials, limiting additional requirement checks."
+    },
+    "staging.stg_marketo__activity_click_email": {
+      "items": [
+        {
+          "problem": "The click event's own activity ID is used as email_send_id without verifying a relationship to the original send.",
+          "about": "data",
+          "evidence_in_work": "('email_send_id','id','VARCHAR')",
+          "source": "Counts click activity rows per email_send_id",
+          "importance": 5,
+          "reason": "Unrelated event IDs can eliminate click attribution to sends."
+        },
+        {
+          "problem": "Unparseable non-null activity dates remain as null timestamps.",
+          "about": "data",
+          "evidence_in_work": "TRY_STRPTIME(activity_date, '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP",
+          "source": null,
+          "importance": 2,
+          "reason": "The parser assumes one exact source format without checking failures."
+        }
+      ],
+      "fewer_reason": "The detailed click staging contract is unavailable, and only two independent concerns are grounded in the trajectory."
+    },
+    "staging.stg_marketo__activity_email_delivered": {
+      "items": [
+        {
+          "problem": "Delivery activity IDs are treated as send IDs without confirming that they identify the originating send.",
+          "about": "data",
+          "evidence_in_work": "('email_send_id','id','VARCHAR')",
+          "source": "Counts delivery activity rows per email_send_id",
+          "importance": 5,
+          "reason": "This can make every send appear undelivered despite the delivery source containing 14,000 rows."
+        },
+        {
+          "problem": "Date parsing failures are retained as null timestamps.",
+          "about": "data",
+          "evidence_in_work": "WHERE ... activity_date IS NOT NULL",
+          "source": null,
+          "importance": 2,
+          "reason": "A non-null raw date does not establish successful timestamp conversion."
+        }
+      ],
+      "fewer_reason": "The detailed delivery staging contract is not supplied, so further requirements cannot be established."
+    },
+    "staging.stg_marketo__activity_email_bounced": {
+      "items": [
+        {
+          "problem": "Bounce activity IDs are assigned to email_send_id without verifying a send reference.",
+          "about": "data",
+          "evidence_in_work": "('email_send_id','id','VARCHAR')",
+          "source": "Counts bounced email activities per email_send_id",
+          "importance": 5,
+          "reason": "Bounce counts may never attach to the send fact."
+        },
+        {
+          "problem": "The timestamp conversion can silently yield null while the source row is retained.",
+          "about": "data",
+          "evidence_in_work": "TRY_STRPTIME(activity_date, '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP",
+          "source": null,
+          "importance": 2,
+          "reason": "No conversion-success validation is performed."
+        }
+      ],
+      "fewer_reason": "Only two supported concerns are identifiable without the detailed bounce staging specification."
+    },
+    "staging.stg_marketo__activity_unsubscribe_email": {
+      "items": [
+        {
+          "problem": "Unsubscribe event IDs are used as email_send_id without establishing a relationship to send IDs.",
+          "about": "data",
+          "evidence_in_work": "('email_send_id','id','VARCHAR')",
+          "source": "Count of unsubscribe activity rows per email_send_id",
+          "importance": 5,
+          "reason": "Unsubscribe activity can disappear from all send-based analytics."
+        },
+        {
+          "problem": "Only raw date presence is checked, allowing failed timestamp conversions to remain.",
+          "about": "data",
+          "evidence_in_work": "WHERE ... activity_date IS NOT NULL",
+          "source": null,
+          "importance": 2,
+          "reason": "Malformed or differently formatted dates silently become null."
+        }
+      ],
+      "fewer_reason": "The detailed unsubscribe staging contract is not included, preventing additional grounded requirement findings."
+    },
+    "staging.stg_marketo__activity_change_data_value": {
+      "items": [
+        {
+          "problem": "Rows with null activity_type_id are not removed despite its required status.",
+          "about": "requirement",
+          "evidence_in_work": "WHERE id IS NOT NULL AND lead_id IS NOT NULL AND activity_date IS NOT NULL",
+          "source": "activity_type_id ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "The staging table does not guarantee its declared required fields."
+        },
+        {
+          "problem": "Failed timestamp parsing is not filtered, potentially causing historical events to disappear in later date filters.",
+          "about": "requirement",
+          "evidence_in_work": "TRY_STRPTIME(activity_date, '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP",
+          "source": "activity_timestamp ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "A null parsed timestamp prevents an event from entering daily historical models."
+        },
+        {
+          "problem": "Converting a zoned timestamp to an unzoned timestamp without setting the session time zone may change the calendar day across environments.",
+          "about": "data",
+          "evidence_in_work": "TRY_STRPTIME(...)::TIMESTAMP",
+          "source": "Derive date_day as the calendar date of activity_timestamp.",
+          "importance": 2,
+          "reason": "Changes near midnight could move between daily history records."
+        }
+      ],
+      "fewer_reason": "The remaining visible source mappings match the contract, and no further independent issues are established."
+    },
+    "staging.stg_marketo__activity_merge_leads": {
+      "items": [
+        {
+          "problem": "The required activity_type_id constraint is not enforced.",
+          "about": "requirement",
+          "evidence_in_work": "WHERE id IS NOT NULL AND lead_id IS NOT NULL AND activity_date IS NOT NULL",
+          "source": "activity_type_id ... constraints: [not_null]",
+          "importance": 2,
+          "reason": "Incomplete merge records can survive staging."
+        },
+        {
+          "problem": "Timestamp parsing failures remain in the table despite the not-null timestamp requirement.",
+          "about": "requirement",
+          "evidence_in_work": "TRY_STRPTIME(activity_date, '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP",
+          "source": "activity_timestamp ... constraints: [not_null]",
+          "importance": 2,
+          "reason": "Raw non-null dates do not guarantee valid output timestamps."
+        }
+      ],
+      "fewer_reason": "The merge_ids mapping and other projected columns have no additional supported mismatch."
+    },
+    "staging.stg_marketo__activity_delete_lead": {
+      "items": [
+        {
+          "problem": "The not-null activity_type_id requirement is omitted from row validation.",
+          "about": "requirement",
+          "evidence_in_work": "WHERE id IS NOT NULL AND lead_id IS NOT NULL AND activity_date IS NOT NULL",
+          "source": "activity_type_id ... constraints: [not_null]",
+          "importance": 2,
+          "reason": "The output can violate its required schema."
+        },
+        {
+          "problem": "The date parser can produce null activity_timestamp values that are not removed.",
+          "about": "requirement",
+          "evidence_in_work": "TRY_STRPTIME(activity_date, '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP",
+          "source": "activity_timestamp ... constraints: [not_null]",
+          "importance": 2,
+          "reason": "The SQL checks raw date presence rather than conversion success."
+        }
+      ],
+      "fewer_reason": "No further independent issues are supported by the deletion staging contract."
+    },
+    "intermediate.int_marketo__lead": {
+      "items": [
+        {
+          "problem": "Its lead population can include emails that should have triggered staging deletion because the upstream lead model normalizes them instead.",
+          "about": "requirement",
+          "evidence_in_work": "FROM staging.stg_marketo__lead l",
+          "source": "email = LOWER(TRIM(email)) ... on_failure: delete_row",
+          "importance": 3,
+          "reason": "The local pass-through logic is correct, but the inherited population may differ from the contract."
+        }
+      ],
+      "fewer_reason": "The local deletion-set, merge aggregation, flags, and duplicate-preserving joins match the stated model logic."
+    },
+    "intermediate.marketo__email_sends_deduped": {
+      "items": [
+        {
+          "problem": "Deduplication uses an assumed activity-local key that may not identify repeated records of the same email send.",
+          "about": "data",
+          "evidence_in_work": "PARTITION BY email_send_id ORDER BY activity_timestamp ASC",
+          "source": "Deduplicates email send events ... per email_send_id",
+          "importance": 5,
+          "reason": "If activity IDs differ across representations of one send, the intended deduplication never occurs."
+        }
+      ],
+      "fewer_reason": "The ranking, null grouping, and tie behavior otherwise follow the explicit specification."
+    },
+    "intermediate.marketo__opens__by_sent_email": {
+      "items": [
+        {
+          "problem": "The grouping key inherits each open event's own ID, potentially producing event-level rather than send-level aggregates.",
+          "about": "data",
+          "evidence_in_work": "GROUP BY email_send_id; open_email (12000, 12000)",
+          "source": "One row per email_send_id present in staging.stg_marketo__activity_open_email",
+          "importance": 5,
+          "reason": "Every observed open key is unique, and no association to sends was established."
+        }
+      ],
+      "fewer_reason": "The local total and distinct-lead counting expressions match the contract."
+    },
+    "intermediate.marketo__clicks__by_sent_email": {
+      "items": [
+        {
+          "problem": "Click aggregation inherits an event-local ID rather than a verified send identifier.",
+          "about": "data",
+          "evidence_in_work": "GROUP BY email_send_id; click_email (8000, 8000)",
+          "source": "Counts click activity rows per email_send_id",
+          "importance": 5,
+          "reason": "This may leave every click in a separate group and prevent send attribution."
+        }
+      ],
+      "fewer_reason": "The local unfiltered COUNT(*) aggregation matches the stated logic."
+    },
+    "intermediate.marketo__deliveries__by_sent_email": {
+      "items": [
+        {
+          "problem": "The inherited delivery grouping key may identify delivery events rather than originating sends.",
+          "about": "data",
+          "evidence_in_work": "GROUP BY email_send_id; email_delivered (14000, 14000)",
+          "source": "One row per distinct email_send_id",
+          "importance": 5,
+          "reason": "Incorrect grouping keys prevent delivery metrics from attaching to sends."
+        }
+      ],
+      "fewer_reason": "No independent defect is visible in the local aggregation."
+    },
+    "intermediate.marketo__bounces__by_sent_email": {
+      "items": [
+        {
+          "problem": "The inherited email_send_id is a bounce activity ID whose relationship to sends was not established.",
+          "about": "data",
+          "evidence_in_work": "GROUP BY email_send_id; email_bounced (2000, 2000)",
+          "source": "Counts bounced email activities per email_send_id",
+          "importance": 5,
+          "reason": "Bounce metrics can be isolated from the sends they should describe."
+        }
+      ],
+      "fewer_reason": "The local aggregation preserves rows and grouping values as specified."
+    },
+    "intermediate.marketo__unsubscribes__by_sent_email": {
+      "items": [
+        {
+          "problem": "The unsubscribe grouping key inherits the unsubscribe activity ID rather than a verified send reference.",
+          "about": "data",
+          "evidence_in_work": "GROUP BY email_send_id; unsubscribe_email (1500, 1500)",
+          "source": "Count of unsubscribe activity rows per email_send_id",
+          "importance": 5,
+          "reason": "The aggregates may have no matching keys in the send fact."
+        }
+      ],
+      "fewer_reason": "The local COUNT(*) and null-group semantics otherwise match the specification."
+    },
+    "intermediate.marketo__change_data_details": {
+      "items": [
+        {
+          "problem": "Groups containing only unmatched or null metadata produce null flags instead of false.",
+          "about": "requirement",
+          "evidence_in_work": "BOOL_OR(field_name='email') AS email_c",
+          "source": "NULL primary_attribute_column never matches; groups may have all flags FALSE.",
+          "importance": 4,
+          "reason": "BOOL_OR over all-null comparisons returns null, violating the explicit boolean flag semantics."
+        },
+        {
+          "problem": "Tracked-field matching depends on the unverified restname-to-rest_name_xf pass-through.",
+          "about": "data",
+          "evidence_in_work": "LOWER(d.rest_name_xf) AS field_name",
+          "source": "compared case-insensitively",
+          "importance": 3,
+          "reason": "Names differing by more than case would cause genuine changes to go unflagged."
+        }
+      ],
+      "fewer_reason": "The date filter, grouping, metadata join, and hash follow the visible contract."
+    },
+    "intermediate.marketo__change_data_pivot": {
+      "items": [
+        {
+          "problem": "The pivot assumes copied REST names match the contract's attribute tokens after lowercasing alone.",
+          "about": "data",
+          "evidence_in_work": "LOWER(primary_attribute_column) = 'firstname'",
+          "source": "match the attribute name case-insensitively to primary_attribute_column",
+          "importance": 3,
+          "reason": "An incorrect upstream transformed-name mapping would nullify historical attribute values."
+        }
+      ],
+      "fewer_reason": "The earliest-event ranking, descending activity-ID tie-breaker, prior-day filter, and hash are explicitly implemented."
+    },
+    "intermediate.marketo__change_data_scd": {
+      "items": [
+        {
+          "problem": "Missing details flags are converted to false, allowing backfill through boundaries where the specification's explicit false condition is not satisfied.",
+          "about": "requirement",
+          "evidence_in_work": "COALESCE(d.email_c,FALSE) AS email_changed",
+          "source": "increases on every row except when both conditions hold: the field value is null and the corresponding details flag is false",
+          "importance": 3,
+          "reason": "Null or missing flags can change backfill groups and historical values."
+        },
+        {
+          "problem": "Historical values inherit any failures in the unverified metadata-name mapping.",
+          "about": "data",
+          "evidence_in_work": "FROM intermediate.marketo__change_data_pivot",
+          "source": "change_data: historical daily changes by lead and date",
+          "importance": 3,
+          "reason": "Incorrect pivot tokens can turn true field boundaries into apparent gaps filled from later snapshots."
+        }
+      ],
+      "fewer_reason": "The union-all, row-only company/status fields, output columns, and hash match the stated design."
+    },
+    "intermediate.marketo__lead_calendar_spine": {
+      "items": [
+        {
+          "problem": "The created-date extraction assumes the first ten characters always contain an ISO date and silently excludes leads if that assumption fails.",
+          "about": "data",
+          "evidence_in_work": "TRY_CAST(SUBSTR(l.created_timestamp,1,10) AS DATE)",
+          "source": "using the date portion of created_timestamp",
+          "importance": 2,
+          "reason": "Unexpected timestamp formats could remove an entire lead's calendar history."
+        }
+      ],
+      "fewer_reason": "The local date join, duplicate preservation, and date-first hash match the specification."
+    },
+    "marts.marketo__email_sends": {
+      "items": [
+        {
+          "problem": "Engagement joins rely on activity-local IDs assigned independently in each source rather than a verified common send key.",
+          "about": "data",
+          "evidence_in_work": "LEFT JOIN intermediate.marketo__opens__by_sent_email o USING(email_send_id)",
+          "source": "Left join the aggregated opens, bounces, clicks, deliveries, and unsubscribes models by email_send_id",
+          "importance": 5,
+          "reason": "This can make all engagement counts zero even though the raw engagement tables contain substantial activity."
+        },
+        {
+          "problem": "The template-history join may multiply sends when a template has multiple versions, conflicting with the declared one-row-per-send grain.",
+          "about": "data",
+          "evidence_in_work": "LEFT JOIN staging.stg_marketo__email_template_history t USING(email_template_id)",
+          "source": "grain: One row per email_send_id",
+          "importance": 2,
+          "reason": "The explicit join logic calls for this join, but its cardinality should be checked against the history grain."
+        }
+      ],
+      "fewer_reason": "Count defaults, boolean flags, base-field preservation, and campaign enrichment otherwise match the explicit logic."
+    },
+    "marts.marketo__leads": {
+      "items": [
+        {
+          "problem": "Lead engagement metrics inherit the unverified cross-activity send-key mapping.",
+          "about": "data",
+          "evidence_in_work": "FROM marts.marketo__email_sends GROUP BY lead_id",
+          "source": "count_opens, count_bounces, count_clicks, count_deliveries, count_unsubscribes are the sums",
+          "importance": 5,
+          "reason": "Missing engagement attribution can systematically zero the dimension's engagement measures."
+        },
+        {
+          "problem": "The lead population inherits staging's correction of emails that the field-specific rule says to delete.",
+          "about": "requirement",
+          "evidence_in_work": "FROM staging.stg_marketo__lead l",
+          "source": "email = LOWER(TRIM(email)) ... on_failure: delete_row",
+          "importance": 3,
+          "reason": "This changes which lead rows and their associated metrics appear."
+        }
+      ],
+      "fewer_reason": "The local merge/delete flags, aggregations, distinct counts, and default handling match the supplied logic."
+    },
+    "marts.marketo__campaigns": {
+      "items": [
+        {
+          "problem": "Campaign engagement totals inherit the unsupported send-key association used in the email fact.",
+          "about": "data",
+          "evidence_in_work": "SUM(count_opens) AS count_opens ... FROM marts.marketo__email_sends",
+          "source": "Campaign dimension enriched with email performance metrics",
+          "importance": 5,
+          "reason": "Incorrect email engagement attribution propagates directly into all campaign performance totals."
+        }
+      ],
+      "fewer_reason": "The local aggregation and left join preserve the staging grain and provide the specified defaults."
+    },
+    "marts.marketo__programs": {
+      "items": [
+        {
+          "problem": "Program engagement metrics inherit the unverified event-to-send key mapping.",
+          "about": "data",
+          "evidence_in_work": "FROM marts.marketo__email_sends WHERE program_id IS NOT NULL",
+          "source": "Marketo program dimension enriched with aggregated email send statistics",
+          "importance": 5,
+          "reason": "Systematically missing engagement matches affect every program aggregate."
+        },
+        {
+          "problem": "Program rows inherit an upstream staging table that does not enforce required values or unique IDs.",
+          "about": "requirement",
+          "evidence_in_work": "FROM staging.stg_marketo__program p",
+          "source": "program_id ... tests: [not_null, unique]",
+          "importance": 3,
+          "reason": "Invalid or duplicate program records would appear unchanged in the mart."
+        }
+      ],
+      "fewer_reason": "The local non-null-key filter, sums, distinct counts, and left-join defaults match the contract."
+    },
+    "marts.marketo__email_templates": {
+      "items": [
+        {
+          "problem": "Template engagement totals inherit the unverified cross-activity send-key mapping.",
+          "about": "data",
+          "evidence_in_work": "FROM marts.marketo__email_sends WHERE email_template_id IS NOT NULL",
+          "source": "Email template dimension ... joined to aggregated send engagement metrics",
+          "importance": 5,
+          "reason": "Engagement metrics can be systematically absent despite substantial raw activity."
+        },
+        {
+          "problem": "The mart re-ranks template versions instead of filtering the staging most-recent flag as required.",
+          "about": "requirement",
+          "evidence_in_work": "WHERE t.version_rank = 1",
+          "source": "From staging.stg_marketo__email_template_history, keep only rows marked as the most recent version",
+          "importance": 3,
+          "reason": "Tied maximum versions or differing flag semantics can select a different metadata population."
+        },
+        {
+          "problem": "Sender email metadata may inherit erroneous nullification from the staging regex.",
+          "about": "data",
+          "evidence_in_work": "t.from_email",
+          "source": "Configured sender email address for the template",
+          "importance": 2,
+          "reason": "A regex escaping defect would remove a useful metadata field from every template."
+        }
+      ],
+      "fewer_reason": "The remaining metric aggregation and default logic match the specification."
+    },
+    "marts.marketo__lead_history": {
+      "items": [
+        {
+          "problem": "Historical field values inherit the metadata-token and missing-flag backfill assumptions in the upstream SCD.",
+          "about": "data",
+          "evidence_in_work": "SELECT *,TRUE AS has_change FROM intermediate.marketo__change_data_scd",
+          "source": "Daily lead field history ... values carried backward from change days",
+          "importance": 3,
+          "reason": "An upstream boundary error can propagate an incorrect value across many daily rows."
+        },
+        {
+          "problem": "The final one-row-per-lead-day grain is not checked against duplicate SCD rows, which the upstream contract explicitly permits.",
+          "about": "data",
+          "evidence_in_work": "LEFT JOIN changes c ON s.lead_id=c.lead_id AND s.date_day=c.valid_to",
+          "source": "No de-duplication is applied; multiple rows may exist for a lead and date",
+          "importance": 2,
+          "reason": "Duplicate matches can create duplicate history keys and ambiguous window partitions."
+        }
+      ],
+      "fewer_reason": "The local descending partitions, null-preserving FIRST_VALUE, date cutoff, and surrogate key match the stated logic."
+    },
+    "marts.marketo__email_stats__by_campaign": {
+      "items": [
+        {
+          "problem": "The campaign statistics inherit engagement values computed with an unverified common send identifier.",
+          "about": "data",
+          "evidence_in_work": "FROM marts.marketo__email_sends WHERE campaign_id IS NOT NULL",
+          "source": null,
+          "importance": 5,
+          "reason": "The grouping can be correct while all engagement totals remain systematically understated."
+        }
+      ],
+      "fewer_reason": "The detailed specification for this extra statistics table is not included, so its local requirements cannot be fully assessed."
+    },
+    "marts.marketo__email_stats__by_email_template": {
+      "items": [
+        {
+          "problem": "The template statistics inherit potentially unmatched engagement events from the send fact.",
+          "about": "data",
+          "evidence_in_work": "FROM marts.marketo__email_sends WHERE email_template_id IS NOT NULL",
+          "source": null,
+          "importance": 5,
+          "reason": "Incorrect send-key associations propagate into all engagement sums and unique-send counts."
+        }
+      ],
+      "fewer_reason": "The supplied relevant documentation does not include this statistics table's detailed contract."
+    },
+    "marts.marketo__email_stats__by_lead": {
+      "items": [
+        {
+          "problem": "The lead statistics inherit engagement metrics based on unverified cross-activity send keys.",
+          "about": "data",
+          "evidence_in_work": "FROM marts.marketo__email_sends WHERE lead_id IS NOT NULL",
+          "source": null,
+          "importance": 5,
+          "reason": "Lead-level engagement may be systematically absent despite source engagement activity."
+        }
+      ],
+      "fewer_reason": "No detailed local contract for this statistics table is provided in the review materials."
+    },
+    "marts.marketo__email_stats__by_program": {
+      "items": [
+        {
+          "problem": "Program statistics inherit the email fact's unverified engagement-to-send association.",
+          "about": "data",
+          "evidence_in_work": "FROM marts.marketo__email_sends WHERE program_id IS NOT NULL",
+          "source": null,
+          "importance": 5,
+          "reason": "All program engagement totals depend on the correctness of that association."
+        }
+      ],
+      "fewer_reason": "The detailed local specification for this statistics model is unavailable."
+    },
+    "marts.marketo__email_funnel_dashboard": {
+      "items": [
+        {
+          "problem": "The funnel inherits engagement flags derived from unrelated activity-local IDs rather than a verified send key.",
+          "about": "data",
+          "evidence_in_work": "FROM marts.marketo__email_sends WHERE email_send_id IS NOT NULL",
+          "source": "Time-series email funnel ... engagement actions, rates",
+          "importance": 5,
+          "reason": "All delivered, opened, clicked, bounce, unsubscribe, and rate outputs can be systematically wrong."
+        },
+        {
+          "problem": "Daily and weekly group assignments inherit session-time-zone-dependent unzoned activity timestamps.",
+          "about": "data",
+          "evidence_in_work": "CAST(activity_timestamp AS DATE) AS send_date",
+          "source": "Week starts Monday",
+          "importance": 2,
+          "reason": "Runs under different session zones could move sends across date or week boundaries."
+        }
+      ],
+      "fewer_reason": "The visible daily/weekly aggregation, sum-of-daily distincts, rate denominators, and zero-open comparison handling match the contract."
+    },
+    "marts.marketo__lead_intelligence_simple": {
+      "items": [
+        {
+          "problem": "Engagement scores, segments, health statuses, and recommendations inherit the unverified send-key mapping.",
+          "about": "data",
+          "evidence_in_work": "FROM marts.marketo__email_sends WHERE lead_id IS NOT NULL GROUP BY lead_id",
+          "source": "total_lead_score: opens*5 plus clicks*10",
+          "importance": 5,
+          "reason": "Missing engagement matches can classify genuinely active leads as inactive or critical."
+        },
+        {
+          "problem": "Leads with no engagement receive Inactive rather than the required Unknown RFM default.",
+          "about": "requirement",
+          "evidence_in_work": "FROM metrics ... ELSE 'Inactive' END AS rfm_segment",
+          "source": "rfm_segment defaults to \"Unknown\" ... when segmentation is missing",
+          "importance": 4,
+          "reason": "Segmentation is computed after the left join, so no-engagement leads are treated as observed zero-score leads."
+        },
+        {
+          "problem": "Invalid or unparseable lead creation dates produce zero tenure instead of preserving an unknown date difference.",
+          "about": "requirement",
+          "evidence_in_work": "COALESCE(DATE_DIFF('day',TRY_CAST(SUBSTR(created_timestamp,1,10) AS DATE),CURRENT_DATE),0)",
+          "source": "lead_tenure_days is the calendar days between the lead's created date and today",
+          "importance": 2,
+          "reason": "A malformed historical creation date would falsely describe an established lead as newly created."
+        }
+      ],
+      "fewer_reason": "The remaining score thresholds, rate calculations, event-date recency, and ordered recommendation rules match the visible specification."
+    },
+    "marts.marketo__operational_health_simple": {
+      "items": [
+        {
+          "problem": "Operational health inherits delivery and engagement flags derived from an unverified cross-activity send key.",
+          "about": "data",
+          "evidence_in_work": "FROM marts.marketo__email_sends",
+          "source": "Simplified marketing operations health snapshot with deliverability, lead, campaign, and stability metrics",
+          "importance": 5,
+          "reason": "This can systematically distort deliverability, campaign health, lead health, and recommendations."
+        },
+        {
+          "problem": "The composite score uses invented point thresholds whose minimum is 20 rather than the documented approximate minimum of 35.",
+          "about": "requirement",
+          "evidence_in_work": "ELSE 5 END ... ELSE 5 END ... ELSE 5 END ... ELSE 5 END",
+          "source": "overall_health_score ... integer 35–100",
+          "importance": 4,
+          "reason": "The final score is a prominent output and its implemented scale conflicts with the described range."
+        },
+        {
+          "problem": "The recent seven-day filters use current date minus six days and have no upper bound, so their intended window should be checked.",
+          "about": "requirement",
+          "evidence_in_work": "activity_date>=CURRENT_DATE-INTERVAL 6 DAY",
+          "source": "activity_date is within the last 7 days",
+          "importance": 2,
+          "reason": "Boundary interpretation and future-dated activity can change the reported recent averages."
+        },
+        {
+          "problem": "The 30-day delivery metric compares unzoned event timestamps to a zoned current timestamp without establishing a consistent time zone or excluding future events.",
+          "about": "data",
+          "evidence_in_work": "activity_timestamp>=CURRENT_TIMESTAMP-INTERVAL 30 DAY",
+          "source": "recent_delivery_rate_pct over the last 30 days",
+          "importance": 2,
+          "reason": "Boundary sends and future-dated records can enter a window that is intended to represent recent past activity."
+        }
+      ],
+      "fewer_reason": "The final edit corrects the campaign open-rate flag; the remaining visible joined-row lead counts, volatility, and status precedence largely match the specification."
+    }
+  }
+}

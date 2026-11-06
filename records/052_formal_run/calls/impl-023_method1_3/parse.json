@@ -1,0 +1,315 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "premises": [
+      {
+        "statement": "Account timezone values require no deterministic trimming or casing correction before applying the deletion rule.",
+        "about": "data",
+        "target": "staging.stg_social_media__account_history",
+        "evidence_of_dependence": "and regexp_matches(timezone, '^[A-Z][a-z]+/[A-Z][a-z_]+$')",
+        "alternative": "The general staging quality actions require automatically fixing \"casing, whitespace trimming\" and \"standardize valid IANA timezones when pattern matches\".",
+        "importance": 3,
+        "reason": "Correctable timezone values would otherwise cause entire account records to be discarded.",
+        "updates": null
+      },
+      {
+        "statement": "All non-null account timestamp and boolean values are directly castable to their declared output types.",
+        "about": "data",
+        "target": "staging.stg_social_media__account_history",
+        "evidence_of_dependence": "updated_at::timestamp ... created_at::timestamp ... deleted::boolean ... timezone_switch_at::timestamp",
+        "alternative": null,
+        "importance": 3,
+        "reason": "An invalid value could prevent the staging SQL and pipeline from executing.",
+        "updates": null
+      },
+      {
+        "statement": "Twitter screen names containing harmful characters may be retained if removing those characters produces a nonempty name.",
+        "about": "requirement",
+        "target": "staging.stg_social_media__twitter_user_history",
+        "evidence_of_dependence": "regexp_replace(screen_name, '[^A-Za-z0-9_]', '', 'g') ... and screen_name <> ''",
+        "alternative": "The description says \"rows with NULL/blank or harmful characters are removed\", which could require testing harmful characters in the original value.",
+        "importance": 4,
+        "reason": "The interpretation determines whether potentially unsafe source records survive staging.",
+        "updates": null
+      },
+      {
+        "statement": "A Twitter URL with a valid-looking prefix remains acceptable even when the rest of the value is not a valid URL.",
+        "about": "requirement",
+        "target": "staging.stg_social_media__twitter_user_history",
+        "evidence_of_dependence": "regexp_matches(url, '^(https?://)?[A-Za-z0-9.-]+\\.[A-Za-z]{2,}(/.*)?')",
+        "alternative": "The staging quality documentation describes nullifying an \"optional URL fails regex\", which may mean validating the whole field rather than a prefix.",
+        "importance": 2,
+        "reason": "The unanchored ending can retain malformed optional URL values.",
+        "updates": null
+      },
+      {
+        "statement": "All non-null Twitter profile timestamp and boolean fields used in direct casts are castable to the declared types.",
+        "about": "data",
+        "target": "staging.stg_social_media__twitter_user_history",
+        "evidence_of_dependence": "_fivetran_synced::timestamp ... created_at::timestamp ... verified::boolean",
+        "alternative": null,
+        "importance": 3,
+        "reason": "Malformed source values would make execution fail rather than produce cleaned profiles.",
+        "updates": null
+      },
+      {
+        "statement": "Organic report account_id identifies the Twitter user whose profile should enrich the tweet.",
+        "about": "data",
+        "target": "staging.stg_social_media__twitter_organic_tweets",
+        "evidence_of_dependence": "left join users u on u.id = o.account_id and u.row_num = 1",
+        "alternative": "The material index also exposes raw.tweet.user_id and raw.tweet.account_id; tweet.user_id could be the required profile join key.",
+        "importance": 5,
+        "reason": "Using an account identifier as a user identifier can leave most profiles missing or attach the wrong users.",
+        "updates": null
+      },
+      {
+        "statement": "raw.tweet.full_test contains the tweet text referred to as full_text in the contract.",
+        "about": "data",
+        "target": "staging.stg_social_media__twitter_organic_tweets",
+        "evidence_of_dependence": "full_test as tweet_text",
+        "alternative": "The contract explicitly says \"Tweet text joined from raw.tweet.full_text\", while the material index lists only full_test.",
+        "importance": 4,
+        "reason": "The implementation resolves a schema discrepancy without establishing the substitute field's meaning.",
+        "updates": null
+      },
+      {
+        "statement": "Each tweet identifier has at most one matching row in raw.tweet after conversion to BIGINT.",
+        "about": "data",
+        "target": "staging.stg_social_media__twitter_organic_tweets",
+        "evidence_of_dependence": "left join tweets t on try_cast(o.organic_tweet_id as bigint) = t.tweet_id",
+        "alternative": null,
+        "importance": 4,
+        "reason": "Duplicate matches would multiply report rows and their downstream metrics.",
+        "updates": null
+      },
+      {
+        "statement": "The most recently synced Twitter profile is the intended profile for every report date, and no conflicting profiles tie at that sync time.",
+        "about": "requirement",
+        "target": "staging.stg_social_media__twitter_organic_tweets",
+        "evidence_of_dependence": "row_number() over (partition by id order by _fivetran_synced desc nulls last) ... u.row_num = 1",
+        "alternative": "The source is named twitter_user_history and reports contain date; the contract says only that user attributes are \"joined from raw.twitter_user_history\" without defining latest versus historical selection.",
+        "importance": 3,
+        "reason": "Profile attribution can change across historical reports or become nondeterministic on ties.",
+        "updates": null
+      },
+      {
+        "statement": "The organic tweet output should strip disallowed characters from raw user screen names rather than preserve the joined source value.",
+        "about": "requirement",
+        "target": "staging.stg_social_media__twitter_organic_tweets",
+        "evidence_of_dependence": "regexp_replace(u.screen_name, '[^A-Za-z0-9_]', '', 'g')::varchar as screen_name",
+        "alternative": "This model's screen_name description says \"From raw.twitter_user_history.screen_name\"; the explicit screen-name cleaning rules are specified separately for stg_social_media__twitter_user_history.",
+        "importance": 2,
+        "reason": "This changes the reported identity text and can create empty names without the profile model's row filtering.",
+        "updates": null
+      },
+      {
+        "statement": "Facebook staging impressions should use the maximum lifetime metric rather than the specified staging default of zero.",
+        "about": "requirement",
+        "target": "staging.stg_social_media__facebook_posts",
+        "evidence_of_dependence": "max(post_impressions) as impressions ... coalesce(pm.impressions, 0)::bigint as impressions",
+        "alternative": "The contract defines impressions as \"Default 0 in staging\" and lists only post history and page data as this model's source tables.",
+        "importance": 5,
+        "reason": "This introduces an additional source and changes a core performance metric for matched posts.",
+        "updates": null
+      },
+      {
+        "statement": "Every qualifying Facebook post has at most one row in raw.facebook_pages_post_history.",
+        "about": "data",
+        "target": "staging.stg_social_media__facebook_posts",
+        "evidence_of_dependence": "from raw.facebook_pages_post_history p",
+        "alternative": "The source includes updated_time and is named post_history, so multiple versions may require selecting a version.",
+        "importance": 4,
+        "reason": "Repeated versions would produce duplicate posts and potentially retain outdated visibility states.",
+        "updates": null
+      },
+      {
+        "statement": "The latest synced Facebook page record is the intended page metadata for all posts, regardless of deletion status.",
+        "about": "requirement",
+        "target": "staging.stg_social_media__facebook_posts",
+        "evidence_of_dependence": "partition by id order by _fivetran_synced desc nulls last ... pg.row_num = 1",
+        "alternative": "raw.facebook_pages_page_data includes _fivetran_deleted, which is not consulted when selecting page metadata.",
+        "importance": 3,
+        "reason": "Deleted or historically inappropriate page versions could supply names and follower counts.",
+        "updates": null
+      },
+      {
+        "statement": "A Facebook post with a null is_hidden value should count as visible.",
+        "about": "requirement",
+        "target": "staging.stg_social_media__facebook_posts",
+        "evidence_of_dependence": "and not coalesce(p.is_hidden, false)",
+        "alternative": "The contract describes the model as \"Published, visible Facebook posts\" but does not define whether unknown visibility qualifies.",
+        "importance": 3,
+        "reason": "This determines whether posts with unknown visibility enter reporting.",
+        "updates": null
+      },
+      {
+        "statement": "Facebook post created_time and the numeric and boolean fields directly cast by this query contain only compatible values.",
+        "about": "data",
+        "target": "staging.stg_social_media__facebook_posts",
+        "evidence_of_dependence": "p.created_time::timestamp ... coalesce(p.share_count, 0)::bigint ... p.is_eligible_for_promotion::boolean",
+        "alternative": null,
+        "importance": 3,
+        "reason": "An incompatible source value could abort the model rather than be corrected or nullified.",
+        "updates": null
+      },
+      {
+        "statement": "Instagram metrics should select the first non-null media-specific field in a fixed priority order independent of the post's media_type.",
+        "about": "requirement",
+        "target": "staging.stg_social_media__instagram_posts",
+        "evidence_of_dependence": "coalesce(carousel_album_impressions, video_photo_impressions, story_impressions, video_views, reel_plays, 0)",
+        "alternative": "The contract refers to normalized \"mi.impressions\" and other normalized metrics without defining this priority; the inspected rows contain simultaneous non-null carousel, story, photo/video, and reel metrics.",
+        "importance": 5,
+        "reason": "The chosen priority can select the wrong metric family for most non-carousel posts.",
+        "updates": null
+      },
+      {
+        "statement": "Each media identifier has at most one matching Instagram insights row across all source_relation values.",
+        "about": "data",
+        "target": "staging.stg_social_media__instagram_posts",
+        "evidence_of_dependence": "left join insights i on m.id = i.id",
+        "alternative": "The insights table exposes both source_relation and _fivetran_id, but neither participates in the join or deduplication.",
+        "importance": 4,
+        "reason": "Multiple matches would multiply posts and metrics.",
+        "updates": null
+      },
+      {
+        "statement": "Each qualifying Instagram media identifier occurs only once in media history.",
+        "about": "data",
+        "target": "staging.stg_social_media__instagram_posts",
+        "evidence_of_dependence": "from raw.instagram_business_media_history m",
+        "alternative": "The history source includes _fivetran_id and _fivetran_synced, but no media-version selection is performed.",
+        "importance": 4,
+        "reason": "Multiple historical versions would create duplicate post outputs.",
+        "updates": null
+      },
+      {
+        "statement": "The latest synced Instagram user record supplies the intended account metadata for every historical media post.",
+        "about": "requirement",
+        "target": "staging.stg_social_media__instagram_posts",
+        "evidence_of_dependence": "row_number() over (partition by id order by _fivetran_synced desc nulls last) ... u.row_num = 1",
+        "alternative": "The contract requests account details \"from user history\" but does not specify latest rather than post-time values.",
+        "importance": 3,
+        "reason": "Account names, follower counts, and media counts can differ materially across versions.",
+        "updates": null
+      },
+      {
+        "statement": "Instagram media user_id and user-history id identify accounts in the same identifier namespace.",
+        "about": "data",
+        "target": "staging.stg_social_media__instagram_posts",
+        "evidence_of_dependence": "left join users u on m.user_id = u.id",
+        "alternative": "The material index exposes both id and ig_id in Instagram user history, and their relationship to media user_id has not been checked.",
+        "importance": 3,
+        "reason": "A namespace mismatch would remove account enrichment from otherwise valid posts.",
+        "updates": null
+      },
+      {
+        "statement": "LinkedIn post_message should prefer article_title, then media_title, and use commentary only as a fallback.",
+        "about": "requirement",
+        "target": "staging.stg_social_media__linkedin_posts",
+        "evidence_of_dependence": "coalesce(pc.article_title, pc.media_title, h.commentary)::varchar as post_message",
+        "alternative": "The contract lists post_message without defining this priority; the available history source contains commentary, which could instead be the post message.",
+        "importance": 4,
+        "reason": "The priority can replace the actual post commentary with a content title.",
+        "updates": null
+      },
+      {
+        "statement": "Each LinkedIn post has at most one matching post-content row.",
+        "about": "data",
+        "target": "staging.stg_social_media__linkedin_posts",
+        "evidence_of_dependence": "left join raw.linkedin_pages_post_content pc on pc.post_id = regexp_replace(o.ugc_post_id, '^urn:li:share:', 'urn:li:share:')",
+        "alternative": "The content source includes media_id and _fivetran_id, which could distinguish multiple content items for one post.",
+        "importance": 4,
+        "reason": "A post with multiple content items would be emitted multiple times.",
+        "updates": null
+      },
+      {
+        "statement": "Each LinkedIn post has at most one matching UGC history row.",
+        "about": "data",
+        "target": "staging.stg_social_media__linkedin_posts",
+        "evidence_of_dependence": "left join raw.linkedin_pages_ugc_post_history h on h.id = o.ugc_post_id",
+        "alternative": "The source is a history table with last_modified_time and _fivetran_synced, but the query selects no single version.",
+        "importance": 4,
+        "reason": "Multiple versions would duplicate posts and produce conflicting messages or timestamps.",
+        "updates": null
+      },
+      {
+        "statement": "LinkedIn organization-post identifiers can be matched literally to history and content identifiers without reconciling share and ugcPost URNs.",
+        "about": "data",
+        "target": "staging.stg_social_media__linkedin_posts",
+        "evidence_of_dependence": "h.id = o.ugc_post_id ... regexp_replace(o.ugc_post_id, '^urn:li:share:', 'urn:li:share:')",
+        "alternative": "The samples show organization-post IDs beginning \"urn:li:share:\" and history IDs beginning \"urn:li:ugcPost:\"; the implemented replacement leaves the identifier unchanged.",
+        "importance": 4,
+        "reason": "Unreconciled identifier forms could leave messages and creation timestamps missing across many posts.",
+        "updates": null
+      },
+      {
+        "statement": "LinkedIn organization-post records with null organization identifiers should be deleted from staging.",
+        "about": "requirement",
+        "target": "staging.stg_social_media__linkedin_posts",
+        "evidence_of_dependence": "where o.organiation_id is not null",
+        "alternative": "The contract declares organization_id as VARCHAR without a not_null constraint or delete_row rule.",
+        "importance": 2,
+        "reason": "This adds an undocumented row-exclusion rule.",
+        "updates": null
+      },
+      {
+        "statement": "The maximum channel_subscribers across all YouTube channel-basic records is the intended subscriber count for every video on that channel.",
+        "about": "requirement",
+        "target": "staging.stg_social_media__youtube_videos",
+        "evidence_of_dependence": "select channel_id, max(channel_subscribers) as channel_subscribers ... group by channel_id",
+        "alternative": "The channel-basic source includes date, while the contract specifies only \"COALESCE(channel_info.channel_subscribers, 0)\" and does not define maximum-over-time selection.",
+        "importance": 4,
+        "reason": "A historical maximum can systematically overstate subscriber counts.",
+        "updates": null
+      },
+      {
+        "statement": "Each qualifying YouTube video identifier occurs only once in raw.youtube_video.",
+        "about": "data",
+        "target": "staging.stg_social_media__youtube_videos",
+        "evidence_of_dependence": "from raw.youtube_video v",
+        "alternative": null,
+        "importance": 3,
+        "reason": "Duplicate source identifiers would produce duplicate videos and metrics.",
+        "updates": null
+      },
+      {
+        "statement": "All YouTube publication timestamps and numeric metric values used by the query are compatible with its casts and arithmetic.",
+        "about": "data",
+        "target": "staging.stg_social_media__youtube_videos",
+        "evidence_of_dependence": "v.snippet_published_at::timestamp ... coalesce(v.statistics_view_count, 0)::bigint ... v.statistics_like_count / 10.0",
+        "alternative": null,
+        "importance": 3,
+        "reason": "Malformed values could prevent pipeline execution.",
+        "updates": null
+      },
+      {
+        "statement": "A missing YouTube channel title should produce the literal page_name 'Unknown Channel'.",
+        "about": "requirement",
+        "target": "staging.stg_social_media__youtube_videos",
+        "evidence_of_dependence": "coalesce(v.snippet_channel_title, 'Unknown Channel')::varchar as page_name",
+        "alternative": "The contract declares page_name as VARCHAR but provides no default or correction rule for it.",
+        "importance": 1,
+        "reason": "This changes only the labeling of records with missing titles.",
+        "updates": null
+      }
+    ],
+    "fewer": [
+      {
+        "target": "staging.stg_social_media__account_history",
+        "count": 2,
+        "reason": "The remaining projections, identifier filtering, and timezone regex directly implement explicit contract requirements; no further material unsupported premises were identified."
+      },
+      {
+        "target": "staging.stg_social_media__twitter_user_history",
+        "count": 3,
+        "reason": "The other field mappings and conversions follow explicit contract definitions, and the model performs no joins or history selection requiring additional key assumptions."
+      },
+      {
+        "target": "staging.stg_social_media__youtube_videos",
+        "count": 4,
+        "reason": "The remaining time-window, view-data filter, URL construction, metric defaults, and rate formulas are explicitly specified."
+      }
+    ]
+  }
+}

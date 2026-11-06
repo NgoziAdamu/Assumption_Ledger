@@ -1,0 +1,246 @@
+{
+  "premises": [
+    {
+      "statement": "Account friendly names containing disallowed characters should be nullified rather than corrected.",
+      "about": "requirement",
+      "target": "staging.stg_twilio__account_history",
+      "evidence_of_dependence": "and not regexp_matches(friendly_name, '^[A-Za-z0-9\\s._-]+$') then null",
+      "alternative": "The contract specifies \"friendly_name RLIKE '^[A-Za-z0-9\\\\s._-]+'\" with \"on_failure: correct\", rather than nullification.",
+      "importance": 5,
+      "reason": "The implementation substitutes a different validation action and a stricter whole-string pattern.",
+      "updates": null
+    },
+    {
+      "statement": "Call price_in_usd is identical to raw price without currency conversion or sign normalization.",
+      "about": "requirement",
+      "target": "staging.stg_twilio__call",
+      "evidence_of_dependence": "raw_price as price_in_usd",
+      "alternative": "The contract describes price_in_usd as \"Normalized USD price\" but does not specify the normalization formula.",
+      "importance": 4,
+      "reason": "This interpretation determines all downstream call cost metrics.",
+      "updates": null
+    },
+    {
+      "statement": "The call's user phone number always comes from raw from and its contact phone number always comes from raw to, regardless of direction.",
+      "about": "requirement",
+      "target": "staging.stg_twilio__call",
+      "evidence_of_dependence": "try_cast(\"from\" as varchar) ... as user_phone_number_raw",
+      "alternative": null,
+      "importance": 4,
+      "reason": "A direction-dependent interpretation would reverse the roles for inbound calls.",
+      "updates": null
+    },
+    {
+      "statement": "Message error_code and error_message should be DOUBLE in staging despite their declared staging VARCHAR types.",
+      "about": "requirement",
+      "target": "staging.stg_twilio__message",
+      "evidence_of_dependence": "error_code::double as error_code, error_message::double as error_message",
+      "alternative": "The staging contract declares both fields \"data_type: VARCHAR\", whereas int_twilio__messages declares them DOUBLE.",
+      "importance": 4,
+      "reason": "The agent resolves a cross-layer type conflict by departing from the staging schema.",
+      "updates": null
+    },
+    {
+      "statement": "Whitespace around outgoing caller friendly names may be corrected before validation instead of causing row deletion.",
+      "about": "requirement",
+      "target": "staging.stg_twilio__outgoing_caller_id",
+      "evidence_of_dependence": "trim(friendly_name) as friendly_name",
+      "alternative": "The contract requires \"TRIM(friendly_name) = friendly_name\" with \"on_failure: delete_row\".",
+      "importance": 4,
+      "reason": "Pre-trimming retains records that the specified validation could reject.",
+      "updates": null
+    },
+    {
+      "statement": "All temporal strings can be interpreted correctly by removing the literal UTC suffix and casting directly to a timezone-naive timestamp.",
+      "about": "data",
+      "target": "staging timestamp-bearing models",
+      "evidence_of_dependence": "try_cast(replace(created_at, ' UTC', '') as timestamp)",
+      "alternative": null,
+      "importance": 3,
+      "reason": "Only sampled timestamps were inspected, and other representations could change filtering or date buckets.",
+      "updates": null
+    },
+    {
+      "statement": "The unprefixed raw tables are the intended replacements for the contract's raw.twilio-prefixed source tables.",
+      "about": "requirement",
+      "target": "all staging models",
+      "evidence_of_dependence": "from raw.account_history_data; from raw.call_data; from raw.message_data",
+      "alternative": "The contract names sources such as \"raw.twilio_account_history_data\" and \"raw.twilio_call_data\".",
+      "importance": 3,
+      "reason": "The available schemas make this plausible, but the source-name substitution is not explicitly authorized.",
+      "updates": null
+    },
+    {
+      "statement": "raw.call_data contains all required call records, so raw.call_data_snowflake need not contribute any additional records.",
+      "about": "data",
+      "target": "staging.stg_twilio__call",
+      "evidence_of_dependence": "from raw.call_data",
+      "alternative": null,
+      "importance": 3,
+      "reason": "Matching sample rows do not establish equivalence or complete coverage across the two available sources.",
+      "updates": null
+    },
+    {
+      "statement": "raw.message_data contains all required message records, so raw.message_data_snowflake need not contribute any additional records.",
+      "about": "data",
+      "target": "staging.stg_twilio__message",
+      "evidence_of_dependence": "from raw.message_data",
+      "alternative": null,
+      "importance": 3,
+      "reason": "An unused parallel message source could contain additional required records.",
+      "updates": null
+    },
+    {
+      "statement": "Non-null malformed updated_at values may be treated as missing updates and retained.",
+      "about": "requirement",
+      "target": "staging.stg_twilio__call and staging.stg_twilio__message",
+      "evidence_of_dependence": "try_cast(replace(updated_at, ' UTC', '') as timestamp) ... and (updated_at is null or updated_at >= created_at)",
+      "alternative": null,
+      "importance": 3,
+      "reason": "Failed parsing becomes indistinguishable from an originally missing update and bypasses temporal validation.",
+      "updates": null
+    },
+    {
+      "statement": "All raw usage count and usage values fit DuckDB INTEGER.",
+      "about": "data",
+      "target": "staging.stg_twilio__usage_record",
+      "evidence_of_dependence": "count::integer as count ... usage::integer as usage",
+      "alternative": null,
+      "importance": 3,
+      "reason": "Both raw columns are BIGINT, and an out-of-range value would stop execution before filtering.",
+      "updates": null
+    },
+    {
+      "statement": "Every account_id surviving account-history staging is non-null.",
+      "about": "data",
+      "target": "intermediate.int_twilio__account_latest and intermediate.int_twilio__account_metrics",
+      "evidence_of_dependence": "partition by account_id ... where row_num = 1; a.account_id",
+      "alternative": "Both intermediate models declare account_id \"not_null\", but staging does not enforce that condition.",
+      "importance": 3,
+      "reason": "Ranking and pass-through preserve a null account identifier if one exists.",
+      "updates": null
+    },
+    {
+      "statement": "The inbound/outbound UNION ALL produces non-null, unique message_id values without additional validation.",
+      "about": "data",
+      "target": "intermediate.int_twilio__messages",
+      "evidence_of_dependence": "select * from inbound_messages union all select * from outbound_messages",
+      "alternative": "The contract requires message_id \"not_null\" and \"unique\" while also explicitly requiring UNION ALL without deduplication.",
+      "importance": 3,
+      "reason": "Meeting both instructions depends on source identifiers and direction subsets having suitable properties.",
+      "updates": null
+    },
+    {
+      "statement": "Every message contributing to account overview has a non-null account_id and a parseable, non-null timestamp_sent.",
+      "about": "data",
+      "target": "marts.twilio__account_overview",
+      "evidence_of_dependence": "from intermediate.int_twilio__messages as m ... group by account_id ... date_day, date_week, date_month",
+      "alternative": "The mart declares account_id and all three date buckets \"not_null\", while upstream explicitly permits null send timestamps.",
+      "importance": 3,
+      "reason": "No mart filter or upstream constraint prevents null-key or null-date groups.",
+      "updates": null
+    },
+    {
+      "statement": "Call start_date should be derived from call_started_at rather than created_at or another timestamp.",
+      "about": "requirement",
+      "target": "staging.stg_twilio__call",
+      "evidence_of_dependence": "cast(call_started_at as date) as start_date",
+      "alternative": null,
+      "importance": 2,
+      "reason": "The contract declares the output type but does not establish its timestamp source.",
+      "updates": null
+    },
+    {
+      "statement": "The messaging_service_name output is another copy of raw friendly_name.",
+      "about": "requirement",
+      "target": "staging.stg_twilio__messaging_service",
+      "evidence_of_dependence": "friendly_name::varchar as messaging_service_name",
+      "alternative": null,
+      "importance": 2,
+      "reason": "The contract lists this output without defining its derivation.",
+      "updates": null
+    },
+    {
+      "statement": "NULL outgoing caller friendly names should cause row deletion.",
+      "about": "requirement",
+      "target": "staging.stg_twilio__outgoing_caller_id",
+      "evidence_of_dependence": "and friendly_name is not null",
+      "alternative": "The contract specifies the friendly-name validation expression but does not declare a not_null constraint for that column.",
+      "importance": 2,
+      "reason": "This adds an explicit presence requirement that can remove otherwise valid records.",
+      "updates": null
+    }
+  ],
+  "fewer": [
+    {
+      "target": "staging.stg_twilio__account_history",
+      "count": 3,
+      "reason": "Includes shared source-name and timestamp premises; other transformations follow explicit rules."
+    },
+    {
+      "target": "staging.stg_twilio__address",
+      "count": 2,
+      "reason": "Only shared source-name and timestamp interpretation premises were identified."
+    },
+    {
+      "target": "staging.stg_twilio__incoming_phone_number",
+      "count": 2,
+      "reason": "Only shared source-name and timestamp interpretation premises were identified; other substantive processing is specified."
+    },
+    {
+      "target": "staging.stg_twilio__messaging_service",
+      "count": 3,
+      "reason": "Includes shared source-name and timestamp premises plus the undefined service-name derivation."
+    },
+    {
+      "target": "staging.stg_twilio__outgoing_caller_id",
+      "count": 4,
+      "reason": "Includes shared source-name and timestamp premises and two label-validation interpretations."
+    },
+    {
+      "target": "staging.stg_twilio__usage_record",
+      "count": 2,
+      "reason": "Only source-name substitution and integer range were unsupported; remaining logic is explicitly specified."
+    },
+    {
+      "target": "intermediate.int_twilio__account_latest",
+      "count": 1,
+      "reason": "Selection and tie handling are explicitly documented; non-null identifiers remain unverified."
+    },
+    {
+      "target": "intermediate.int_twilio__account_metrics",
+      "count": 1,
+      "reason": "Aggregation, joins, grain, and defaults follow the contract; identifier presence remains unverified."
+    },
+    {
+      "target": "intermediate.int_twilio__messages",
+      "count": 1,
+      "reason": "The transformation is explicitly specified, but its required identifier constraints depend on unverified input properties."
+    },
+    {
+      "target": "intermediate.int_twilio__messaging_service",
+      "count": 0,
+      "reason": "The selected columns, cast, and preservation of duplicates and nulls are explicitly required."
+    },
+    {
+      "target": "intermediate.int_twilio__usage_record_daily",
+      "count": 0,
+      "reason": "Grouping, summation, currency-label selection, and null behavior are explicitly specified."
+    },
+    {
+      "target": "marts.twilio__account_overview",
+      "count": 1,
+      "reason": "The join and aggregation behavior, including repeated daily usage contributions, is explicitly specified; required non-null outputs remain unverified."
+    },
+    {
+      "target": "marts.twilio__message_enhanced",
+      "count": 0,
+      "reason": "Join multiplicity, null propagation, selected attributes, and word-count formula are explicitly specified."
+    },
+    {
+      "target": "marts.twilio__number_overview",
+      "count": 0,
+      "reason": "Grouping, null groups, counts, and price summation directly implement the documented requirements."
+    }
+  ]
+}

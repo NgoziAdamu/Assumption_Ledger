@@ -1,0 +1,1125 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "stg_google_play__earnings": {
+      "items": [
+        {
+          "problem": "The package identifier is taken from base_plan_id, which appears to contain a product identifier rather than the app package.",
+          "about": "data",
+          "evidence_in_work": "CAST(base_plan_id AS VARCHAR) AS package_name",
+          "source": "package_name: Google Play package identifier used for grouping and subscription joins",
+          "importance": 5,
+          "reason": "Product suffixes can split apps into artificial packages and prevent joins to all other app feeds."
+        },
+        {
+          "problem": "Missing SKU values are replaced with base-plan identifiers without establishing that these identify the same business entity.",
+          "about": "data",
+          "evidence_in_work": "CAST(coalesce(sku_id, product_id, base_plan_id) AS VARCHAR) AS sku_id",
+          "source": "sku_id ... constraints: [not_null]",
+          "importance": 5,
+          "reason": "All 8,000 source SKU values are missing, so this assumption determines every output SKU."
+        },
+        {
+          "problem": "Invalid or missing transaction types remain NULL instead of being corrected to Other.",
+          "about": "requirement",
+          "evidence_in_work": "WHEN lower(trim(transaction_type)) = 'other' THEN 'Other' ELSE NULL END",
+          "source": "transaction_type = COALESCE(transaction_type, 'Other') ... on_failure: correct",
+          "importance": 5,
+          "reason": "This violates the required non-null field and causes adjustment revenue to be omitted downstream."
+        },
+        {
+          "problem": "The source transaction_date is entirely replaced by the date of transaction_time without a documented equivalence or fallback policy.",
+          "about": "data",
+          "evidence_in_work": "try_cast(substr(transaction_time, 1, 10) AS DATE) AS transaction_date",
+          "source": "transaction_date ... data_type: DATE ... constraints: [not_null]",
+          "importance": 4,
+          "reason": "The substitution supplies every transaction date and therefore controls all financial reporting periods."
+        },
+        {
+          "problem": "The timestamp is labeled Pacific time but is created by stripping the offset from a source timestamp showing +0800.",
+          "about": "data",
+          "evidence_in_work": "try_cast(substr(transaction_time, 1, 19) AS TIMESTAMP) AS transaction_pt_timestamp",
+          "source": "transaction_pt_timestamp ... data_type: TIMESTAMP",
+          "importance": 4,
+          "reason": "If the field name denotes Pacific local time, every populated timestamp has the wrong time basis."
+        },
+        {
+          "problem": "The timezone extraction expects a colon in the offset and therefore fails on the observed +0800 format.",
+          "about": "data",
+          "evidence_in_work": "regexp_extract(transaction_time, '([+-][0-9]{2}:[0-9]{2})', 1)",
+          "source": null,
+          "importance": 3,
+          "reason": "The inspected output already shows empty timezone strings despite offsets being present."
+        },
+        {
+          "problem": "Required earnings fields are not checked after casts and inferred mappings.",
+          "about": "requirement",
+          "evidence_in_work": "FROM raw.earnings",
+          "source": "package_name, sku_id, transaction_date, transaction_type ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Malformed values can survive staging and later disappear through downstream filters."
+        }
+      ],
+      "fewer_reason": "Seven distinct concerns are supported; additional issues would require assumptions about undocumented source mappings."
+    },
+    "stg_google_play__stats_crashes_app_version": {
+      "items": [
+        {
+          "problem": "Rows are retained without enforcing the required non-null date and package fields.",
+          "about": "requirement",
+          "evidence_in_work": "try_cast(substr(date, 1, 10) AS DATE) AS date_day",
+          "source": "date_day ... constraints: [not_null]; package_name ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Failed date casts or missing packages would produce invalid staging keys."
+        },
+        {
+          "problem": "The required android_os_version output is always NULL, and the adequacy of this treatment of the absent source column was not established.",
+          "about": "data",
+          "evidence_in_work": "source='NULL::VARCHAR'",
+          "source": "android_os_version ... data_type: VARCHAR",
+          "importance": 1,
+          "reason": "The indexed source lacks this field, but any intended enrichment is absent."
+        }
+      ],
+      "fewer_reason": "Only two supported concerns were found; the indexed source does not itself provide an OS dimension."
+    },
+    "stg_google_play__stats_crashes_os_version": {
+      "items": [
+        {
+          "problem": "Required date and package keys can remain NULL after projection.",
+          "about": "data",
+          "evidence_in_work": "elif n=='date_day': expr=\"try_cast(substr(date, 1, 10) AS DATE)\"",
+          "source": "source_models: staging.stg_google_play__stats_crashes_os_version; remove rows where either key is NULL",
+          "importance": 2,
+          "reason": "The generator does not validate these keys, although downstream quality analysis relies on them."
+        }
+      ],
+      "fewer_reason": "The detailed staging contract for this table is not supplied, and no additional concrete mapping problem is visible."
+    },
+    "stg_google_play__stats_crashes_overview": {
+      "items": [
+        {
+          "problem": "Required non-null date and package keys are not enforced.",
+          "about": "requirement",
+          "evidence_in_work": "FROM raw.stats_crashes_overview",
+          "source": "date_day ... constraints: [not_null]; package_name ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Invalid keys can reach reporting joins or be discarded inconsistently by downstream models."
+        }
+      ],
+      "fewer_reason": "The crash and ANR renames and casts match the supplied contract; only key validation remains a supported concern."
+    },
+    "stg_google_play__stats_installs_app_version": {
+      "items": [
+        {
+          "problem": "Required non-null dates and packages are not validated after conversion.",
+          "about": "requirement",
+          "evidence_in_work": "FROM raw.stats_installs_app_version",
+          "source": "date_day ... constraints: [not_null]; package_name ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Malformed source keys would remain in a table declared to contain valid daily app-version statistics."
+        },
+        {
+          "problem": "Device and OS outputs are unconditionally NULL without confirming whether the contract intended an enrichment.",
+          "about": "data",
+          "evidence_in_work": "if n in ('device','android_os_version') and name=='stg_google_play__stats_installs_app_version': source='NULL::VARCHAR'",
+          "source": "device ... data_type: VARCHAR; android_os_version ... data_type: VARCHAR",
+          "importance": 1,
+          "reason": "The indexed source lacks these columns, so NULL may be appropriate, but the decision was not validated."
+        }
+      ],
+      "fewer_reason": "Two supported concerns were found; joining unrelated device or OS breakdowns would not be justified by the supplied documentation."
+    },
+    "stg_google_play__stats_installs_country": {
+      "items": [
+        {
+          "problem": "The code does not enforce the required non-null date and package fields.",
+          "about": "requirement",
+          "evidence_in_work": "WHERE country IS NOT NULL AND length(trim(country)) = 2",
+          "source": "date_day ... constraints: [not_null]; package_name ... constraints: [not_null]",
+          "importance": 2,
+          "reason": "Only the country constraint is enforced, although the current batch is empty for a legitimate country-validation reason."
+        }
+      ],
+      "fewer_reason": "Deleting the observed xyz country values follows the explicit contract; no other supported defect was found."
+    },
+    "stg_google_play__stats_installs_device": {
+      "items": [
+        {
+          "problem": "Required non-null dates and packages are not enforced.",
+          "about": "requirement",
+          "evidence_in_work": "FROM raw.stats_installs_device",
+          "source": "date_day ... constraints: [not_null]; package_name ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Invalid source keys would remain in the staging output."
+        }
+      ],
+      "fewer_reason": "The remaining visible fields are straightforward projections matching the supplied source and contract."
+    },
+    "stg_google_play__stats_installs_os_version": {
+      "items": [
+        {
+          "problem": "Required non-null dates and packages are not enforced.",
+          "about": "requirement",
+          "evidence_in_work": "FROM raw.stats_installs_os_version",
+          "source": "date_day ... constraints: [not_null]; package_name ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Invalid source keys would remain in the staging output."
+        }
+      ],
+      "fewer_reason": "No additional concrete problem is evident in the source-field projections."
+    },
+    "stg_google_play__stats_installs_overview": {
+      "items": [
+        {
+          "problem": "The required non-null package constraint is not checked.",
+          "about": "requirement",
+          "evidence_in_work": "WHERE try_cast(substr(date, 1, 10) AS DATE) BETWEEN DATE '2020-01-01' AND CURRENT_DATE",
+          "source": "package_name ... constraints: [not_null]",
+          "importance": 2,
+          "reason": "The date rule is implemented, but a valid-date row with a missing package would survive."
+        }
+      ],
+      "fewer_reason": "The empty output follows the documented deletion rule for missing dates and is not itself evidence of an error."
+    },
+    "stg_google_play__stats_ratings_app_version": {
+      "items": [
+        {
+          "problem": "The generic staging projection may retain missing or unparseable daily keys without validating the table's intended key requirements.",
+          "about": "data",
+          "evidence_in_work": "elif n=='date_day': expr=\"try_cast(substr(date, 1, 10) AS DATE)\"",
+          "source": null,
+          "importance": 2,
+          "reason": "Daily version reports depend on usable dates and packages, but this table's detailed contract is not supplied."
+        }
+      ],
+      "fewer_reason": "Only a key-quality concern is supported; the detailed per-table contract is unavailable."
+    },
+    "stg_google_play__stats_ratings_country": {
+      "items": [
+        {
+          "problem": "Required date, package, and country values are projected without non-null validation.",
+          "about": "requirement",
+          "evidence_in_work": "FROM raw.stats_ratings_country",
+          "source": "date_day, package_name, country ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Invalid keys can remain in staging and fail to match install records."
+        },
+        {
+          "problem": "Country values are uppercased and trimmed even though this table's contract does not prescribe that correction.",
+          "about": "requirement",
+          "evidence_in_work": "elif n in ('buyer_currency','country_code_alpha_2','country_code_alpha_3','country'): expr=f'upper(trim({source}))'",
+          "source": "country ... data_type: VARCHAR ... constraints: [not_null]",
+          "importance": 1,
+          "reason": "The change may be useful for joins, but it is an undocumented alteration of this source dimension."
+        }
+      ],
+      "fewer_reason": "The contract leaves rating-range filtering to intermediate models, so retaining out-of-range staging ratings is not listed as a defect."
+    },
+    "stg_google_play__stats_ratings_device": {
+      "items": [
+        {
+          "problem": "The generic projection may retain invalid daily keys without checking their suitability for device reporting.",
+          "about": "data",
+          "evidence_in_work": "FROM raw.stats_ratings_device",
+          "source": null,
+          "importance": 2,
+          "reason": "No key validation is generated, but the detailed staging requirements are not supplied."
+        }
+      ],
+      "fewer_reason": "No additional supported issue is visible without this table's detailed contract."
+    },
+    "stg_google_play__stats_ratings_os_version": {
+      "items": [
+        {
+          "problem": "The generic projection may retain invalid daily keys without checking their suitability for OS reporting.",
+          "about": "data",
+          "evidence_in_work": "FROM raw.stats_ratings_os_version",
+          "source": null,
+          "importance": 2,
+          "reason": "No key validation is generated, but the detailed staging requirements are not supplied."
+        }
+      ],
+      "fewer_reason": "The supplied materials do not expose enough of this staging contract to support additional specific concerns."
+    },
+    "stg_google_play__stats_ratings_overview": {
+      "items": [
+        {
+          "problem": "Observed missing source dates remain NULL in the staged ratings used by daily reporting.",
+          "about": "data",
+          "evidence_in_work": "('ratings_overview_com.example.gameapp_202001.csv', ... None, 'com.example.gameapp', 4.08, 10.0)",
+          "source": "Full outer join installs ... ratings ... on (date_day, package_name)",
+          "importance": 3,
+          "reason": "These rows cannot participate normally in dated joins, and their intended treatment was not checked."
+        }
+      ],
+      "fewer_reason": "The detailed staging contract is unavailable; rating-range validation cannot safely be inferred from downstream rules."
+    },
+    "stg_google_play__store_performance_country": {
+      "items": [
+        {
+          "problem": "The numeric country-code lookup is not unique and visibly multiplies source records.",
+          "about": "data",
+          "evidence_in_work": "raw.stats_store_performance_country: 6,400 rows; staging.stg_google_play__store_performance_country: 8,800 rows",
+          "source": "Cleaned ... Store performance metrics by country",
+          "importance": 5,
+          "reason": "Duplicated visitors and installers propagate directly into store-performance and overview aggregates."
+        },
+        {
+          "problem": "The country lookup bypasses the cleaned country-code staging table and uses unvalidated raw mappings.",
+          "about": "data",
+          "evidence_in_work": "LEFT JOIN raw.google_play__country_codes AS cc ON cc.country_code_numeric = country_region",
+          "source": "stg_google_play__country_codes: Reference table for country code mappings and regional classifications",
+          "importance": 4,
+          "reason": "Invalid or duplicate raw mappings can undermine the separately implemented reference-table cleaning."
+        },
+        {
+          "problem": "Unmatched numeric country codes remain NULL despite the country field being required.",
+          "about": "requirement",
+          "evidence_in_work": "CAST(cc.country_code_alpha_2 AS VARCHAR) AS country",
+          "source": "country ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "A left join permits missing country keys without any subsequent validation."
+        },
+        {
+          "problem": "Required date and package fields are not checked after projection.",
+          "about": "requirement",
+          "evidence_in_work": "FROM raw.stats_store_performance_country",
+          "source": "date_day ... constraints: [not_null]; package_name ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Invalid daily keys can reach the union and reporting layers."
+        },
+        {
+          "problem": "BIGINT visitor and acquisition values are narrowed to INTEGER using TRY_CAST without assessing overflow losses.",
+          "about": "data",
+          "evidence_in_work": "try_cast(store_listing_acquisitions AS INTEGER)",
+          "source": "store_listing_visitors ... INTEGER; store_listing_installers ... INTEGER",
+          "importance": 1,
+          "reason": "The requested types are correct, but out-of-range source counts would silently become NULL."
+        }
+      ],
+      "fewer_reason": "Five distinct concerns are supported, including the observed join fanout."
+    },
+    "stg_google_play__store_performance_source": {
+      "items": [
+        {
+          "problem": "Required non-null dates and packages are not enforced.",
+          "about": "requirement",
+          "evidence_in_work": "FROM raw.stats_store_performance_traffic_source",
+          "source": "date_day ... constraints: [not_null]; package_name ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Invalid keys can survive into reporting."
+        },
+        {
+          "problem": "Source BIGINT counts are narrowed to INTEGER without checking whether TRY_CAST nullifies any large values.",
+          "about": "data",
+          "evidence_in_work": "try_cast(store_listing_acquisitions AS INTEGER)",
+          "source": "store_listing_visitors ... INTEGER; store_listing_installers ... INTEGER",
+          "importance": 1,
+          "reason": "This follows the requested output type but may silently lose out-of-range counts."
+        }
+      ],
+      "fewer_reason": "The conversion-rate range rule is implemented, and no further supported defect is visible."
+    },
+    "stg_google_play__subscriptions_country": {
+      "items": [
+        {
+          "problem": "Required date, package, and product identifiers are not validated.",
+          "about": "requirement",
+          "evidence_in_work": "WHERE country IS NOT NULL AND length(trim(country)) = 2",
+          "source": "date_day, package_name, product_id ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Only country validity is enforced, leaving other subscription join keys unchecked."
+        },
+        {
+          "problem": "Country trimming and uppercasing introduce corrections that are not specified for this table.",
+          "about": "requirement",
+          "evidence_in_work": "CASE WHEN length(upper(trim(country))) = 2 THEN upper(trim(country)) ELSE NULL END",
+          "source": "country IS NOT NULL AND LENGTH(country) = 2 ... on_failure: delete_row",
+          "importance": 2,
+          "reason": "Padded values may be retained rather than deleted under the stated validation rule."
+        }
+      ],
+      "fewer_reason": "The active-subscription rename is correct; only key validation and the extra country correction warrant checking."
+    },
+    "stg_google_play__country_codes": {
+      "items": [
+        {
+          "problem": "The required country_name field is not checked for NULL.",
+          "about": "requirement",
+          "evidence_in_work": "WHERE country_code_alpha_2 IS NOT NULL AND length(trim(country_code_alpha_2))=2",
+          "source": "country_name ... constraints: [not_null]",
+          "importance": 2,
+          "reason": "A row with a valid code but no country name can survive the reference-table cleaning."
+        },
+        {
+          "problem": "Duplicate alpha-2 codes are resolved by alphabetical country name without checking whether the chosen record has the correct regional and numeric attributes.",
+          "about": "data",
+          "evidence_in_work": "QUALIFY row_number() OVER (PARTITION BY upper(trim(country_code_alpha_2)) ORDER BY country_name)=1",
+          "source": "country_code_alpha_2 ... constraints: [not_null, unique]",
+          "importance": 2,
+          "reason": "Uniqueness is enforced, but conflicting reference records could yield arbitrary classifications."
+        }
+      ],
+      "fewer_reason": "The specified alpha-code normalization, length checks, and numeric rename are otherwise implemented."
+    },
+    "int_google_play__earnings": {
+      "items": [
+        {
+          "problem": "Category sums use FILTER and therefore return NULL when no matching category exists instead of allowing nonmatching rows to contribute zero.",
+          "about": "requirement",
+          "evidence_in_work": "sum(amount_merchant_currency) FILTER (WHERE lower(transaction_type)='charge') AS charge_amount",
+          "source": "non-matching rows contribute zero",
+          "importance": 4,
+          "reason": "Charge, refund, and other amount outputs have materially different missing-value semantics."
+        },
+        {
+          "problem": "The grouping dimensions inherit unverified package and SKU identities from the earnings staging model.",
+          "about": "data",
+          "evidence_in_work": "GROUP BY ALL",
+          "source": "grain: One row per combination of date_day, country_short, sku_id, package_name, merchant_currency",
+          "importance": 4,
+          "reason": "Using the same base-plan string for package and SKU can fragment app-level earnings and break later joins."
+        },
+        {
+          "problem": "The order-total join does not attach the computed NULL-order group total to rows whose order_id is NULL.",
+          "about": "requirement",
+          "evidence_in_work": "LEFT JOIN order_totals o USING(order_id)",
+          "source": "For each order_id, compute an order-level total ... attach this order total to every row belonging to that order",
+          "importance": 2,
+          "reason": "Ordinary equality does not match NULL keys, so net_amount may differ for missing-order records."
+        },
+        {
+          "problem": "Other-category amounts and counts inherit NULL transaction types that should have been corrected to Other.",
+          "about": "requirement",
+          "evidence_in_work": "WHERE lower(transaction_type)='other'",
+          "source": "transaction_type = COALESCE(transaction_type, 'Other') ... on_failure: correct",
+          "importance": 4,
+          "reason": "Unclassified transactions disappear from the required other category."
+        }
+      ],
+      "fewer_reason": "Four supported concerns were found; the unusual repeated addition of order totals is explicitly required and is not an error."
+    },
+    "int_google_play__latest_product_info": {
+      "items": [
+        {
+          "problem": "Latest titles are partitioned by inferred package and SKU values whose equivalence to the documented business keys was not established.",
+          "about": "data",
+          "evidence_in_work": "PARTITION BY package_name, sku_id ORDER BY transaction_date DESC NULLS LAST",
+          "source": "grain: One row per (package_name, sku_id) with at least one non-null product_title",
+          "importance": 4,
+          "reason": "The staging mapping determines all 27 output groups and can prevent enrichment of real app packages."
+        },
+        {
+          "problem": "Recency is determined by a date substituted from transaction_time rather than the source transaction_date.",
+          "about": "data",
+          "evidence_in_work": "ORDER BY transaction_date DESC NULLS LAST",
+          "source": "based on the most recent transaction_date from stg_google_play__earnings",
+          "importance": 2,
+          "reason": "This is internally consistent with staging, but depends on its undocumented date substitution."
+        }
+      ],
+      "fewer_reason": "The model correctly excludes null titles, handles null dates last, and uses the permitted arbitrary tie policy."
+    },
+    "int_google_play__store_performance": {
+      "items": [
+        {
+          "problem": "The country branch passes through records multiplied by the upstream raw-country lookup.",
+          "about": "data",
+          "evidence_in_work": "UNION ALL SELECT ... FROM staging.stg_google_play__store_performance_source",
+          "source": "Each row corresponds to a source record ... duplicates from sources are retained",
+          "importance": 4,
+          "reason": "The required pass-through preserves upstream fanout, inflating counts in downstream country aggregates."
+        }
+      ],
+      "fewer_reason": "The union itself follows the contract, including preserved duplicates, NULLs, and type labels."
+    },
+    "int_google_play__user_behavior_metrics": {
+      "items": [
+        {
+          "problem": "Rolling windows count rows rather than calendar days.",
+          "about": "requirement",
+          "evidence_in_work": "ROWS BETWEEN 6 PRECEDING AND CURRENT ROW",
+          "source": "using up to the last 7 days including the current day",
+          "importance": 4,
+          "reason": "The inspected install feed advances in weekly steps, so seven rows can span many weeks."
+        },
+        {
+          "problem": "The weekly install and rating comparisons use seven rows earlier rather than verifying a date exactly seven days earlier.",
+          "about": "requirement",
+          "evidence_in_work": "lag(daily_device_installs,7) ... lag(daily_average_rating,7)",
+          "source": "Weekly install growth rate: percent change vs the value 7 days prior",
+          "importance": 4,
+          "reason": "Sparse dates or removed rows change the comparison period substantially."
+        },
+        {
+          "problem": "The ratings join assumes uniqueness of both sources at the daily package-country key without checking it.",
+          "about": "data",
+          "evidence_in_work": "FROM installs i LEFT JOIN ratings r USING(date_day,package_name,country)",
+          "source": "grain: One row per (package_name, country, date_day)",
+          "importance": 3,
+          "reason": "Duplicate keys would multiply rows and distort all subsequent windows."
+        },
+        {
+          "problem": "Invalid output keys are removed only after window calculations and can influence otherwise valid rows.",
+          "about": "data",
+          "evidence_in_work": "FROM calc WHERE date_day IS NOT NULL AND package_name IS NOT NULL AND country IS NOT NULL",
+          "source": "Keep only rows where date_day, package_name, and country are not NULL",
+          "importance": 2,
+          "reason": "Null-date records can affect lag positions and rolling windows before being discarded."
+        }
+      ],
+      "fewer_reason": "Four supported concerns were found; the current empty result follows the explicit upstream country rule, not a demonstrated defect in these filters."
+    },
+    "int_google_play__revenue_analytics": {
+      "items": [
+        {
+          "problem": "Subscriptions are joined without the required buyer-country match.",
+          "about": "requirement",
+          "evidence_in_work": "FROM t LEFT JOIN s USING(date_day,package_name,sku_id)",
+          "source": "Left join subscriptions on (date_day, package_name, sku_id, buyer_country=country)",
+          "importance": 5,
+          "reason": "Every matching country subscription row can duplicate revenue and attach another country's subscriber metrics."
+        },
+        {
+          "problem": "The input package and SKU identities are inferred from the same base-plan field rather than verified against subscription identifiers.",
+          "about": "data",
+          "evidence_in_work": "product_id sku_id ... LEFT JOIN s USING(date_day,package_name,sku_id)",
+          "source": "package_name: Google Play package identifier used for grouping and subscription joins",
+          "importance": 5,
+          "reason": "The observed suffixed package strings can prevent subscription integration entirely."
+        },
+        {
+          "problem": "NULL transaction types produced upstream do not contribute to other adjustments.",
+          "about": "requirement",
+          "evidence_in_work": "CASE WHEN transaction_type NOT IN ('Charge','Refund') THEN coalesce(amount_merchant_currency,0) ELSE 0 END",
+          "source": "transaction_type = COALESCE(transaction_type, 'Other') ... on_failure: correct",
+          "importance": 5,
+          "reason": "SQL NULL comparison semantics can remove substantial transaction amounts from net revenue."
+        },
+        {
+          "problem": "Revenue-health component scores are implemented as coarse all-or-nothing thresholds without establishing the required component calculation.",
+          "about": "requirement",
+          "evidence_in_work": "CASE WHEN growth>0 THEN 25 ELSE 0 END ... CASE WHEN refund_rate<=.1 THEN 20 ELSE 0 END",
+          "source": "sum the component points (revenue presence 30, growth up to 25, refund rate up to 20, churn up to 25 with 12 points if churn is missing)",
+          "importance": 4,
+          "reason": "The code supplies unverified scoring rules that determine health classifications."
+        },
+        {
+          "problem": "Overall Health Risk tests net revenue instead of the computed health score.",
+          "about": "requirement",
+          "evidence_in_work": "WHEN net<=0 THEN 'Overall Health Risk'",
+          "source": "else Overall Health Risk if revenue_health_score<30",
+          "importance": 4,
+          "reason": "The stated risk precedence is not implemented as specified."
+        },
+        {
+          "problem": "Weekly revenue growth is computed for negative prior revenue rather than only positive prior revenue.",
+          "about": "requirement",
+          "evidence_in_work": "round((net-p7)/nullif(p7,0),4) growth",
+          "source": "NULL if that earlier value is missing or not positive",
+          "importance": 4,
+          "reason": "Negative denominators generate misleading growth categories and decline risks."
+        },
+        {
+          "problem": "Revenue windows and weekly comparisons use row offsets although multiple country/title/currency rows can exist per date.",
+          "about": "requirement",
+          "evidence_in_work": "PARTITION BY package_name,sku_id ORDER BY date_day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW",
+          "source": "7-day rolling average ... growth ratio versus the value 7 days earlier",
+          "importance": 4,
+          "reason": "Seven rows need not represent seven days and may even belong to the same date."
+        },
+        {
+          "problem": "Subscriptions are aggregated before joining even though the specified preparation only filters and renames rows.",
+          "about": "requirement",
+          "evidence_in_work": "sum(new_subscriptions) ... sum(total_active_subscriptions) ... GROUP BY ALL",
+          "source": "Subscriptions: keep rows ... rename product_id to sku_id",
+          "importance": 3,
+          "reason": "If duplicate subscription records exist, summing them changes the required input semantics and denominators."
+        },
+        {
+          "problem": "The cumulative sum uses the default peer-inclusive window rather than explicitly defining running-row behavior for tied dates.",
+          "about": "data",
+          "evidence_in_work": "sum(net) OVER(PARTITION BY package_name,sku_id ORDER BY date_day) cum",
+          "source": "cumulative_net_revenue: running sum of daily net revenue from the start of the series",
+          "importance": 2,
+          "reason": "Multiple same-day groups receive the same date-peer total, an unverified interpretation of the running series."
+        },
+        {
+          "problem": "Lag and row-window results are nondeterministic among multiple rows with the same date.",
+          "about": "data",
+          "evidence_in_work": "lag(net,7) OVER(PARTITION BY package_name,sku_id ORDER BY date_day)",
+          "source": "grain: One row per date_day, package_name, buyer_country, sku_id, product_title, merchant_currency",
+          "importance": 2,
+          "reason": "The declared grain permits date ties, but no tie handling or daily consolidation is established."
+        }
+      ],
+      "fewer_reason": null
+    },
+    "int_google_play__user_retention_analysis": {
+      "items": [
+        {
+          "problem": "Cohorts are never mapped to subsequent active-device observations.",
+          "about": "requirement",
+          "evidence_in_work": "FROM staging.stg_google_play__stats_installs_country",
+          "source": "Inner join install_cohorts to active_users_daily ... between install_date and install_date + 90 days inclusive",
+          "importance": 5,
+          "reason": "The core retention calculation is entirely omitted."
+        },
+        {
+          "problem": "All day-specific retention rates are emitted as NULL instead of calculating capped retained counts.",
+          "about": "requirement",
+          "evidence_in_work": "else: e='NULL'",
+          "source": "compute retention_rate = (capped retained / cohort_size) * 100, rounded to 2 decimals",
+          "importance": 5,
+          "reason": "No cohort receives the principal analytical outputs even when activity is available."
+        },
+        {
+          "problem": "Uninstall filtering and the daily churn calculation are absent.",
+          "about": "requirement",
+          "evidence_in_work": "CAST(NULL AS DOUBLE) AS current_daily_churn_rate",
+          "source": "daily_churn_rate = (uninstalls / active_devices) * 100, rounded to 4 decimals",
+          "importance": 5,
+          "reason": "Churn metrics are placeholders rather than measurements."
+        },
+        {
+          "problem": "The seven-row churn average and latest-churn lookup are omitted.",
+          "about": "requirement",
+          "evidence_in_work": "CAST(NULL AS DOUBLE) AS current_avg_7d_churn_rate",
+          "source": "Left join each cohort to the latest available churn row for its package_name+country",
+          "importance": 5,
+          "reason": "Current churn information is never attached to any cohort."
+        },
+        {
+          "problem": "Retention quality scores are always NULL.",
+          "about": "requirement",
+          "evidence_in_work": "CAST(NULL AS DOUBLE) AS retention_quality_score",
+          "source": "0.3*day_1_retention_rate + 0.4*day_7_retention_rate + 0.3*day_30_retention_rate",
+          "importance": 4,
+          "reason": "The required weighted score is not implemented."
+        },
+        {
+          "problem": "Retention category and churn risk are constant missing-data labels.",
+          "about": "requirement",
+          "evidence_in_work": "e=\"'Insufficient Data'\"; e=\"'Unknown Risk'\"",
+          "source": "retention_category by day_30_retention_rate ... churn_risk_level by the latest unrounded 7-day average churn",
+          "importance": 4,
+          "reason": "Available observations can never produce meaningful classifications."
+        },
+        {
+          "problem": "Previous-week and previous-month retention comparisons are always NULL.",
+          "about": "requirement",
+          "evidence_in_work": "else: e='NULL'",
+          "source": "prev_week_day_7_retention ... from 7 rows earlier; prev_month_day_30_retention ... from 30 rows earlier",
+          "importance": 4,
+          "reason": "Required lag calculations are omitted."
+        },
+        {
+          "problem": "Retention trend is hard-coded Stable.",
+          "about": "requirement",
+          "evidence_in_work": "elif n=='retention_trend': e=\"'Stable'\"",
+          "source": "Improving if greater, Declining if less, else Stable",
+          "importance": 4,
+          "reason": "The model cannot identify either improving or declining retention."
+        },
+        {
+          "problem": "Product stickiness is hard-coded Insufficient Data.",
+          "about": "requirement",
+          "evidence_in_work": "elif n=='product_stickiness': e=\"'Insufficient Data'\"",
+          "source": "Derive product_stickiness by thresholds",
+          "importance": 4,
+          "reason": "None of the required stickiness thresholds are evaluated."
+        },
+        {
+          "problem": "The output projects source cohort rows directly without the required cohort aggregation or activity-driven inclusion.",
+          "about": "requirement",
+          "evidence_in_work": "cohort_size':'daily_device_installs'",
+          "source": "Group by install_date, package_name, country, new_installs ... take the maximum active_devices",
+          "importance": 3,
+          "reason": "Duplicate source cohorts can violate the intended grain, and cohorts without mapped activity are treated differently."
+        }
+      ],
+      "fewer_reason": null
+    },
+    "int_google_play__app_quality_metrics": {
+      "items": [
+        {
+          "problem": "The installs and ratings joins required for stability metrics are omitted.",
+          "about": "requirement",
+          "evidence_in_work": "FROM staging.stg_google_play__stats_crashes_overview",
+          "source": "Left join installs_overview and ratings_overview by (date_day, package_name)",
+          "importance": 5,
+          "reason": "The model ignores essential denominators and quality observations."
+        },
+        {
+          "problem": "Crash and ANR rates are always NULL.",
+          "about": "requirement",
+          "evidence_in_work": "else:e='NULL'",
+          "source": "daily_crashes divided by active_device_installs, scaled to per 1,000 devices",
+          "importance": 5,
+          "reason": "The principal normalized stability measures are never computed."
+        },
+        {
+          "problem": "Rolling crash, ANR, and rating averages are always NULL.",
+          "about": "requirement",
+          "evidence_in_work": "CAST(NULL AS DOUBLE) AS avg_7d_crashes",
+          "source": "avg_7d_crashes and avg_7d_anrs ... inputs are non-NULL so these averages are defined",
+          "importance": 5,
+          "reason": "Even the available nonnegative crash series produces no required rolling statistics."
+        },
+        {
+          "problem": "The app-version crash source is unused, leaving fragmentation and worst-version outputs empty.",
+          "about": "requirement",
+          "evidence_in_work": "FROM staging.stg_google_play__stats_crashes_overview",
+          "source": "active_versions_count ... version_with_most_crashes ... associated crashes and ANRs are reported",
+          "importance": 5,
+          "reason": "Available version-level stability information is entirely discarded."
+        },
+        {
+          "problem": "The OS crash source is unused, leaving supported-version and worst-OS outputs empty.",
+          "about": "requirement",
+          "evidence_in_work": "CAST(NULL AS BIGINT) AS supported_os_versions",
+          "source": "supported_os_versions ... os_with_most_crashes",
+          "importance": 5,
+          "reason": "Available OS-level stability information is entirely discarded."
+        },
+        {
+          "problem": "Quality scores are always NULL rather than calculated from rating and stability components.",
+          "about": "requirement",
+          "evidence_in_work": "CAST(NULL AS DOUBLE) AS quality_score",
+          "source": "Otherwise compute points ... Sum points, clamp at a minimum of 0, and round to 2 decimals",
+          "importance": 5,
+          "reason": "No rated app can receive the contracted composite score."
+        },
+        {
+          "problem": "Every row is labeled Unrated without consulting ratings.",
+          "about": "requirement",
+          "evidence_in_work": "elif n=='quality_category': e=\"'Unrated'\"",
+          "source": "quality_category: Excellent ... Good ... Fair ... Poor ... Critical ... Unrated",
+          "importance": 4,
+          "reason": "The classification is a constant rather than an analytical result."
+        },
+        {
+          "problem": "Every row is labeled Minimal Risk without evaluating stability rates.",
+          "about": "requirement",
+          "evidence_in_work": "elif n=='stability_risk_level':e=\"'Minimal Risk'\"",
+          "source": "High Risk if crash rate >20 or ANR rate >15",
+          "importance": 5,
+          "reason": "The placeholder can falsely characterize genuinely unstable apps as low risk."
+        },
+        {
+          "problem": "Stability trend is hard-coded Stable instead of comparing rolling crashes to their prior value.",
+          "about": "requirement",
+          "evidence_in_work": "if n in ['stability_trend']:e=\"'Stable'\"",
+          "source": "Compare avg_7d_crashes to the value 7 days earlier",
+          "importance": 4,
+          "reason": "Improvement and degradation can never be detected."
+        },
+        {
+          "problem": "The model does not establish one row per app and day when crashes_overview contains duplicate keys.",
+          "about": "data",
+          "evidence_in_work": "SELECT ... FROM staging.stg_google_play__stats_crashes_overview WHERE crashes>=0 AND anrs>=0",
+          "source": "Emit one row per (package_name, date_day)",
+          "importance": 3,
+          "reason": "Direct source projection preserves duplicate keys without checking the required grain."
+        }
+      ],
+      "fewer_reason": null
+    },
+    "google_play__app_version_report": {
+      "items": [
+        {
+          "problem": "Install measures are replaced by zero constants rather than populated from available version-level installation data.",
+          "about": "requirement",
+          "evidence_in_work": "elif n in [... 'device_installs','device_uninstalls' ...]: val=f'cast(0 as {typ})'",
+          "source": "produce high-quality data results that meet business requirements",
+          "importance": 5,
+          "reason": "The report has 1,360 rows but can report zero activity despite nonzero source installs."
+        },
+        {
+          "problem": "The generator reads only the first declared source, omitting the available app-version crash and rating feeds.",
+          "about": "data",
+          "evidence_in_work": "dep=model['source_models'][0].split('(')[0].strip()",
+          "source": "raw.stats_crashes_app_version; raw.stats_ratings_app_version",
+          "importance": 5,
+          "reason": "Version-level quality information cannot be represented by this single-source projection."
+        },
+        {
+          "problem": "All non-whitelisted fields are NULL, including available source fields not explicitly recognized by the generator.",
+          "about": "requirement",
+          "evidence_in_work": "else: val=f'cast(NULL as {typ})'",
+          "source": "Populate the SQL files ... according to the specifications",
+          "importance": 4,
+          "reason": "Schema compatibility is substituted for actual field population."
+        }
+      ],
+      "fewer_reason": "Three concrete implementation problems are visible; detailed mart-specific business rules are not supplied."
+    },
+    "google_play__country_report": {
+      "items": [
+        {
+          "problem": "The report uses only its first declared source and does not integrate the available country-level ratings, store performance, or earnings.",
+          "about": "data",
+          "evidence_in_work": "dep=model['source_models'][0].split('(')[0].strip()",
+          "source": "raw.stats_ratings_country; raw.stats_store_performance_country; raw.earnings",
+          "importance": 4,
+          "reason": "The current empty install source determines the whole report despite other country-level data being available."
+        },
+        {
+          "problem": "Recognized activity metrics are hard-coded to zero.",
+          "about": "requirement",
+          "evidence_in_work": "val=f'cast(0 as {typ})'",
+          "source": "produce high-quality data results that meet business requirements",
+          "importance": 4,
+          "reason": "A future valid install batch would still produce fabricated zero measures."
+        },
+        {
+          "problem": "Non-whitelisted report fields are emitted as NULL rather than calculated or joined.",
+          "about": "requirement",
+          "evidence_in_work": "else: val=f'cast(NULL as {typ})'",
+          "source": "Populate the SQL files ... according to the specifications",
+          "importance": 4,
+          "reason": "The report is a structural placeholder rather than a populated analytical result."
+        }
+      ],
+      "fewer_reason": "The detailed country-report contract is not supplied, so specific join scope and metric formulas cannot be asserted."
+    },
+    "google_play__device_report": {
+      "items": [
+        {
+          "problem": "Device install measures are hard-coded to zero despite nonzero source observations.",
+          "about": "requirement",
+          "evidence_in_work": "elif n in [... 'device_installs','device_uninstalls' ...]: val=f'cast(0 as {typ})'",
+          "source": "raw.stats_installs_device ... daily_device_installs, daily_device_uninstalls",
+          "importance": 5,
+          "reason": "All 1,360 report rows can misstate available device activity."
+        },
+        {
+          "problem": "Available device ratings and crash data are not integrated because only the first declared source is read.",
+          "about": "data",
+          "evidence_in_work": "dep=model['source_models'][0].split('(')[0].strip()",
+          "source": "raw.stats_crashes_device; raw.stats_ratings_device",
+          "importance": 4,
+          "reason": "Relevant indexed materials are unused."
+        },
+        {
+          "problem": "Fields outside a small whitelist are populated with NULL rather than source values or business calculations.",
+          "about": "requirement",
+          "evidence_in_work": "else: val=f'cast(NULL as {typ})'",
+          "source": "Populate the SQL files ... according to the specifications",
+          "importance": 4,
+          "reason": "The report's declared schema is present but much of its content is absent."
+        }
+      ],
+      "fewer_reason": "Three supported concerns were found; detailed device-report specifications are unavailable."
+    },
+    "google_play__finance_report": {
+      "items": [
+        {
+          "problem": "The generator fails to pass through country_short even though it is available in the earnings source.",
+          "about": "data",
+          "evidence_in_work": "aliasmap={'country_short':'buyer_country' if 'buyer_country' in fields else 'country'}",
+          "source": "int_google_play__earnings ... country_short ... Buyer country code",
+          "importance": 5,
+          "reason": "For the earnings dependency, the selected alias is absent and every output country_short becomes NULL."
+        },
+        {
+          "problem": "Transaction counts are hard-coded to zero instead of using the computed earnings counts.",
+          "about": "requirement",
+          "evidence_in_work": "'transactions' ... val=f'cast(0 as {typ})'",
+          "source": "transactions: Distinct count of order_id in the group",
+          "importance": 5,
+          "reason": "The report contains 7,990 rows but discards available transaction activity."
+        },
+        {
+          "problem": "Available financial measures and identifiers outside the whitelist become NULL.",
+          "about": "requirement",
+          "evidence_in_work": "fields=avail.get(dep,set()); ... else: val=f'cast(NULL as {typ})'",
+          "source": "int_google_play__earnings ... net_amount, charge_amount, refund_amount, other_amount",
+          "importance": 5,
+          "reason": "The financial aggregation exists upstream but is not actually projected into the report."
+        },
+        {
+          "problem": "The latest-product information model is not consulted by the single-source report generator.",
+          "about": "data",
+          "evidence_in_work": "FROM {sch}.{tbl} AS src",
+          "source": "int_google_play__latest_product_info: Latest non-null product title per (package_name, sku_id)",
+          "importance": 3,
+          "reason": "Relevant product enrichment is available but unused."
+        },
+        {
+          "problem": "The output inherits the unverified package/SKU mapping and substituted transaction dates from earnings staging.",
+          "about": "data",
+          "evidence_in_work": "FROM intermediate.int_google_play__earnings AS src",
+          "source": "Google Play package name; Product SKU; Transaction date used for grouping",
+          "importance": 4,
+          "reason": "Even surviving keys may describe the wrong business entities or reporting dates."
+        }
+      ],
+      "fewer_reason": "Five supported concerns are visible without assuming additional finance-report formulas."
+    },
+    "google_play__os_version_report": {
+      "items": [
+        {
+          "problem": "OS install measures are replaced by zero constants despite available source values.",
+          "about": "requirement",
+          "evidence_in_work": "elif n in [... 'device_installs','device_uninstalls' ...]: val=f'cast(0 as {typ})'",
+          "source": "raw.stats_installs_os_version ... daily_device_installs, daily_device_uninstalls",
+          "importance": 5,
+          "reason": "The populated report can report zero installs for every OS."
+        },
+        {
+          "problem": "The available OS crash and rating feeds are unused by the single-source report projection.",
+          "about": "data",
+          "evidence_in_work": "dep=model['source_models'][0].split('(')[0].strip()",
+          "source": "raw.stats_crashes_os_version; raw.stats_ratings_os_version",
+          "importance": 4,
+          "reason": "Relevant quality observations are omitted."
+        },
+        {
+          "problem": "Non-whitelisted report fields are NULL instead of populated from source data or calculations.",
+          "about": "requirement",
+          "evidence_in_work": "else: val=f'cast(NULL as {typ})'",
+          "source": "Populate the SQL files ... according to the specifications",
+          "importance": 4,
+          "reason": "Only a small set of keys and fabricated constants survive."
+        }
+      ],
+      "fewer_reason": "Three supported concerns were found; the detailed OS-report contract is not supplied."
+    },
+    "google_play__overview_report": {
+      "items": [
+        {
+          "problem": "The report reads installs only instead of full-outer-joining all four required sources.",
+          "about": "requirement",
+          "evidence_in_work": "dep=model['source_models'][0].split('(')[0].strip()",
+          "source": "Full outer join installs ... ratings, store_performance ... and crashes",
+          "importance": 5,
+          "reason": "The empty install source makes the report empty despite populated crash, rating, and store sources."
+        },
+        {
+          "problem": "Country-level store performance is neither filtered nor aggregated.",
+          "about": "requirement",
+          "evidence_in_work": "FROM staging.stg_google_play__stats_installs_overview AS src",
+          "source": "Filter ... performance_type = 'country' ... sum visitors and installers; take the simple ... average of conversion rate",
+          "importance": 5,
+          "reason": "All store-listing measures are absent or fabricated."
+        },
+        {
+          "problem": "Daily install and event counts are not projected from installs and instead become zero or NULL placeholders.",
+          "about": "requirement",
+          "evidence_in_work": "val=f'cast(0 as {typ})'; else: val=f'cast(NULL as {typ})'",
+          "source": "Set missing counts to 0 ... Leave ... daily average rating as NULL if absent",
+          "importance": 5,
+          "reason": "The code defaults all values rather than only genuinely missing values."
+        },
+        {
+          "problem": "Crash and ANR counts are hard-coded to zero instead of joined from crash observations.",
+          "about": "requirement",
+          "evidence_in_work": "'crashes','anrs' ... val=f'cast(0 as {typ})'",
+          "source": "crashes: Daily crash events; ... anrs: Daily ANR events",
+          "importance": 5,
+          "reason": "Known stability events would be suppressed even if report rows were present."
+        },
+        {
+          "problem": "Cumulative installs and uninstalls are never calculated.",
+          "about": "requirement",
+          "evidence_in_work": "else: val=f'cast(NULL as {typ})'",
+          "source": "compute cumulative totals of daily_device_installs and daily_device_uninstalls",
+          "importance": 5,
+          "reason": "The required running totals remain NULL."
+        },
+        {
+          "problem": "Forward filling of total ratings and cumulative install measures is omitted.",
+          "about": "requirement",
+          "evidence_in_work": "sql='SELECT\\n'+',\\n'.join(expressions)+f'\\nFROM {sch}.{tbl} AS src'",
+          "source": "carry forward the latest non-null values for total average rating, cumulative device installs, and cumulative device uninstalls",
+          "importance": 4,
+          "reason": "Days without observations cannot inherit the required historical values."
+        },
+        {
+          "problem": "Daily and total average ratings are not sourced from ratings_overview.",
+          "about": "requirement",
+          "evidence_in_work": "else: val=f'cast(NULL as {typ})'",
+          "source": "average_rating ... Daily average rating; rolling_total_average_rating ... Forward-filled total average rating",
+          "importance": 4,
+          "reason": "Available ratings never appear in the overview."
+        },
+        {
+          "problem": "The acquisitions-to-visitors conversion ratio is not calculated.",
+          "about": "requirement",
+          "evidence_in_work": "CAST(NULL AS DOUBLE) AS rolling_store_conversion_rate",
+          "source": "acquisitions divided by visitors, rounded to 4 decimals; return NULL when visitors is 0",
+          "importance": 4,
+          "reason": "The output is missing even when both store counts are available."
+        },
+        {
+          "problem": "Net device installs and the required zero defaults for cumulative totals are omitted.",
+          "about": "requirement",
+          "evidence_in_work": "else: val=f'cast(NULL as {typ})'",
+          "source": "Default total_device_installs and total_device_uninstalls to 0 ... net_device_installs = total_device_installs minus total_device_uninstalls",
+          "importance": 4,
+          "reason": "Three final output fields have incorrect calculation or missing-value behavior."
+        },
+        {
+          "problem": "The country store counts available for eventual integration are already inflated by an upstream reference join.",
+          "about": "data",
+          "evidence_in_work": "raw.stats_store_performance_country: 6,400 rows; staging.stg_google_play__store_performance_country: 8,800 rows",
+          "source": "sum visitors and installers",
+          "importance": 3,
+          "reason": "Completing the omitted aggregation without addressing that fanout would still overstate store activity."
+        }
+      ],
+      "fewer_reason": null
+    },
+    "google_play__comprehensive_performance_dashboard": {
+      "items": [
+        {
+          "problem": "Only the first declared source is used, so the dashboard does not combine its declared dependencies.",
+          "about": "requirement",
+          "evidence_in_work": "dep=model['source_models'][0].split('(')[0].strip()",
+          "source": "All SQL logic and dependencies must be written strictly according to ... YAML configuration files",
+          "importance": 5,
+          "reason": "The result is driven entirely by the empty user-behavior model rather than a completed multi-source implementation."
+        },
+        {
+          "problem": "App-quality scores and stability rates are fabricated constants rather than sourced analytical results.",
+          "about": "requirement",
+          "evidence_in_work": "val=f'cast(75.0 as {typ})'; ... val=f'cast(0 as {typ})'",
+          "source": "produce high-quality data results that meet business requirements",
+          "importance": 5,
+          "reason": "Future populated rows would falsely report fixed quality and zero instability."
+        },
+        {
+          "problem": "Most non-key outputs are NULL or zero instead of calculated dashboard measures.",
+          "about": "requirement",
+          "evidence_in_work": "else: val=f'cast(NULL as {typ})'",
+          "source": "Provide analysis-ready datasets optimized for specific business use cases and reporting requirements",
+          "importance": 5,
+          "reason": "The implementation supplies a schema rather than an analytical dashboard."
+        },
+        {
+          "problem": "No report-level grain or join-uniqueness checks accompany the direct source projection.",
+          "about": "data",
+          "evidence_in_work": "FROM {sch}.{tbl} AS src",
+          "source": "Each model must have a clearly defined grain to ensure data integrity and proper aggregation",
+          "importance": 3,
+          "reason": "The output inherits its first source's grain without establishing that it matches the dashboard."
+        }
+      ],
+      "fewer_reason": "Four implementation-level concerns are supported; detailed dashboard metrics and grain are not supplied."
+    },
+    "google_play__geo_market_analysis": {
+      "items": [
+        {
+          "problem": "The model ignores every declared source after the first.",
+          "about": "requirement",
+          "evidence_in_work": "dep=model['source_models'][0].split('(')[0].strip()",
+          "source": "All SQL logic and dependencies must be written strictly according to ... YAML configuration files",
+          "importance": 5,
+          "reason": "The geographic analysis cannot integrate the full contracted inputs."
+        },
+        {
+          "problem": "Country-code reference information is available but not used for geographic enrichment.",
+          "about": "data",
+          "evidence_in_work": "FROM intermediate.int_google_play__user_behavior_metrics AS src",
+          "source": "stg_google_play__country_codes: Reference table for country code mappings and regional classifications",
+          "importance": 4,
+          "reason": "Relevant country names and regional classifications are omitted."
+        },
+        {
+          "problem": "Market measures and classifications outside the whitelist are constant zero or NULL.",
+          "about": "requirement",
+          "evidence_in_work": "val=f'cast(0 as {typ})'; else: val=f'cast(NULL as {typ})'",
+          "source": "Provide analysis-ready datasets optimized for specific business use cases and reporting requirements",
+          "importance": 5,
+          "reason": "The output contains no implemented market-analysis calculations."
+        },
+        {
+          "problem": "The model does not aggregate or otherwise establish a geographic-analysis grain.",
+          "about": "data",
+          "evidence_in_work": "sql='SELECT\\n'+',\\n'.join(expressions)+f'\\nFROM {sch}.{tbl} AS src'",
+          "source": "Each model must have a clearly defined grain to ensure data integrity and proper aggregation",
+          "importance": 3,
+          "reason": "It simply inherits daily package-country rows from the first dependency."
+        }
+      ],
+      "fewer_reason": "Four supported concerns were found; specific geographic formulas are unavailable."
+    },
+    "google_play__product_portfolio_analysis": {
+      "items": [
+        {
+          "problem": "The portfolio output is a direct projection of daily revenue rows without establishing the required portfolio-level aggregation.",
+          "about": "data",
+          "evidence_in_work": "FROM intermediate.int_google_play__revenue_analytics AS src",
+          "source": "Each model must have a clearly defined grain to ensure data integrity and proper aggregation",
+          "importance": 5,
+          "reason": "The 7,990 output rows inherit daily transaction dimensions rather than a verified product-analysis grain."
+        },
+        {
+          "problem": "Available revenue and subscription measures are replaced by zero or NULL placeholders.",
+          "about": "requirement",
+          "evidence_in_work": "'daily_net_revenue' ... val=f'cast(0 as {typ})'; else: val=f'cast(NULL as {typ})'",
+          "source": "Provide analysis-ready datasets optimized for specific business use cases and reporting requirements",
+          "importance": 5,
+          "reason": "The populated table discards the business measurements already computed upstream."
+        },
+        {
+          "problem": "Only the first declared source is consulted, omitting other contracted product enrichments or inputs.",
+          "about": "requirement",
+          "evidence_in_work": "dep=model['source_models'][0].split('(')[0].strip()",
+          "source": "All SQL logic and dependencies must be written strictly according to ... YAML configuration files",
+          "importance": 4,
+          "reason": "The generator cannot implement a multi-source portfolio specification."
+        },
+        {
+          "problem": "Product and package keys inherit the unverified substitution of base_plan_id into both dimensions.",
+          "about": "data",
+          "evidence_in_work": "FROM intermediate.int_google_play__revenue_analytics AS src",
+          "source": "sku_id: SKU/product identifier; package_name: Google Play package identifier",
+          "importance": 4,
+          "reason": "Portfolio membership and app-level comparisons may be built on the wrong entity identities."
+        }
+      ],
+      "fewer_reason": "Four supported concerns were found; detailed portfolio scoring and grouping requirements are not supplied."
+    },
+    "google_play__time_series_trends": {
+      "items": [
+        {
+          "problem": "The model contains no temporal windows or trend calculations and merely projects its first source.",
+          "about": "requirement",
+          "evidence_in_work": "sql='SELECT\\n'+',\\n'.join(expressions)+f'\\nFROM {sch}.{tbl} AS src'",
+          "source": "Populate the SQL files ... according to the specifications",
+          "importance": 5,
+          "reason": "A runnable field projection does not implement the declared analytical model."
+        },
+        {
+          "problem": "Trend outputs and measures outside the small whitelist are NULL or zero constants.",
+          "about": "requirement",
+          "evidence_in_work": "else: val=f'cast(NULL as {typ})'",
+          "source": "Provide analysis-ready datasets optimized for specific business use cases and reporting requirements",
+          "importance": 5,
+          "reason": "No actual time-series analysis is populated."
+        },
+        {
+          "problem": "Every declared dependency after the first is ignored.",
+          "about": "requirement",
+          "evidence_in_work": "dep=model['source_models'][0].split('(')[0].strip()",
+          "source": "All SQL logic and dependencies must be written strictly according to ... YAML configuration files",
+          "importance": 4,
+          "reason": "The empty user-behavior source alone controls the output while other available metric series are unused."
+        },
+        {
+          "problem": "The first source's daily package-country grain is inherited without checking the intended trend-series grain.",
+          "about": "data",
+          "evidence_in_work": "FROM intermediate.int_google_play__user_behavior_metrics AS src",
+          "source": "Each model must have a clearly defined grain to ensure data integrity and proper aggregation",
+          "importance": 3,
+          "reason": "Any required temporal or cross-market aggregation is absent."
+        }
+      ],
+      "fewer_reason": "Four concrete concerns are supported; the detailed time-series contract is not provided."
+    }
+  }
+}

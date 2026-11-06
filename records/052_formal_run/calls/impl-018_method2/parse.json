@@ -1,0 +1,746 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "stg_salesforce__account": {
+      "items": [],
+      "fewer_reason": "The final implementation visibly covers the supplied account validation rules, and observed account IDs are unique; no additional concrete concern was found."
+    },
+    "stg_salesforce__contact": {
+      "items": [
+        {
+          "problem": "The staging query does not enforce the required non-null last_name and contact_name fields.",
+          "about": "requirement",
+          "evidence_in_work": "filters=['id is not null',\"regexp_matches(id, '^[A-Za-z0-9]{15,18}$')\",'not coalesce(is_deleted, false)']",
+          "source": "last_name ... constraints: [not_null]; contact_name ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Contacts with missing essential names can survive despite the contract constraints."
+        },
+        {
+          "problem": "created_date is always NULL, so the required timestamp is unavailable even where a defensible recovery might exist in the contact history data.",
+          "about": "data",
+          "evidence_in_work": "cast(null as TIMESTAMP) as created_date",
+          "source": "raw.contact_history ... \"_fivetran_start\", \"_fivetran_end\", \"_fivetran_synced\"",
+          "importance": 2,
+          "reason": "The direct source lacks this field, so NULL is understandable, but the unresolved mapping affects every contact."
+        },
+        {
+          "problem": "Phone and photo length limits are checked after trimming rather than against the original values, potentially retaining values that the literal validation rules would nullify.",
+          "about": "requirement",
+          "evidence_in_work": "length(trim({col})) <= 50; length(trim(photo_url)) <= 500",
+          "source": "LENGTH(assistant_phone) <= 50 ... on_failure: nullify_field",
+          "importance": 1,
+          "reason": "Only overlength values whose excess characters are surrounding spaces are affected."
+        }
+      ],
+      "fewer_reason": "The final edits address foreign-key validation, email normalization, birthdate bounds, and optional-field trimming; only three remaining concrete concerns were identified."
+    },
+    "stg_salesforce__opportunity": {
+      "items": [
+        {
+          "problem": "Closed-period flags are based only on close_date and can mark an open opportunity as closed this month or quarter.",
+          "about": "requirement",
+          "evidence_in_work": "(close_date is not null and year(close_date)=year(current_date) and month(close_date)=month(current_date)) as is_closed_this_month",
+          "source": "Flag from stg_salesforce__opportunity indicating closed in the current month",
+          "importance": 4,
+          "reason": "These flags drive booking, lost-deal, and snapshot period metrics downstream."
+        },
+        {
+          "problem": "days_to_close and closed-period flags may use the original raw close_date even when the projected close_date has been nullified as invalid.",
+          "about": "data",
+          "evidence_in_work": "case when ... then try_cast(close_date as date) else null end as close_date; date_diff('day', created_date::date, close_date::date)",
+          "source": "close_date ... on_failure: nullify_field",
+          "importance": 3,
+          "reason": "DuckDB source-column precedence can leave internally inconsistent date-derived fields for invalid dates."
+        },
+        {
+          "problem": "The close-date guard preserves a non-null close_date when created_date is NULL, although the contract's cross-field rule may require nullification in that case.",
+          "about": "requirement",
+          "evidence_in_work": "(created_date is null or try_cast(close_date as date) >= created_date::date)",
+          "source": "close_date IS NULL OR close_date >= created_date::DATE",
+          "importance": 2,
+          "reason": "The implementation explicitly relaxes the supplied rule for missing creation dates."
+        }
+      ],
+      "fewer_reason": "The final code fixes the earlier account mapping and implements the other explicit opportunity validations; three unresolved date-semantic concerns remain."
+    },
+    "stg_salesforce__user": {
+      "items": [
+        {
+          "problem": "Username uniqueness is not enforced or checked independently of user_id uniqueness.",
+          "about": "requirement",
+          "evidence_in_work": "qualify row_number() over (partition by id order by id) = 1",
+          "source": "username ... constraints: [not_null, unique]",
+          "importance": 3,
+          "reason": "Distinct users can still share a username, violating a separate contracted key."
+        }
+      ],
+      "fewer_reason": "The foreign-key mapping errors were corrected and the remaining explicit user validations are implemented; only the separate username uniqueness requirement remains unchecked."
+    },
+    "stg_salesforce__lead": {
+      "items": [
+        {
+          "problem": "Rows with NULL owner_id are not removed despite owner_id being required.",
+          "about": "requirement",
+          "evidence_in_work": "filters=['id is not null','last_name is not null','name is not null','status in ...']",
+          "source": "owner_id ... constraints: [not_null]",
+          "importance": 3,
+          "reason": "Ownerless leads can survive staging and disappear from owner-based metrics."
+        }
+      ],
+      "fewer_reason": "Status trimming and allowed-value filtering were fixed, and lead IDs were checked as unique; no further supported issue was identified."
+    },
+    "stg_salesforce__task": {
+      "items": [],
+      "fewer_reason": "The final implementation enforces the supplied required fields, status corrections, allowed statuses, types, and task-key uniqueness; no concrete remaining mismatch was found."
+    },
+    "stg_salesforce__event": {
+      "items": [
+        {
+          "problem": "Events with a non-null end_date_time and NULL start_date_time are explicitly retained, which may relax the contract's end-after-start deletion rule.",
+          "about": "requirement",
+          "evidence_in_work": "(end_date_time is null or start_date_time is null or end_date_time >= start_date_time)",
+          "source": "end_date_time IS NULL OR end_date_time >= start_date_time ... on_failure: delete_row",
+          "importance": 2,
+          "reason": "The interpretation of unknown comparisons changes which incomplete events survive."
+        },
+        {
+          "problem": "Event IDs are deduplicated arbitrarily rather than distinguishing confirmed duplicate rows from conflicting records with the same ID.",
+          "about": "data",
+          "evidence_in_work": "row_number() over (partition by id order by id) = 1",
+          "source": "Confirmed duplicates",
+          "importance": 1,
+          "reason": "No duplicate event IDs were observed, but conflicting future inputs would yield nondeterministic retained values."
+        }
+      ],
+      "fewer_reason": "The final event edits implement the timestamp bounds and end-before-start filter; only two narrower special-case concerns remain."
+    },
+    "stg_salesforce__user_role": {
+      "items": [],
+      "fewer_reason": "The supplied fields, required values, and unique role key are implemented without an evident remaining mismatch."
+    },
+    "stg_salesforce__product_2": {
+      "items": [],
+      "fewer_reason": "The source mapping, required product fields, and unique product key are implemented; the available specification does not support further concrete concerns."
+    },
+    "stg_salesforce__opportunity_line_item": {
+      "items": [
+        {
+          "problem": "opportunity_id is populated from the line item's own id rather than raw.opportunity_line_item.opportunity_id.",
+          "about": "data",
+          "evidence_in_work": "mapping={... 'opportunity_id':'id' ...}",
+          "source": "raw.opportunity_line_item ... \"id\" ... \"opportunity_id\"",
+          "importance": 5,
+          "reason": "The generated mapping is never corrected for line items and can break all opportunity enrichment."
+        },
+        {
+          "problem": "product_2_id is populated from the line item's own id rather than its product foreign key.",
+          "about": "data",
+          "evidence_in_work": "mapping={... 'product_2_id':'id' ...}",
+          "source": "raw.opportunity_line_item ... \"product_2_id\"",
+          "importance": 5,
+          "reason": "Product joins can fail for every line item."
+        },
+        {
+          "problem": "Deleted line items are not filtered out.",
+          "about": "requirement",
+          "evidence_in_work": "if n=='stg_salesforce__opportunity_line_item': filters=['id is not null']",
+          "source": "NOT COALESCE(is_deleted, false) ... on_failure: delete_row",
+          "importance": 4,
+          "reason": "This directly omits an explicit staging rule and admits deleted items into the mart."
+        },
+        {
+          "problem": "The required unique, non-null mart line-item grain is not checked beyond filtering null IDs in staging.",
+          "about": "data",
+          "evidence_in_work": "filters=['id is not null']",
+          "source": "opportunity_line_item_id ... tests: [not_null, unique]",
+          "importance": 2,
+          "reason": "Duplicate source IDs would propagate unchanged into the enhanced line-item result."
+        }
+      ],
+      "fewer_reason": "Four supported issues were found; generic DECIMAL resolving to DECIMAL(18,3) is consistent with the downstream contract and is not treated as an error."
+    },
+    "stg_salesforce__order": {
+      "items": [
+        {
+          "problem": "account_id is generated from the order's own id rather than raw.order_data.account_id.",
+          "about": "data",
+          "evidence_in_work": "mapping={... 'account_id':'id' ...}; from raw.{raw}",
+          "source": "raw.order_data ... \"id\", \"account_id\"",
+          "importance": 4,
+          "reason": "The global mapping is not corrected for orders, replacing the account relationship for every row."
+        }
+      ],
+      "fewer_reason": "The trajectory exposes the order fields but the supplied review specification omits the order-specific validation rules, so additional rule violations cannot be established."
+    },
+    "stg_salesforce__account_history": {
+      "items": [
+        {
+          "problem": "created_date is inferred from _fivetran_start without validating that it represents the change timestamp intended by the contract.",
+          "about": "data",
+          "evidence_in_work": "try_cast(_fivetran_start as TIMESTAMP) as created_date",
+          "source": "Daily snapshots ... the most recent non-deleted change",
+          "importance": 3,
+          "reason": "This choice determines snapshot days and which version is considered latest."
+        },
+        {
+          "problem": "history_unique_key uniqueness depends on the unverified assumption that entity ID plus Fivetran start and end timestamps uniquely identifies a version.",
+          "about": "data",
+          "evidence_in_work": "md5(concat_ws('|', ... id ... _fivetran_start ... _fivetran_end ...))",
+          "source": "history_unique_key ... constraints: [not_null, unique]",
+          "importance": 1,
+          "reason": "The current data passed uniqueness checks, but identical timestamp tuples are not handled explicitly."
+        }
+      ],
+      "fewer_reason": "The earlier entity-level deduplication and invalid source-column reference were fixed; two remaining assumptions concern historical timestamp and version identity semantics."
+    },
+    "stg_salesforce__contact_history": {
+      "items": [
+        {
+          "problem": "History is deduplicated by contact entity ID, discarding distinct historical versions rather than only duplicate history keys.",
+          "about": "requirement",
+          "evidence_in_work": "qualify row_number() over (partition by id order by id) = 1; stg_salesforce__contact_history (2434, 2434, 2434)",
+          "source": "Cleaned contact history records tracking changes to contact data over time",
+          "importance": 5,
+          "reason": "The 3,000 raw rows shrink to 2,434, eliminating history needed for daily snapshots."
+        },
+        {
+          "problem": "The surviving historical version is arbitrary because all rows within each deduplication partition have the same ordering value.",
+          "about": "data",
+          "evidence_in_work": "partition by id order by id",
+          "source": "For each contact_id and snapshot_date, sort records by created_date descending",
+          "importance": 4,
+          "reason": "Even the single retained version need not be the latest or the correct version for any particular day."
+        },
+        {
+          "problem": "created_date is inferred from _fivetran_start without checking that it is the intended contact-change timestamp.",
+          "about": "data",
+          "evidence_in_work": "try_cast(_fivetran_start as TIMESTAMP) as created_date",
+          "source": "Daily snapshots ... latest non-deleted change per contact per calendar day",
+          "importance": 3,
+          "reason": "Snapshot dates depend entirely on this undocumented source mapping."
+        }
+      ],
+      "fewer_reason": "Three concrete history-grain and timestamp concerns were found; the final account foreign-key mapping was corrected."
+    },
+    "stg_salesforce__opportunity_history": {
+      "items": [
+        {
+          "problem": "The existing raw created_date is replaced with _fivetran_start rather than passed through or reconciled.",
+          "about": "data",
+          "evidence_in_work": "if name in ('created_date',) and n.endswith('_history'): expr='_fivetran_start'",
+          "source": "raw.opportunity_history ... \"created_date\" ... \"_fivetran_start\"",
+          "importance": 4,
+          "reason": "This can change every opportunity snapshot date and its latest-record selection."
+        },
+        {
+          "problem": "Historical probability values outside 0–100 are nullified even though the history contract specifies no such validation.",
+          "about": "requirement",
+          "evidence_in_work": "case when try_cast(probability as DECIMAL) between 0 and 100 then ... else null end as probability",
+          "source": "probability ... data_type: DECIMAL",
+          "importance": 2,
+          "reason": "Historical values are altered beyond the supplied history rules."
+        },
+        {
+          "problem": "last_modified_date is always NULL without resolving whether available Fivetran metadata provides the intended historical modification timestamp.",
+          "about": "data",
+          "evidence_in_work": "cast(null as TIMESTAMP) as last_modified_date",
+          "source": "last_modified_date ... data_type: TIMESTAMP",
+          "importance": 1,
+          "reason": "The direct raw field is absent, but the output loses this attribute for all rows."
+        }
+      ],
+      "fewer_reason": "Three supported source-mapping and preservation concerns remain; the opportunity/account ID mapping errors were corrected."
+    },
+    "int_salesforce__account_enhanced": {
+      "items": [
+        {
+          "problem": "Accounts with NULL is_deleted are included and rewritten as false instead of being excluded by the required false-only filter.",
+          "about": "requirement",
+          "evidence_in_work": "where not coalesce(is_deleted, false); coalesce(is_deleted, false) as is_deleted",
+          "source": "keep only rows where is_deleted is false",
+          "importance": 3,
+          "reason": "Staging permits NULL deletion flags, so this can expand account scope and affect downstream account analytics."
+        }
+      ],
+      "fewer_reason": "The revenue segments, geography, age, maturity, completeness, and high-value calculations otherwise follow the supplied model logic."
+    },
+    "int_salesforce__opportunity_pipeline": {
+      "items": [
+        {
+          "problem": "Opportunities with NULL is_deleted are included instead of applying the specified is_deleted=false scope.",
+          "about": "requirement",
+          "evidence_in_work": "where not coalesce(is_deleted, false)",
+          "source": "filtered to is_deleted = false",
+          "importance": 3,
+          "reason": "Unknown deletion states can enter every downstream pipeline and revenue model."
+        },
+        {
+          "problem": "Account enrichment can include accounts with unknown deletion state because the account-enhanced input uses a broader filter than specified.",
+          "about": "requirement",
+          "evidence_in_work": "left join intermediate.int_salesforce__account_enhanced ae on op.account_id = ae.account_id",
+          "source": "int_salesforce__account_enhanced ... keep only rows where is_deleted is false",
+          "importance": 2,
+          "reason": "Affected opportunities can receive account attributes and strategic classifications that should be unmatched."
+        }
+      ],
+      "fewer_reason": "The model's remaining scoring, thresholds, weighting, date calculations, and left-join behavior match the visible specification."
+    },
+    "int_salesforce__activity_summary": {
+      "items": [
+        {
+          "problem": "NULL deletion flags are treated as active for accounts, tasks, and events rather than applying the specified false-only filters.",
+          "about": "requirement",
+          "evidence_in_work": "where not coalesce(is_deleted, false)",
+          "source": "Keep rows where is_deleted=false",
+          "importance": 3,
+          "reason": "This can both add output accounts and inflate their activity counts."
+        }
+      ],
+      "fewer_reason": "The apparently unusual all-time counts, placeholders, length-18 activity linking, and no-activity defaults are explicitly required and are implemented."
+    },
+    "int_salesforce__date_spine": {
+      "items": [],
+      "fewer_reason": "The supplied earliest-date rule, inclusive generation, empty-source behavior, calendar attributes, and ordering are implemented without an evident mismatch."
+    },
+    "int_salesforce__lead_conversion_funnel": {
+      "items": [
+        {
+          "problem": "Leads with NULL is_deleted are included despite the explicit false-only lead scope.",
+          "about": "requirement",
+          "evidence_in_work": "select * from staging.stg_salesforce__lead where not coalesce(is_deleted, false)",
+          "source": "include only leads where is_deleted = false",
+          "importance": 3,
+          "reason": "This changes funnel membership and downstream lead-performance results."
+        }
+      ],
+      "fewer_reason": "The quality weights, source categories, conversion calculations, temperature buckets, and final revenue type otherwise follow the visible requirements."
+    },
+    "int_salesforce__user_performance": {
+      "items": [
+        {
+          "problem": "won_opportunities and converted_leads are produced as BIGINT counts rather than the required HUGEINT measures.",
+          "about": "requirement",
+          "evidence_in_work": "count(*) filter (where is_won = true) as won_opportunities; count(*) filter (where is_converted = true) as converted_leads",
+          "source": "won_opportunities ... data_type: HUGEINT; converted_leads ... data_type: HUGEINT",
+          "importance": 2,
+          "reason": "The numerical values can agree while the contracted output types and downstream passthrough types do not."
+        }
+      ],
+      "fewer_reason": "The active-user scope, aggregate definitions, defaults, rates, placeholders, and performance tiers otherwise align with the supplied specification."
+    },
+    "int_salesforce__opportunity_aggregation_by_owner": {
+      "items": [
+        {
+          "problem": "manager_id is taken directly from the owner's manager_id rather than from the required manager-user join.",
+          "about": "requirement",
+          "evidence_in_work": "select o.*, u.manager_id",
+          "source": "Owner.manager_id to User (manager)",
+          "importance": 4,
+          "reason": "Dangling or staging-rejected managers remain assigned and can create spurious manager groups."
+        },
+        {
+          "problem": "The required account, manager, and user-role enrichment joins are omitted.",
+          "about": "requirement",
+          "evidence_in_work": "from staging.stg_salesforce__opportunity o left join staging.stg_salesforce__user u on o.owner_id=u.user_id",
+          "source": "Opportunity to Account ... Owner.manager_id to User ... Owner.user_role_id to User Role",
+          "importance": 3,
+          "reason": "The specified join semantics, including preservation of any join multiplicity, are not implemented."
+        },
+        {
+          "problem": "Closed-period aggregation inherits flags that can identify open opportunities or invalid raw close dates as closed in the period.",
+          "about": "data",
+          "evidence_in_work": "case when o.is_closed_this_month then o.amount else 0 end as closed_amount_month",
+          "source": "closed_amount_this_month/quarter: amount when closed in the period",
+          "importance": 3,
+          "reason": "Period booking and loss amounts depend on the staging flag semantics."
+        }
+      ],
+      "fewer_reason": "Three supported concerns were identified; multiplying probability without dividing by 100 is explicitly required here and is not flagged."
+    },
+    "fct_salesforce__sales_pipeline": {
+      "items": [
+        {
+          "problem": "A closed opportunity with NULL is_won is classified as Lost rather than falling through to Unknown.",
+          "about": "requirement",
+          "evidence_in_work": "when is_closed and not coalesce(is_won,false) then 'Lost'",
+          "source": "Lost if is_closed and not is_won; Open if not is_closed; otherwise Unknown",
+          "importance": 3,
+          "reason": "The coalesce changes the documented three-valued boolean behavior."
+        },
+        {
+          "problem": "The fact can contain opportunities with unknown deletion state because its pipeline input includes NULL is_deleted rows.",
+          "about": "requirement",
+          "evidence_in_work": "from intermediate.int_salesforce__opportunity_pipeline op",
+          "source": "int_salesforce__opportunity_pipeline ... filtered to is_deleted = false",
+          "importance": 3,
+          "reason": "The upstream scope mismatch propagates into fact-level counts and amounts."
+        },
+        {
+          "problem": "Missing opportunity age is labeled Long Cycle even though that category is defined for ages greater than 180 days.",
+          "about": "requirement",
+          "evidence_in_work": "when opportunity_age_days<=180 then 'Extended' else 'Long Cycle'",
+          "source": "Long Cycle (>180 days) based on opportunity_age_days",
+          "importance": 2,
+          "reason": "The specification does not explicitly resolve NULL ages, so this classification should be checked."
+        }
+      ],
+      "fewer_reason": "Three supported special-case or inherited-scope concerns remain; joins, date parts, health scoring, and quarter flags otherwise match."
+    },
+    "fct_salesforce__lead_performance": {
+      "items": [
+        {
+          "problem": "The fact inherits leads with NULL deletion state from the funnel's broader-than-specified scope.",
+          "about": "requirement",
+          "evidence_in_work": "from intermediate.int_salesforce__lead_conversion_funnel lf",
+          "source": "One row per lead_id (non-deleted leads) ... is_deleted = false",
+          "importance": 3,
+          "reason": "Extra funnel rows flow directly into this unfiltered fact."
+        }
+      ],
+      "fewer_reason": "The fact's own join, conversion flags, calendar attributes, and current-period flags align with the supplied requirements."
+    },
+    "fct_salesforce__account_engagement": {
+      "items": [
+        {
+          "problem": "owner_name uses Salesforce's stored user_name rather than the required concatenation of first_name and last_name.",
+          "about": "requirement",
+          "evidence_in_work": "u.user_name as owner_name",
+          "source": "Build owner_name ... by concatenating first and last name with a space and trimming",
+          "importance": 3,
+          "reason": "Stored display names can differ in content and formatting from the required derived name."
+        },
+        {
+          "problem": "Activity defaults are applied before scoring and lifecycle rules instead of only in the final projection.",
+          "about": "requirement",
+          "evidence_in_work": "coalesce(acs.activity_trend_30d,'New') as activity_trend_30d ... from engagement_base",
+          "source": "scoring uses raw value where NULL contributes 0 points ... Apply defaults ... in the final projection",
+          "importance": 3,
+          "reason": "A missing summary can gain five trend points and be classified Dormant rather than following the raw-NULL rules."
+        },
+        {
+          "problem": "The result inherits accounts and activities with NULL deletion states from intermediate filters that treat NULL as false.",
+          "about": "requirement",
+          "evidence_in_work": "from intermediate.int_salesforce__account_enhanced ae left join intermediate.int_salesforce__activity_summary acs",
+          "source": "active (is_deleted=false) account_id",
+          "importance": 2,
+          "reason": "Unknown deletion states can affect both membership and engagement metrics."
+        }
+      ],
+      "fewer_reason": "Three concrete concerns were found; the remaining scoring thresholds and risk, lifecycle, depth, and upsell rules are visibly implemented."
+    },
+    "dim_salesforce__user": {
+      "items": [
+        {
+          "problem": "The dimension passes through BIGINT won and converted counts where its output contract requires HUGEINT.",
+          "about": "requirement",
+          "evidence_in_work": "total_opportunities,won_opportunities ... total_leads,converted_leads",
+          "source": "won_opportunities ... data_type: HUGEINT; converted_leads ... data_type: HUGEINT",
+          "importance": 2,
+          "reason": "The upstream count-type mismatch is preserved in the dimension."
+        }
+      ],
+      "fewer_reason": "Role mapping was corrected upstream, and the dimension's joins, tenure, manager resolution, productivity, adoption, and ratio logic otherwise follow the specification."
+    },
+    "salesforce__account_daily_history": {
+      "items": [
+        {
+          "problem": "Snapshot dates and latest-change selection depend on the unchecked assumption that _fivetran_start is the required created_date.",
+          "about": "data",
+          "evidence_in_work": "created_date::date as snapshot_date; order by created_date desc",
+          "source": "latest non-deleted change on that day",
+          "importance": 3,
+          "reason": "The mart's ranking is correct only if the staging timestamp interpretation is correct."
+        }
+      ],
+      "fewer_reason": "The earlier history-row loss was fixed for accounts, and the mart's filter, ranking, projection, and ordering match the specification."
+    },
+    "salesforce__contact_daily_history": {
+      "items": [
+        {
+          "problem": "The mart cannot produce daily contact history because staging has already reduced each contact to one arbitrary historical version.",
+          "about": "data",
+          "evidence_in_work": "from staging.stg_salesforce__contact_history; staging uses partition by id order by id",
+          "source": "One row per contact_id per snapshot_date",
+          "importance": 5,
+          "reason": "Distinct historical dates and potentially the latest same-day versions have already been discarded."
+        },
+        {
+          "problem": "Snapshot dates use an inferred Fivetran validity timestamp whose equivalence to the intended change timestamp was not checked.",
+          "about": "data",
+          "evidence_in_work": "created_date::date as snapshot_date",
+          "source": "Calendar date from created_date",
+          "importance": 3,
+          "reason": "Even retained rows may be assigned to the wrong business snapshot day."
+        }
+      ],
+      "fewer_reason": "The mart itself follows the required false-only filter, daily ranking, projection, and ordering; the two identified issues originate in its historical input."
+    },
+    "salesforce__contact_enhanced": {
+      "items": [
+        {
+          "problem": "The enhanced result can retain contacts with missing required names because staging does not enforce those constraints.",
+          "about": "requirement",
+          "evidence_in_work": "select c.* ... from staging.stg_salesforce__contact c",
+          "source": "last_name ... constraints: [not_null]; contact_name ... constraints: [not_null]",
+          "importance": 2,
+          "reason": "The mart passes the unvalidated fields through unchanged."
+        },
+        {
+          "problem": "created_date is NULL for every contact because the staging source mapping was left unresolved.",
+          "about": "data",
+          "evidence_in_work": "select c.*",
+          "source": "created_date ... Record creation timestamp",
+          "importance": 2,
+          "reason": "Users of the enhanced contact output cannot analyze contact creation timing."
+        }
+      ],
+      "fewer_reason": "The final contact/account/owner mappings and the mart's left joins are correct; only two inherited staging concerns were identified."
+    },
+    "salesforce__opportunity_daily_history": {
+      "items": [
+        {
+          "problem": "Daily snapshots use _fivetran_start rather than the raw opportunity history created_date without validating the intended timestamp semantics.",
+          "about": "data",
+          "evidence_in_work": "created_date::date as snapshot_date; staging maps created_date to _fivetran_start",
+          "source": "Derive snapshot_date by taking the date part of created_date",
+          "importance": 4,
+          "reason": "Both output days and latest-row selection can change across the historical result."
+        },
+        {
+          "problem": "Historical probabilities may be NULL instead of preserving the selected source values because staging applies an undocumented range filter.",
+          "about": "requirement",
+          "evidence_in_work": "select ... probability ... from derived",
+          "source": "pass-through fields preserve source values (including NULLs, casing, and whitespace)",
+          "importance": 2,
+          "reason": "Out-of-range historical values are silently altered before projection."
+        }
+      ],
+      "fewer_reason": "The mart implements its deletion filter, ranking, status mapping, and output ordering; two upstream history concerns remain."
+    },
+    "salesforce__opportunity_enhanced": {
+      "items": [
+        {
+          "problem": "NULL is_closed with an eligible forecast category is classified Other, although the detailed status definition allows is_closed is not true for Pipeline.",
+          "about": "requirement",
+          "evidence_in_work": "when is_closed is false and lower(forecast_category) in ('pipeline','forecast','bestcase') then 'Pipeline'",
+          "source": "Pipeline if is_closed is not true and forecast_category is Pipeline, Forecast, or BestCase ignoring case",
+          "importance": 3,
+          "reason": "The documentation is internally inconsistent about NULL booleans, so this branch needs explicit resolution."
+        },
+        {
+          "problem": "Closed-period metrics inherit flags based only on close_date rather than actual closed status.",
+          "about": "data",
+          "evidence_in_work": "case when is_closed_this_month is true then amount else 0 end as closed_amount_this_month",
+          "source": "Flag ... indicating closed in the current month",
+          "importance": 3,
+          "reason": "Open opportunities with scheduled current-period close dates can receive closed amounts and counts."
+        },
+        {
+          "problem": "_dbt_loaded_at is generated in this mart rather than passed through from staging as required.",
+          "about": "requirement",
+          "evidence_in_work": "cast(current_timestamp as timestamp with time zone) as _dbt_loaded_at",
+          "source": "Model load timestamp from stg_salesforce__opportunity",
+          "importance": 2,
+          "reason": "This substitutes mart execution time for upstream lineage metadata."
+        },
+        {
+          "problem": "days_since_created and days_to_close retain staging INTEGER types rather than the specified BIGINT types.",
+          "about": "requirement",
+          "evidence_in_work": "is_created_this_quarter,days_since_created,days_to_close",
+          "source": "days_since_created ... data_type: BIGINT; days_to_close ... data_type: BIGINT",
+          "importance": 2,
+          "reason": "The staging and mart contracts differ, but this projection does not reconcile their required output types."
+        }
+      ],
+      "fewer_reason": "Four concrete semantic or schema concerns were found; the enrichment joins and remaining passthrough fields align with the supplied model."
+    },
+    "salesforce__owner_performance": {
+      "items": [
+        {
+          "problem": "Manager assignments can include unresolved manager IDs because the intermediate aggregation omits the required manager lookup.",
+          "about": "requirement",
+          "evidence_in_work": "select owner_id,manager_id ... from intermediate.int_salesforce__opportunity_aggregation_by_owner",
+          "source": "Owner.manager_id to User (manager)",
+          "importance": 3,
+          "reason": "The direct projection preserves potentially invalid manager groupings used downstream."
+        },
+        {
+          "problem": "Current-month and current-quarter results inherit staging closed-period flags that do not require closed status.",
+          "about": "data",
+          "evidence_in_work": "bookings_amount_closed_this_month,bookings_amount_closed_this_quarter",
+          "source": "Time-sliced fields ... reflect the source period definitions",
+          "importance": 2,
+          "reason": "The mart correctly avoids recalculation but cannot correct erroneous upstream period semantics."
+        }
+      ],
+      "fewer_reason": "The mart is a direct projection as required; only two concrete inherited concerns were identified."
+    },
+    "salesforce__daily_activity": {
+      "items": [
+        {
+          "problem": "Won amount is forced to zero when won rows exist but all their amounts are NULL.",
+          "about": "requirement",
+          "evidence_in_work": "coalesce(round(sum(amount) filter(where deal_status='Won')),0) as opportunities_won_amount",
+          "source": "zero when there are close_day records but none Won",
+          "importance": 3,
+          "reason": "The coalesce conflates no winning deals with winning deals whose amounts are entirely missing."
+        }
+      ],
+      "fewer_reason": "The date-spine driver, event fallback date, activity counts, creation aggregates, lost/pipeline null behavior, and no-match joins otherwise follow the specification."
+    },
+    "salesforce__opportunity_line_item_enhanced": {
+      "items": [
+        {
+          "problem": "Opportunity enrichment can be entirely missing because staging sets each line item's opportunity_id to its own line-item ID.",
+          "about": "data",
+          "evidence_in_work": "left join staging.stg_salesforce__opportunity opp on oli.opportunity_id=opp.opportunity_id",
+          "source": "Left join ... on oli.opportunity_id = opp.opportunity_id",
+          "importance": 5,
+          "reason": "Opportunity, account, owner, stage, close date, and status enrichment all depend on this relationship."
+        },
+        {
+          "problem": "Product enrichment can be entirely missing because staging sets product_2_id to the line-item ID.",
+          "about": "data",
+          "evidence_in_work": "left join staging.stg_salesforce__product_2 p on oli.product_2_id=p.product_2_id",
+          "source": "Left join ... on oli.product_2_id = product.product_2_id",
+          "importance": 5,
+          "reason": "Product name, code, and family become unmatched despite available raw product relationships."
+        },
+        {
+          "problem": "Deleted line items are included because the staging implementation omits its required deletion filter.",
+          "about": "requirement",
+          "evidence_in_work": "from staging.stg_salesforce__opportunity_line_item oli",
+          "source": "NOT COALESCE(is_deleted, false) ... on_failure: delete_row",
+          "importance": 4,
+          "reason": "The mart intentionally adds no filter, so the staging omission directly changes its row scope."
+        },
+        {
+          "problem": "The one-row-per-line-item guarantee is not validated for source duplicate IDs.",
+          "about": "data",
+          "evidence_in_work": "select opportunity_line_item_id ... from line_items",
+          "source": "opportunity_line_item_id ... tests: [not_null, unique]",
+          "importance": 2,
+          "reason": "Neither staging nor this mart establishes uniqueness for the line-item key."
+        }
+      ],
+      "fewer_reason": "Four supported concerns were identified, dominated by the uncorrected generated foreign-key mappings."
+    },
+    "salesforce__sales_snapshot": {
+      "items": [
+        {
+          "problem": "Period won counts and revenue inherit closed-period flags that test the close date but not actual closed status.",
+          "about": "data",
+          "evidence_in_work": "where is_won is true and is_closed_this_month is true",
+          "source": "rows both won and closed this month",
+          "importance": 3,
+          "reason": "Inconsistent won/open records can be counted as closed-period revenue."
+        },
+        {
+          "problem": "Closed opportunities with NULL is_won are counted as lost rather than requiring a false won flag.",
+          "about": "requirement",
+          "evidence_in_work": "is_closed is true and is_won is not true",
+          "source": "lost_opportunities: count of rows closed and not won",
+          "importance": 2,
+          "reason": "Unknown win outcomes can inflate lost counts, lost amounts, and close rate."
+        }
+      ],
+      "fewer_reason": "The one-row assembly, aggregate null policies, account/user metrics, and zero-denominator rates otherwise match the supplied snapshot logic."
+    },
+    "salesforce__manager_performance": {
+      "items": [
+        {
+          "problem": "Manager groups can include dangling manager IDs inherited from the owner aggregation's missing manager-user resolution.",
+          "about": "data",
+          "evidence_in_work": "from marts.salesforce__owner_performance where manager_id is not null group by manager_id",
+          "source": "Owner.manager_id to User (manager)",
+          "importance": 3,
+          "reason": "A non-null invalid manager ID forms a team even when no manager record survives staging."
+        },
+        {
+          "problem": "The required descending ordering by team_total_bookings_amount is omitted.",
+          "about": "requirement",
+          "evidence_in_work": "from manager_rollup r left join staging.stg_salesforce__user u on r.manager_id=u.user_id",
+          "source": "final result is ordered by team_total_bookings_amount descending",
+          "importance": 2,
+          "reason": "Metric values are unaffected, but the required result ordering is not implemented."
+        }
+      ],
+      "fewer_reason": "The null-to-zero team aggregation, unweighted average, maxima, profile fields, and ratio rules otherwise match."
+    },
+    "salesforce__revenue_analytics": {
+      "items": [
+        {
+          "problem": "Closed opportunities with NULL deletion state can enter revenue analytics through the broader-than-specified pipeline input.",
+          "about": "requirement",
+          "evidence_in_work": "select * from intermediate.int_salesforce__opportunity_pipeline where is_closed is true",
+          "source": "int_salesforce__opportunity_pipeline ... filtered to is_deleted = false",
+          "importance": 3,
+          "reason": "Extra closed rows affect revenue and downstream team summaries."
+        },
+        {
+          "problem": "NULL sales-cycle days are labeled as Long Cycle Win or Loss although those categories are defined for values greater than 180.",
+          "about": "requirement",
+          "evidence_in_work": "when opportunity_age_days<=180 then ... else 'Long Cycle Win (>180d)'",
+          "source": ">180 → \"Long Cycle Win (>180d)\"",
+          "importance": 2,
+          "reason": "Missing creation dates are converted into a definite slow-cycle classification without a documented NULL rule."
+        }
+      ],
+      "fewer_reason": "The unusual use of opportunity_age_days as sales_cycle_days is explicitly required; the remaining calculations and enrichments match the visible specification."
+    },
+    "salesforce__team_performance": {
+      "items": [
+        {
+          "problem": "NULL revenue growth is replaced by zero before health scoring, awarding ten growth points instead of the specified else bucket of five.",
+          "about": "requirement",
+          "evidence_in_work": "when coalesce(revenue_growth_qoq_percentage,0)>=-10 then 10 else 5",
+          "source": "Revenue growth: 20 if > 10%, else 15 if > 0%, else 10 if ≥ -10%, else 5",
+          "importance": 4,
+          "reason": "Teams without prior-quarter revenue receive a five-point score uplift that can change rankings."
+        },
+        {
+          "problem": "Top revenue performer is ranked by the revenue-analytics aggregate rather than the explicitly required total won amount from user performance.",
+          "about": "requirement",
+          "evidence_in_work": "arg_max(full_name,total_revenue_won)",
+          "source": "top_revenue_performer = the full_name of the member with the highest total won amount",
+          "importance": 3,
+          "reason": "Closed-only revenue and user-performance won amounts can differ for inconsistent opportunity flags."
+        },
+        {
+          "problem": "The top performer fields return NULL when every ranking value is NULL rather than selecting an arbitrary member ranked last.",
+          "about": "requirement",
+          "evidence_in_work": "arg_max(full_name,total_revenue_won) filter(where total_revenue_won is not null)",
+          "source": "members without a value are ranked last; ties are arbitrary",
+          "importance": 3,
+          "reason": "A team with no qualifying revenue still has members, but the filter removes all name candidates."
+        },
+        {
+          "problem": "Team revenue and average revenue per member use closed-only revenue_data rather than user-performance total_won_amount, a source choice that needs confirmation.",
+          "about": "data",
+          "evidence_in_work": "sum(total_revenue_won) as team_total_revenue; round(avg(total_revenue_won)) as avg_revenue_per_member",
+          "source": "team_total_revenue ... sums of revenue ... avg_revenue_per_member = per-user average revenue won",
+          "importance": 3,
+          "reason": "Users without closed revenue are excluded from the average instead of contributing their defaulted user-performance amount."
+        },
+        {
+          "problem": "Quarterly revenue aggregates return NULL for owners without deals in that quarter, which may incorrectly propagate missingness into team growth.",
+          "about": "data",
+          "evidence_in_work": "sum(won_revenue) filter(where is_current_quarter); sum(won_revenue) filter(where is_previous_quarter)",
+          "source": "current-quarter won revenue (sum where in current quarter), previous-quarter won revenue (sum where in previous quarter)",
+          "importance": 2,
+          "reason": "A missing-quarter total and an actual zero have different consequences for growth and team reporting."
+        },
+        {
+          "problem": "Negative nonzero previous-quarter revenue is excluded from growth calculation although the specification only excludes zero or NULL denominators.",
+          "about": "requirement",
+          "evidence_in_work": "case when team_revenue_previous_quarter>0 then round(...) end",
+          "source": "null if previous-quarter revenue is zero or null",
+          "importance": 1,
+          "reason": "Staging normally nullifies negative opportunity amounts, so the mismatch is unlikely to affect this dataset."
+        }
+      ],
+      "fewer_reason": "Six concrete scoring, ranking, source-choice, and null-handling concerns were identified; further items would be speculative or duplicate upstream issues."
+    }
+  }
+}

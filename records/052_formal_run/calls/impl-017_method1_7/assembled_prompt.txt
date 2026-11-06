@@ -1,0 +1,593 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for specified source systems."
+  author: "Data Engineering Team"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+
+# --------------------------------------------------------------------------- #
+# Phase 1: Define transformation from raw data to clean staging tables       #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw data into clean, validated staging tables..."
+
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "standardize timezone formats", "normalize phone numbers"]
+    
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform staging data into business-ready, analysis-ready models..."
+
+  design_principles:
+    intermediate_purpose: "Build reusable, business-centric intermediate data models."
+    # ... other design principles
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-017/agent/dacomp-de-impl-017/greenhouse_start.duckdb
+{"table": "main.activity", "columns": ["id", "candidate_id", "user_id", "subject", "body", "created_at"]}
+{"table": "main.application", "columns": ["id", "candidate_id", "applied_at", "credited_to_user_id", "current_stage_id", "status", "last_activity_at", "rejected_at", "rejected_reason_id", "source_id", "prospect", "prospect_owner_id", "prospect_pool_id", "prospect_stage_id", "location_address", "is_deleted", "custom_are_you_currently_authorized_to_work_in_the_us_", "custom_what_is_your_preferred_pronoun_", "custom_will_you_now_or_later_require_visa_sponsorship_to_work_in_the_us_", "custom_are_you_currently_authorized_to_live_work_and_travel_regionally_in_singapore_"]}
+{"table": "main.application_history", "columns": ["application_id", "new_stage_id", "new_status", "updated_at"]}
+{"table": "main.attachment", "columns": ["id", "candidate_id", "index", "filename", "type", "url"]}
+{"table": "main.candidate", "columns": ["id", "first_name", "last_name", "company", "title", "coordinator_id", "recruiter_id", "created_at", "updated_at", "last_activity", "is_private", "new_candidate_id", "photo_url"]}
+{"table": "main.candidate_tag", "columns": ["candidate_id", "tag_id"]}
+{"table": "main.close_reason", "columns": ["id", "name"]}
+{"table": "main.department", "columns": ["id", "name", "external_id", "parent_id"]}
+{"table": "main.eeoc", "columns": ["application_id", "disability_status_description", "disability_status_id", "gender_description", "gender_id", "race_description", "race_id", "veteran_status_id", "veteran_status_message", "veteran_status_description", "submitted_at"]}
+{"table": "main.email_address", "columns": ["candidate_id", "index", "type", "value"]}
+{"table": "main.hiring_team", "columns": ["job_id", "user_id", "role"]}
+{"table": "main.interview", "columns": ["id", "job_stage_id", "name", "interview_kit_content"]}
+{"table": "main.job", "columns": ["id", "name", "requisition_id", "status", "created_at", "updated_at", "closed_at", "notes", "confidential", "custom_employee_level_designation", "custom_employment_type", "custom_recruiting_start_date", "custom_salary_expectations", "custom_stock_options", "custom_cost_center"]}
+{"table": "main.job_application", "columns": ["job_id", "application_id"]}
+{"table": "main.job_department", "columns": ["job_id", "department_id"]}
+{"table": "main.job_office", "columns": ["job_id", "office_id"]}
+{"table": "main.job_opening", "columns": ["id", "job_id", "application_id", "opening_id", "close_reason_id", "status", "opened_at", "closed_at"]}
+{"table": "main.job_post", "columns": ["id", "job_id", "title", "content", "internal_content", "location_name", "external", "internal", "live", "created_at", "updated_at"]}
+{"table": "main.job_stage", "columns": ["id", "job_id", "name", "created_at", "updated_at"]}
+{"table": "main.office", "columns": ["id", "name", "location_name", "external_id", "parent_id", "primary_contact_user_id"]}
+{"table": "main.phone_number", "columns": ["candidate_id", "index", "type", "value"]}
+{"table": "main.prospect_pool", "columns": ["id", "name", "active"]}
+{"table": "main.prospect_stage", "columns": ["id", "prospect_pool_id", "name"]}
+{"table": "main.scheduled_interview", "columns": ["id", "application_id", "interview_id", "organizer_id", "start", "end", "location", "status", "created_at", "updated_at"]}
+{"table": "main.scheduled_interview_postgres", "columns": ["id", "application_id", "interview_id", "organizer_id", "start", "end", "location", "status", "created_at", "updated_at"]}
+{"table": "main.scheduled_interview_snowflake", "columns": ["id", "application_id", "interview_id", "organizer_id", "end", "location", "status", "created_at", "updated_at", "\"START\""]}
+{"table": "main.scheduled_interviewer", "columns": ["scheduled_interview_id", "interviewer_id", "scorecard_id"]}
+{"table": "main.scorecard", "columns": ["id", "application_id", "candidate_id", "submitted_by_user_id", "interview", "interviewed_at", "overall_recommendation", "submitted_at", "created_at", "updated_at"]}
+{"table": "main.scorecard_attribute", "columns": ["id", "scorecard_id", "index", "name", "type", "rating", "note"]}
+{"table": "main.social_media_address", "columns": ["candidate_id", "index", "value"]}
+{"table": "main.source", "columns": ["id", "name", "source_type_id", "source_type_name"]}
+{"table": "main.tag", "columns": ["id", "name"]}
+{"table": "main.user", "columns": ["id", "first_name", "last_name", "employee_id", "created_at", "updated_at", "disabled", "site_admin"]}
+{"table": "main.user_email", "columns": ["user_id", "email"]}
+{"table": "raw.activity", "columns": ["id", "candidate_id", "user_id", "subject", "body", "created_at"]}
+{"table": "raw.application", "columns": ["id", "candidate_id", "applied_at", "credited_to_user_id", "current_stage_id", "status", "last_activity_at", "rejected_at", "rejected_reason_id", "source_id", "prospect", "prospect_owner_id", "prospect_pool_id", "prospect_stage_id", "location_address", "is_deleted", "custom_are_you_currently_authorized_to_work_in_the_us_", "custom_what_is_your_preferred_pronoun_", "custom_will_you_now_or_later_require_visa_sponsorship_to_work_in_the_us_", "custom_are_you_currently_authorized_to_live_work_and_travel_regionally_in_singapore_"]}
+{"table": "raw.application_history", "columns": ["application_id", "new_stage_id", "new_status", "updated_at"]}
+{"table": "raw.attachment", "columns": ["id", "candidate_id", "index", "filename", "type", "url"]}
+{"table": "raw.candidate", "columns": ["id", "first_name", "last_name", "company", "title", "coordinator_id", "recruiter_id", "created_at", "updated_at", "last_activity", "is_private", "new_candidate_id", "photo_url"]}
+{"table": "raw.candidate_tag", "columns": ["candidate_id", "tag_id"]}
+{"table": "raw.close_reason", "columns": ["id", "name"]}
+{"table": "raw.department", "columns": ["id", "name", "external_id", "parent_id"]}
+{"table": "raw.eeoc", "columns": ["application_id", "disability_status_description", "disability_status_id", "gender_description", "gender_id", "race_description", "race_id", "veteran_status_id", "veteran_status_message", "veteran_status_description", "submitted_at"]}
+{"table": "raw.email_address", "columns": ["candidate_id", "index", "type", "value"]}
+{"table": "raw.hiring_team", "columns": ["job_id", "user_id", "role"]}
+{"table": "raw.interview", "columns": ["id", "job_stage_id", "name", "interview_kit_content"]}
+{"table": "raw.job", "columns": ["id", "name", "requisition_id", "status", "created_at", "updated_at", "closed_at", "notes", "confidential", "custom_employee_level_designation", "custom_employment_type", "custom_recruiting_start_date", "custom_salary_expectations", "custom_stock_options", "custom_cost_center"]}
+{"table": "raw.job_application", "columns": ["job_id", "application_id"]}
+{"table": "raw.job_department", "columns": ["job_id", "department_id"]}
+{"table": "raw.job_office", "columns": ["job_id", "office_id"]}
+{"table": "raw.job_opening", "columns": ["id", "job_id", "application_id", "opening_id", "close_reason_id", "status", "opened_at", "closed_at"]}
+{"table": "raw.job_post", "columns": ["id", "job_id", "title", "content", "internal_content", "location_name", "external", "internal", "live", "created_at", "updated_at"]}
+{"table": "raw.job_stage", "columns": ["id", "job_id", "name", "created_at", "updated_at"]}
+{"table": "raw.office", "columns": ["id", "name", "location_name", "external_id", "parent_id", "primary_contact_user_id"]}
+{"table": "raw.phone_number", "columns": ["candidate_id", "index", "type", "value"]}
+{"table": "raw.prospect_pool", "columns": ["id", "name", "active"]}
+{"table": "raw.prospect_stage", "columns": ["id", "prospect_pool_id", "name"]}
+{"table": "raw.scheduled_interview", "columns": ["id", "application_id", "interview_id", "organizer_id", "start", "end", "location", "status", "created_at", "updated_at"]}
+{"table": "raw.scheduled_interview_postgres", "columns": ["id", "application_id", "interview_id", "organizer_id", "start", "end", "location", "status", "created_at", "updated_at"]}
+{"table": "raw.scheduled_interview_snowflake", "columns": ["id", "application_id", "interview_id", "organizer_id", "end", "location", "status", "created_at", "updated_at", "\"START\""]}
+{"table": "raw.scheduled_interviewer", "columns": ["scheduled_interview_id", "interviewer_id", "scorecard_id"]}
+{"table": "raw.scorecard", "columns": ["id", "application_id", "candidate_id", "submitted_by_user_id", "interview", "interviewed_at", "overall_recommendation", "submitted_at", "created_at", "updated_at"]}
+{"table": "raw.scorecard_attribute", "columns": ["id", "scorecard_id", "index", "name", "type", "rating", "note"]}
+{"table": "raw.social_media_address", "columns": ["candidate_id", "index", "value"]}
+{"table": "raw.source", "columns": ["id", "name", "source_type_id", "source_type_name"]}
+{"table": "raw.tag", "columns": ["id", "name"]}
+{"table": "raw.user", "columns": ["id", "first_name", "last_name", "employee_id", "created_at", "updated_at", "disabled", "site_admin"]}
+{"table": "raw.user_email", "columns": ["user_id", "email"]}
+
+
+=== Relevant specification and documentation ===
+
+
+=== Premises recorded in earlier reviews ===
+[
+  {
+    "statement": "For each declared primary key, any source row is an acceptable representative when multiple rows share that key.",
+    "about": "data",
+    "target": "All staging models generated in sql/staging/",
+    "evidence_of_dependence": "ROW_NUMBER() OVER (PARTITION BY {pkpart} ORDER BY {pkpart}) AS _row_num",
+    "alternative": null,
+    "importance": 5,
+    "reason": "Ordering only by the partition keys cannot preferentially retain the latest, most complete, or otherwise authoritative duplicate.",
+    "updates": null,
+    "id": "c2-1",
+    "call": 2
+  },
+  {
+    "statement": "Selecting a duplicate representative before applying row-validity filters does not discard any key that has a valid source record.",
+    "about": "data",
+    "target": "All staging models generated in sql/staging/",
+    "evidence_of_dependence": "validated_rows AS (... FROM source_rows WHERE ...); ... FROM validated_rows WHERE _row_num = 1",
+    "alternative": null,
+    "importance": 4,
+    "reason": "If the first-ranked duplicate fails validation, a valid later duplicate cannot replace it.",
+    "updates": null,
+    "id": "c2-2",
+    "call": 2
+  },
+  {
+    "statement": "A non-null primary-key value after casting is sufficient to establish that the key is valid.",
+    "about": "data",
+    "target": "All staging models generated in sql/staging/",
+    "evidence_of_dependence": "for p in pk: where.append(f'\"{p}\" IS NOT NULL')",
+    "alternative": "The supplied quality-action documentation identifies \"Invalid primary keys\" as a reason to remove rows, which could include invalid non-null values.",
+    "importance": 3,
+    "reason": "Sentinel, blank, or out-of-domain keys could survive the generated validation.",
+    "updates": null,
+    "id": "c2-3",
+    "call": 2
+  },
+  {
+    "statement": "Casting failures in fields not explicitly filtered for nulls may be handled by retaining the row with a null field.",
+    "about": "requirement",
+    "target": "All staging models generated in sql/staging/",
+    "evidence_of_dependence": "expressions.append(f'        TRY_CAST({expr} AS {typ}) AS \"{n}\"')",
+    "alternative": "The quality-action documentation distinguishes nullifying a \"non-critical\" field from deleting rows whose \"Essential business attributes contain irrecoverable errors\".",
+    "importance": 3,
+    "reason": "Universal safe casting may retain unusable rows if a failed field is business-critical but not covered by the generated null filters.",
+    "updates": null,
+    "id": "c2-4",
+    "call": 2
+  },
+  {
+    "statement": "Columns not covered by the generator's special cases require no format correction beyond conversion to their declared data type.",
+    "about": "requirement",
+    "target": "All staging models generated in sql/staging/",
+    "evidence_of_dependence": "else: expr=src",
+    "alternative": "The quality-action documentation describes correcting \"email casing, whitespace trimming, and standardized date formats\"; whether those corrections apply to individual columns must be established from their contracts.",
+    "importance": 3,
+    "reason": "Passing most fields through unchanged can leave contract-relevant normalization unimplemented.",
+    "updates": null,
+    "id": "c2-5",
+    "call": 2
+  },
+  {
+    "statement": "Candidate creation timestamps before 2000 or after the execution timestamp must cause the entire candidate row to be removed.",
+    "about": "requirement",
+    "target": "Candidate staging SQL",
+    "evidence_of_dependence": "where += ['created_at <= CURRENT_TIMESTAMP','created_at >= TIMESTAMP \\'2000-01-01\\'']",
+    "alternative": null,
+    "importance": 4,
+    "reason": "This hard-coded time window can remove candidates and affect all downstream candidate-related models.",
+    "updates": null,
+    "id": "c2-6",
+    "call": 2
+  },
+  {
+    "statement": "Applications whose normalized status is outside active, hired, rejected, and withdrawn must be deleted.",
+    "about": "requirement",
+    "target": "Application staging SQL",
+    "evidence_of_dependence": "where += [\"status IN ('active', 'hired', 'rejected', 'withdrawn')\"]",
+    "alternative": null,
+    "importance": 4,
+    "reason": "An incomplete status domain or a different invalid-status policy would change the application population.",
+    "updates": null,
+    "id": "c2-7",
+    "call": 2
+  },
+  {
+    "statement": "A rejection timestamp is usable only when the application currently has rejected status and the timestamp is not earlier than its application timestamp.",
+    "about": "requirement",
+    "target": "Application staging SQL, rejected_at",
+    "evidence_of_dependence": "CASE WHEN rejected_at >= applied_at AND status = 'rejected' THEN TRY_CAST(rejected_at AS TIMESTAMP) ELSE NULL END",
+    "alternative": null,
+    "importance": 3,
+    "reason": "The condition can erase historical rejection dates for applications whose current status has changed.",
+    "updates": null,
+    "id": "c2-8",
+    "call": 2
+  },
+  {
+    "statement": "Both EEOC disability and veteran status descriptions use exactly the same three permitted values: Yes, No, and Prefer not to answer.",
+    "about": "requirement",
+    "target": "EEOC staging SQL, disability_status_description and veteran_status_description",
+    "evidence_of_dependence": "for fld in ('disability_status_description','veteran_status_description'): ... TRIM({fld}) IN ('Yes', 'No', 'Prefer not to answer')",
+    "alternative": null,
+    "importance": 4,
+    "reason": "Applying one generic domain to two distinct demographic fields could nullify substantial valid information.",
+    "updates": null,
+    "id": "c2-9",
+    "call": 2
+  },
+  {
+    "statement": "Scheduled interview statuses outside scheduled, completed, canceled, and no_show should be nullified while retaining the interview row.",
+    "about": "requirement",
+    "target": "Scheduled interview staging SQL, status",
+    "evidence_of_dependence": "CASE WHEN LOWER(TRIM(status)) IN ('scheduled', 'completed', 'canceled', 'no_show') THEN LOWER(TRIM(status)) ELSE NULL END",
+    "alternative": null,
+    "importance": 3,
+    "reason": "Different accepted labels or a required correction or deletion policy would alter interview status reporting.",
+    "updates": null,
+    "id": "c2-10",
+    "call": 2
+  },
+  {
+    "statement": "The contract's full_name can be constructed by concatenating first_name and last_name with one space and trimming only the outside of the result.",
+    "about": "requirement",
+    "target": "Candidate and user staging SQL, full_name",
+    "evidence_of_dependence": "NULLIF(TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))), '')",
+    "alternative": null,
+    "importance": 2,
+    "reason": "This interpretation leaves internal whitespace untouched and assumes no different missing-name or name-format policy.",
+    "updates": null,
+    "id": "c2-11",
+    "call": 2
+  },
+  {
+    "statement": "For every candidate with a LinkedIn URL, the social-media row selected as highest-index across all platforms is a LinkedIn row.",
+    "about": "data",
+    "target": "int_greenhouse__candidate_contacts.linkedin_url",
+    "evidence_of_dependence": "ROW_NUMBER() OVER (PARTITION BY candidate_id ORDER BY \"index\" DESC) AS row_num ... FROM staging.stg_greenhouse__social_media_address; ... WHERE is_linkedin AND row_num = 1",
+    "alternative": "The contract requires ranking within LinkedIn entries: \"from social media URLs containing 'linkedin' ignoring case, choose the row with the highest social_media_index per candidate\".",
+    "importance": 4,
+    "reason": "A higher-index entry for another platform would suppress an otherwise available LinkedIn URL.",
+    "updates": null,
+    "id": "c3-1",
+    "call": 3
+  },
+  {
+    "statement": "For every candidate with a GitHub URL, the social-media row selected as highest-index across all platforms is a GitHub row.",
+    "about": "data",
+    "target": "int_greenhouse__candidate_contacts.github_url",
+    "evidence_of_dependence": "social_ranked AS (... ROW_NUMBER() OVER (PARTITION BY candidate_id ORDER BY \"index\" DESC) AS row_num ...); ... WHERE is_github AND row_num = 1",
+    "alternative": "The contract requires ranking within GitHub entries: \"from social media URLs containing 'github' ignoring case, choose the row with the highest social_media_index per candidate\".",
+    "importance": 4,
+    "reason": "A higher-index entry for another platform would suppress an otherwise available GitHub URL.",
+    "updates": null,
+    "id": "c3-2",
+    "call": 3
+  },
+  {
+    "statement": "Each application_id has at most one matching row in staging.stg_greenhouse__job_application.",
+    "about": "data",
+    "target": "int_greenhouse__application_info",
+    "evidence_of_dependence": "LEFT JOIN staging.stg_greenhouse__job_application AS ja ON au.application_id = ja.application_id",
+    "alternative": "The junction table declares the composite primary key \"[job_id, application_id]\", which permits multiple jobs per application, while application_info requires \"One row per application_id\".",
+    "importance": 4,
+    "reason": "Multiple job associations would multiply application rows and violate the required output grain.",
+    "updates": null,
+    "id": "c3-3",
+    "call": 3
+  },
+  {
+    "statement": "Every candidate group surviving the candidate-tag joins has at least one non-null tag name.",
+    "about": "data",
+    "target": "int_greenhouse__candidate_tags.has_technical_tag and has_experience_tag",
+    "evidence_of_dependence": "BOOL_OR(LOWER(t.name) LIKE '%technical%') AS has_technical_tag, BOOL_OR(LOWER(t.name) LIKE '%experience%') AS has_experience_tag",
+    "alternative": "The contract explicitly allows groups with no non-null names and requires both flags to be \"otherwise FALSE; never NULL\".",
+    "importance": 3,
+    "reason": "An all-null-name group would produce null flags without an explicit false default.",
+    "updates": null,
+    "id": "c3-4",
+    "call": 3
+  },
+  {
+    "statement": "The required days_since_created metric uses the current execution timestamp rather than midnight on the current date.",
+    "about": "requirement",
+    "target": "mart.greenhouse__job_enhanced.days_since_created",
+    "evidence_of_dependence": "DATE_DIFF('microsecond', created_at, CURRENT_TIMESTAMP) / 86400000000.0 AS days_since_created",
+    "alternative": "The contract specifies \"the number of days between the current date and created_at\"; fractional days can arise from the time component of created_at even when the endpoint is midnight.",
+    "importance": 3,
+    "reason": "Using the execution time changes every non-null age by the fraction of the current day already elapsed.",
+    "updates": null,
+    "id": "c4-1",
+    "call": 4
+  },
+  {
+    "statement": "Casting prospect to VARCHAR before comparing it with the case-sensitive literal 'True' implements the contract's intended prospect-counting rule.",
+    "about": "requirement",
+    "target": "mart.greenhouse__job_enhanced.count_prospect_applications",
+    "evidence_of_dependence": "COUNT(*) FILTER (WHERE prospect::VARCHAR = 'True')::BIGINT AS count_prospect_applications",
+    "alternative": "The upstream contract declares prospect as BOOLEAN, while the job contract says \"prospect equals the string 'True'\"; comparing the Boolean directly with that literal can differ from first rendering it as DuckDB's lowercase Boolean text.",
+    "importance": 3,
+    "reason": "The explicit text conversion can exclude every true Boolean prospect from the count.",
+    "updates": null,
+    "id": "c4-2",
+    "call": 4
+  },
+  {
+    "statement": "Counting a qualifying scorecard once for every scheduled interview joined to its application is the intended interpretation of positive_interviews.",
+    "about": "requirement",
+    "target": "mart.greenhouse__candidate_summary",
+    "evidence_of_dependence": "LEFT JOIN staging.stg_greenhouse__scheduled_interview AS si ON a.application_id = si.application_id ... LEFT JOIN staging.stg_greenhouse__scorecard AS sc ON a.application_id = sc.application_id; COUNT(*) FILTER (WHERE sc.overall_recommendation IN ('strong_yes', 'yes'))",
+    "alternative": "The contract says \"positive_interviews as the count of scorecards\" and \"counts all qualifying scorecards\", which could mean counting each scorecard row once rather than once per matching scheduled interview, although its prescribed joins support the agent's reading.",
+    "importance": 4,
+    "reason": "Join multiplication can substantially change positive-interview totals, success rates, and the weighting of average scores.",
+    "updates": null,
+    "id": "c5-1",
+    "call": 5
+  },
+  {
+    "statement": "For each application_id, no two matching application_enhanced rows have identical values for all application attributes selected by the history model.",
+    "about": "data",
+    "target": "mart.greenhouse__application_history",
+    "evidence_of_dependence": "INNER JOIN mart.greenhouse__application_enhanced AS app ON history.application_id = app.application_id ... COUNT(activity.activity_id)::HUGEINT AS count_activities_in_stage ... GROUP BY ALL",
+    "alternative": "The application_enhanced contract explicitly permits duplicates: \"If multiple application rows share the same application_id, each receives the same joined metrics.\" Identical selected attributes would cause GROUP BY ALL to merge their joined activity rows.",
+    "importance": 4,
+    "reason": "Matching duplicate application projections would multiply activity counts before being collapsed into a single interval row.",
+    "updates": "c3-3",
+    "id": "c5-2",
+    "call": 5
+  },
+  {
+    "statement": "Every retained year-quarter has at least one hire and at least one application in each demographic group used as a hire-rate denominator.",
+    "about": "data",
+    "target": "greenhouse__diversity_metrics",
+    "evidence_of_dependence": "female_hires * 100.0 / NULLIF(female_applications, 0) AS female_hire_rate; veteran_hires * 100.0 / NULLIF(total_hires, 0) AS veteran_hire_representation",
+    "alternative": "The contract requires percentages to \"return 0 when the denominator is 0\"; these expressions instead return NULL, and the final SELECT does not default the rate columns to zero.",
+    "importance": 4,
+    "reason": "Any absent demographic group or quarter without hires produces null percentages instead of the required zeros.",
+    "updates": null,
+    "id": "c6-1",
+    "call": 6
+  },
+  {
+    "statement": "Process duration in days means elapsed timestamp time divided by 24 hours, including fractional days, rather than the number of calendar-day boundaries crossed.",
+    "about": "requirement",
+    "target": "greenhouse__recruitment_performance.avg_process_days; greenhouse__talent_pipeline_simplified.avg_process_days",
+    "evidence_of_dependence": "AVG(DATE_DIFF('microsecond', a.applied_at, COALESCE(a.rejected_at, a.last_activity_at)) / 86400000000.0) AS avg_process_days",
+    "alternative": "Both contracts describe \"average days from applied_at\" and require no rounding, but do not explicitly distinguish elapsed fractional days from calendar-day differences.",
+    "importance": 2,
+    "reason": "The interpretation changes process-duration averages and can change the recruitment model's 30-day fast-process flag.",
+    "updates": null,
+    "id": "c6-2",
+    "call": 6
+  }
+]
+
+=== Agent steps since the last review ===
+### event 27
+
+## 命令原文
+
+python run.py > /tmp/run.log 2>&1; tail -100 /tmp/run.log
+
+## agent 实际看到的执行结果
+
+                  ^
+2026-10-25 04:00:29,657 - INFO - Executing: intermediate.int_greenhouse__job_departments
+2026-10-25 04:00:29,658 - ERROR - ✗ intermediate.int_greenhouse__job_departments: Catalog Error: Table with name stg_greenhouse__job_department does not exist!
+Did you mean "raw.scheduled_interview_postgres"?
+
+LINE 9: FROM staging.stg_greenhouse__job_department AS jd
+             ^
+2026-10-25 04:00:29,658 - INFO - Executing: intermediate.int_greenhouse__job_offices
+2026-10-25 04:00:29,658 - ERROR - ✗ intermediate.int_greenhouse__job_offices: Catalog Error: Table with name stg_greenhouse__job_office does not exist!
+Did you mean "pg_catalog.pg_enum"?
+
+LINE 4: FROM staging.stg_greenhouse__job_office AS jo
+             ^
+2026-10-25 04:00:29,659 - INFO - Executing: intermediate.int_greenhouse__job_info
+2026-10-25 04:00:29,659 - ERROR - ✗ intermediate.int_greenhouse__job_info: Catalog Error: Table with name stg_greenhouse__job does not exist!
+Did you mean "pg_catalog.pg_enum"?
+
+LINE 6: FROM staging.stg_greenhouse__job AS j
+             ^
+2026-10-25 04:00:29,660 - INFO - Executing: intermediate.int_greenhouse__application_info
+2026-10-25 04:00:29,661 - ERROR - ✗ intermediate.int_greenhouse__application_info: Catalog Error: Table with name int_greenhouse__application_users does not exist!
+Did you mean "information_schema.constraint_column_usage"?
+
+LINE 43: FROM intermediate.int_greenhouse__application_users AS au
+              ^
+2026-10-25 04:00:29,661 - INFO - Executing: intermediate.int_greenhouse__interview_scorecard
+2026-10-25 04:00:29,662 - ERROR - ✗ intermediate.int_greenhouse__interview_scorecard: Catalog Error: Table with name stg_greenhouse__scheduled_interview does not exist!
+Did you mean "raw.scheduled_interview_postgres"?
+
+LINE 23: FROM staging.stg_greenhouse__scheduled_interview AS si
+              ^
+2026-10-25 04:00:29,662 - INFO - Executing: intermediate.int_greenhouse__interview_users
+2026-10-25 04:00:29,662 - ERROR - ✗ intermediate.int_greenhouse__interview_users: Catalog Error: Table with name int_greenhouse__interview_scorecard does not exist!
+Did you mean "raw.interview"?
+
+LINE 7: FROM intermediate.int_greenhouse__interview_scorecard AS intervi...
+             ^
+2026-10-25 04:00:29,662 - INFO - INTERMEDIATE layer complete: 0/12 tables created successfully
+2026-10-25 04:00:29,663 - INFO - 
+=== Executing MARTS Layer ===
+2026-10-25 04:00:29,663 - INFO - Description: Analysis-ready business entities and advanced analytics
+2026-10-25 04:00:29,663 - INFO - Executing: mart.greenhouse__interview_enhanced
+2026-10-25 04:00:29,663 - ERROR - ✗ mart.greenhouse__interview_enhanced: Catalog Error: Table with name int_greenhouse__interview_users does not exist!
+Did you mean "raw.scheduled_interview_postgres"?
+
+LINE 22: FROM intermediate.int_greenhouse__interview_users AS interview
+              ^
+2026-10-25 04:00:29,664 - INFO - Executing: mart.greenhouse__application_enhanced
+2026-10-25 04:00:29,665 - ERROR - ✗ mart.greenhouse__application_enhanced: Catalog Error: Table with name int_greenhouse__application_info does not exist!
+Did you mean "information_schema.constraint_column_usage"?
+
+LINE 17: FROM intermediate.int_greenhouse__application_info AS app
+              ^
+2026-10-25 04:00:29,667 - INFO - Executing: mart.greenhouse__job_enhanced
+2026-10-25 04:00:29,667 - ERROR - ✗ mart.greenhouse__job_enhanced: Catalog Error: Table with name int_greenhouse__job_info does not exist!
+Did you mean "raw.eeoc"?
+
+LINE 40:     FROM intermediate.int_greenhouse__job_info AS j
+                  ^
+2026-10-25 04:00:29,668 - INFO - Executing: mart.greenhouse__application_history
+2026-10-25 04:00:29,668 - ERROR - ✗ mart.greenhouse__application_history: Catalog Error: Table with name stg_greenhouse__application_history does not exist!
+Did you mean "raw.application_history"?
+
+LINE 4:     FROM staging.stg_greenhouse__application_history
+                 ^
+2026-10-25 04:00:29,669 - INFO - Executing: mart.greenhouse__interview_scorecard_detail
+2026-10-25 04:00:29,669 - ERROR - ✗ mart.greenhouse__interview_scorecard_detail: Catalog Error: Table with name greenhouse__interview_enhanced does not exist!
+Did you mean "raw.scheduled_interviewer"?
+
+LINE 20: FROM mart.greenhouse__interview_enhanced AS interview
+              ^
+2026-10-25 04:00:29,671 - INFO - Executing: mart.greenhouse__candidate_summary
+2026-10-25 04:00:29,672 - ERROR - ✗ mart.greenhouse__candidate_summary: Catalog Error: Table with name stg_greenhouse__candidate does not exist!
+Did you mean "information_schema.check_constraints"?
+
+LINE 9:     FROM staging.stg_greenhouse__candidate AS c
+                 ^
+2026-10-25 04:00:29,674 - INFO - Executing: mart.greenhouse__recruitment_performance
+2026-10-25 04:00:29,674 - ERROR - ✗ mart.greenhouse__recruitment_performance: Catalog Error: Table with name stg_greenhouse__job does not exist!
+Did you mean "pg_catalog.pg_enum"?
+
+LINE 10:     FROM staging.stg_greenhouse__job AS j
+                  ^
+2026-10-25 04:00:29,676 - INFO - Executing: mart.greenhouse__diversity_metrics
+2026-10-25 04:00:29,677 - ERROR - ✗ mart.greenhouse__diversity_metrics: Catalog Error: Table with name stg_greenhouse__application does not exist!
+Did you mean "information_schema.referential_constraints"?
+
+LINE 11:     FROM staging.stg_greenhouse__application AS a
+                  ^
+2026-10-25 04:00:29,678 - INFO - Executing: mart.greenhouse__talent_pipeline_simplified
+2026-10-25 04:00:29,679 - ERROR - ✗ mart.greenhouse__talent_pipeline_simplified: Catalog Error: Table with name stg_greenhouse__application does not exist!
+Did you mean "information_schema.referential_constraints"?
+
+LINE 6:     FROM staging.stg_greenhouse__application AS a
+                 ^
+2026-10-25 04:00:29,679 - INFO - MARTS layer complete: 0/9 tables created successfully
+2026-10-25 04:00:29,679 - ERROR - 
+❌ Errors occurred during data pipeline execution
+
+❌ Errors occurred during data transformation, please check the logs
+
+
+

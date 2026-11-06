@@ -1,0 +1,996 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Social Media Reporting source system. This YAML is the single source of truth describing what transformations must occur from raw to staging to intermediate and marts. It defines table purposes, validation actions, and business logic in natural language."
+  author: "Data Engineering Team"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw social media data into clean, validated staging tables that are standardized across platforms, with data quality steps applied before business modeling."
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as casing, whitespace trimming, protocol normalization for URLs, and standardized date/timezone formats."
+      examples: ["LOWER(TRIM(screen_name))", "normalize phone numbers", "ensure https:// protocol for URL fields", "standardize valid IANA timezones when pattern matches"]
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["screen_name contains disallowed characters and cannot be corrected", "invalid primary keys", "timezone not in allowed list AND malformed format", "phone numbers with impossible format"]
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful downstream."
+      examples: ["optional URL fails regex but record otherwise usable", "emails array malformed for page metadata", "non-essential descriptive fields corrupted"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Apply business logic and generate analysis-ready models using strictly layered dependencies."
+  design_principles:
+    - "Staging layer must only reference raw tables."
+    - "Intermediate layer must only reference staging tables."
+    - "Marts layer must only reference intermediate tables."
+    - "Cross-layer and same-layer dependencies are prohibited."
+    - "Grain must be explicit and unique per model."
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-023/agent/dacomp-de-impl-023/social_media_reporting_start.duckdb
+{"table": "raw.account_history", "columns": ["id", "updated_at", "_fivetran_synced", "approval_status", "business_id", "business_name", "created_at", "deleted", "industry_type", "name", "salt", "timezone", "timezone_switch_at"]}
+{"table": "raw.facebook_pages_daily_page_metrics", "columns": ["date", "page_id", "_fivetran_synced", "page_actions_post_reactions_anger_total", "page_actions_post_reactions_haha_total", "page_actions_post_reactions_like_total", "page_actions_post_reactions_love_total", "page_actions_post_reactions_sorry_total", "page_actions_post_reactions_total", "page_actions_post_reactions_wow_total", "page_fan_adds", "page_fan_removes", "page_fans", "page_impressions", "page_impressions_nonviral", "page_impressions_organic", "page_impressions_paid", "page_impressions_viral", "page_negative_feedback", "page_places_checkin_total", "page_post_engagements", "page_posts_impressions", "page_posts_impressions_nonviral", "page_posts_impressions_organic", "page_posts_impressions_paid", "page_posts_impressions_viral", "page_total_actions", "page_video_complete_views_30_s", "page_video_complete_views_30_s_autoplayed", "page_video_complete_views_30_s_click_to_play", "page_video_complete_views_30_s_organic", "page_video_complete_views_30_s_paid", "page_video_complete_views_30_s_repeat_views", "page_video_repeat_views", "page_video_view_time", "page_video_views", "page_video_views_10_s", "page_video_views_10_s_autoplayed", "page_video_views_10_s_click_to_play", "page_video_views_10_s_organic", "page_video_views_10_s_paid", "page_video_views_10_s_repeat", "page_video_views_autoplayed", "page_video_views_click_to_play", "page_video_views_organic", "page_video_views_paid", "page_views_total", "page_fans_online_per_day"]}
+{"table": "raw.facebook_pages_lifetime_post_metrics", "columns": ["date", "post_id", "_fivetran_synced", "post_clicks", "post_engaged_fan", "post_engaged_users", "post_impressions", "post_impressions_fan", "post_impressions_nonviral", "post_impressions_organic", "post_impressions_paid", "post_impressions_viral", "post_negative_feedback", "post_reactions_anger_total", "post_reactions_haha_total", "post_reactions_like_total", "post_reactions_love_total", "post_reactions_sorry_total", "post_reactions_wow_total", "post_video_avg_time_watched", "post_video_complete_views_30_s_autoplayed", "post_video_complete_views_30_s_clicked_to_play", "post_video_complete_views_30_s_organic", "post_video_complete_views_30_s_paid", "post_video_complete_views_organic", "post_video_complete_views_paid", "post_video_view_time", "post_video_view_time_organic", "post_video_views", "post_video_views_10_s", "post_video_views_10_s_autoplayed", "post_video_views_10_s_clicked_to_play", "post_video_views_10_s_organic", "post_video_views_10_s_paid", "post_video_views_10_s_sound_on", "post_video_views_autoplayed", "post_video_views_clicked_to_play", "post_video_views_organic", "post_video_views_paid", "post_video_views_sound_on", "post_video_length", "post_video_views_15_s"]}
+{"table": "raw.facebook_pages_page_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "affiliation", "app_id", "artists_we_like", "attire", "awards", "band_interests", "band_members", "bio", "birthday", "booking_agent", "built", "can_checkin", "can_post", "category", "category_list", "checkins", "company_overview", "culinary_team", "current_location", "description", "directed_by", "display_subtext", "emails", "fan_count", "features", "food_styles", "founded", "general_info", "general_manager", "genre", "global_brand_page_name", "has_added_app", "has_whatsapp_number", "hometown", "impressum", "influences", "is_always_open", "is_chain", "is_community_page", "is_eligible_for_branded_content", "is_messenger_bot_get_started_enabled", "is_messenger_platform_bot", "is_owned", "is_permanently_closed", "is_published", "is_unclaimed", "members", "mission", "mpg", "name", "network", "new_like_count", "overall_star_rating", "personal_info", "personal_interests", "pharma_safety_info", "phone", "place_type", "plot_outline", "press_contact", "price_range", "produced_by", "products", "promotion_eligible", "promotion_ineligible_reason", "public_transit", "rating_count", "record_label", "release_date", "schedule", "screenplay_by", "season", "single_line_address", "starring", "store_number", "studio", "talking_about_count", "username", "website", "were_here_count", "whatsapp_number", "written_by", "has_transitioned_to_new_page_experience", "about", "website_url", "created_time"]}
+{"table": "raw.facebook_pages_post_history", "columns": ["id", "updated_time", "_fivetran_synced", "created_time", "page_id", "status_type", "message", "share_count", "is_published", "privacy_value", "is_hidden", "is_eligible_for_promotion", "is_instagram_eligible"]}
+{"table": "raw.instagram_business_media_history", "columns": ["_fivetran_id", "_fivetran_synced", "id", "ig_id", "user_id", "username", "media_type", "caption", "created_time", "media_url", "permalink"]}
+{"table": "raw.instagram_business_media_insights", "columns": ["_fivetran_id", "_fivetran_synced", "carousel_album_engagement", "carousel_album_reach", "carousel_album_saved", "carousel_album_shares", "carousel_album_views", "comment_count", "id", "like_count", "story_exits", "story_reach", "story_replies", "story_taps_back", "story_taps_forward", "story_shares", "story_views", "video_photo_engagement", "video_photo_reach", "video_photo_saved", "video_photo_shares", "video_photo_views", "reel_comments", "reel_likes", "reel_reach", "reel_shares", "reel_total_interactions", "reel_views", "source_relation", "carousel_album_impressions", "carousel_album_video_views", "story_impressions", "video_photo_impressions", "video_views", "reel_plays"]}
+{"table": "raw.instagram_business_user_history", "columns": ["_fivetran_id", "_fivetran_synced", "followers_count", "follows_count", "id", "ig_id", "media_count", "name", "username", "website"]}
+{"table": "raw.linkedin_pages_organization", "columns": ["id", "_fivetran_synced", "cover_photo_v_2_crop_info_height", "cover_photo_v_2_crop_info_width", "cover_photo_v_2_crop_info_x", "cover_photo_v_2_crop_info_y", "cover_photo_v_2_cropped", "cover_photo_v_2_original", "default_locale_country", "default_locale_language", "description_preferred_locale_country", "description_preferred_locale_language", "founded_on_day", "founded_on_month", "founded_on_year", "logo_v_2_crop_info_height", "logo_v_2_crop_info_width", "logo_v_2_crop_info_x", "logo_v_2_crop_info_y", "logo_v_2_cropped", "logo_v_2_original", "name_preferred_locale_country", "name_preferred_locale_language", "organization_status", "organization_type", "overview_photo_v_2_crop_info_height", "overview_photo_v_2_crop_info_width", "overview_photo_v_2_crop_info_x", "overview_photo_v_2_crop_info_y", "overview_photo_v_2_cropped", "overview_photo_v_2_original", "parent_relationship_parent_id", "parent_relationship_status", "parent_relationship_type", "primary_organization_type", "school_attributes_hierarchy_classification", "school_attributes_legacy_school", "school_attributes_type", "school_attributes_year_level", "staff_count_range", "version_tag", "website_preferred_locale_country", "website_preferred_locale_language", "description_localized", "localized_description", "localized_name", "localized_website", "name_localized", "vanity_name", "website_localized"]}
+{"table": "raw.linkedin_pages_organization_ugc_post", "columns": ["organiation_id", "ugc_post_id", "_fivetran_synced"]}
+{"table": "raw.linkedin_pages_post_content", "columns": ["_fivetran_synced", "_fivetran_id", "post_id", "type", "article_title", "media_id", "media_title", "media_alt_text"]}
+{"table": "raw.linkedin_pages_share_statistic", "columns": ["_fivetran_id", "_fivetran_synced", "_organization_entity_urn", "_share_entity_urn", "click_count", "comment_count", "engagement", "impression_count", "like_count", "share_count"]}
+{"table": "raw.linkedin_pages_ugc_post_history", "columns": ["_fivetran_synced", "author", "commentary", "container_entity", "created_actor", "created_time", "distribution_external_distribution_channels", "distribution_feed_distribution", "first_published_at", "id", "last_modified_actor", "last_modified_time", "lifecycle_state", "response_context_parent", "response_context_root", "visibility"]}
+{"table": "raw.linkedin_pages_ugc_post_share_statistic", "columns": ["share_statistic_id", "ugc_post_id", "_fivetran_synced"]}
+{"table": "raw.organic_tweet_report", "columns": ["account_id", "date", "organic_tweet_id", "placement", "_fivetran_synced", "app_clicks", "card_engagements", "carousel_swipes", "clicks", "engagements", "follows", "impressions", "likes", "poll_card_vote", "qualified_impressions", "replies", "retweets", "tweets_send", "unfollows", "url_clicks", "video_15_s_views", "video_3_s_100_pct_views", "video_6_s_views", "video_content_starts", "video_cta_clicks", "video_total_views", "video_views_100", "video_views_25", "video_views_50", "video_views_75"]}
+{"table": "raw.tweet", "columns": ["id", "_fivetran_synced", "account_id", "created_at", "full_test", "favorite_count", "retweet_count", "user_id", "lang", "source"]}
+{"table": "raw.twitter_user_history", "columns": ["id", "_fivetran_synced", "contributors_enabled", "created_at", "default_profile", "default_profile_image", "description", "favourites_count", "followers_count", "friends_count", "geo_enabled", "is_translation_enabled", "is_translator", "lang", "listed_count", "location", "name", "profile_background_image_url", "profile_background_image_url_https", "profile_background_tile", "profile_banner_url", "profile_image_url", "profile_image_url_https", "profile_use_background_image", "protected_user", "screen_name", "statuses_count", "time_zone", "url", "utc_offset", "verified"]}
+{"table": "raw.youtube_channel_basic", "columns": ["_fivetran_id", "date", "_fivetran_synced", "annotation_click_through_rate", "annotation_clickable_impressions", "annotation_clicks", "annotation_closable_impressions", "annotation_close_rate", "annotation_closes", "annotation_impressions", "average_view_duration_percentage", "average_view_duration_seconds", "card_click_rate", "card_clicks", "card_impressions", "card_teaser_click_rate", "card_teaser_clicks", "card_teaser_impressions", "channel_id", "comments", "country_code", "dislikes", "likes", "live_or_on_demand", "red_views", "red_watch_time_minutes", "shares", "subscribed_status", "subscribers_gained", "subscribers_lost", "video_id", "videos_added_to_playlists", "videos_removed_from_playlists", "views", "watch_time_minutes", "channel_display_name", "channel_subscribers", "channel_views", "channel_watch_time_minutes", "channel_estimated_partner_revenue", "channel_annotations_ctr"]}
+{"table": "raw.youtube_channel_demographics", "columns": ["_fivetran_id", "date", "_fivetran_synced", "age_group", "channel_id", "country_code", "gender", "live_or_on_demand", "subscribed_status", "video_id", "views_percentage"]}
+{"table": "raw.youtube_video", "columns": ["id", "_fivetran_synced", "content_details_caption", "content_details_definition", "content_details_dimension", "content_details_duration", "content_details_has_custom_thumbnail", "content_details_licensed_content", "content_details_projection", "content_details_region_restriction", "etag", "kind", "player_embed_height", "player_embed_html", "player_embed_width", "privacy_status", "snippet_category_id", "snippet_channel_id", "snippet_channel_title", "snippet_default_audio_language", "snippet_default_language", "snippet_description", "snippet_live_broadcast_content", "snippet_localized", "snippet_published_at", "snippet_tags", "snippet_thumbnails", "snippet_title", "statistics_comment_count", "statistics_dislike_count", "statistics_favorite_count", "statistics_like_count", "statistics_view_count", "status_embeddable", "status_failure_reason", "status_license", "status_made_for_kids", "status_public_stats_viewable", "status_publish_at", "status_rejection_reason", "status_self_declared_made_for_kids", "upload_status"]}
+
+
+=== Relevant specification and documentation ===
+
+
+=== Premises recorded in earlier reviews ===
+(none)
+
+=== Agent steps since the last review ===
+### event 5
+
+## 命令原文
+
+pwd && ls -la && find sql -maxdepth 3 -type f -print && find docs config -maxdepth 2 -type f -print
+
+## agent 实际看到的执行结果
+
+/home/katherine/dac/runs/20261025_de_official_batch_01/impl-023/agent/dacomp-de-impl-023
+total 10064
+drwxr-xr-x 8 katherine katherine     4096 Oct 25 05:10 .
+drwx------ 3 katherine katherine       60 Oct 25 05:10 ..
+drwxr-xr-x 3 katherine katherine     4096 Oct 25 05:10 .agent-python
+drwxr-xr-x 2 katherine katherine     4096 Oct 25 05:10 .tmp
+drwxr-xr-x 2 katherine katherine     4096 Oct 17 17:41 config
+drwxr-xr-x 2 katherine katherine     4096 Oct 17 17:41 docs
+drwxr-xr-x 2 katherine katherine     4096 Oct 17 17:41 raw_data
+-rw-r--r-- 1 katherine katherine    17825 Oct 17 17:41 run.py
+-rw-r--r-- 1 katherine katherine 10235904 Oct 17 17:41 social_media_reporting_start.duckdb
+-rw-r--r-- 1 katherine katherine    15419 Oct 17 17:41 social_media_reporting_start.yaml
+drwxr-xr-x 5 katherine katherine     4096 Oct 17 17:41 sql
+-rw-r--r-- 1 katherine katherine     3753 Oct 17 17:41 test_single_sql.py
+docs/data_contract.yaml
+config/layer_dependencies.yaml
+
+
+### event 7
+
+## 命令原文
+
+cat config/layer_dependencies.yaml && find sql -type f -maxdepth 3 -print
+
+## agent 实际看到的执行结果
+
+# Social Media Reporting Layer Dependencies
+# This file defines the execution order for SQL transformations
+
+layers:
+  staging:
+    description: "Raw data standardization and cleaning with validation rules applied"
+    tables:
+      - stg_social_media__account_history
+      - stg_social_media__twitter_user_history
+      - stg_social_media__twitter_organic_tweets
+      - stg_social_media__facebook_posts
+      - stg_social_media__instagram_posts
+      - stg_social_media__linkedin_posts
+      - stg_social_media__youtube_videos
+
+  intermediate:
+    description: "Platform-specific business logic and data standardization"
+    dependencies: ["staging"]
+    tables:
+      - social_media_reporting__facebook_posts_reporting
+      - social_media_reporting__instagram_posts_reporting
+      - social_media_reporting__linkedin_posts_reporting
+      - social_media_reporting__twitter_posts_reporting
+      - social_media_reporting__youtube_videos_reporting
+
+  marts:
+    description: "Analytics-ready unified reporting model"
+    dependencies: ["intermediate"]
+    tables:
+      - social_media_reporting__daily_kpis
+      - social_media_reporting__retention_kpis
+      - social_media_reporting__ctr_by_platform
+      - social_media_reporting__rollup_report
+
+# Execution order within intermediate layer (important for testing consistency)
+execution_order:
+  intermediate:
+    - social_media_reporting__facebook_posts_reporting
+    - social_media_reporting__instagram_posts_reporting
+    - social_media_reporting__linkedin_posts_reporting
+    - social_media_reporting__twitter_posts_reporting
+    - social_media_reporting__youtube_videos_reporting
+
+  marts:
+    - social_media_reporting__daily_kpis
+    - social_media_reporting__retention_kpis
+    - social_media_reporting__ctr_by_platform
+    - social_media_reporting__rollup_reportfind: warning: you have specified the global option -maxdepth after the argument -type, but global options are not positional, i.e., -maxdepth affects tests specified before it as well as those specified after it.  Please specify global options before other arguments.
+
+
+### event 9
+
+## 命令原文
+
+sed -n '1,240p' run.py
+
+## agent 实际看到的执行结果
+
+#!/usr/bin/env python3
+import os
+import yaml
+import duckdb
+from pathlib import Path
+from typing import List, Optional
+import logging
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+class SocialMediaDataPipeline:
+    """Social Media Data Pipeline Orchestrator - Supports a Layered Schema Architecture"""
+
+    def __init__(self,
+                 source_db_path: str = "social_media_reporting_start.duckdb",
+                 target_db_path: str = "social_media_reporting.duckdb",
+                 config_path: str = "config/layer_dependencies.yaml"):
+        self.source_db_path = source_db_path
+        self.target_db_path = target_db_path
+        self.config_path = config_path
+        self.config = self._load_config()
+        self.sql_dir = Path("sql")
+
+
+        self.schema_config = {
+            'raw': 'raw',
+            'staging': 'staging',
+            'intermediate': 'intermediate',
+            'marts': 'marts'
+        }
+
+
+        self.conn = None
+
+    def _load_config(self) -> dict:
+        """Load the configuration file"""
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f)
+        except FileNotFoundError:
+            logger.error(f"Configuration file {self.config_path} not found")
+            raise
+        except yaml.YAMLError as e:
+            logger.error(f"Configuration file parsing error: {e}")
+            raise
+
+    def _initialize_database(self):
+        """Initialize the working database, create the layered schema architecture, and import raw data"""
+        logger.info(f"📥 Creating new layered database: {self.target_db_path}")
+
+
+        if not os.path.exists(self.source_db_path):
+            raise FileNotFoundError(f"Source database file not found: {self.source_db_path}")
+
+        self.conn = duckdb.connect(self.target_db_path)
+
+
+        self._create_schemas()
+
+
+        self._import_raw_data()
+
+        logger.info(f"✓ Layered database initialization complete: {self.target_db_path}")
+
+    def _create_schemas(self):
+        """Create schemas for the data layers"""
+        logger.info("🏗️ Creating Schema layered architecture")
+
+        for layer, schema_name in self.schema_config.items():
+            try:
+                self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
+                logger.info(f"  ✓ Created schema: {schema_name}")
+            except Exception as e:
+                logger.error(f"  ✗ Failed to create schema {schema_name}: {e}")
+                raise
+
+    def _import_raw_data(self):
+        """Import raw data from the source database to the raw schema"""
+        logger.info("📥 Importing raw data to the raw schema")
+
+
+        try:
+            source_conn = duckdb.connect(self.source_db_path)
+        except Exception as e:
+            logger.error(f"Could not connect to source database {self.source_db_path}: {e}")
+            raise
+
+        try:
+
+            tables_result = source_conn.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'raw'").fetchall()
+            source_tables = [table[0] for table in tables_result]
+
+            logger.info(f"Found {len(source_tables)} raw tables")
+
+
+            for table_name in source_tables:
+                try:
+
+                    data = source_conn.execute(f"SELECT * FROM raw.{table_name}").fetchall()
+                    columns_info = source_conn.execute(f"DESCRIBE raw.{table_name}").fetchall()
+
+
+                    column_defs = []
+                    for col_info in columns_info:
+                        col_name, col_type = col_info[0], col_info[1]
+
+                        if col_name.lower() in ['end', 'start', 'order', 'group', 'select', 'from', 'where']:
+                            safe_col_name = f'"{col_name}"'
+                        else:
+                            safe_col_name = col_name
+                        column_defs.append(f"{safe_col_name} {col_type}")
+
+                    create_sql = f"CREATE OR REPLACE TABLE raw.{table_name} ({', '.join(column_defs)})"
+                    self.conn.execute(create_sql)
+
+
+                    if data:
+                        placeholders = ', '.join(['?' for _ in columns_info])
+                        insert_sql = f"INSERT INTO raw.{table_name} VALUES ({placeholders})"
+                        self.conn.executemany(insert_sql, data)
+
+                    logger.info(f"  ✓ raw.{table_name}: {len(data)} rows")
+
+                except Exception as e:
+                    logger.error(f"  ✗ Failed to import table {table_name}: {e}")
+
+        finally:
+            source_conn.close()
+
+        logger.info("✓ Raw data import complete")
+
+    def _load_sql_file(self, file_path: Path) -> str:
+        """Load SQL file content"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except FileNotFoundError:
+            logger.error(f"SQL file {file_path} not found")
+            raise
+
+    def _execute_sql(self, sql: str, table_name: str, layer_name: str) -> bool:
+        """Execute SQL and create a table in the specified schema"""
+        try:
+
+            target_schema = self.schema_config[layer_name]
+            full_table_name = f"{target_schema}.{table_name}"
+
+
+            processed_sql = self._process_sql_references(sql, layer_name)
+
+
+            create_table_sql = f"CREATE OR REPLACE TABLE {full_table_name} AS ({processed_sql})"
+
+            logger.info(f"Executing: {full_table_name}")
+            self.conn.execute(create_table_sql)
+
+
+            count_result = self.conn.execute(f"SELECT COUNT(*) FROM {full_table_name}").fetchone()
+            row_count = count_result[0] if count_result else 0
+
+            logger.info(f"✓ {full_table_name}: {row_count:,} rows")
+            return True
+
+        except Exception as e:
+            logger.error(f"✗ {full_table_name}: {e}")
+            return False
+
+    def _process_sql_references(self, sql: str, current_layer: str) -> str:
+        """Process table references in SQL, converting them to schema.table format"""
+        import re
+        processed_sql = sql
+
+
+        table_mappings = {}
+
+
+        if current_layer == 'staging':
+            table_mappings.update({
+                'account_history': 'raw.account_history',
+                'twitter_user_history': 'raw.twitter_user_history',
+                'organic_tweet_report': 'raw.organic_tweet_report',
+                'tweet': 'raw.tweet',
+                'facebook_pages_post_history': 'raw.facebook_pages_post_history',
+                'facebook_pages_page_data': 'raw.facebook_pages_page_data',
+                'facebook_pages_lifetime_post_metrics_total_data': 'raw.facebook_pages_lifetime_post_metrics_total_data',
+                'instagram_business_media_history': 'raw.instagram_business_media_history',
+                'instagram_business_user_history': 'raw.instagram_business_user_history',
+                'instagram_business_media_insights_data': 'raw.instagram_business_media_insights_data',
+                'linkedin_pages_organization': 'raw.linkedin_pages_organization',
+                'linkedin_pages_organization_ugc_post': 'raw.linkedin_pages_organization_ugc_post',
+                'linkedin_pages_post_content': 'raw.linkedin_pages_post_content',
+                'linkedin_pages_share_statistic_data': 'raw.linkedin_pages_share_statistic_data',
+                'youtube_video': 'raw.youtube_video',
+                'youtube_channel_basic': 'raw.youtube_channel_basic',
+                'youtube_channel_demographics': 'raw.youtube_channel_demographics_data',
+            })
+
+        elif current_layer == 'intermediate':
+            table_mappings.update({
+                'stg_social_media__twitter_organic_tweets': 'staging.stg_social_media__twitter_organic_tweets',
+                'stg_social_media__facebook_posts': 'staging.stg_social_media__facebook_posts',
+                'stg_social_media__instagram_posts': 'staging.stg_social_media__instagram_posts',
+                'stg_social_media__linkedin_posts': 'staging.stg_social_media__linkedin_posts',
+                'stg_social_media__youtube_videos': 'staging.stg_social_media__youtube_videos',
+            })
+
+        elif current_layer == 'marts':
+            table_mappings.update({
+                'social_media_reporting__facebook_posts_reporting': 'intermediate.social_media_reporting__facebook_posts_reporting',
+                'social_media_reporting__instagram_posts_reporting': 'intermediate.social_media_reporting__instagram_posts_reporting',
+                'social_media_reporting__linkedin_posts_reporting': 'intermediate.social_media_reporting__linkedin_posts_reporting',
+                'social_media_reporting__twitter_posts_reporting': 'intermediate.social_media_reporting__twitter_posts_reporting',
+                'social_media_reporting__youtube_videos_reporting': 'intermediate.social_media_reporting__youtube_videos_reporting',
+            })
+
+        for table_name, schema_table in table_mappings.items():
+            processed_sql = re.sub(r'\bfrom\s+' + re.escape(table_name) + r'\b', f'from {schema_table}', processed_sql, flags=re.IGNORECASE)
+            processed_sql = re.sub(r'\bjoin\s+' + re.escape(table_name) + r'\b', f'join {schema_table}', processed_sql, flags=re.IGNORECASE)
+
+        return processed_sql
+
+    def _execute_layer(self, layer_name: str) -> bool:
+        """Execute all tables in the specified layer"""
+        layer_config = self.config['layers'][layer_name]
+        tables = layer_config.get('tables', [])
+
+
+        execution_order = self.config.get('execution_order', {}).get(layer_name, tables)
+
+        logger.info(f"\n=== Executing {layer_name.upper()} Layer ===")
+        logger.info(f"Description: {layer_config.get('description', '')}")
+
+        success_count = 0
+        total_count = len(execution_order)
+
+
+### event 11
+
+## 命令原文
+
+sed -n '1,220p' social_media_reporting_start.yaml
+
+## agent 实际看到的执行结果
+
+account_history:
+  id: VARCHAR
+  updated_at: TIMESTAMP
+  _fivetran_synced: TIMESTAMP
+  approval_status: VARCHAR
+  business_id: VARCHAR
+  business_name: VARCHAR
+  created_at: TIMESTAMP
+  deleted: BOOLEAN
+  industry_type: VARCHAR
+  name: VARCHAR
+  salt: VARCHAR
+  timezone: VARCHAR
+  timezone_switch_at: TIMESTAMP
+facebook_pages_daily_page_metrics:
+  date: TIMESTAMP
+  page_id: BIGINT
+  _fivetran_synced: TIMESTAMP
+  page_actions_post_reactions_anger_total: BIGINT
+  page_actions_post_reactions_haha_total: BIGINT
+  page_actions_post_reactions_like_total: BIGINT
+  page_actions_post_reactions_love_total: BIGINT
+  page_actions_post_reactions_sorry_total: BIGINT
+  page_actions_post_reactions_total: VARCHAR
+  page_actions_post_reactions_wow_total: BIGINT
+  page_fan_adds: BIGINT
+  page_fan_removes: BIGINT
+  page_fans: BIGINT
+  page_impressions: BIGINT
+  page_impressions_nonviral: BIGINT
+  page_impressions_organic: BIGINT
+  page_impressions_paid: BIGINT
+  page_impressions_viral: BIGINT
+  page_negative_feedback: BIGINT
+  page_places_checkin_total: BIGINT
+  page_post_engagements: BIGINT
+  page_posts_impressions: BIGINT
+  page_posts_impressions_nonviral: BIGINT
+  page_posts_impressions_organic: BIGINT
+  page_posts_impressions_paid: BIGINT
+  page_posts_impressions_viral: BIGINT
+  page_total_actions: BIGINT
+  page_video_complete_views_30_s: BIGINT
+  page_video_complete_views_30_s_autoplayed: BIGINT
+  page_video_complete_views_30_s_click_to_play: BIGINT
+  page_video_complete_views_30_s_organic: BIGINT
+  page_video_complete_views_30_s_paid: BIGINT
+  page_video_complete_views_30_s_repeat_views: BIGINT
+  page_video_repeat_views: BIGINT
+  page_video_view_time: BIGINT
+  page_video_views: BIGINT
+  page_video_views_10_s: BIGINT
+  page_video_views_10_s_autoplayed: BIGINT
+  page_video_views_10_s_click_to_play: BIGINT
+  page_video_views_10_s_organic: BIGINT
+  page_video_views_10_s_paid: BIGINT
+  page_video_views_10_s_repeat: BIGINT
+  page_video_views_autoplayed: BIGINT
+  page_video_views_click_to_play: BIGINT
+  page_video_views_organic: BIGINT
+  page_video_views_paid: BIGINT
+  page_views_total: BIGINT
+  page_fans_online_per_day: BIGINT
+facebook_pages_lifetime_post_metrics:
+  date: TIMESTAMP
+  post_id: VARCHAR
+  _fivetran_synced: TIMESTAMP
+  post_clicks: BIGINT
+  post_engaged_fan: BIGINT
+  post_engaged_users: BIGINT
+  post_impressions: BIGINT
+  post_impressions_fan: BIGINT
+  post_impressions_nonviral: BIGINT
+  post_impressions_organic: BIGINT
+  post_impressions_paid: BIGINT
+  post_impressions_viral: BIGINT
+  post_negative_feedback: BIGINT
+  post_reactions_anger_total: BIGINT
+  post_reactions_haha_total: BIGINT
+  post_reactions_like_total: BIGINT
+  post_reactions_love_total: BIGINT
+  post_reactions_sorry_total: BIGINT
+  post_reactions_wow_total: BIGINT
+  post_video_avg_time_watched: BIGINT
+  post_video_complete_views_30_s_autoplayed: BIGINT
+  post_video_complete_views_30_s_clicked_to_play: BIGINT
+  post_video_complete_views_30_s_organic: BIGINT
+  post_video_complete_views_30_s_paid: BIGINT
+  post_video_complete_views_organic: BIGINT
+  post_video_complete_views_paid: BIGINT
+  post_video_view_time: BIGINT
+  post_video_view_time_organic: BIGINT
+  post_video_views: BIGINT
+  post_video_views_10_s: BIGINT
+  post_video_views_10_s_autoplayed: BIGINT
+  post_video_views_10_s_clicked_to_play: BIGINT
+  post_video_views_10_s_organic: BIGINT
+  post_video_views_10_s_paid: BIGINT
+  post_video_views_10_s_sound_on: BIGINT
+  post_video_views_autoplayed: BIGINT
+  post_video_views_clicked_to_play: BIGINT
+  post_video_views_organic: BIGINT
+  post_video_views_paid: BIGINT
+  post_video_views_sound_on: BIGINT
+  post_video_length: BIGINT
+  post_video_views_15_s: BIGINT
+facebook_pages_page_data:
+  id: BIGINT
+  _fivetran_deleted: BOOLEAN
+  _fivetran_synced: TIMESTAMP
+  affiliation: VARCHAR
+  app_id: VARCHAR
+  artists_we_like: VARCHAR
+  attire: VARCHAR
+  awards: VARCHAR
+  band_interests: VARCHAR
+  band_members: VARCHAR
+  bio: VARCHAR
+  birthday: VARCHAR
+  booking_agent: VARCHAR
+  built: VARCHAR
+  can_checkin: BOOLEAN
+  can_post: BOOLEAN
+  category: VARCHAR
+  category_list: VARCHAR
+  checkins: DOUBLE
+  company_overview: VARCHAR
+  culinary_team: VARCHAR
+  current_location: VARCHAR
+  description: VARCHAR
+  directed_by: VARCHAR
+  display_subtext: VARCHAR
+  emails: VARCHAR
+  fan_count: DOUBLE
+  features: VARCHAR
+  food_styles: VARCHAR
+  founded: VARCHAR
+  general_info: VARCHAR
+  general_manager: VARCHAR
+  genre: VARCHAR
+  global_brand_page_name: VARCHAR
+  has_added_app: VARCHAR
+  has_whatsapp_number: VARCHAR
+  hometown: VARCHAR
+  impressum: VARCHAR
+  influences: VARCHAR
+  is_always_open: BOOLEAN
+  is_chain: VARCHAR
+  is_community_page: BOOLEAN
+  is_eligible_for_branded_content: BOOLEAN
+  is_messenger_bot_get_started_enabled: BOOLEAN
+  is_messenger_platform_bot: BOOLEAN
+  is_owned: BOOLEAN
+  is_permanently_closed: BOOLEAN
+  is_published: BOOLEAN
+  is_unclaimed: BOOLEAN
+  members: VARCHAR
+  mission: VARCHAR
+  mpg: VARCHAR
+  name: VARCHAR
+  network: VARCHAR
+  new_like_count: VARCHAR
+  overall_star_rating: VARCHAR
+  personal_info: VARCHAR
+  personal_interests: VARCHAR
+  pharma_safety_info: VARCHAR
+  phone: VARCHAR
+  place_type: VARCHAR
+  plot_outline: VARCHAR
+  press_contact: VARCHAR
+  price_range: VARCHAR
+  produced_by: VARCHAR
+  products: VARCHAR
+  promotion_eligible: BOOLEAN
+  promotion_ineligible_reason: VARCHAR
+  public_transit: VARCHAR
+  rating_count: VARCHAR
+  record_label: VARCHAR
+  release_date: VARCHAR
+  schedule: VARCHAR
+  screenplay_by: VARCHAR
+  season: VARCHAR
+  single_line_address: VARCHAR
+  starring: VARCHAR
+  store_number: VARCHAR
+  studio: VARCHAR
+  talking_about_count: DOUBLE
+  username: VARCHAR
+  website: VARCHAR
+  were_here_count: DOUBLE
+  whatsapp_number: VARCHAR
+  written_by: VARCHAR
+  has_transitioned_to_new_page_experience: BOOLEAN
+  about: VARCHAR
+  website_url: VARCHAR
+  created_time: TIMESTAMP
+facebook_pages_post_history:
+  id: VARCHAR
+  updated_time: TIMESTAMP
+  _fivetran_synced: TIMESTAMP
+  created_time: TIMESTAMP
+  page_id: BIGINT
+  status_type: VARCHAR
+  message: VARCHAR
+  share_count: BIGINT
+  is_published: BOOLEAN
+  privacy_value: VARCHAR
+  is_hidden: BOOLEAN
+  is_eligible_for_promotion: BOOLEAN
+  is_instagram_eligible: BOOLEAN
+instagram_business_media_history:
+  _fivetran_id: VARCHAR
+  _fivetran_synced: TIMESTAMP
+  id: BIGINT
+  ig_id: BIGINT
+  user_id: BIGINT
+  username: VARCHAR
+  media_type: VARCHAR
+  caption: VARCHAR
+  created_time: TIMESTAMP
+
+
+### event 13
+
+## 命令原文
+
+wc -l docs/data_contract.yaml && sed -n '1,240p' docs/data_contract.yaml
+
+## agent 实际看到的执行结果
+
+987 docs/data_contract.yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Social Media Reporting source system. This YAML is the single source of truth describing what transformations must occur from raw to staging to intermediate and marts. It defines table purposes, validation actions, and business logic in natural language."
+  author: "Data Engineering Team"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw social media data into clean, validated staging tables that are standardized across platforms, with data quality steps applied before business modeling."
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as casing, whitespace trimming, protocol normalization for URLs, and standardized date/timezone formats."
+      examples: ["LOWER(TRIM(screen_name))", "normalize phone numbers", "ensure https:// protocol for URL fields", "standardize valid IANA timezones when pattern matches"]
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["screen_name contains disallowed characters and cannot be corrected", "invalid primary keys", "timezone not in allowed list AND malformed format", "phone numbers with impossible format"]
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful downstream."
+      examples: ["optional URL fails regex but record otherwise usable", "emails array malformed for page metadata", "non-essential descriptive fields corrupted"]
+
+  tables:
+    - name: stg_social_media__account_history
+      description: "Standardized account metadata with validated timezone field for downstream joins and reporting."
+      source_table: raw.account_history
+      columns:
+        - name: id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: updated_at
+          data_type: TIMESTAMP
+        - name: approval_status
+          data_type: VARCHAR
+        - name: business_id
+          data_type: VARCHAR
+        - name: business_name
+          data_type: VARCHAR
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: deleted
+          data_type: BOOLEAN
+        - name: industry_type
+          data_type: VARCHAR
+        - name: name
+          data_type: VARCHAR
+        - name: salt
+          data_type: VARCHAR
+        - name: timezone
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "timezone ~ '^[A-Z][a-z]+/[A-Z][a-z_]+$'"
+              on_failure: delete_row
+        - name: timezone_switch_at
+          data_type: TIMESTAMP
+
+    - name: stg_social_media__twitter_user_history
+      description: "Cleaned and standardized Twitter user profile attributes for safe downstream joins and reporting."
+      source_table: raw.twitter_user_history
+      columns:
+        - name: id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: _fivetran_synced
+          data_type: TIMESTAMP
+        - name: screen_name
+          data_type: VARCHAR
+          constraints: [not_null]
+          description: >
+            Best-effort cleaning to keep only [A-Za-z0-9_]; rows with NULL/blank or harmful characters are removed.
+          validation_rules:
+            - rule: "screen_name = CASE WHEN screen_name IS NULL OR TRIM(screen_name) = '' THEN NULL ELSE REGEXP_REPLACE(screen_name, '[^A-Za-z0-9_]', '') END"
+              on_failure: correct
+            - rule: "screen_name IS NOT NULL AND NOT (screen_name RLIKE '[!@#$%^&*()+=<>?}{|,]')"
+              on_failure: delete_row
+        - name: url
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "url IS NULL OR url RLIKE '^https?://[A-Za-z0-9.-]+\\.[A-Za-z]{2,}(/.*)?'"
+              on_failure: nullify_field
+            - rule: "url IS NULL OR (url RLIKE '^(https?://)?[A-Za-z0-9.-]+\\.[A-Za-z]{2,}(/.*)?' AND url RLIKE '^https?://')"
+              on_failure: correct
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: followers_count
+          data_type: BIGINT
+        - name: following_count
+          data_type: BIGINT
+          description: "Renamed from friends_count."
+        - name: listed_count
+          data_type: BIGINT
+        - name: favourites_count
+          data_type: BIGINT
+        - name: statuses_count
+          data_type: BIGINT
+        - name: verified
+          data_type: BOOLEAN
+        - name: protected
+          data_type: BOOLEAN
+          description: "Derived from protected_user: TRUE if protected_user=TRUE else FALSE."
+        - name: default_profile
+          data_type: BOOLEAN
+        - name: default_profile_image
+          data_type: BOOLEAN
+        - name: location
+          data_type: VARCHAR
+        - name: description
+          data_type: VARCHAR
+        - name: time_zone
+          data_type: VARCHAR
+        - name: lang
+          data_type: VARCHAR
+
+    - name: stg_social_media__twitter_organic_tweets
+      description: "Tweet-level organic performance records enriched with tweet text and user attributes; recent 2-year window."
+      source_table: raw.organic_tweet_report
+      notes:
+        - "Rows restricted to last 2 years via: date >= CURRENT_DATE - INTERVAL '2 years'."
+        - "Tweet text joined from raw.tweet.full_text; user attributes joined from raw.twitter_user_history."
+        - "All metrics default to 0 when NULL."
+        - "engagement_rate guarded against division by zero."
+      columns:
+        - name: account_id
+          data_type: VARCHAR
+        - name: date
+          data_type: DATE
+        - name: organic_tweet_id
+          data_type: VARCHAR
+          description: "CAST(o.organic_tweet_id AS VARCHAR)."
+        - name: placement
+          data_type: VARCHAR
+        - name: _fivetran_synced
+          data_type: TIMESTAMP
+        - name: app_clicks
+          data_type: BIGINT
+        - name: card_engagements
+          data_type: BIGINT
+        - name: carousel_swipes
+          data_type: BIGINT
+        - name: clicks
+          data_type: BIGINT
+        - name: engagements
+          data_type: BIGINT
+        - name: follows
+          data_type: BIGINT
+        - name: impressions
+          data_type: BIGINT
+        - name: likes
+          data_type: BIGINT
+        - name: poll_card_vote
+          data_type: BIGINT
+        - name: qualified_impressions
+          data_type: BIGINT
+        - name: replies
+          data_type: BIGINT
+        - name: retweets
+          data_type: BIGINT
+        - name: tweets_send
+          data_type: BIGINT
+        - name: unfollows
+          data_type: BIGINT
+        - name: url_clicks
+          data_type: BIGINT
+        - name: video_15_s_views
+          data_type: BIGINT
+        - name: video_3_s_100_pct_views
+          data_type: BIGINT
+        - name: video_6_s_views
+          data_type: BIGINT
+        - name: video_content_starts
+          data_type: BIGINT
+        - name: video_cta_clicks
+          data_type: BIGINT
+        - name: video_total_views
+          data_type: BIGINT
+        - name: video_views_100
+          data_type: BIGINT
+        - name: video_views_25
+          data_type: BIGINT
+        - name: video_views_50
+          data_type: BIGINT
+        - name: video_views_75
+          data_type: BIGINT
+        - name: tweet_text
+          data_type: VARCHAR
+          description: "From raw.tweet.full_text."
+        - name: screen_name
+          data_type: VARCHAR
+          description: "From raw.twitter_user_history.screen_name."
+        - name: user_name
+          data_type: VARCHAR
+          description: "From raw.twitter_user_history.name."
+        - name: lang
+          data_type: VARCHAR
+          description: "From raw.tweet.lang."
+        - name: tweet_created_at
+          data_type: TIMESTAMP
+          description: "From raw.tweet.created_at."
+        - name: engagement_rate
+          data_type: DOUBLE
+          description: "CASE WHEN impressions > 0 THEN engagements / impressions ELSE 0.0 END."
+
+
+    - name: stg_social_media__facebook_posts
+      description: "Published, visible Facebook posts joined to page info, standardized fields for analysis; recent 2-year window."
+      source_table: 
+        - raw.facebook_pages_post_history
+        - raw.facebook_pages_page_data
+      columns:
+        - name: id
+          data_type: VARCHAR
+        - name: created_timestamp
+          data_type: TIMESTAMP
+          description: "From created_time."
+        - name: post_id
+          data_type: VARCHAR
+          description: "CAST(id)."
+        - name: post_message
+          data_type: VARCHAR
+          description: "COALESCE(message, '')."
+        - name: page_id
+          data_type: VARCHAR
+          description: "CAST(page_id)."
+        - name: page_name
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "page_name IS NOT NULL AND page_name <> ''"
+              on_failure: correct  
+          description: "Defaults to 'Unknown Page' when page name is missing."
+        - name: page_username
+          data_type: VARCHAR
+        - name: page_category
+          data_type: VARCHAR
+        - name: page_followers
+          data_type: BIGINT
+        - name: shares
+          data_type: BIGINT
+        - name: impressions
+          data_type: BIGINT
+
+
+

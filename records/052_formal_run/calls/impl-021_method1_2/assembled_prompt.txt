@@ -1,0 +1,1594 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete, unambiguous data pipeline contract for Klaviyo source. Serves as the single source of truth for staging and modeling layers."
+  author: "Data Engineering Team"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw data into clean, validated, and standardized staging tables before applying any business aggregations."
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, phone normalization, and timezone standardization."
+      examples: ["LOWER(TRIM(email))", "standardize timezone strings", "normalize phone numbers to E.164-like form", "strip non-numeric chars before numeric casts"]
+    delete_row:
+      description: "Remove the entire row when records contain severe data quality issues that make them unusable downstream (e.g., invalid critical identifiers or irrecoverably invalid required fields)."
+      examples: ["Invalid primary keys", "Irrecoverably invalid required emails when designated critical", "Impossible timestamps in the future for created_at"]
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and the record remains analytically useful."
+      examples: ["Malformed optional URLs", "Negative prices", "Overlong optional strings"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform staging data into business-ready intermediate and marts models with explicit grains and strict layer dependencies."
+  design_principles:
+    staging_rules: "Staging models may only reference raw.* sources."
+    intermediate_rules: "Intermediate models may only reference staging.* models."
+    marts_rules: "Marts models may only reference intermediate.* models."
+    dependency_policy: "No cross-layer or same-layer dependencies."
+    grain_policy: "Each model declares a single, unambiguous grain enforced by unique tests or clear keys."
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-021/agent/dacomp-de-impl-021/klaviyo_start.duckdb
+{"table": "main.campaign", "columns": ["ID", "FROM_NAME", "STATUS_ID", "CAMPAIGN_TYPE", "STATUS_LABEL", "FROM_EMAIL", "SUBJECT", "NAME", "STATUS", "CREATED", "UPDATED", "SEND_TIME", "SENT_AT", "_FIVETRAN_DELETED", "EMAIL_TEMPLATE_ID", "_FIVETRAN_SYNCED", "ARCHIVED", "SCHEDULED", "column18", "column19", "column20", "column21", "column22", "column23", "column24", "column25", "column26", "column27", "column28", "column29", "column30", "column31", "column32", "column33", "column34"]}
+{"table": "main.event", "columns": ["ID", "PERSON_ID", "CAMPAIGN_ID", "FLOW_ID", "FLOW_MESSAGE_ID", "UUID", "DATETIME", "TIMESTAMP", "_FIVETRAN_DELETED", "METRIC_ID", "TYPE", "_VARIATION", "PROPERTY_VALUE", "PROPERTY_SOURCE_NAME", "PROPERTY_EXTRA", "PROPERTY_SHIPPING_RATE", "PROPERTY_ITEMS", "PROPERTY_TAGS", "PROPERTY_ITEM_COUNT", "PROPERTY_COLLECTIONS", "_FIVETRAN_SYNCED", "PROPERTY_CURRENCY_CODE", "PROPERTY_PRODUCT_ID", "PROPERTY_QUANTITY", "PROPERTY_NAME", "PROPERTY_VARIANT_OPTION_TITLE", "PROPERTY_SKU", "PROPERTY_VARIANT_NAME", "PROPERTY_VENDOR", "PROPERTY_EVENT_ID", "PROPERTY_TOTAL_DISCOUNTS", "PROPERTY_ATTRIBUTION", "PROPERTY_DISCOUNT_CODES", "PROPERTY_FULFILLMENT_HOURS", "PROPERTY_FULFILLMENT_STATUS", "PROPERTY_SUBJECT", "PROPERTY_TITLE", "PROPERTY_MESSAGE_INTERACTION", "PROPERTY_URL", "PROPERTY_SHIPMENT_TYPE", "PROPERTY_COURIER_NAME", "PROPERTY_CURRENT_STATUS", "PROPERTY_TRACKING_SHIP_DATE", "PROPERTY_TRACKING_POSTAL_CODE", "PROPERTY_SHIPMENT_PACKAGE_COUNT", "PROPERTY_CAMPAIGN_NAME", "PROPERTY_COHORT_MESSAGE_SEND_COHORT", "PROPERTY_EMAIL_DOMAIN", "PROPERTY_BOUNCE_TYPE", "PROPERTY_CLIENT_TYPE", "PROPERTY_CLIENT_OS", "PROPERTY_CLIENT_NAME", "PROPERTY_CLIENT_OS_FAMILY", "PROPERTY_CLIENT_CANONICAL", "PROPERTY_PAGE", "PROPERTY_IS_SESSION_ACTIVITY", "PROPERTY_OS", "PROPERTY_SESSION_END", "PROPERTY_BROWSER", "PROPERTY_LIST", "PROPERTY_COMPARE_AT_PRICE", "PROPERTY_PRICE", "PROPERTY_IMAGE_URL", "PROPERTY_BRAND", "PROPERTY_CATEGORIES", "PROPERTY_VARIANT_OPTION_SIZE", "PROPERTY_ATTRIBUTE_WORKOUT", "PROPERTY_ATTRIBUTE_AGE", "PROPERTY_ATTRIBUTE_FITNESS_GOAL", "PROPERTY_ATTRIBUTE_BREAKFAST", "PROPERTY_VARIANT_OPTION_TYPE", "PROPERTY_COHORT_VARIATION_SEND_COHORT", "PROPERTY_METHOD", "PROPERTY_TO_NUMBER", "PROPERTY_MESSAGE_TYPE", "PROPERTY_FROM_NUMBER", "PROPERTY_MESSAGE_FORMAT", "PROPERTY_MESSAGE_NAME", "PROPERTY_CARRIER_DELIVERY_STATUS", "PROPERTY_FAILURE_TYPE", "PROPERTY_FAILURE_SOURCE", "PROPERTY_MESSAGE_BODY", "PROPERTY_EMAIL", "PROPERTY_ATTRIBUTE_KIT", "PROPERTY_VENDOR_ERROR_CODE", "PROPERTY_ORDR_DETAILS", "PROPERTY_DATE_TO_SEND_GIFT", "PROPERTY_RECIPIENT_NAME", "PROPERTY_ATTRIBUTE_FACEBOOK_ORDER_RETAILER_ID", "PROPERTY_SENDER_S_NAME", "PROPERTY_ATTRIBUTE_KITID", "PROPERTY_CONVERSATION_ID", "PROPERTY_CONVERSATION_LINK", "PROPERTY_CONVERSATION_CHANNEL", "PROPERTY_RATING", "PROPERTY_SCORE", "PROPERTY_FROM_PHONE_REGION", "PROPERTY_SHIPMENT_CARRIER", "PROPERTY_SHIPMENT_STATUS", "PROPERTY_TO_PHONE_REGION", "column100", "column101", "column102", "column103", "column104", "column105", "column106", "column107", "column108", "column109", "column110", "column111", "column112", "column113", "column114", "column115", "column116", "column117", "column118", "column119", "column120", "column121", "column122", "column123", "column124", "column125", "column126", "column127", "column128", "column129", "column130", "column131", "column132", "column133", "column134", "column135", "column136", "column137", "column138", "column139", "column140", "column141", "column142", "column143", "column144", "column145", "column146", "column147", "column148", "column149", "column150", "column151", "column152", "column153", "column154", "column155", "column156", "column157", "column158", "column159", "column160", "column161", "column162", "column163", "column164", "column165", "column166", "column167", "column168", "column169", "column170", "column171", "column172", "column173", "column174", "column175", "column176", "column177", "column178", "column179", "column180", "column181", "column182", "column183", "column184", "column185", "column186", "column187", "column188", "column189", "column190", "column191", "column192", "column193", "column194", "column195", "column196", "column197", "column198"]}
+{"table": "main.flow", "columns": ["id", "name", "status", "created", "updated", "customer_filter", "_fivetran_deleted", "_fivetran_synced", "archived", "trigger_type"]}
+{"table": "main.metric", "columns": ["id", "name", "integration_id", "created", "updated", "_fivetran_deleted", "_fivetran_synced", "integration_category", "integration_name"]}
+{"table": "main.person", "columns": ["ID", "UPDATED", "CREATED", "_FIVETRAN_DELETED", "FIRST_NAME", "LAST_NAME", "ADDRESS_1", "ADDRESS_2", "TITLE", "TIMEZONE", "ORGANIZATION", "REGION", "LONGITUDE", "LATITUDE", "PHONE_NUMBER", "COUNTRY", "ZIP", "CITY", "EMAIL", "CUSTOM_OBJECT", "CUSTOM_EMAIL", "CUSTOM_ACCEPTS_MARKETING", "CUSTOM_SHOPIFY_TAGS", "_FIVETRAN_SYNCED", "CUSTOM_CONSENT_FORM_ID", "CUSTOM_SOURCE", "CUSTOM_CONSENT_METHOD", "CUSTOM_CONSENT", "CUSTOM_GIFT_GIVER_NAME", "CUSTOM_STATE", "CUSTOM_FLOW", "CUSTOM_GIFT_RECIPIENT_NAME", "CUSTOM_LAST_SIGN_IN", "CUSTOM_CONSENT_FORM_VERSION", "CUSTOM_CONSENT_TIMESTAMP", "CUSTOM_MAIL_CHIMP_RATING", "CUSTOM_GIFT_RECIPIENT_EMAIL", "CUSTOM_GIFT_OPTIONS", "CUSTOM_ADDRESS", "CUSTOM_SUBSCRIPTION_EXPIRATION", "CUSTOM_CITY", "CUSTOM_ADDRESS_LINE_2", "CUSTOM_ZIPCODE", "CUSTOM_EXPECTED_DATE_OF_NEXT_ORDER", "CUSTOM_SMS_ATTENTIVE_SIGNUP", "CUSTOM_PHONE", "CUSTOM_AFTERPAY_ORDER", "CUSTOM_PHONE_NUMBER_REGION", "CUSTOM_NAME", "CUSTOM_REFERRER_NAME", "CUSTOM_REFERRER_EMAIL", "CUSTOM_BIRTHDAY", "CUSTOM_FIRST_PURCHASE_DATE_", "CUSTOM_UNENGAGED", "CUSTOM_LANDING_PAGE_TAG", "CUSTOM_FITNESS_GOAL", "CUSTOM_AGE", "CUSTOM_WORKOUT", "CUSTOM_QUIZ", "CUSTOM_BREAKFAST", "CUSTOM_QUIZ_DATA", "CUSTOM_RAF_SUBSCRIBE", "CUSTOM_SUPPRESS", "CUSTOM_SMS_CONSENT", "CUSTOM_GIFT_OPTION_DREAMBELT", "CUSTOM_GIFT_OPTION_STARTER", "CUSTOM_GIFT_OPTION_MACHINE", "CUSTOM_LANDINGPAGE_TAG", "LAST_EVENT_DATE", "column069", "column070", "column071", "column072", "column073", "column074", "column075", "column076", "column077", "column078", "column079", "column080", "column081", "column082", "column083", "column084", "column085", "column086", "column087", "column088", "column089", "column090", "column091", "column092", "column093", "column094", "column095", "column096", "column097", "column098", "column099", "column100", "column101", "column102", "column103", "column104", "column105", "column106", "column107", "column108", "column109", "column110", "column111", "column112", "column113", "column114", "column115", "column116", "column117", "column118", "column119", "column120", "column121", "column122", "column123", "column124", "column125", "column126", "column127", "column128", "column129", "column130", "column131", "column132", "column133", "column134", "column135", "column136"]}
+{"table": "raw.campaign", "columns": ["ID", "FROM_NAME", "STATUS_ID", "CAMPAIGN_TYPE", "STATUS_LABEL", "FROM_EMAIL", "SUBJECT", "NAME", "STATUS", "CREATED", "UPDATED", "SEND_TIME", "SENT_AT", "_FIVETRAN_DELETED", "EMAIL_TEMPLATE_ID", "_FIVETRAN_SYNCED", "ARCHIVED", "SCHEDULED"]}
+{"table": "raw.event", "columns": ["ID", "PERSON_ID", "CAMPAIGN_ID", "FLOW_ID", "FLOW_MESSAGE_ID", "UUID", "DATETIME", "TIMESTAMP", "_FIVETRAN_DELETED", "METRIC_ID", "TYPE", "_VARIATION", "PROPERTY_VALUE", "PROPERTY_SOURCE_NAME", "PROPERTY_EXTRA", "PROPERTY_SHIPPING_RATE", "PROPERTY_ITEMS", "PROPERTY_TAGS", "PROPERTY_ITEM_COUNT", "PROPERTY_COLLECTIONS", "_FIVETRAN_SYNCED", "PROPERTY_CURRENCY_CODE", "PROPERTY_PRODUCT_ID", "PROPERTY_QUANTITY", "PROPERTY_NAME", "PROPERTY_VARIANT_OPTION_TITLE", "PROPERTY_SKU", "PROPERTY_VARIANT_NAME", "PROPERTY_VENDOR", "PROPERTY_EVENT_ID", "PROPERTY_TOTAL_DISCOUNTS", "PROPERTY_ATTRIBUTION", "PROPERTY_DISCOUNT_CODES", "PROPERTY_FULFILLMENT_HOURS", "PROPERTY_FULFILLMENT_STATUS", "PROPERTY_SUBJECT", "PROPERTY_TITLE", "PROPERTY_MESSAGE_INTERACTION", "PROPERTY_URL", "PROPERTY_SHIPMENT_TYPE", "PROPERTY_COURIER_NAME", "PROPERTY_CURRENT_STATUS", "PROPERTY_TRACKING_SHIP_DATE", "PROPERTY_TRACKING_POSTAL_CODE", "PROPERTY_SHIPMENT_PACKAGE_COUNT", "PROPERTY_CAMPAIGN_NAME", "PROPERTY_COHORT_MESSAGE_SEND_COHORT", "PROPERTY_EMAIL_DOMAIN", "PROPERTY_BOUNCE_TYPE", "PROPERTY_CLIENT_TYPE", "PROPERTY_CLIENT_OS", "PROPERTY_CLIENT_NAME", "PROPERTY_CLIENT_OS_FAMILY", "PROPERTY_CLIENT_CANONICAL", "PROPERTY_PAGE", "PROPERTY_IS_SESSION_ACTIVITY", "PROPERTY_OS", "PROPERTY_SESSION_END", "PROPERTY_BROWSER", "PROPERTY_LIST", "PROPERTY_COMPARE_AT_PRICE", "PROPERTY_PRICE", "PROPERTY_IMAGE_URL", "PROPERTY_BRAND", "PROPERTY_CATEGORIES", "PROPERTY_VARIANT_OPTION_SIZE", "PROPERTY_ATTRIBUTE_WORKOUT", "PROPERTY_ATTRIBUTE_AGE", "PROPERTY_ATTRIBUTE_FITNESS_GOAL", "PROPERTY_ATTRIBUTE_BREAKFAST", "PROPERTY_VARIANT_OPTION_TYPE", "PROPERTY_COHORT_VARIATION_SEND_COHORT", "PROPERTY_METHOD", "PROPERTY_TO_NUMBER", "PROPERTY_MESSAGE_TYPE", "PROPERTY_FROM_NUMBER", "PROPERTY_MESSAGE_FORMAT", "PROPERTY_MESSAGE_NAME", "PROPERTY_CARRIER_DELIVERY_STATUS", "PROPERTY_FAILURE_TYPE", "PROPERTY_FAILURE_SOURCE", "PROPERTY_MESSAGE_BODY", "PROPERTY_EMAIL", "PROPERTY_ATTRIBUTE_KIT", "PROPERTY_VENDOR_ERROR_CODE", "PROPERTY_ORDR_DETAILS", "PROPERTY_DATE_TO_SEND_GIFT", "PROPERTY_RECIPIENT_NAME", "PROPERTY_ATTRIBUTE_FACEBOOK_ORDER_RETAILER_ID", "PROPERTY_SENDER_S_NAME", "PROPERTY_ATTRIBUTE_KITID", "PROPERTY_CONVERSATION_ID", "PROPERTY_CONVERSATION_LINK", "PROPERTY_CONVERSATION_CHANNEL", "PROPERTY_RATING", "PROPERTY_SCORE", "PROPERTY_FROM_PHONE_REGION", "PROPERTY_SHIPMENT_CARRIER", "PROPERTY_SHIPMENT_STATUS", "PROPERTY_TO_PHONE_REGION"]}
+{"table": "raw.flow", "columns": ["ID", "NAME", "STATUS", "CREATED", "UPDATED", "CUSTOMER_FILTER", "_FIVETRAN_DELETED", "_FIVETRAN_SYNCED", "ARCHIVED", "TRIGGER_TYPE"]}
+{"table": "raw.metric", "columns": ["ID", "NAME", "INTEGRATION_ID", "CREATED", "UPDATED", "_FIVETRAN_DELETED", "_FIVETRAN_SYNCED", "INTEGRATION_CATEGORY", "INTEGRATION_NAME"]}
+{"table": "raw.person", "columns": ["ID", "UPDATED", "CREATED", "_FIVETRAN_DELETED", "FIRST_NAME", "LAST_NAME", "ADDRESS_1", "ADDRESS_2", "TITLE", "TIMEZONE", "ORGANIZATION", "REGION", "LONGITUDE", "LATITUDE", "PHONE_NUMBER", "COUNTRY", "ZIP", "CITY", "EMAIL", "CUSTOM_OBJECT", "CUSTOM_EMAIL", "CUSTOM_ACCEPTS_MARKETING", "CUSTOM_SHOPIFY_TAGS", "_FIVETRAN_SYNCED", "CUSTOM_CONSENT_FORM_ID", "CUSTOM_SOURCE", "CUSTOM_CONSENT_METHOD", "CUSTOM_CONSENT", "CUSTOM_GIFT_GIVER_NAME", "CUSTOM_STATE", "CUSTOM_FLOW", "CUSTOM_GIFT_RECIPIENT_NAME", "CUSTOM_LAST_SIGN_IN", "CUSTOM_CONSENT_FORM_VERSION", "CUSTOM_CONSENT_TIMESTAMP", "CUSTOM_MAIL_CHIMP_RATING", "CUSTOM_GIFT_RECIPIENT_EMAIL", "CUSTOM_GIFT_OPTIONS", "CUSTOM_ADDRESS", "CUSTOM_SUBSCRIPTION_EXPIRATION", "CUSTOM_CITY", "CUSTOM_ADDRESS_LINE_2", "CUSTOM_ZIPCODE", "CUSTOM_EXPECTED_DATE_OF_NEXT_ORDER", "CUSTOM_SMS_ATTENTIVE_SIGNUP", "CUSTOM_PHONE", "CUSTOM_AFTERPAY_ORDER", "CUSTOM_PHONE_NUMBER_REGION", "CUSTOM_NAME", "CUSTOM_REFERRER_NAME", "CUSTOM_REFERRER_EMAIL", "CUSTOM_BIRTHDAY", "CUSTOM_FIRST_PURCHASE_DATE_", "CUSTOM_UNENGAGED", "CUSTOM_LANDING_PAGE_TAG", "CUSTOM_FITNESS_GOAL", "CUSTOM_AGE", "CUSTOM_WORKOUT", "CUSTOM_QUIZ", "CUSTOM_BREAKFAST", "CUSTOM_QUIZ_DATA", "CUSTOM_RAF_SUBSCRIBE", "CUSTOM_SUPPRESS", "CUSTOM_SMS_CONSENT", "CUSTOM_GIFT_OPTION_DREAMBELT", "CUSTOM_GIFT_OPTION_STARTER", "CUSTOM_GIFT_OPTION_MACHINE", "CUSTOM_LANDINGPAGE_TAG", "LAST_EVENT_DATE"]}
+
+
+=== Relevant specification and documentation ===
+## stg_klaviyo__campaign
+
+    - name: stg_klaviyo__campaign
+      description: "Cleaned Klaviyo campaign records with standardized sender fields and timestamps."
+      source_table: raw.campaign
+      columns:
+        - name: campaign_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: campaign_type
+          data_type: VARCHAR
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: email_template_id
+          data_type: VARCHAR
+        - name: from_email
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "from_email IS NULL OR LOWER(TRIM(from_email)) RLIKE '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$'"
+              on_failure: delete_row
+            - rule: "from_email IS NULL OR from_email = LOWER(TRIM(from_email))"
+              on_failure: correct
+        - name: from_name
+          data_type: VARCHAR
+        - name: campaign_name
+          data_type: VARCHAR
+        - name: scheduled_to_send_at
+          data_type: TIMESTAMP
+        - name: sent_at
+          data_type: TIMESTAMP
+        - name: status
+          data_type: VARCHAR
+        - name: status_id
+          data_type: INTEGER
+        - name: subject
+          data_type: VARCHAR
+        - name: updated_at
+          data_type: TIMESTAMP
+        - name: is_archived
+          data_type: BOOLEAN
+        - name: scheduled_at
+          data_type: TIMESTAMP
+        - name: source_relation
+          data_type: VARCHAR
+          constraints: [not_null]
+
+
+
+## stg_klaviyo__event
+
+    - name: stg_klaviyo__event
+      description: "Cleaned event stream with derived numeric_value, normalized price fields, and standardized timestamps. Rows with an invalid property_email (when present) are dropped."
+      source_table: raw.event
+      columns:
+        - name: campaign_id
+          data_type: VARCHAR
+        - name: flow_id
+          data_type: VARCHAR
+        - name: variation_id
+          data_type: VARCHAR  # sourced from _variation in SQL
+        - name: flow_message_id
+          data_type: VARCHAR
+        - name: event_id
+          data_type: VARCHAR
+        - name: metric_id
+          data_type: VARCHAR
+        - name: person_id
+          data_type: VARCHAR
+        - name: type
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "type is stored in lowercase for consistency"
+              on_failure: correct
+        - name: uuid
+          data_type: VARCHAR
+        - name: numeric_value
+          data_type: DOUBLE
+          validation_rules:
+            - rule: "numeric_value derived by stripping non-numeric characters from property_value and casting to double"
+              on_failure: nullify_field
+        - name: event_attribution
+          data_type: VARCHAR
+        - name: occurred_at
+          data_type: TIMESTAMP
+        - name: occurred_on
+          data_type: DATE
+        - name: source_relation
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: property_price
+          data_type: DOUBLE
+          validation_rules:
+            - rule: "property_price is NULL or >= 0"
+              on_failure: nullify_field
+        - name: property_compare_at_price
+          data_type: DOUBLE
+          validation_rules:
+            - rule: "property_compare_at_price is NULL or >= 0"
+              on_failure: nullify_field
+
+
+
+## stg_klaviyo__person
+
+    - name: stg_klaviyo__person
+      description: "Cleaned person dimension with normalized phone numbers and standardized email/timezone."
+      source_table: raw.person
+      columns:
+        - name: person_id
+          data_type: VARCHAR
+        - name: address_1
+          data_type: VARCHAR
+        - name: address_2
+          data_type: VARCHAR
+        - name: city
+          data_type: VARCHAR
+        - name: country
+          data_type: VARCHAR
+        - name: zip
+          data_type: VARCHAR
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: email
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "email is NULL or matches RFC5322-like basic regex"
+              on_failure: delete_row
+            - rule: "when present and length(email) > 255 then nullify; otherwise lower-trim"
+              on_failure: nullify_field
+        - name: full_name
+          data_type: VARCHAR
+          description: Concatenation of first_name and last_name; may be NULL if both are missing
+        - name: latitude
+          data_type: DOUBLE
+        - name: longitude
+          data_type: DOUBLE
+        - name: organization
+          data_type: VARCHAR
+        - name: phone_number
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "phone_number is NULL or normalized by removing non-digits and prefixing with '+' (E.164-like)"
+              on_failure: correct
+        - name: region
+          data_type: VARCHAR
+        - name: timezone
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "timezone is lower-trimmed"
+              on_failure: correct
+          description: Stored as lower-trimmed string; no further IANA standardization applied
+        - name: title
+          data_type: VARCHAR
+        - name: updated_at
+          data_type: TIMESTAMP
+        - name: last_event_date
+          data_type: TIMESTAMP
+        - name: source_relation
+          data_type: VARCHAR
+          constraints: [not_null]
+
+# --------------------------------------------------------------------------- #
+# PHASE 2: Defines the business logic from staging tables to analytical models. #
+# --------------------------------------------------------------------------- #
+
+
+## int_klaviyo__person_campaign_flow
+
+    - name: int_klaviyo__person_campaign_flow
+      description: Person-level campaign/flow touch metrics resolved via event_attribution; aggregated per person/touch/variation/source_relation
+      grain: One row per person_id, last_touch_campaign_id, last_touch_flow_id, variation_id, source_relation
+      source_models:
+      - staging.stg_klaviyo__event
+      business_logic: '- Start from staging.stg_klaviyo__event and process within each source_relation. - Derive each event’s direct touch: - Use campaign_id as touch_id when present; otherwise use flow_id. - touch_type is "campaign" when campaign_id is present, else "flow" when flow_id is present; if both are present, treat it as "campaign". - For events where event_attribution is present and no direct touch_id: - Remove all "$" characters from event_attribution; parse as JSON to extract the attributed event id from relationships.attributed-event.data.id, falling back to attributed_event_id. - Remove surrounding quotes; treat an empty string as null. - Within the same source_relation, find the event with that id and take its touch_id and touch_type as inherited. - Resolve per-event touch: - Use the inherited touch_id and touch_type when available; otherwise use the direct values. - last_touch_campaign_id is the resolved touch_id when the resolved touch_type is "campaign"; otherwise null. - last_touch_flow_id is the resolved touch_id when the resolved touch_type is "flow"; otherwise null. - Aggregate by person_id, last_touch_campaign_id, last_touch_flow_id, variation_id, source_relation: - first_event_at is the earliest occurred_at; last_event_at is the latest; null timestamps are ignored, and if all are null the result is null. - Revenue metrics: for each listed event type, sum numeric_value for matching events, treating missing numeric_value as 0; type matching is case-insensitive; the numeric_value sign is preserved. - Engagement metrics: for each listed event type, count matching events; type matching is case-insensitive; non-matching or null types contribute 0. - Output one row per group with resolved touch identifiers, timestamps, revenue sums, and counts.'
+      columns:
+      - name: person_id
+        data_type: VARCHAR
+        description: Unique person identifier used for grouping
+        tests:
+        - not_null
+      - name: last_touch_campaign_id
+        data_type: VARCHAR
+        description: Resolved campaign touch identifier when the resolved touch type is campaign; otherwise NULL; for direct events, campaign overrides flow if both exist
+      - name: last_touch_flow_id
+        data_type: VARCHAR
+        description: Resolved flow touch identifier when the resolved touch type is flow; otherwise NULL
+      - name: variation_id
+        data_type: VARCHAR
+        description: Event variation identifier used in grouping; may be NULL
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source dataset key that scopes attribution and grouping
+      - name: first_event_at
+        data_type: TIMESTAMP
+        description: Earliest occurred_at in the group; NULL if all timestamps are NULL
+      - name: last_event_at
+        data_type: TIMESTAMP
+        description: Latest occurred_at in the group; NULL if all timestamps are NULL
+      - name: sum_revenue_refunded_order
+        data_type: DOUBLE
+        description: Total numeric_value for events where type equals 'refunded order' (case-insensitive); NULL values are treated as 0; value sign is preserved
+      - name: sum_revenue_placed_order
+        data_type: DOUBLE
+        description: Total numeric_value for events where type equals 'placed order' (case-insensitive); NULL values are treated as 0; value sign is preserved
+      - name: sum_revenue_ordered_product
+        data_type: DOUBLE
+        description: Total numeric_value for events where type equals 'ordered product' (case-insensitive); NULL values are treated as 0; value sign is preserved
+      - name: sum_revenue_checkout_started
+        data_type: DOUBLE
+        description: Total numeric_value for events where type equals 'checkout started' (case-insensitive); NULL values are treated as 0; value sign is preserved
+      - name: sum_revenue_cancelled_order
+        data_type: DOUBLE
+        description: Total numeric_value for events where type equals 'cancelled order' (case-insensitive); NULL values are treated as 0; value sign is preserved
+      - name: count_active_on_site
+        data_type: HUGEINT
+        description: Number of events where type equals 'active on site' (case-insensitive) in the group
+      - name: count_viewed_product
+        data_type: HUGEINT
+        description: Number of events where type equals 'viewed product' (case-insensitive) in the group
+      - name: count_ordered_product
+        data_type: HUGEINT
+        description: Number of events where type equals 'ordered product' (case-insensitive) in the group
+      - name: count_placed_order
+        data_type: HUGEINT
+        description: Number of events where type equals 'placed order' (case-insensitive) in the group
+      - name: count_refunded_order
+        data_type: HUGEINT
+        description: Number of events where type equals 'refunded order' (case-insensitive) in the group
+      - name: count_received_email
+        data_type: HUGEINT
+        description: Number of events where type equals 'received email' (case-insensitive) in the group
+      - name: count_clicked_email
+        data_type: HUGEINT
+        description: Number of events where type equals 'clicked email' (case-insensitive) in the group
+      - name: count_opened_email
+        data_type: HUGEINT
+        description: Number of events where type equals 'opened email' (case-insensitive) in the group
+      - name: count_marked_email_as_spam
+        data_type: HUGEINT
+        description: Number of events where type equals 'marked email as spam' (case-insensitive) in the group
+      - name: count_unsubscribed
+        data_type: HUGEINT
+        description: Number of events where type equals 'unsubscribed' (case-insensitive) in the group
+      - name: count_received_sms
+        data_type: HUGEINT
+        description: Number of events where type equals 'received sms' (case-insensitive) in the group
+      - name: count_clicked_sms
+        data_type: HUGEINT
+        description: Number of events where type equals 'clicked sms' (case-insensitive) in the group
+      - name: count_sent_sms
+        data_type: HUGEINT
+        description: Number of events where type equals 'sent sms' (case-insensitive) in the group
+      - name: count_unsubscribed_from_sms
+        data_type: HUGEINT
+        description: Number of events where type equals 'unsubscribed from sms' (case-insensitive) in the group
+
+
+## int_klaviyo__campaign_flow_metrics
+
+    - name: int_klaviyo__campaign_flow_metrics
+      description: Campaign/flow-level metrics aggregated from events with touch resolution via direct IDs or attributed parent events
+      grain: One row per (source_relation, variation_id, last_touch_campaign_id, last_touch_flow_id)
+      source_models:
+      - staging.stg_klaviyo__event
+      business_logic: '- From staging.stg_klaviyo__event, derive per event a touch_id and touch_type: use campaign_id and ''campaign'' when campaign_id is present; otherwise use flow_id and ''flow'' when flow_id is present. - For events without a direct touch_id but with event_attribution: - Remove all "$" characters from the event_attribution payload. - Extract the attributed parent event_id from relationships.attributed-event.data.id; if not found, use attributed_event_id; remove any surrounding double quotes and treat an empty string as NULL. - In the same source_relation, find that parent event_id among all events to obtain its touch_id and touch_type. - Resolve the last-touch per event: - Use the parent event’s touch_id and touch_type when an attributed parent is found; otherwise use the event’s own. - Populate last_touch_campaign_id when the resolved touch_type is campaign, and last_touch_flow_id when it is flow; only one is set when resolved, and both may be NULL if unresolved. - Aggregate by (source_relation, variation_id, last_touch_campaign_id, last_touch_flow_id): - total_count_unique_people is the distinct count of person_id across all events; NULL person_id is excluded. - first_event_at and last_event_at are the minimum and maximum occurred_at; NULL timestamps are ignored. - Revenue sums are computed per event type, matching the exact type names case-insensitively; NULL numeric_value is treated as 0 and negative values are kept. - Event counts tally the number of events for each type; duplicates are counted and person_id is not considered. - Unique counts tally distinct person_id per event type within the group; NULL person_id is excluded. - Conversion rates use event counts (not unique counts); if the denominator is zero the rate is NULL; otherwise use floating-point division with no rounding. - GMV gross is the sum of numeric_value for ''placed order'' and ''ordered product''; GMV net is gross minus the sums for ''refunded order'' and ''cancelled order''; NULL numeric_value is treated as 0 and negatives are kept.'
+      columns:
+      - name: last_touch_campaign_id
+        data_type: VARCHAR
+        description: Resolved campaign identifier when the final touch is a campaign; derived from the event or its attributed parent; NULL otherwise
+      - name: last_touch_flow_id
+        data_type: VARCHAR
+        description: Resolved flow identifier when the final touch is a flow; derived from the event or its attributed parent; NULL otherwise
+      - name: variation_id
+        data_type: VARCHAR
+        description: Event variation identifier used in grouping; NULL values form their own group
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source system identifier; joins and grouping are scoped within each source_relation
+      - name: total_count_unique_people
+        data_type: BIGINT
+        description: Distinct count of person_id within the group across all event types; NULL person_id excluded
+      - name: first_event_at
+        data_type: TIMESTAMP
+        description: Earliest occurred_at within the group; NULL occurred_at ignored; NULL only if all are NULL
+      - name: last_event_at
+        data_type: TIMESTAMP
+        description: Latest occurred_at within the group; NULL occurred_at ignored; NULL only if all are NULL
+      - name: sum_revenue_refunded_order
+        data_type: DOUBLE
+        description: Sum of numeric_value for 'refunded order' events; NULL numeric_value treated as 0; negatives preserved
+      - name: sum_revenue_placed_order
+        data_type: DOUBLE
+        description: Sum of numeric_value for 'placed order' events; NULL numeric_value treated as 0; negatives preserved
+      - name: sum_revenue_ordered_product
+        data_type: DOUBLE
+        description: Sum of numeric_value for 'ordered product' events; NULL numeric_value treated as 0; negatives preserved
+      - name: sum_revenue_checkout_started
+        data_type: DOUBLE
+        description: Sum of numeric_value for 'checkout started' events; NULL numeric_value treated as 0; negatives preserved
+      - name: sum_revenue_cancelled_order
+        data_type: DOUBLE
+        description: Sum of numeric_value for 'cancelled order' events; NULL numeric_value treated as 0; negatives preserved
+      - name: count_active_on_site
+        data_type: HUGEINT
+        description: Number of 'active on site' events; duplicates counted; independent of person_id
+      - name: count_viewed_product
+        data_type: HUGEINT
+        description: Number of 'viewed product' events; duplicates counted; independent of person_id
+      - name: count_ordered_product
+        data_type: HUGEINT
+        description: Number of 'ordered product' events; duplicates counted; independent of person_id
+      - name: count_placed_order
+        data_type: HUGEINT
+        description: Number of 'placed order' events; duplicates counted; independent of person_id
+      - name: count_refunded_order
+        data_type: HUGEINT
+        description: Number of 'refunded order' events; duplicates counted; independent of person_id
+      - name: count_received_email
+        data_type: HUGEINT
+        description: Number of 'received email' events; duplicates counted; independent of person_id
+      - name: count_clicked_email
+        data_type: HUGEINT
+        description: Number of 'clicked email' events; duplicates counted; independent of person_id
+      - name: count_opened_email
+        data_type: HUGEINT
+        description: Number of 'opened email' events; duplicates counted; independent of person_id
+      - name: count_marked_email_as_spam
+        data_type: HUGEINT
+        description: Number of 'marked email as spam' events; duplicates counted; independent of person_id
+      - name: count_unsubscribed
+        data_type: HUGEINT
+        description: Number of 'unsubscribed' events; duplicates counted; independent of person_id
+      - name: count_received_sms
+        data_type: HUGEINT
+        description: Number of 'received sms' events; duplicates counted; independent of person_id
+      - name: count_clicked_sms
+        data_type: HUGEINT
+        description: Number of 'clicked sms' events; duplicates counted; independent of person_id
+      - name: count_sent_sms
+        data_type: HUGEINT
+        description: Number of 'sent sms' events; duplicates counted; independent of person_id
+      - name: count_unsubscribed_from_sms
+        data_type: HUGEINT
+        description: Number of 'unsubscribed from sms' events; duplicates counted; independent of person_id
+      - name: unique_count_active_on_site
+        data_type: BIGINT
+        description: Distinct people with 'active on site' events; NULL person_id excluded
+      - name: unique_count_viewed_product
+        data_type: BIGINT
+        description: Distinct people with 'viewed product' events; NULL person_id excluded
+      - name: unique_count_ordered_product
+        data_type: BIGINT
+        description: Distinct people with 'ordered product' events; NULL person_id excluded
+      - name: unique_count_placed_order
+        data_type: BIGINT
+        description: Distinct people with 'placed order' events; NULL person_id excluded
+      - name: unique_count_refunded_order
+        data_type: BIGINT
+        description: Distinct people with 'refunded order' events; NULL person_id excluded
+      - name: unique_count_received_email
+        data_type: BIGINT
+        description: Distinct people with 'received email' events; NULL person_id excluded
+      - name: unique_count_clicked_email
+        data_type: BIGINT
+        description: Distinct people with 'clicked email' events; NULL person_id excluded
+      - name: unique_count_opened_email
+        data_type: BIGINT
+        description: Distinct people with 'opened email' events; NULL person_id excluded
+      - name: unique_count_marked_email_as_spam
+        data_type: BIGINT
+        description: Distinct people with 'marked email as spam' events; NULL person_id excluded
+      - name: unique_count_unsubscribed
+        data_type: BIGINT
+        description: Distinct people with 'unsubscribed' events; NULL person_id excluded
+      - name: unique_count_received_sms
+        data_type: BIGINT
+        description: Distinct people with 'received sms' events; NULL person_id excluded
+      - name: unique_count_clicked_sms
+        data_type: BIGINT
+        description: Distinct people with 'clicked sms' events; NULL person_id excluded
+      - name: unique_count_sent_sms
+        data_type: BIGINT
+        description: Distinct people with 'sent sms' events; NULL person_id excluded
+      - name: unique_count_unsubscribed_from_sms
+        data_type: BIGINT
+        description: Distinct people with 'unsubscribed from sms' events; NULL person_id excluded
+      - name: email_open_rate
+        data_type: DOUBLE
+        description: Opened emails divided by received emails using floating-point division; NULL when denominator is 0; no rounding
+      - name: email_click_to_open_rate
+        data_type: DOUBLE
+        description: Clicked emails divided by opened emails using floating-point division; NULL when denominator is 0; no rounding
+      - name: product_view_to_order_rate
+        data_type: DOUBLE
+        description: Ordered products divided by product views using floating-point division; NULL when denominator is 0; no rounding
+      - name: site_to_order_rate
+        data_type: DOUBLE
+        description: Placed orders divided by active on site events using floating-point division; NULL when denominator is 0; no rounding
+      - name: gmv_gross
+        data_type: DOUBLE
+        description: Sum of numeric_value for 'placed order' and 'ordered product' events; NULL numeric_value treated as 0; negatives preserved
+      - name: gmv_net
+        data_type: DOUBLE
+        description: GMV gross minus sums for 'refunded order' and 'cancelled order' events; NULL numeric_value treated as 0; negatives preserved
+
+
+## int_klaviyo__campaigns_enriched
+
+    - name: int_klaviyo__campaigns_enriched
+      description: Campaigns with campaign-attributed engagement and GMV metrics aggregated per variation and left-joined to campaign records.
+      grain: One row per (campaign_id, variation_id, source_relation); campaigns without attributed events produce one row with variation_id and all metrics NULL.
+      source_models:
+      - staging.stg_klaviyo__campaign
+      - staging.stg_klaviyo__event
+      business_logic: '- Load all campaigns from staging.stg_klaviyo__campaign. - Build events from staging.stg_klaviyo__event and derive: - touch_id: campaign_id if present, otherwise flow_id. - touch_type: "campaign" when campaign_id is present, "flow" when flow_id is present. - For events with event_attribution present and no touch_id: - Remove all "$" characters from event_attribution. - Extract the attributed event id from either relationships.attributed-event.data.id or attributed_event_id. - Remove surrounding quotes and treat empty as NULL. - Resolve inherited attribution by linking the extracted attributed event id back to the referenced event to obtain its touch_id and touch_type (matching within the same source_relation). - For each event, set last_touch_campaign_id to the inherited touch_id if available, otherwise its own touch_id, but only when the resolved touch_type is "campaign"; otherwise leave it null (flows are excluded). - Build metrics using only events where last_touch_campaign_id is present; group by: - campaign_id = last_touch_campaign_id - variation_id = the event’s variation_id - source_relation Metrics per group: - total_count_unique_people: distinct people across all attributed events (records without person_id are not counted). - count_received_email, count_opened_email, count_clicked_email, count_placed_order, count_ordered_product, count_refunded_order: number of events matching each exact phrase; comparisons are case-insensitive. - gmv_gross: sum of numeric_value for "placed order" and "ordered product" events, treating missing numeric_value as 0. - gmv_net: gmv_gross minus the sum of numeric_value for "refunded order" and "cancelled order" events, treating missing numeric_value as 0. - email_open_rate: opened / received; null when received is 0. - email_click_to_open_rate: clicked / opened; null when opened is 0. Determinism and null handling: - Event type matching is case-insensitive, requires exact phrase matches, and all events are included as-is. - Within an existing metrics group, counts/sums return 0 when no matching events occur; numeric_value nulls contribute 0. - Campaigns with no attributed events produce no metrics group; after the left join all metric fields (including variation_id) are NULL. - Left join metrics to campaigns on (campaign_id, source_relation). - Compute campaign_variation_key as an MD5 hash of campaign_id + "|" + variation_id, using an empty string when variation_id is null; original casing and spacing are preserved.'
+      columns:
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier from the source campaign record; join key to metrics.
+        tests:
+        - not_null
+      - name: CAMPAIGN_TYPE
+        data_type: VARCHAR
+        description: Campaign type label from the source campaign record.
+      - name: created_at
+        data_type: VARCHAR
+        description: Campaign creation timestamp as a string from the source campaign record.
+      - name: EMAIL_TEMPLATE_ID
+        data_type: VARCHAR
+        description: Email template identifier from the source campaign record.
+      - name: from_email
+        data_type: VARCHAR
+        description: Sender email address from the source campaign record.
+      - name: FROM_NAME
+        data_type: VARCHAR
+        description: Sender display name from the source campaign record.
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign name or title from the source campaign record.
+      - name: scheduled_to_send_at
+        data_type: TIMESTAMP
+        description: Scheduled send timestamp from the source campaign record.
+      - name: SENT_AT
+        data_type: TIMESTAMP
+        description: Actual send timestamp from the source campaign record.
+      - name: STATUS
+        data_type: VARCHAR
+        description: Campaign status string from the source campaign record.
+      - name: STATUS_ID
+        data_type: BIGINT
+        description: Numeric status identifier from the source campaign record.
+      - name: SUBJECT
+        data_type: VARCHAR
+        description: Email subject line from the source campaign record.
+      - name: updated_at
+        data_type: TIMESTAMP
+        description: Last update timestamp from the source campaign record.
+      - name: is_archived
+        data_type: VARCHAR
+        description: Archive flag from the source campaign record.
+      - name: scheduled_at
+        data_type: VARCHAR
+        description: Scheduling timestamp as a string from the source campaign record.
+      - name: source_relation
+        data_type: VARCHAR
+        description: Upstream source identifier from campaigns used to partition joins to events.
+      - name: variation_id
+        data_type: VARCHAR
+        description: Variation identifier from events used for grouping; null if no metrics exist or the group’s variation is null.
+      - name: total_count_unique_people
+        data_type: BIGINT
+        description: Distinct people with any attributed event for this campaign and variation; records without person_id are ignored.
+      - name: count_received_email
+        data_type: HUGEINT
+        description: Number of attributed 'received email' events for this campaign and variation (case-insensitive match).
+      - name: count_opened_email
+        data_type: HUGEINT
+        description: Number of attributed 'opened email' events for this campaign and variation (case-insensitive match).
+      - name: count_clicked_email
+        data_type: HUGEINT
+        description: Number of attributed 'clicked email' events for this campaign and variation (case-insensitive match).
+      - name: count_placed_order
+        data_type: HUGEINT
+        description: Number of attributed 'placed order' events for this campaign and variation (case-insensitive match).
+      - name: count_ordered_product
+        data_type: HUGEINT
+        description: Number of attributed 'ordered product' events for this campaign and variation (case-insensitive match).
+      - name: count_refunded_order
+        data_type: HUGEINT
+        description: Number of attributed 'refunded order' events for this campaign and variation (case-insensitive match).
+      - name: gmv_gross
+        data_type: DOUBLE
+        description: Gross merchandise value from 'placed order' and 'ordered product' events, summing numeric_value with null treated as 0.
+      - name: gmv_net
+        data_type: DOUBLE
+        description: 'Net merchandise value: gmv_gross minus value from ''refunded order'' and ''cancelled order'' events, treating null numeric_value as 0.'
+      - name: email_open_rate
+        data_type: DOUBLE
+        description: Open rate computed as opened divided by received; null when received is 0; no rounding.
+      - name: email_click_to_open_rate
+        data_type: DOUBLE
+        description: Click-to-open rate computed as clicked divided by opened; null when opened is 0; no rounding.
+      - name: campaign_variation_key
+        data_type: VARCHAR
+        description: Stable MD5 hash of campaign_id, a pipe (|), and variation_id with null variation treated as empty.
+
+
+## int_klaviyo__persons_enriched
+
+    - name: int_klaviyo__persons_enriched
+      description: Persons from the person table left-joined with per-person, per-source_relation event metrics aggregated from staging events.
+      grain: One row per person_id per source_relation
+      source_models:
+      - staging.stg_klaviyo__person (all columns)
+      - staging.stg_klaviyo__event (person_id, source_relation, occurred_at, type, numeric_value)
+      business_logic: '- Start from all rows in staging.stg_klaviyo__person; this defines the output grain (one row per person_id and source_relation). - From staging.stg_klaviyo__event, project person_id, source_relation, occurred_on as the calendar date of occurred_at (day-level truncation, no timezone conversion), type, and numeric_value. - Aggregate events by (person_id, source_relation): - first_event_on = minimum occurred_on; last_event_on = maximum occurred_on. - Revenue sums: for each target type (''refunded order'', ''placed order'', ''ordered product'', ''cancelled order''), sum numeric_value for matching events; treat null numeric_value as 0; type matching is case-insensitive exact match. - Event counts: for each target type (''active on site'', ''viewed product'', ''ordered product'', ''placed order'', ''received email'', ''opened email'', ''clicked email''), count matching events; type matching is case-insensitive exact match. - email_open_rate = count_opened_email divided by count_received_email when count_received_email > 0; otherwise null; no rounding. - Join: left join the aggregated metrics to the person rows on person_id and source_relation; retain all person columns and add metric fields. - Null policy: - If a person_id/source_relation has no matching events, all metric fields (dates, sums, counts, rate) are null from the left join. - If events exist but none match a specific metric’s type, that metric’s sum or count is 0. - Determinism: - Each event contributes to at most one of the listed revenue sums and to at most one of the listed count metrics based on its type. - Events with null type do not match any target type; duplicates in events are included as-is. - Revenue sums include only numeric_value from matching events; null numeric_value contributes 0.'
+      columns:
+      - name: person_id
+        data_type: VARCHAR
+        description: Person identifier from the person table.
+        tests:
+        - not_null
+      - name: ADDRESS_1
+        data_type: VARCHAR
+        description: Address line 1 from the person table.
+      - name: ADDRESS_2
+        data_type: VARCHAR
+        description: Address line 2 from the person table.
+      - name: CITY
+        data_type: VARCHAR
+        description: City from the person table.
+      - name: COUNTRY
+        data_type: VARCHAR
+        description: Country from the person table.
+      - name: ZIP
+        data_type: BIGINT
+        description: Postal code from the person table.
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Timestamp the person record was created in the source.
+      - name: email
+        data_type: VARCHAR
+        description: Email address from the person table.
+      - name: full_name
+        data_type: VARCHAR
+        description: Full name from the person table.
+      - name: LATITUDE
+        data_type: DOUBLE
+        description: Latitude from the person table.
+      - name: LONGITUDE
+        data_type: DOUBLE
+        description: Longitude from the person table.
+      - name: ORGANIZATION
+        data_type: VARCHAR
+        description: Organization from the person table.
+      - name: phone_number
+        data_type: VARCHAR
+        description: Phone number from the person table.
+      - name: REGION
+        data_type: VARCHAR
+        description: Region from the person table.
+      - name: timezone
+        data_type: VARCHAR
+        description: Timezone from the person table.
+      - name: TITLE
+        data_type: VARCHAR
+        description: Title from the person table.
+      - name: updated_at
+        data_type: TIMESTAMP
+        description: Timestamp the person record was last updated in the source.
+      - name: LAST_EVENT_DATE
+        data_type: TIMESTAMP
+        description: Most recent event timestamp stored on the person record in the source.
+      - name: source_relation
+        data_type: VARCHAR
+        description: Upstream source system identifier from the person table.
+      - name: first_event_on
+        data_type: DATE
+        description: Earliest occurred_on date across that person and source_relation; null when no events.
+      - name: last_event_on
+        data_type: DATE
+        description: Latest occurred_on date across that person and source_relation; null when no events.
+      - name: sum_revenue_refunded_order
+        data_type: DOUBLE
+        description: Sum of numeric_value for events of type 'refunded order'; null numeric_value treated as 0; type match is case-insensitive.
+      - name: sum_revenue_placed_order
+        data_type: DOUBLE
+        description: Sum of numeric_value for events of type 'placed order'; null numeric_value treated as 0; type match is case-insensitive.
+      - name: sum_revenue_ordered_product
+        data_type: DOUBLE
+        description: Sum of numeric_value for events of type 'ordered product'; null numeric_value treated as 0; type match is case-insensitive.
+      - name: sum_revenue_cancelled_order
+        data_type: DOUBLE
+        description: Sum of numeric_value for events of type 'cancelled order'; null numeric_value treated as 0; type match is case-insensitive.
+      - name: count_active_on_site
+        data_type: HUGEINT
+        description: Count of events with type 'active on site' (case-insensitive).
+      - name: count_viewed_product
+        data_type: HUGEINT
+        description: Count of events with type 'viewed product' (case-insensitive).
+      - name: count_ordered_product
+        data_type: HUGEINT
+        description: Count of events with type 'ordered product' (case-insensitive).
+      - name: count_placed_order
+        data_type: HUGEINT
+        description: Count of events with type 'placed order' (case-insensitive).
+      - name: count_received_email
+        data_type: HUGEINT
+        description: Count of events with type 'received email' (case-insensitive).
+      - name: count_opened_email
+        data_type: HUGEINT
+        description: Count of events with type 'opened email' (case-insensitive).
+      - name: count_clicked_email
+        data_type: HUGEINT
+        description: Count of events with type 'clicked email' (case-insensitive).
+      - name: email_open_rate
+        data_type: DOUBLE
+        description: Opened-to-received email ratio when received > 0; otherwise null; no rounding.
+
+
+## int_klaviyo__person_metrics
+
+    - name: int_klaviyo__person_metrics
+      description: Per-person metrics from Klaviyo events including activity windows, continuity diagnostics, event counts, revenue sums, and conversion rates
+      grain: One row per person_id per source_relation
+      source_models:
+      - staging.stg_klaviyo__event
+      business_logic: '- Inputs: person_id, source_relation, occurred_at (timestamp), type (event name), numeric_value. - Event normalization: - occurred_on is the calendar date of occurred_at (time removed). If occurred_at is NULL, occurred_on is NULL. - Event type matching is case-insensitive exact string comparison; spacing and punctuation are not altered. - Activity span per person_id + source_relation: - first_event_on is the earliest occurred_on date; last_event_on is the latest. Both are NULL when all occurred_on are NULL. - Date spine and continuity: - Build an inclusive list of every calendar day from first_event_on through last_event_on for each person_id + source_relation. - missing_day_count equals the number of spine days that have no events on that exact date; multiple events on a day do not change this count; set to NULL when the span is undefined. - Aggregations per person_id + source_relation: - Revenue sums: For the listed revenue types, sum numeric_value; treat NULL numeric_value as 0; retain negative values. - Event counts: Count every event whose type matches the listed name; events with NULL type do not match. - Active periods: Count distinct calendar days, distinct Monday-based calendar weeks, and distinct calendar months with at least one event; NULL dates are ignored. - Conversion rates: - Divide the specified numerator by its denominator; return NULL when the denominator is zero; computed with floating-point division and not rounded. - Output includes one row for each (person_id, source_relation) present in the events.'
+      columns:
+      - name: person_id
+        data_type: VARCHAR
+        description: Unique person identifier
+        tests:
+        - not_null
+      - name: source_relation
+        data_type: VARCHAR
+        description: Event source identifier; with person_id defines the row
+        tests:
+        - not_null
+      - name: first_event_on
+        data_type: DATE
+        description: Earliest event date for the person and source; NULL when no dated events
+      - name: last_event_on
+        data_type: DATE
+        description: Latest event date for the person and source; NULL when no dated events
+      - name: sum_revenue_refunded_order
+        data_type: DOUBLE
+        description: Total numeric_value for 'refunded order' events; NULL numeric_value counts as 0; negatives kept
+      - name: sum_revenue_placed_order
+        data_type: DOUBLE
+        description: Total numeric_value for 'placed order' events; NULL numeric_value counts as 0; negatives kept
+      - name: sum_revenue_ordered_product
+        data_type: DOUBLE
+        description: Total numeric_value for 'ordered product' events; NULL numeric_value counts as 0; negatives kept
+      - name: sum_revenue_cancelled_order
+        data_type: DOUBLE
+        description: Total numeric_value for 'cancelled order' events; NULL numeric_value counts as 0; negatives kept
+      - name: count_active_on_site
+        data_type: HUGEINT
+        description: Number of 'active on site' events
+      - name: count_viewed_product
+        data_type: HUGEINT
+        description: Number of 'viewed product' events
+      - name: count_ordered_product
+        data_type: HUGEINT
+        description: Number of 'ordered product' events
+      - name: count_placed_order
+        data_type: HUGEINT
+        description: Number of 'placed order' events
+      - name: count_refunded_order
+        data_type: HUGEINT
+        description: Number of 'refunded order' events
+      - name: count_received_email
+        data_type: HUGEINT
+        description: Number of 'received email' events
+      - name: count_clicked_email
+        data_type: HUGEINT
+        description: Number of 'clicked email' events
+      - name: count_opened_email
+        data_type: HUGEINT
+        description: Number of 'opened email' events
+      - name: count_marked_email_as_spam
+        data_type: HUGEINT
+        description: Number of 'marked email as spam' events
+      - name: count_unsubscribed
+        data_type: HUGEINT
+        description: Number of 'unsubscribed' events
+      - name: count_received_sms
+        data_type: HUGEINT
+        description: Number of 'received sms' events
+      - name: count_clicked_sms
+        data_type: HUGEINT
+        description: Number of 'clicked sms' events
+      - name: count_sent_sms
+        data_type: HUGEINT
+        description: Number of 'sent sms' events
+      - name: count_unsubscribed_from_sms
+        data_type: HUGEINT
+        description: Number of 'unsubscribed from sms' events
+      - name: active_days
+        data_type: BIGINT
+        description: Distinct calendar days with at least one event
+      - name: active_weeks
+        data_type: BIGINT
+        description: Distinct Monday-based calendar weeks with at least one event
+      - name: active_months
+        data_type: BIGINT
+        description: Distinct calendar months with at least one event
+      - name: missing_day_count
+        data_type: BIGINT
+        description: Number of inclusive-span days with zero events; NULL when the span is undefined
+      - name: email_open_rate
+        data_type: DOUBLE
+        description: Opens divided by received emails; NULL when denominator is 0; floating-point, not rounded
+      - name: email_click_to_open_rate
+        data_type: DOUBLE
+        description: Clicks divided by opens; NULL when denominator is 0; floating-point, not rounded
+      - name: product_view_to_order_rate
+        data_type: DOUBLE
+        description: Orders divided by product views; NULL when denominator is 0; floating-point, not rounded
+      - name: site_to_order_rate
+        data_type: DOUBLE
+        description: Placed orders divided by site activity events; NULL when denominator is 0; floating-point, not rounded
+
+
+## klaviyo__campaigns
+
+    - name: klaviyo__campaigns
+      description: Campaign analysis with enriched attributes joined to campaign-attributed event aggregates and derived rates
+      grain: One row per campaign_id per variation_id per source_relation
+      source_models:
+      - intermediate.int_klaviyo__campaigns_enriched
+      - intermediate.int_klaviyo__events
+      business_logic: '- Use intermediate.int_klaviyo__campaigns_enriched (c) as the base, one row per campaign_id, variation_id, source_relation. - From intermediate.int_klaviyo__events (e), keep only events with a non-null last_touch_campaign_id (campaign-attributed). - For each (campaign_id = last_touch_campaign_id, variation_id, source_relation), compute: - active_days: number of distinct occurred_on values (no date truncation). - total_placed_orders: count of events where type equals "placed order" (case-insensitive). - total_amount_positive: sum of amount_positive, treating nulls as 0 within the sum. - total_amount_negative: sum of amount_negative, treating nulls as 0 within the sum. - product_view_to_order_rate_campaign: if there is at least one event where type equals "viewed product" (case-insensitive), divide the number of "ordered product" events by the number of "viewed product" events; otherwise set to null; no rounding. - gmv_net_campaign: total_amount_positive minus total_amount_negative. - Left join these aggregates to c on campaign_id, variation_id, and source_relation; select all c columns plus the aggregate fields. - When no events match a given c row, all aggregate fields are null. Event counts are row-level (no de-duplication) except active_days, which is distinct on occurred_on. Event type comparisons are case-insensitive.'
+      columns:
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier; join key to aggregates
+        tests:
+        - not_null
+      - name: CAMPAIGN_TYPE
+        data_type: VARCHAR
+        description: Campaign type label from the enriched campaigns model
+      - name: created_at
+        data_type: VARCHAR
+        description: Campaign created timestamp as stored in the enriched campaigns model (no transformation)
+      - name: EMAIL_TEMPLATE_ID
+        data_type: VARCHAR
+        description: Email template identifier from the enriched campaigns model
+      - name: from_email
+        data_type: VARCHAR
+        description: Sender email address from the enriched campaigns model
+      - name: FROM_NAME
+        data_type: VARCHAR
+        description: Sender display name from the enriched campaigns model
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign name from the enriched campaigns model
+      - name: scheduled_to_send_at
+        data_type: TIMESTAMP
+        description: Scheduled send timestamp from the enriched campaigns model; pass-through
+      - name: SENT_AT
+        data_type: TIMESTAMP
+        description: Actual send timestamp from the enriched campaigns model; pass-through
+      - name: STATUS
+        data_type: VARCHAR
+        description: Campaign status label from the enriched campaigns model
+      - name: STATUS_ID
+        data_type: BIGINT
+        description: Numeric status identifier from the enriched campaigns model
+      - name: SUBJECT
+        data_type: VARCHAR
+        description: Email subject line from the enriched campaigns model
+      - name: updated_at
+        data_type: TIMESTAMP
+        description: Last update timestamp from the enriched campaigns model; pass-through
+      - name: is_archived
+        data_type: VARCHAR
+        description: Archive flag as stored in the enriched campaigns model (no normalization)
+      - name: scheduled_at
+        data_type: VARCHAR
+        description: Scheduling timestamp as stored in the enriched campaigns model (no transformation)
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source system identifier; part of the grain and join key
+      - name: variation_id
+        data_type: VARCHAR
+        description: Variation identifier; part of the grain and join key
+      - name: total_count_unique_people
+        data_type: BIGINT
+        description: Distinct people attributed count from the enriched campaigns model; pass-through
+      - name: count_received_email
+        data_type: HUGEINT
+        description: Total received email events from the enriched campaigns model; pass-through
+      - name: count_opened_email
+        data_type: HUGEINT
+        description: Total opened email events from the enriched campaigns model; pass-through
+      - name: count_clicked_email
+        data_type: HUGEINT
+        description: Total clicked email events from the enriched campaigns model; pass-through
+      - name: count_placed_order
+        data_type: HUGEINT
+        description: Total placed order events from the enriched campaigns model; pass-through
+      - name: count_ordered_product
+        data_type: HUGEINT
+        description: Total ordered product events from the enriched campaigns model; pass-through
+      - name: count_refunded_order
+        data_type: HUGEINT
+        description: Total refunded order events from the enriched campaigns model; pass-through
+      - name: gmv_gross
+        data_type: DOUBLE
+        description: Gross GMV from the enriched campaigns model; pass-through
+      - name: gmv_net
+        data_type: DOUBLE
+        description: Net GMV from the enriched campaigns model; pass-through
+      - name: email_open_rate
+        data_type: DOUBLE
+        description: Opened-to-received email rate from the enriched campaigns model; pass-through
+      - name: email_click_to_open_rate
+        data_type: DOUBLE
+        description: Clicked-to-opened email rate from the enriched campaigns model; pass-through
+      - name: campaign_variation_key
+        data_type: VARCHAR
+        description: Stable key for campaign_id+variation_id+source_relation provided by the enriched campaigns model
+      - name: active_days
+        data_type: BIGINT
+        description: Number of distinct occurred_on values among campaign-attributed events; NULL when no events joined
+      - name: total_placed_orders
+        data_type: HUGEINT
+        description: Count of events with type 'placed order' (case-insensitive); counts all matching rows; NULL when no events joined
+      - name: total_amount_positive
+        data_type: DOUBLE
+        description: Sum of amount_positive with nulls treated as 0 within the sum; NULL when no events joined
+      - name: total_amount_negative
+        data_type: DOUBLE
+        description: Sum of amount_negative with nulls treated as 0 within the sum; NULL when no events joined
+      - name: product_view_to_order_rate_campaign
+        data_type: DOUBLE
+        description: Number of 'ordered product' events divided by 'viewed product' events (case-insensitive); NULL when there are zero 'viewed product' events; no rounding
+      - name: gmv_net_campaign
+        data_type: DOUBLE
+        description: 'Net GMV from aggregates: total_amount_positive minus total_amount_negative (null amounts treated as 0 within sums); NULL when no events joined'
+
+
+## klaviyo__persons
+
+    - name: klaviyo__persons
+      description: Enriched person profile joined with activity spans, retention flags/rates, and paid retention by month
+      grain: One row per (person_id, source_relation) present in intermediate.int_klaviyo__persons_enriched
+      source_models:
+      - intermediate.int_klaviyo__persons_enriched
+      - intermediate.int_klaviyo__person_metrics
+      - intermediate.int_klaviyo__events
+      business_logic: '- Start from intermediate.int_klaviyo__persons_enriched (p) and retain all columns unchanged. - Left join intermediate.int_klaviyo__person_metrics (pm) on (person_id, source_relation) to add first_event_on, last_event_on, active_days, active_weeks, active_months, and missing_day_count; these fields are NULL when no pm row exists. - Derive paid_months from intermediate.int_klaviyo__events by filtering to events whose type text equals "placed order" ignoring case; for each (person_id, source_relation), count the number of distinct calendar months with at least one such event as paid_retained_month_count. - Left join paid_months on (person_id, source_relation); when missing, set paid_retained_month_count to 0. - Compute inclusive activity spans from pm dates: - days_span: number of calendar days from first_event_on through last_event_on, inclusive; NULL if either date is NULL. - weeks_span: number of calendar weeks spanned between the two dates, counted inclusively; NULL if either date is NULL. - months_span: number of calendar months spanned between the two dates, counted inclusively; NULL if either date is NULL. - Retention rates (floating-point division, no rounding): - active_retention_rate_day: active_days divided by days_span when the span is positive; otherwise NULL. - active_retention_rate_week: active_weeks divided by weeks_span when the span is positive; otherwise NULL. - active_retention_rate_month: active_months divided by months_span when the span is positive; otherwise NULL. - Retention flags: - has_7day_retention: 1 when the elapsed days between first_event_on and last_event_on is at least 7 and active_days is at least 2; otherwise 0 (NULLs yield 0). - has_30day_retention: 1 when the elapsed days between first_event_on and last_event_on is at least 30 and active_days is at least 2; otherwise 0 (NULLs yield 0). - Paid retention rate: - paid_retention_rate_month: paid_retained_month_count divided by months_span when the span is positive; otherwise NULL (uses the 0 default when the paid month count is missing). - All rows from p are preserved; no additional filtering or deduplication beyond the left joins.'
+      columns:
+      - name: person_id
+        data_type: VARCHAR
+        description: Person identifier from persons_enriched; grain with source_relation
+        tests:
+        - not_null
+      - name: ADDRESS_1
+        data_type: VARCHAR
+        description: Pass-through address line 1 from persons_enriched
+      - name: ADDRESS_2
+        data_type: VARCHAR
+        description: Pass-through address line 2 from persons_enriched
+      - name: CITY
+        data_type: VARCHAR
+        description: Pass-through city from persons_enriched
+      - name: COUNTRY
+        data_type: VARCHAR
+        description: Pass-through country from persons_enriched
+      - name: ZIP
+        data_type: BIGINT
+        description: Pass-through postal/ZIP code from persons_enriched
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Pass-through record creation timestamp from persons_enriched
+      - name: email
+        data_type: VARCHAR
+        description: Pass-through email address from persons_enriched
+      - name: full_name
+        data_type: VARCHAR
+        description: Pass-through full name from persons_enriched
+      - name: LATITUDE
+        data_type: DOUBLE
+        description: Pass-through latitude from persons_enriched
+      - name: LONGITUDE
+        data_type: DOUBLE
+        description: Pass-through longitude from persons_enriched
+      - name: ORGANIZATION
+        data_type: VARCHAR
+        description: Pass-through organization from persons_enriched
+      - name: phone_number
+        data_type: VARCHAR
+        description: Pass-through phone number from persons_enriched
+      - name: REGION
+        data_type: VARCHAR
+        description: Pass-through region/state from persons_enriched
+      - name: timezone
+        data_type: VARCHAR
+        description: Pass-through timezone from persons_enriched
+      - name: TITLE
+        data_type: VARCHAR
+        description: Pass-through title from persons_enriched
+      - name: updated_at
+        data_type: TIMESTAMP
+        description: Pass-through update timestamp from persons_enriched
+      - name: LAST_EVENT_DATE
+        data_type: TIMESTAMP
+        description: Pass-through last event timestamp from persons_enriched
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source system identifier from persons_enriched; joins to metrics and events
+      - name: first_event_on
+        data_type: DATE
+        description: Earliest activity date from person_metrics; NULL if missing
+      - name: last_event_on
+        data_type: DATE
+        description: Latest activity date from person_metrics; NULL if missing
+      - name: sum_revenue_refunded_order
+        data_type: DOUBLE
+        description: Pass-through refunded order revenue from persons_enriched
+      - name: sum_revenue_placed_order
+        data_type: DOUBLE
+        description: Pass-through placed order revenue from persons_enriched
+      - name: sum_revenue_ordered_product
+        data_type: DOUBLE
+        description: Pass-through ordered product revenue from persons_enriched
+      - name: sum_revenue_cancelled_order
+        data_type: DOUBLE
+        description: Pass-through cancelled order revenue from persons_enriched
+      - name: count_active_on_site
+        data_type: HUGEINT
+        description: Pass-through event count from persons_enriched
+      - name: count_viewed_product
+        data_type: HUGEINT
+        description: Pass-through event count from persons_enriched
+      - name: count_ordered_product
+        data_type: HUGEINT
+        description: Pass-through event count from persons_enriched
+      - name: count_placed_order
+        data_type: HUGEINT
+        description: Pass-through event count from persons_enriched
+      - name: count_received_email
+        data_type: HUGEINT
+        description: Pass-through event count from persons_enriched
+      - name: count_opened_email
+        data_type: HUGEINT
+        description: Pass-through event count from persons_enriched
+      - name: count_clicked_email
+        data_type: HUGEINT
+        description: Pass-through event count from persons_enriched
+      - name: email_open_rate
+        data_type: DOUBLE
+        description: Pass-through email open rate from persons_enriched
+      - name: first_event_on_1
+        data_type: DATE
+        description: Pass-through auxiliary date from persons_enriched
+      - name: last_event_on_2
+        data_type: DATE
+        description: Pass-through auxiliary date from persons_enriched
+      - name: active_days
+        data_type: BIGINT
+        description: Distinct days with at least one event from person_metrics; NULL if missing
+      - name: active_weeks
+        data_type: BIGINT
+        description: Distinct weeks with at least one event from person_metrics; NULL if missing
+      - name: active_months
+        data_type: BIGINT
+        description: Distinct months with at least one event from person_metrics; NULL if missing
+      - name: missing_day_count
+        data_type: BIGINT
+        description: Days within the inclusive span that had zero events from person_metrics; NULL if missing
+      - name: days_span
+        data_type: BIGINT
+        description: Number of calendar days from first_event_on to last_event_on inclusive; NULL if either date is NULL
+      - name: weeks_span
+        data_type: BIGINT
+        description: Number of calendar weeks spanned between the dates, counted inclusively; NULL if either date is NULL
+      - name: months_span
+        data_type: BIGINT
+        description: Number of calendar months spanned between the dates, counted inclusively; NULL if either date is NULL
+      - name: active_retention_rate_day
+        data_type: DOUBLE
+        description: Active days divided by days_span when the span is positive; otherwise NULL; not rounded
+      - name: active_retention_rate_week
+        data_type: DOUBLE
+        description: Active weeks divided by weeks_span when the span is positive; otherwise NULL; not rounded
+      - name: active_retention_rate_month
+        data_type: DOUBLE
+        description: Active months divided by months_span when the span is positive; otherwise NULL; not rounded
+      - name: has_7day_retention
+        data_type: INTEGER
+        description: 1 when the elapsed days between first and last activity is at least 7 and active_days is at least 2; otherwise 0
+      - name: has_30day_retention
+        data_type: INTEGER
+        description: 1 when the elapsed days between first and last activity is at least 30 and active_days is at least 2; otherwise 0
+      - name: paid_retained_month_count
+        data_type: BIGINT
+        description: Distinct calendar months with a 'placed order' event for the person/source (type match is case-insensitive); set to 0 when none
+      - name: paid_retention_rate_month
+        data_type: DOUBLE
+        description: Paid retained month count divided by months_span when the span is positive; otherwise NULL; not rounded
+
+
+## klaviyo__person_campaign_flow
+
+    - name: klaviyo__person_campaign_flow
+      description: Person by campaign/flow touch dataset with span days, conversion rates, net revenue, and a conversion flag.
+      grain: One row per person_id, last_touch_campaign_id, last_touch_flow_id, variation_id, source_relation
+      source_models:
+      - intermediate.int_klaviyo__person_campaign_flow
+      business_logic: '- Start from intermediate.int_klaviyo__person_campaign_flow and retain all columns without filtering or re-aggregation. - Compute touch_span_days: if first_event_at and last_event_at are present, truncate both to calendar day, take the day difference, and add 1 so same-day spans equal 1; otherwise set NULL. - Compute rates only when denominators are greater than zero; otherwise set NULL: - product_view_to_order_rate_touch: ordered product count divided by viewed product count. - email_open_rate_touch: opened email count divided by received email count. - email_click_to_open_rate_touch: clicked email count divided by opened email count. Use floating-point division, no rounding or capping; if the numerator is NULL the result is NULL. - Compute net_revenue_touch as placed order revenue plus ordered-product revenue minus refunded and cancelled order revenue; treat NULL inputs as zero. - Compute has_converted as 1 when count_placed_order > 0, else 0; NULL counts are treated as not greater than zero.'
+      columns:
+      - name: person_id
+        data_type: VARCHAR
+        description: Person identifier for the touch grouping.
+        tests:
+        - not_null
+      - name: last_touch_campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier for the last attributed touch; may be NULL.
+      - name: last_touch_flow_id
+        data_type: VARCHAR
+        description: Flow identifier for the last attributed touch; may be NULL.
+      - name: variation_id
+        data_type: VARCHAR
+        description: Variation identifier for the attributed touch when available.
+      - name: source_relation
+        data_type: VARCHAR
+        description: Origin data source relation name.
+      - name: first_event_at
+        data_type: TIMESTAMP
+        description: First event timestamp in the touch window from the source.
+      - name: last_event_at
+        data_type: TIMESTAMP
+        description: Last event timestamp in the touch window from the source.
+      - name: sum_revenue_refunded_order
+        data_type: DOUBLE
+        description: Total refunded order revenue from the source; may be NULL.
+      - name: sum_revenue_placed_order
+        data_type: DOUBLE
+        description: Total placed order revenue from the source; may be NULL.
+      - name: sum_revenue_ordered_product
+        data_type: DOUBLE
+        description: Total ordered product revenue from the source; may be NULL.
+      - name: sum_revenue_checkout_started
+        data_type: DOUBLE
+        description: Total checkout-started revenue from the source.
+      - name: sum_revenue_cancelled_order
+        data_type: DOUBLE
+        description: Total cancelled order revenue from the source; may be NULL.
+      - name: count_active_on_site
+        data_type: HUGEINT
+        description: Count of active-on-site events from the source.
+      - name: count_viewed_product
+        data_type: HUGEINT
+        description: Count of viewed product events; denominator for the view-to-order rate.
+      - name: count_ordered_product
+        data_type: HUGEINT
+        description: Count of ordered product events; numerator for the view-to-order rate.
+      - name: count_placed_order
+        data_type: HUGEINT
+        description: Count of placed order events used to set the conversion flag.
+      - name: count_refunded_order
+        data_type: HUGEINT
+        description: Count of refunded order events from the source.
+      - name: count_received_email
+        data_type: HUGEINT
+        description: Count of received email events; denominator for the email open rate.
+      - name: count_clicked_email
+        data_type: HUGEINT
+        description: Count of clicked email events; numerator for the click-to-open rate.
+      - name: count_opened_email
+        data_type: HUGEINT
+        description: Count of opened email events; numerator for open rate and denominator for click-to-open.
+      - name: count_marked_email_as_spam
+        data_type: HUGEINT
+        description: Count of emails marked as spam; passthrough.
+      - name: count_unsubscribed
+        data_type: HUGEINT
+        description: Count of email unsubscribe events; passthrough.
+      - name: count_received_sms
+        data_type: HUGEINT
+        description: Count of received SMS events; passthrough.
+      - name: count_clicked_sms
+        data_type: HUGEINT
+        description: Count of clicked SMS events; passthrough.
+      - name: count_sent_sms
+        data_type: HUGEINT
+        description: Count of sent SMS events; passthrough.
+      - name: count_unsubscribed_from_sms
+        data_type: HUGEINT
+        description: Count of SMS unsubscribe events; passthrough.
+      - name: touch_span_days
+        data_type: BIGINT
+        description: Inclusive number of calendar days between first_event_at and last_event_at after truncating to day; NULL if either is NULL.
+      - name: product_view_to_order_rate_touch
+        data_type: DOUBLE
+        description: Share of viewed-product events that led to an ordered product when views > 0; floating-point; no rounding.
+      - name: email_open_rate_touch
+        data_type: DOUBLE
+        description: Share of received emails that were opened when received > 0; floating-point; no rounding.
+      - name: email_click_to_open_rate_touch
+        data_type: DOUBLE
+        description: Share of opened emails that were clicked when opens > 0; floating-point; no rounding.
+      - name: net_revenue_touch
+        data_type: DOUBLE
+        description: Placed plus ordered-product revenue minus refunded and cancelled revenue; NULL inputs treated as zero.
+      - name: has_converted
+        data_type: INTEGER
+        description: 1 when count_placed_order > 0 else 0; NULL counts behave as not greater than zero.
+
+
+
+
+=== Premises recorded in earlier reviews ===
+[
+  {
+    "statement": "The generated email-validation pattern accepts exactly the email formats permitted by the contract.",
+    "about": "requirement",
+    "target": "stg_klaviyo__campaign and stg_klaviyo__person SQL definitions in /tmp/build.py",
+    "evidence_of_dependence": "regexp_full_match(lower(trim(cast(\"FROM_EMAIL\" as varchar))), '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}')",
+    "alternative": "The contract requires a literal domain separator in campaign emails: \"\\\\.[A-Za-z]{2,}$\"; the Python raw strings preserve doubled backslashes in the generated SQL, whose interpretation has not been tested.",
+    "importance": 5,
+    "reason": "An incorrectly escaped pattern could remove most otherwise valid campaign and person rows.",
+    "updates": null,
+    "id": "c1-1",
+    "call": 1
+  },
+  {
+    "statement": "No raw event retained by the staging definition has an invalid non-null property_email.",
+    "about": "data",
+    "target": "stg_klaviyo__event SQL definition in /tmp/build.py",
+    "evidence_of_dependence": "from casted where nullif(trim(cast(id as varchar)), '') is not null",
+    "alternative": "The event contract explicitly says: \"Rows with an invalid property_email (when present) are dropped.\"",
+    "importance": 5,
+    "reason": "The required email filter is absent, so invalid events could affect every downstream event aggregate.",
+    "updates": null,
+    "id": "c1-2",
+    "call": 1
+  },
+  {
+    "statement": "Every non-null event_attribution payload evaluated by the attribution_ids CTE is valid JSON after dollar signs are removed.",
+    "about": "data",
+    "target": "int_klaviyo__event_attribution and int_klaviyo__events SQL definitions in /tmp/build.py",
+    "evidence_of_dependence": "json_extract_string(replace(event_attribution, '$', ''), '$.relationships.attributed-event.data.id')",
+    "alternative": "The contract says to \"Parse event_attribution only for events with event_attribution present and no direct touch\" and provides fallback behavior \"If extraction fails\"; the code evaluates extraction before applying the no-direct-touch join condition.",
+    "importance": 5,
+    "reason": "An unchecked malformed payload, including one on a directly attributed event, could prevent both models from executing.",
+    "updates": null,
+    "id": "c1-3",
+    "call": 1
+  },
+  {
+    "statement": "Staged events are unique on source_relation and event_id.",
+    "about": "data",
+    "target": "int_klaviyo__event_attribution and int_klaviyo__events SQL definitions in /tmp/build.py",
+    "evidence_of_dependence": "left join events_base child on a.attributed_event_id = child.event_id and a.source_relation = child.source_relation",
+    "alternative": null,
+    "importance": 4,
+    "reason": "Duplicate event keys would violate the declared grain and could multiply inherited-attribution rows.",
+    "updates": null,
+    "id": "c1-4",
+    "call": 1
+  },
+  {
+    "statement": "Each staged campaign, flow, person, and metric dimension has at most one row per source_relation and its respective identifier.",
+    "about": "data",
+    "target": "int_klaviyo__events SQL definition in /tmp/build.py",
+    "evidence_of_dependence": "left join staging.stg_klaviyo__person p on p.person_id=e.person_id and p.source_relation=e.source_relation",
+    "alternative": null,
+    "importance": 4,
+    "reason": "Unverified dimension uniqueness can multiply events and downstream revenue and counts.",
+    "updates": null,
+    "id": "c1-5",
+    "call": 1
+  },
+  {
+    "statement": "Counting crossed minute boundaries produces the required rounded elapsed-minute value for every consecutive event pair.",
+    "about": "data",
+    "target": "int_klaviyo__events.inter_event_minutes SQL definition in /tmp/build.py",
+    "evidence_of_dependence": "date_diff('minute', e.prev_event_at,e.occurred_at) end::bigint inter_event_minutes",
+    "alternative": "The contract specifies \"the rounded difference in minutes between prev_event_at and occurred_at,\" rather than a count of minute boundaries.",
+    "importance": 4,
+    "reason": "Second-level timestamps can make boundary counts differ from rounded elapsed minutes.",
+    "updates": null,
+    "id": "c1-6",
+    "call": 1
+  },
+  {
+    "statement": "Testing date_diff in minutes against 30 identifies exactly the event gaps that exceed 30 elapsed minutes.",
+    "about": "data",
+    "target": "int_klaviyo__events.session_seq SQL definition in /tmp/build.py",
+    "evidence_of_dependence": "date_diff('minute', prev_event_at, occurred_at)>30",
+    "alternative": "The contract says session_seq increases when \"the gap between events exceeds 30 minutes.\"",
+    "importance": 4,
+    "reason": "Gaps slightly longer than 30 minutes can be classified into the wrong session.",
+    "updates": null,
+    "id": "c1-7",
+    "call": 1
+  },
+  {
+    "statement": "DATETIME is the authoritative event timestamp whenever it is non-null, and TIMESTAMP is the appropriate fallback only when DATETIME is null.",
+    "about": "data",
+    "target": "stg_klaviyo__event.occurred_at and occurred_on SQL definition in /tmp/build.py",
+    "evidence_of_dependence": "try_cast(coalesce(\"DATETIME\", \"TIMESTAMP\") as timestamp) occurred_at",
+    "alternative": null,
+    "importance": 4,
+    "reason": "The single sampled event has equal timestamps and does not establish precedence for all events.",
+    "updates": null,
+    "id": "c1-8",
+    "call": 1
+  },
+  {
+    "statement": "All five staging sources belong to one source namespace that can be represented by the constant klaviyo.",
+    "about": "data",
+    "target": "All five staging SQL definitions in /tmp/build.py",
+    "evidence_of_dependence": "'klaviyo'::varchar as source_relation",
+    "alternative": null,
+    "importance": 3,
+    "reason": "Source identifiers scope attribution and dimension joins, so an incorrect namespace could merge unrelated records.",
+    "updates": null,
+    "id": "c1-9",
+    "call": 1
+  },
+  {
+    "statement": "Raw timestamp values require no timezone conversion before casting to TIMESTAMP.",
+    "about": "data",
+    "target": "All five staging SQL definitions in /tmp/build.py",
+    "evidence_of_dependence": "try_cast(\"CREATED\" as timestamp) as created_at",
+    "alternative": "The staging quality-actions documentation includes \"timezone standardization\" among deterministic corrections.",
+    "importance": 3,
+    "reason": "Unnormalized timestamp zones could alter event dates, ordering, and session boundaries.",
+    "updates": null,
+    "id": "c1-10",
+    "call": 1
+  },
+  {
+    "statement": "Nullifying unparseable timestamp values is an acceptable staging action rather than repairing their format or removing the record.",
+    "about": "requirement",
+    "target": "All five staging SQL definitions in /tmp/build.py",
+    "evidence_of_dependence": "try_cast(created as timestamp) created_at",
+    "alternative": "The quality-actions documentation distinguishes correcting \"deterministic format issues\" from deleting records with \"irrecoverably invalid required fields.\"",
+    "importance": 3,
+    "reason": "TRY_CAST silently retains records with null timestamps without establishing which quality action applies.",
+    "updates": null,
+    "id": "c1-11",
+    "call": 1
+  },
+  {
+    "statement": "Person emails that are both over 255 characters and regex-invalid should cause row deletion rather than field nullification.",
+    "about": "requirement",
+    "target": "stg_klaviyo__person SQL definition in /tmp/build.py",
+    "evidence_of_dependence": "case when length(cleaned_email)>255 then null else cleaned_email end email ... and (email is null or regexp_full_match(...))",
+    "alternative": "The person contract says \"when present and length(email) > 255 then nullify; otherwise lower-trim,\" while separately requiring deletion for invalid email formats; precedence is not established.",
+    "importance": 3,
+    "reason": "The WHERE predicate can delete a person before the overlength nullification preserves that record.",
+    "updates": null,
+    "id": "c1-12",
+    "call": 1
+  },
+  {
+    "statement": "Every nonblank campaign identifier is already standardized and should be preserved without trimming.",
+    "about": "data",
+    "target": "stg_klaviyo__campaign SQL definition in /tmp/build.py",
+    "evidence_of_dependence": "cast(\"ID\" as varchar) as campaign_id ... where nullif(trim(cast(\"ID\" as varchar)), '') is not null",
+    "alternative": null,
+    "importance": 2,
+    "reason": "Whitespace is checked for validity but retained in the output, potentially preventing downstream identifier matches.",
+    "updates": null,
+    "id": "c1-13",
+    "call": 1
+  }
+]
+
+=== Agent steps since the last review ===
+### event 15
+
+## 命令原文
+
+cat >> /tmp/build.py <<'PY'
+# aggregate SQL helpers
+revenue_types=['refunded order','placed order','ordered product','checkout started','cancelled order']
+count_types=['active on site','viewed product','ordered product','placed order','refunded order','received email','clicked email','opened email','marked email as spam','unsubscribed','received sms','clicked sms','sent sms','unsubscribed from sms']
+def touch_resolve(prefix=''):
+ return resolved_ctes
+# per-person campaign flow
+agg_select=[]
+for t in revenue_types: agg_select.append(f"sum(case when lower(type)='{t}' then coalesce(numeric_value,0) else 0 end)::double as sum_revenue_{t.replace(' ','_')}")
+for t in count_types: agg_select.append(f"count(*) filter(where lower(type)='{t}') as count_{t.replace(' ','_')}")
+write(I,'int_klaviyo__person_campaign_flow',f'''
+with {resolved_ctes}, touched as (
+ select *, case when resolved_touch_type='campaign' then resolved_touch_id end last_touch_campaign_id,
+           case when resolved_touch_type='flow' then resolved_touch_id end last_touch_flow_id
+ from resolved
+), aggregated as (
+ select person_id,last_touch_campaign_id,last_touch_flow_id,variation_id,source_relation,
+ min(occurred_at) first_event_at,max(occurred_at) last_event_at,
+ {', '.join(agg_select)}
+ from touched group by person_id,last_touch_campaign_id,last_touch_flow_id,variation_id,source_relation
+)
+select * from aggregated
+''')
+# campaign_flow metrics aggregate broader
+metrics_revenue=['refunded order','placed order','ordered product','checkout started','cancelled order']
+metrics_counts=['active on site','viewed product','ordered product','placed order','refunded order','received email','clicked email','opened email','marked email as spam','unsubscribed','received sms','clicked sms','sent sms','unsubscribed from sms']
+selects=["count(distinct person_id)::bigint as total_count_unique_people","min(occurred_at) as first_event_at","max(occurred_at) as last_event_at"]
+for t in metrics_revenue: selects.append(f"sum(case when lower(type)='{t}' then coalesce(numeric_value,0) else 0 end)::double as sum_revenue_{t.replace(' ','_')}")
+for t in metrics_counts:
+ k=t.replace(' ','_'); selects.append(f"count(*) filter(where lower(type)='{t}') as count_{k}")
+for t in metrics_counts: selects.append(f"count(distinct person_id) filter(where lower(type)='{t}')::bigint as unique_count_{t.replace(' ','_')}")
+# ratios and GMV
+selects += ["count(*) filter(where lower(type)='opened email')::double / nullif(count(*) filter(where lower(type)='received email'),0) as email_open_rate",
+"count(*) filter(where lower(type)='clicked email')::double / nullif(count(*) filter(where lower(type)='opened email'),0) as email_click_to_open_rate",
+"count(*) filter(where lower(type)='ordered product')::double / nullif(count(*) filter(where lower(type)='viewed product'),0) as product_view_to_order_rate",
+"count(*) filter(where lower(type)='placed order')::double / nullif(count(*) filter(where lower(type)='active on site'),0) as site_to_order_rate",
+"sum(case when lower(type) in ('placed order','ordered product') then coalesce(numeric_value,0) else 0 end)::double as gmv_gross",
+"(sum(case when lower(type) in ('placed order','ordered product') then coalesce(numeric_value,0) else 0 end)-sum(case when lower(type) in ('refunded order','cancelled order') then coalesce(numeric_value,0) else 0 end))::double as gmv_net"]
+write(I,'int_klaviyo__campaign_flow_metrics',f'''
+with {resolved_ctes}, touch_groups as (
+ select *, case when resolved_touch_type='campaign' then resolved_touch_id end last_touch_campaign_id,
+ case when resolved_touch_type='flow' then resolved_touch_id end last_touch_flow_id from resolved
+)
+select last_touch_campaign_id,last_touch_flow_id,variation_id,source_relation,{', '.join(selects)}
+from touch_groups group by last_touch_campaign_id,last_touch_flow_id,variation_id,source_relation
+''')
+# person metrics: date spine with generate_series; preserve keys incl null dates
+pselect=["person_id","source_relation","min(occurred_on) first_event_on","max(occurred_on) last_event_on"]
+for t in ['refunded order','placed order','ordered product','cancelled order']:
+ pselect.append(f"sum(case when lower(type)='{t}' then coalesce(numeric_value,0) else 0 end)::double as sum_revenue_{t.replace(' ','_')}")
+for t in count_types:
+ pselect.append(f"count(*) filter(where lower(type)='{t}') as count_{t.replace(' ','_')}")
+pselect += ["count(distinct occurred_on)::bigint as active_days","count(distinct date_trunc('week',occurred_on))::bigint as active_weeks","count(distinct date_trunc('month',occurred_on))::bigint as active_months"]
+# don't count event types not model columns? generates marked fields, okay person metrics has all
+write(I,'int_klaviyo__person_metrics',f'''
+with events as (select *, cast(occurred_at as date) occurred_on_calc from staging.stg_klaviyo__event), grouped as (
+ select person_id,source_relation,min(coalesce(occurred_on,occurred_on_calc)) first_event_on,max(coalesce(occurred_on,occurred_on_calc)) last_event_on,
+ {', '.join([x for x in pselect[4:]])},
+ count(distinct occurred_on) as _active_days, count(distinct date_trunc('week',occurred_on)) as _active_weeks,count(distinct date_trunc('month',occurred_on)) as _active_months
+ from events group by person_id,source_relation
+), spine as (
+ select g.person_id,g.source_relation,count(*)-count(distinct e.occurred_on) as missing_day_count
+ from grouped g cross join lateral generate_series(g.first_event_on,g.last_event_on,interval '1 day') d(day)
+ left join events e on e.person_id=g.person_id and e.source_relation=g.source_relation and e.occurred_on=d.day
+ group by g.person_id,g.source_relation
+)
+select g.person_id,g.source_relation,g.first_event_on,g.last_event_on,
+ {', '.join([f'g.{t}' for t in [f'sum_revenue_{v.replace(" ","_")}' for v in ['refunded order','placed order','ordered product','cancelled order']] + [f'count_{v.replace(" ","_")}' for v in count_types]])},
+ g._active_days::bigint active_days,g._active_weeks::bigint active_weeks,g._active_months::bigint active_months,
+ s.missing_day_count,
+ g.count_opened_email::double/nullif(g.count_received_email,0) email_open_rate,
+ g.count_clicked_email::double/nullif(g.count_opened_email,0) email_click_to_open_rate,
+ g.count_ordered_product::double/nullif(g.count_viewed_product,0) product_view_to_order_rate,
+ g.count_placed_order::double/nullif(g.count_active_on_site,0) site_to_order_rate
+from grouped g left join spine s using(person_id,source_relation)
+''')
+# campaign/flow event metrics reusable attribution from resolved touch
+for obj,touch in [('campaign','campaign'),('flow','flow')]:
+ touch_id='last_touch_campaign_id' if touch=='campaign' else 'last_touch_flow_id'
+ countlist=['received email','opened email','clicked email','placed order','ordered product','refunded order']
+ fields=["count(distinct person_id)::bigint total_count_unique_people"]+[f"count(*) filter(where lower(type)='{t}') count_{t.replace(' ','_')}" for t in countlist]
+ fields += ["sum(case when lower(type) in ('placed order','ordered product') then coalesce(numeric_value,0) else 0 end)::double gmv_gross",
+ "(sum(case when lower(type) in ('placed order','ordered product') then coalesce(numeric_value,0) else 0 end)-sum(case when lower(type) in ('refunded order','cancelled order') then coalesce(numeric_value,0) else 0 end))::double gmv_net",
+ "count(*) filter(where lower(type)='opened email')::double/nullif(count(*) filter(where lower(type)='received email'),0) email_open_rate",
+ "count(*) filter(where lower(type)='clicked email')::double/nullif(count(*) filter(where lower(type)='opened email'),0) email_click_to_open_rate"]
+ write(I,f'int_klaviyo__{obj}s_enriched',f'''
+with {resolved_ctes}, event_touches as (
+ select *, case when resolved_touch_type='{touch}' then resolved_touch_id end {touch_id} from resolved
+), metrics as (
+ select {touch_id} as {obj}_id,variation_id,source_relation,{', '.join(fields)}
+ from event_touches where {touch_id} is not null group by {touch_id},variation_id,source_relation
+)
+select d.created_at,d.{obj}_id,d.{obj}_name,d.status,d.updated_at,d.is_archived,{('d.trigger_type,' if touch=='flow' else '')}d.source_relation,
+ m.variation_id,m.total_count_unique_people,{', '.join('m.count_'+x.replace(' ','_') for x in countlist)},m.gmv_gross,m.gmv_net,m.email_open_rate,m.email_click_to_open_rate,
+ md5(d.{obj}_id || '|' || coalesce(m.variation_id,'')) as {obj}_variation_key
+from staging.stg_klaviyo__{obj} d left join metrics m on d.{obj}_id=m.{obj}_id and d.source_relation=m.source_relation
+''')
+# campaign enriched needs campaign dimension field set exact casing declared (DuckDB output identifiers unquoted uppercase semantics)
+write(I,'int_klaviyo__campaigns_enriched',f'''
+with {resolved_ctes}, campaign_events as (
+ select *,case when resolved_touch_type='campaign' then resolved_touch_id end last_touch_campaign_id from resolved
+), metrics as (
+ select last_touch_campaign_id campaign_id,variation_id,source_relation,count(distinct person_id)::bigint total_count_unique_people,
+ count(*) filter(where lower(type)='received email') count_received_email,
+ count(*) filter(where lower(type)='opened email') count_opened_email,
+ count(*) filter(where lower(type)='clicked email') count_clicked_email,
+ count(*) filter(where lower(type)='placed order') count_placed_order,
+ count(*) filter(where lower(type)='ordered product') count_ordered_product,
+ count(*) filter(where lower(type)='refunded order') count_refunded_order,
+ sum(case when lower(type) in ('placed order','ordered product') then coalesce(numeric_value,0) else 0 end)::double gmv_gross,
+ (sum(case when lower(type) in ('placed order','ordered product') then coalesce(numeric_value,0) else 0 end)-sum(case when lower(type) in ('refunded order','cancelled order') then coalesce(numeric_value,0) else 0 end))::double gmv_net,
+ count(*) filter(where lower(type)='opened email')::double/nullif(count(*) filter(where lower(type)='received email'),0) email_open_rate,
+ count(*) filter(where lower(type)='clicked email')::double/nullif(count(*) filter(where lower(type)='opened email'),0) email_click_to_open_rate
+ from campaign_events where last_touch_campaign_id is not null group by last_touch_campaign_id,variation_id,source_relation
+)
+select c.campaign_id,c.campaign_type as CAMPAIGN_TYPE,cast(c.created_at as varchar) created_at,c.email_template_id as EMAIL_TEMPLATE_ID,c.from_email,c.from_name as FROM_NAME,c.campaign_name,
+ c.scheduled_to_send_at,c.sent_at as SENT_AT,c.status as STATUS,c.status_id as STATUS_ID,c.subject as SUBJECT,c.updated_at,
+ cast(c.is_archived as varchar) is_archived,cast(c.scheduled_at as varchar) scheduled_at,c.source_relation,
+ m.variation_id,m.total_count_unique_people,m.count_received_email,m.count_opened_email,m.count_clicked_email,m.count_placed_order,m.count_ordered_product,m.count_refunded_order,
+ m.gmv_gross,m.gmv_net,m.email_open_rate,m.email_click_to_open_rate,md5(c.campaign_id || '|' || coalesce(m.variation_id,'')) campaign_variation_key
+from staging.stg_klaviyo__campaign c left join metrics m on c.campaign_id=m.campaign_id and c.source_relation=m.source_relation
+''')
+# persons enriched
+write(I,'int_klaviyo__persons_enriched',f'''
+with events as (
+ select person_id,source_relation,occurred_on,type,numeric_value from staging.stg_klaviyo__event
+), metrics as (
+ select person_id,source_relation,min(occurred_on) first_event_on,max(occurred_on) last_event_on,
+ sum(case when lower(type)='refunded order' then coalesce(numeric_value,0) else 0 end)::double sum_revenue_refunded_order,
+ sum(case when lower(type)='placed order' then coalesce(numeric_value,0) else 0 end)::double sum_revenue_placed_order,
+ sum(case when lower(type)='ordered product' then coalesce(numeric_value,0) else 0 end)::double sum_revenue_ordered_product,
+ sum(case when lower(type)='cancelled order' then coalesce(numeric_value,0) else 0 end)::double sum_revenue_cancelled_order,
+ {', '.join(f"count(*) filter(where lower(type)='{t}') count_{t.replace(' ','_')}" for t in ['active on site','viewed product','ordered product','placed order','received email','opened email','clicked email'])},
+ count(*) filter(where lower(type)='opened email')::double/nullif(count(*) filter(where lower(type)='received email'),0) email_open_rate
+ from events group by person_id,source_relation
+)
+select p.*,m.first_event_on,m.last_event_on,m.sum_revenue_refunded_order,m.sum_revenue_placed_order,m.sum_revenue_ordered_product,m.sum_revenue_cancelled_order,
+ m.count_active_on_site,m.count_viewed_product,m.count_ordered_product,m.count_placed_order,m.count_received_email,m.count_opened_email,m.count_clicked_email,m.email_open_rate
+from staging.stg_klaviyo__person p left join metrics m using(person_id,source_relation)
+''')
+PY
+python /tmp/build.py
+
+## agent 实际看到的执行结果
+
+
+
+

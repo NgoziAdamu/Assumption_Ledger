@@ -1,0 +1,899 @@
+{
+  "stg_hubspot__contact": {
+    "items": [
+      {
+        "problem": "Contacts with neither email field populated are retained despite the email not-null constraint.",
+        "about": "requirement",
+        "evidence_in_work": "lower(trim(coalesce(property_email, property_email_1))) as email",
+        "source": "name: email; data_type: VARCHAR; constraints: [not_null]",
+        "importance": 4,
+        "reason": "These records violate the staging contract and cannot match downstream email activity."
+      },
+      {
+        "problem": "Taking only the first 19 timestamp characters discards valid fractional seconds from all three contact timestamps.",
+        "about": "data",
+        "evidence_in_work": "try_strptime(substr(\\1, 1, 19), '%Y-%m-%d %H:%M:%S')",
+        "source": "created_date, created_at, and first_conversion_date: data_type: TIMESTAMP",
+        "importance": 3,
+        "reason": "Timestamp precision is lost and attribution-window boundary decisions can change."
+      },
+      {
+        "problem": "The fallback from property_email to property_email_1 assumes the two source columns are interchangeable contact email attributes.",
+        "about": "data",
+        "evidence_in_work": "coalesce(property_email, property_email_1)",
+        "source": "raw.contact_data: columns include property_email and property_email_1",
+        "importance": 2,
+        "reason": "An undocumented fallback could attach activity to a different address."
+      }
+    ],
+    "fewer_reason": "Only three concrete concerns are supported; contact ID validation matches the supplied rules and absent source metadata does not itself establish an error."
+  },
+  "stg_hubspot__deal": {
+    "items": [
+      {
+        "problem": "Rows with an invalid or missing creation timestamp remain even though created_date must be non-null.",
+        "about": "requirement",
+        "evidence_in_work": "where deal_id is not null",
+        "source": "name: created_date; data_type: TIMESTAMP; constraints: [not_null]",
+        "importance": 4,
+        "reason": "Invalid deals remain in the universe but disappear from quarterly reporting."
+      },
+      {
+        "problem": "The required uniqueness of deal_id is neither enforced nor checked.",
+        "about": "requirement",
+        "evidence_in_work": "from raw.deal_data ... where deal_id is not null",
+        "source": "name: deal_id; constraints: [not_null, unique]",
+        "importance": 3,
+        "reason": "Duplicate IDs would inflate downstream revenue and deal-level aggregates."
+      },
+      {
+        "problem": "The final timestamp parsing drops fractional seconds from deal creation and close times.",
+        "about": "data",
+        "evidence_in_work": "try_strptime(substr(\\1, 1, 19), '%Y-%m-%d %H:%M:%S')",
+        "source": "property_createdate [('2023-12-04 20:35:28.856 +0800', 1), ...]",
+        "importance": 2,
+        "reason": "Valid timestamp precision is discarded, although most whole-day and quarterly metrics will be unaffected."
+      }
+    ],
+    "fewer_reason": "Three supported concerns were found; additional amount or deletion rules are not specified for this staging model."
+  },
+  "stg_hubspot__company": {
+    "items": [
+      {
+        "problem": "Positive annual revenue below 1000 is retained instead of being nullified.",
+        "about": "requirement",
+        "evidence_in_work": "case when property_annualrevenue < 0 then 0 else try_cast(property_annualrevenue as decimal(18,2)) end",
+        "source": "annual_revenue > 0 THEN annual_revenue BETWEEN 1000 AND 9999999999999.99 ... on_failure: nullify_field",
+        "importance": 4,
+        "reason": "An explicit field-validation step is missing."
+      },
+      {
+        "problem": "Annual revenue above the contractual upper bound is retained whenever it still fits DECIMAL(18,2).",
+        "about": "requirement",
+        "evidence_in_work": "else try_cast(property_annualrevenue as decimal(18,2)) end as annual_revenue",
+        "source": "annual_revenue IS NULL OR annual_revenue <= 9999999999999.99; on_failure: nullify_field",
+        "importance": 4,
+        "reason": "Large invalid values can substantially distort company revenue analytics."
+      },
+      {
+        "problem": "Negative annual revenue is changed to zero without establishing that zero is the intended deterministic correction.",
+        "about": "requirement",
+        "evidence_in_work": "when property_annualrevenue < 0 then 0",
+        "source": "annual_revenue IS NULL OR annual_revenue >= 0; on_failure: correct",
+        "importance": 2,
+        "reason": "The contract requires correction but does not identify the correction method."
+      },
+      {
+        "problem": "Creation timestamp parsing removes fractional seconds before applying the date-validity filter.",
+        "about": "data",
+        "evidence_in_work": "try_strptime(substr(property_createdate, 1, 19), '%Y-%m-%d %H:%M:%S')",
+        "source": "property_createdate [('2023-02-01 20:53:23.170 +0800', 1), ...]",
+        "importance": 2,
+        "reason": "The staged timestamp no longer preserves the precision available in the source."
+      }
+    ],
+    "fewer_reason": "Four distinct concerns are supported; the final code does apply the required company ID and creation-date filters."
+  },
+  "stg_hubspot__ticket": {
+    "items": [
+      {
+        "problem": "The required uniqueness of ticket_id is not enforced or tested.",
+        "about": "requirement",
+        "evidence_in_work": "where id is not null and ... is not null",
+        "source": "name: ticket_id; constraints: [not_null, unique]",
+        "importance": 3,
+        "reason": "Duplicate tickets could propagate into ticket facts and association joins."
+      },
+      {
+        "problem": "Creation, closure, and first-reply timestamps lose fractional-second precision.",
+        "about": "data",
+        "evidence_in_work": "try_strptime(substr(nullif(property_closed_date,''), 1, 19), '%Y-%m-%d %H:%M:%S')",
+        "source": "property_closed_date [('2024-09-12 16:50:47.799 +0800', 1), ...]",
+        "importance": 2,
+        "reason": "The staged service timestamps are less precise than their valid source values."
+      }
+    ],
+    "fewer_reason": "Only two supported concerns were identified; the final creation-date filter satisfies the stated not-null requirement."
+  },
+  "stg_hubspot__owner": {
+    "items": [
+      {
+        "problem": "The filter checks whether raw created_at exists rather than whether the parsed created_timestamp is non-null.",
+        "about": "requirement",
+        "evidence_in_work": "where owner_id is not null and portal_id is not null and created_at is not null",
+        "source": "name: created_timestamp; constraints: [not_null]",
+        "importance": 3,
+        "reason": "Malformed non-null source strings can still produce forbidden null timestamps."
+      },
+      {
+        "problem": "Owner ID uniqueness is not enforced or checked.",
+        "about": "requirement",
+        "evidence_in_work": "from raw.owner_data",
+        "source": "name: owner_id; constraints: [not_null, unique]",
+        "importance": 3,
+        "reason": "Duplicate owners can multiply deals and then multiply them again in owner-performance joins."
+      },
+      {
+        "problem": "The timestamp parser discards fractional seconds from owner creation and update timestamps.",
+        "about": "data",
+        "evidence_in_work": "try_strptime(substr(\\1, 1, 19), '%Y-%m-%d %H:%M:%S')",
+        "source": "created_at [('2021-09-04 11:31:00.888 +0800', 1), ...]",
+        "importance": 2,
+        "reason": "Valid source timestamp precision is lost."
+      }
+    ],
+    "fewer_reason": "Three concrete concerns were found; the contract does not specify a more detailed owner-name or email-cleaning policy."
+  },
+  "stg_hubspot__deal_contact": {
+    "items": [],
+    "fewer_reason": "The visible mappings, casts, and required-key filters match this model's contract; no additional supported problem was identified."
+  },
+  "stg_hubspot__deal_pipeline": {
+    "items": [
+      {
+        "problem": "Pipeline ID uniqueness is not enforced or checked.",
+        "about": "requirement",
+        "evidence_in_work": "from raw.deal_pipeline_data ... pipeline_id is not null",
+        "source": "name: deal_pipeline_id; constraints: [not_null, unique]",
+        "importance": 3,
+        "reason": "Multiple rows per pipeline would multiply enriched deals and their monetary aggregates."
+      },
+      {
+        "problem": "Pipeline creation and update timestamps are truncated to whole seconds.",
+        "about": "data",
+        "evidence_in_work": "try_strptime(substr(\\1, 1, 19), '%Y-%m-%d %H:%M:%S')",
+        "source": "created_timestamp and updated_timestamp: data_type: TIMESTAMP",
+        "importance": 1,
+        "reason": "Any valid fractional seconds are discarded, primarily affecting metadata fidelity."
+      }
+    ],
+    "fewer_reason": "Only two supported concerns were identified."
+  },
+  "stg_hubspot__deal_pipeline_stage": {
+    "items": [
+      {
+        "problem": "Stage ID uniqueness is not enforced or checked.",
+        "about": "requirement",
+        "evidence_in_work": "from raw.deal_pipeline_stage_data ... stage_id is not null",
+        "source": "name: deal_pipeline_stage_id; constraints: [not_null, unique]",
+        "importance": 3,
+        "reason": "Duplicate stage IDs would multiply enriched deals and inflate stage-level results."
+      },
+      {
+        "problem": "Stage metadata timestamps are truncated to whole seconds.",
+        "about": "data",
+        "evidence_in_work": "try_strptime(substr(\\1, 1, 19), '%Y-%m-%d %H:%M:%S')",
+        "source": "created_timestamp and updated_timestamp: data_type: TIMESTAMP",
+        "importance": 1,
+        "reason": "This loses source precision but is unlikely to affect the principal sales metrics."
+      }
+    ],
+    "fewer_reason": "Only two supported concerns were identified; additional probability validations are not stated in the supplied contract."
+  },
+  "stg_hubspot__email_event": {
+    "items": [
+      {
+        "problem": "Numeric caused_by_created and obsoleted_by_created values are parsed as formatted date strings without checking whether they represent epoch timestamps.",
+        "about": "data",
+        "evidence_in_work": "try_strptime(substr(cast(caused_by_created as varchar), 1, 19), '%Y-%m-%d %H:%M:%S')",
+        "source": "caused_by_created:BIGINT ... obsoleted_by_created:BIGINT",
+        "importance": 4,
+        "reason": "If these are epoch values, valid event timestamps become null systematically."
+      },
+      {
+        "problem": "The required temporal corrections for caused_by_created_timestamp and sent_by_created_timestamp are omitted.",
+        "about": "requirement",
+        "evidence_in_work": "try_strptime(substr(sent_by_created, 1, 19), '%Y-%m-%d %H:%M:%S') as sent_by_created_timestamp",
+        "source": "caused_by_created_timestamp <= created_timestamp ... sent_by_created_timestamp >= created_timestamp; on_failure: correct",
+        "importance": 4,
+        "reason": "The SQL performs parsing but never repairs timestamps that violate the explicit ordering rules."
+      },
+      {
+        "problem": "Rows with null event type are retained despite the required non-null email_event_type.",
+        "about": "requirement",
+        "evidence_in_work": "type as email_event_type ... where id is not null",
+        "source": "name: email_event_type; constraints: [not_null]",
+        "importance": 3,
+        "reason": "Invalid base events remain and cannot contribute to their intended type-specific metrics."
+      },
+      {
+        "problem": "Email event ID uniqueness is not enforced or checked.",
+        "about": "requirement",
+        "evidence_in_work": "id as email_event_id ... from raw.email_event_data",
+        "source": "name: email_event_id; constraints: [not_null, unique]",
+        "importance": 3,
+        "reason": "Duplicate event IDs can multiply detail joins and downstream send facts."
+      },
+      {
+        "problem": "Formatted event timestamps lose fractional seconds through the first-19-character parser.",
+        "about": "data",
+        "evidence_in_work": "try_strptime(substr(created, 1, 19), '%Y-%m-%d %H:%M:%S')",
+        "source": "name: created_timestamp; data_type: TIMESTAMP",
+        "importance": 2,
+        "reason": "Valid subsecond precision is removed before send timestamps are propagated."
+      }
+    ],
+    "fewer_reason": "Five distinct supported concerns were identified."
+  },
+  "stg_hubspot__email_event_click": {
+    "items": [
+      {
+        "problem": "The required unique email_event_id constraint is not enforced or checked.",
+        "about": "requirement",
+        "evidence_in_work": "id as email_event_id ... where id is not null",
+        "source": "name: email_event_id; constraints: [not_null, unique]",
+        "importance": 2,
+        "reason": "Duplicate click detail IDs would violate the promised staging grain."
+      }
+    ],
+    "fewer_reason": "The remaining visible field mappings match the contract, leaving only the unverified uniqueness requirement."
+  },
+  "stg_hubspot__email_event_open": {
+    "items": [
+      {
+        "problem": "The required unique email_event_id constraint is not enforced or checked.",
+        "about": "requirement",
+        "evidence_in_work": "id as email_event_id ... where id is not null",
+        "source": "name: email_event_id; constraints: [not_null, unique]",
+        "importance": 2,
+        "reason": "Duplicate open detail IDs would violate the promised staging grain."
+      }
+    ],
+    "fewer_reason": "No further supported discrepancy appears in the visible mappings."
+  },
+  "stg_hubspot__email_event_sent": {
+    "items": [
+      {
+        "problem": "The required uniqueness of email_event_id is not enforced or checked.",
+        "about": "requirement",
+        "evidence_in_work": "from raw.email_event_sent_data ... where id is not null",
+        "source": "name: email_event_id; constraints: [not_null, unique]",
+        "importance": 3,
+        "reason": "Duplicate send details would propagate into send facts and contact email totals."
+      }
+    ],
+    "fewer_reason": "The source selection and remaining field mappings match the supplied contract."
+  },
+  "stg_hubspot__email_event_status_change": {
+    "items": [
+      {
+        "problem": "The required uniqueness of email_event_id is not enforced or checked.",
+        "about": "requirement",
+        "evidence_in_work": "from raw.email_event_status_change_data ... where id is not null",
+        "source": "name: email_event_id; constraints: [not_null, unique]",
+        "importance": 3,
+        "reason": "Duplicate status details could multiply unsubscribe counts in the inner join."
+      }
+    ],
+    "fewer_reason": "No further supported discrepancy appears in the mappings or stated validation requirements."
+  },
+  "stg_hubspot__engagement": {
+    "items": [
+      {
+        "problem": "The required uniqueness of engagement_id is not enforced or checked.",
+        "about": "requirement",
+        "evidence_in_work": "id as engagement_id ... where id is not null",
+        "source": "name: engagement_id; constraints: [not_null, unique]",
+        "importance": 2,
+        "reason": "Duplicate IDs would violate the base engagement grain."
+      }
+    ],
+    "fewer_reason": "No other supported concern was identified for this small pass-through mapping."
+  },
+  "stg_hubspot__engagement_email": {
+    "items": [
+      {
+        "problem": "Rows with null engagement_id are removed even though the contract specifies uniqueness but not a not-null constraint.",
+        "about": "requirement",
+        "evidence_in_work": "where engagement_id is not null",
+        "source": "name: engagement_id; constraints: [unique]",
+        "importance": 2,
+        "reason": "This adds a row-deletion policy not explicitly required for the model."
+      },
+      {
+        "problem": "Engagement ID uniqueness is not enforced or checked.",
+        "about": "requirement",
+        "evidence_in_work": "cast(engagement_id as varchar) as engagement_id",
+        "source": "name: engagement_id; constraints: [unique]",
+        "importance": 2,
+        "reason": "Duplicate email engagement rows would violate the stated constraint."
+      },
+      {
+        "problem": "Creation, engagement, and last-modified timestamps are reduced to whole-second precision.",
+        "about": "data",
+        "evidence_in_work": "try_strptime(substr(\\1, 1, 19), '%Y-%m-%d %H:%M:%S')",
+        "source": "created_date, engagement_timestamp, and last_modified_date: data_type: TIMESTAMP",
+        "importance": 1,
+        "reason": "Valid source timestamp precision may be lost."
+      }
+    ],
+    "fewer_reason": "Only three supported concerns were identified."
+  },
+  "stg_hubspot__form": {
+    "items": [
+      {
+        "problem": "Null form IDs are filtered out although only uniqueness is specified for form_id.",
+        "about": "requirement",
+        "evidence_in_work": "where guid is not null",
+        "source": "name: form_id; constraints: [unique]",
+        "importance": 2,
+        "reason": "The SQL introduces an additional row-removal rule."
+      },
+      {
+        "problem": "Form ID uniqueness is not enforced or checked.",
+        "about": "requirement",
+        "evidence_in_work": "guid as form_id ... from raw.form_data",
+        "source": "name: form_id; constraints: [unique]",
+        "importance": 2,
+        "reason": "Duplicate form records would violate the contract."
+      },
+      {
+        "problem": "Form creation and update timestamp parsing discards fractional seconds.",
+        "about": "data",
+        "evidence_in_work": "try_strptime(substr(\\1, 1, 19), '%Y-%m-%d %H:%M:%S')",
+        "source": "created_timestamp and updated_timestamp: data_type: TIMESTAMP",
+        "importance": 1,
+        "reason": "This reduces metadata fidelity."
+      }
+    ],
+    "fewer_reason": "Only three supported concerns were identified."
+  },
+  "stg_hubspot__ticket_company": {
+    "items": [],
+    "fewer_reason": "The visible source mapping, VARCHAR casts, and required-key filters match the contract."
+  },
+  "stg_hubspot__ticket_contact": {
+    "items": [],
+    "fewer_reason": "The visible source mapping, VARCHAR casts, and required-key filters match the contract."
+  },
+  "stg_hubspot__ticket_pipeline": {
+    "items": [
+      {
+        "problem": "Ticket pipeline ID uniqueness is not enforced or checked.",
+        "about": "requirement",
+        "evidence_in_work": "pipeline_id as ticket_pipeline_id",
+        "source": "name: ticket_pipeline_id; constraints: [unique]",
+        "importance": 3,
+        "reason": "Duplicate pipeline IDs can multiply ticket facts."
+      },
+      {
+        "problem": "Null pipeline IDs are discarded despite the absence of a not-null constraint.",
+        "about": "requirement",
+        "evidence_in_work": "where pipeline_id is not null",
+        "source": "name: ticket_pipeline_id; constraints: [unique]",
+        "importance": 2,
+        "reason": "The model applies an extra row-deletion rule."
+      },
+      {
+        "problem": "Pipeline metadata timestamps are truncated to whole seconds.",
+        "about": "data",
+        "evidence_in_work": "try_strptime(substr(\\1, 1, 19), '%Y-%m-%d %H:%M:%S')",
+        "source": "created_timestamp and updated_timestamp: data_type: TIMESTAMP",
+        "importance": 1,
+        "reason": "Valid fractional-second metadata may be lost."
+      }
+    ],
+    "fewer_reason": "Only three supported concerns were identified."
+  },
+  "stg_hubspot__ticket_pipeline_stage": {
+    "items": [
+      {
+        "problem": "Ticket stage ID uniqueness is not enforced or checked.",
+        "about": "requirement",
+        "evidence_in_work": "stage_id as ticket_pipeline_stage_id",
+        "source": "name: ticket_pipeline_stage_id; constraints: [unique]",
+        "importance": 3,
+        "reason": "Duplicate matching stages could multiply ticket facts."
+      },
+      {
+        "problem": "Null stage IDs are removed although the contract does not require them to be non-null.",
+        "about": "requirement",
+        "evidence_in_work": "where stage_id is not null",
+        "source": "name: ticket_pipeline_stage_id; constraints: [unique]",
+        "importance": 2,
+        "reason": "This adds an unstated row-deletion policy."
+      },
+      {
+        "problem": "Stage creation and update timestamps lose fractional-second precision.",
+        "about": "data",
+        "evidence_in_work": "try_strptime(substr(\\1, 1, 19), '%Y-%m-%d %H:%M:%S')",
+        "source": "created_timestamp and updated_timestamp: data_type: TIMESTAMP",
+        "importance": 1,
+        "reason": "The effect is mainly reduced metadata fidelity."
+      }
+    ],
+    "fewer_reason": "Only three supported concerns were identified."
+  },
+  "int_hubspot__contact_merge_adjust": {
+    "items": [
+      {
+        "problem": "The merge-audit exclusion may match no contacts because contact IDs can be prefixed strings while vid_to_merge is numeric text.",
+        "about": "data",
+        "evidence_in_work": "c.contact_id = cast(m.vid_to_merge as varchar); output: 3000 rows before and after merge adjustment",
+        "source": "compare contact_id to vid_to_merge using exact string equality",
+        "importance": 3,
+        "reason": "The SQL follows the specified equality, but incompatible source key domains could render the entire merge adjustment ineffective."
+      }
+    ],
+    "fewer_reason": "The anti-join otherwise matches the explicit duplicate, null, and pass-through requirements."
+  },
+  "int_hubspot__contact_lifecycle_metrics": {
+    "items": [
+      {
+        "problem": "Deal association joins may systematically miss prefixed contact IDs because raw deal-contact IDs are numeric and only converted to text.",
+        "about": "data",
+        "evidence_in_work": "cast(c.contact_id as varchar)=cast(d.contact_id as varchar); earlier error: 'CON10000002048'",
+        "source": "raw.deal_contact_data (contact_id, deal_id)",
+        "importance": 4,
+        "reason": "A key-domain mismatch would zero out deal metrics and alter engagement scores for affected contacts."
+      },
+      {
+        "problem": "Duplicate contact IDs are neither resolved nor checked, and the final select preserves each source contact row.",
+        "about": "requirement",
+        "evidence_in_work": "with c as (select * from intermediate.int_hubspot__contact_merge_adjust) ... from c left join email_metrics",
+        "source": "grain: One row per contact_id",
+        "importance": 4,
+        "reason": "The upstream model explicitly preserves duplicates, so this model does not guarantee its required grain."
+      },
+      {
+        "problem": "Email events can be multiplied during aggregation when the contact universe contains duplicate rows for a contact_id.",
+        "about": "data",
+        "evidence_in_work": "from c left join raw.email_event_data e on c.email=e.recipient group by c.contact_id",
+        "source": "int_hubspot__contact_merge_adjust: duplicates from the source are preserved",
+        "importance": 3,
+        "reason": "Repeated contact rows would inflate event counts before the metrics are joined back."
+      },
+      {
+        "problem": "Associated deals are counted from matched deal records rather than from linked deal IDs, potentially excluding orphan associations.",
+        "about": "requirement",
+        "evidence_in_work": "count(distinct d.deal_id) as total_associated_deals",
+        "source": "total_associated_deals = distinct count of linked deals",
+        "importance": 3,
+        "reason": "Links without a matching deal detail may still need to count as associated opportunities."
+      },
+      {
+        "problem": "overall_engagement_score is not explicitly converted to the required DOUBLE type.",
+        "about": "requirement",
+        "evidence_in_work": "0.3*conversion_velocity_score + ... as overall_engagement_score",
+        "source": "name: overall_engagement_score; data_type: DOUBLE",
+        "importance": 2,
+        "reason": "DuckDB can infer a decimal result from these expressions, and the agent checked names but not output types."
+      }
+    ],
+    "fewer_reason": "Five concrete concerns were identified; the visible rate denominators, scoring thresholds, and zero defaults otherwise follow the contract."
+  },
+  "int_hubspot__deal_performance_metrics": {
+    "items": [
+      {
+        "problem": "The one-row-per-deal_id requirement is not protected against duplicate rows produced by deals_enhanced joins.",
+        "about": "requirement",
+        "evidence_in_work": "from intermediate.int_hubspot__deals_enhanced ... select b.*",
+        "source": "grain: One row per deal_id",
+        "importance": 3,
+        "reason": "The upstream contract explicitly permits row multiplication, which would also inflate stage and quarterly aggregates."
+      }
+    ],
+    "fewer_reason": "The visible status definitions, stage grouping, quarterly conditions, null joins, and aggregate formulas otherwise match the supplied specification."
+  },
+  "int_hubspot__deals_enhanced": {
+    "items": [],
+    "fewer_reason": "The visible left joins, defaults, selected attributes, and preservation of source multiplicity match the detailed contract."
+  },
+  "int_hubspot__email_aggregate_status_change": {
+    "items": [
+      {
+        "problem": "The event/status ID join was not checked despite producing an empty aggregation from populated source tables.",
+        "about": "data",
+        "evidence_in_work": "join staging.stg_hubspot__email_event_status_change s using(email_event_id); output: 0 rows",
+        "source": "Inner join ... on email_event_id (matched rows only)",
+        "importance": 3,
+        "reason": "The prescribed join may legitimately be empty, but incompatible event ID populations would make all downstream unsubscribe metrics zero."
+      }
+    ],
+    "fewer_reason": "The aggregation itself follows the specified grouping, exact status match, duplicate handling, and null-send filter."
+  },
+  "int_hubspot__email_event_aggregates": {
+    "items": [
+      {
+        "problem": "Numeric sent_by_id values converted to text may not refer to the same identifier domain as send-event IDs used downstream.",
+        "about": "data",
+        "evidence_in_work": "sent_by_id as email_send_id ... group by sent_by_id",
+        "source": "raw.email_event_data: id:VARCHAR ... sent_by_id:BIGINT",
+        "importance": 3,
+        "reason": "If the identifiers are incompatible, correct per-send counts will never enrich the send facts."
+      }
+    ],
+    "fewer_reason": "The type-specific counts, non-null event-ID condition, and grouping otherwise match the contract."
+  },
+  "int_hubspot__email_marketing_attribution": {
+    "items": [
+      {
+        "problem": "Campaign performance tiers omit required lead-conversion and click-through thresholds.",
+        "about": "requirement",
+        "evidence_in_work": "when ... open_rate>=15 then 'Good Performing' ... open_rate>=10 then 'Average Performing'",
+        "source": "High ... lead_conversion_rate ≥ 2; Good ... click_through_rate ≥ 2 and lead_conversion_rate ≥ 1; Average ... click_through_rate ≥ 1",
+        "importance": 5,
+        "reason": "Campaigns can receive materially overstated performance classifications."
+      },
+      {
+        "problem": "The numeric deal-contact keys may not match prefixed staging contact IDs, eliminating attribution paths.",
+        "about": "data",
+        "evidence_in_work": "c.contact_id=cast(dc.contact_id as varchar)",
+        "source": "Join ... contacts by recipient email, then to deal-contact links by contact_id",
+        "importance": 4,
+        "reason": "A key-domain mismatch would suppress attributed deals, revenue, and ROI classifications."
+      },
+      {
+        "problem": "The specified recipient journey calculations and prioritized attribution-type derivation are omitted.",
+        "about": "requirement",
+        "evidence_in_work": "journeys ... min(ts) ... attributed ... click window or open window or send window",
+        "source": "last_open_time/last_click_time ... minutes_to_first_open ... engagement_level ... attribution_type priority",
+        "importance": 2,
+        "reason": "The shortcut may reproduce final attribution eligibility but does not implement all explicitly required intermediate processing."
+      },
+      {
+        "problem": "total_sends is generated as BIGINT instead of the specified HUGEINT.",
+        "about": "requirement",
+        "evidence_in_work": "count(*) filter(where type='SENT') total_sends",
+        "source": "name: total_sends; data_type: HUGEINT",
+        "importance": 2,
+        "reason": "The materialized schema differs from the data contract."
+      }
+    ],
+    "fewer_reason": "Four supported concerns were found; the final revenue duplication policy, denominator defaults, and ROI thresholds otherwise match the contract."
+  },
+  "int_hubspot__owner_performance_metrics": {
+    "items": [
+      {
+        "problem": "Overall and size-specific win rates return NULL instead of zero when there are no decided deals.",
+        "about": "requirement",
+        "evidence_in_work": "100.0*count(*) filter(where status='Won')/nullif(count(*) filter(where status in ('Won','Lost')),0)",
+        "source": "if there are no closed (Won/Lost) deals then 0",
+        "importance": 4,
+        "reason": "This changes rankings, percentile scores, and development classifications for owners without decisions."
+      },
+      {
+        "problem": "Filtered SUM followed by COALESCE changes all-null qualifying open-pipeline amounts to zero rather than preserving standard aggregate null behavior.",
+        "about": "requirement",
+        "evidence_in_work": "coalesce(sum(amount) filter(where status='Open'),0) pipeline_value",
+        "source": "pipeline_value = sum of amounts from Open deals (non-open contribute 0; NULL amounts are ignored)",
+        "importance": 2,
+        "reason": "An owner with only open deals having null amounts would get a different pipeline value and health classification."
+      },
+      {
+        "problem": "Deal counts and revenue can be multiplied again if owners_enhanced has repeated matching owner rows.",
+        "about": "data",
+        "evidence_in_work": "from d left join intermediate.int_hubspot__owners_enhanced o using(owner_id)",
+        "source": "owners_enhanced: duplicates (including duplicate owner_id) are preserved",
+        "importance": 2,
+        "reason": "The join is required, but the agent did not verify the source uniqueness on which reliable owner metrics depend."
+      },
+      {
+        "problem": "overall_performance_score may be materialized as a non-DOUBLE numeric type if expression inference differs from the contract.",
+        "about": "requirement",
+        "evidence_in_work": "revenue_percentile*40+win_rate_percentile*25+volume_percentile*20+efficiency_percentile*15",
+        "source": "name: overall_performance_score; data_type: DOUBLE",
+        "importance": 1,
+        "reason": "This is a lower-risk schema concern because percent_rank normally supplies DOUBLE inputs."
+      }
+    ],
+    "fewer_reason": "Four concerns were identified; the unusual 0–10000 score scaling is explicitly required and is not treated as an error."
+  },
+  "int_hubspot__owners_enhanced": {
+    "items": [],
+    "fewer_reason": "The four direct renames preserve rows and values as specified."
+  },
+  "hubspot__contacts": {
+    "items": [
+      {
+        "problem": "The promised one-row-per-contact_id grain is not guaranteed because every merge-adjusted source duplicate passes through.",
+        "about": "requirement",
+        "evidence_in_work": "select c.* ... from intermediate.int_hubspot__contact_merge_adjust c",
+        "source": "grain: One row per contact_id",
+        "importance": 3,
+        "reason": "The upstream duplicate-preservation rule conflicts with this grain unless contact uniqueness is established."
+      },
+      {
+        "problem": "Contact email totals may be systematically zero if event send references and send-event IDs do not match upstream.",
+        "about": "data",
+        "evidence_in_work": "sum(opens) total_email_opens ... from marketing.hubspot__email_sends",
+        "source": "Totals: sum bounces, clicks, deferrals, deliveries, drops, forwards, opens, prints, spam_reports, unsubscribes",
+        "importance": 3,
+        "reason": "The contact aggregation is correct locally but depends on an unverified upstream identifier match."
+      }
+    ],
+    "fewer_reason": "Two supported concerns remain; the visible totals, distinct positive-metric send counts, exact email join, and zero defaults otherwise match."
+  },
+  "hubspot__email_sends": {
+    "items": [
+      {
+        "problem": "Unsubscribe rows are re-aggregated across campaigns rather than joined directly as specified.",
+        "about": "requirement",
+        "evidence_in_work": "select email_send_id,sum(unsubscribes) unsubscribes ... group by 1",
+        "source": "Left join intermediate.int_hubspot__email_aggregate_status_change on email_send_id",
+        "importance": 3,
+        "reason": "When a send ID occurs in multiple campaigns, the implementation changes both counts and multiplicity relative to the stated join."
+      },
+      {
+        "problem": "The send identifier used by base send events may not match the numeric sent_by_id domain used for engagement aggregates.",
+        "about": "data",
+        "evidence_in_work": "s.email_send_id=a.email_send_id",
+        "source": "email_send_id ... Event identifier sourced from stg_hubspot__email_event",
+        "importance": 3,
+        "reason": "Unmatched identifier domains would turn delivery and engagement counts into misleading zeros."
+      },
+      {
+        "problem": "The required non-null unique email_send_id is not checked even though the source model explicitly allows unmatched events and multiple join matches.",
+        "about": "requirement",
+        "evidence_in_work": "select s.* ... from marketing.hubspot__email_event_sent s",
+        "source": "email_send_id tests: not_null, unique",
+        "importance": 3,
+        "reason": "The output can retain null or repeated send IDs while appearing successfully materialized."
+      }
+    ],
+    "fewer_reason": "Three supported concerns were found; count defaulting and boolean derivations otherwise follow the contract."
+  },
+  "hubspot__email_event_sent": {
+    "items": [
+      {
+        "problem": "The base send-detail to event-ID join was not checked for match coverage.",
+        "about": "data",
+        "evidence_in_work": "left join staging.stg_hubspot__email_event e using(email_event_id)",
+        "source": "email_send_id ... equals email_event_id when an event match exists, else null",
+        "importance": 3,
+        "reason": "With 1036 send-detail rows and only 736 base event rows, unmatched IDs could leave many sends without campaign, recipient, or send identifiers."
+      },
+      {
+        "problem": "The model does not verify its unique email_event_id test after joins that are explicitly allowed to multiply rows.",
+        "about": "requirement",
+        "evidence_in_work": "left join intermediate.int_hubspot__contact_merge_adjust c on e.recipient_email_address=c.email",
+        "source": "email_event_id tests: not_null, unique",
+        "importance": 2,
+        "reason": "Shared contact emails or duplicate event records can violate the declared output test."
+      }
+    ],
+    "fewer_reason": "Two supported concerns were identified; the actual selected fields and default deletion flag match the required logic."
+  },
+  "hubspot__deals": {
+    "items": [],
+    "fewer_reason": "SELECT * exactly implements the required unmodified passthrough; upstream concerns are assigned to their originating models."
+  },
+  "hubspot__contact_engagement_analysis": {
+    "items": [
+      {
+        "problem": "The one-row-per-contact_id grain is not verified or enforced when the lifecycle source contains repeated contacts.",
+        "about": "requirement",
+        "evidence_in_work": "select l.* ... from intermediate.int_hubspot__contact_lifecycle_metrics l",
+        "source": "grain: One row per contact_id",
+        "importance": 3,
+        "reason": "The upstream lifecycle implementation preserves possible source duplicates."
+      },
+      {
+        "problem": "Comprehensive scoring suppresses null velocity and can suppress null email components instead of allowing null inputs to propagate.",
+        "about": "requirement",
+        "evidence_in_work": "case when conversion_velocity_score>0 then least(conversion_velocity_score*0.1,10) else 0 end",
+        "source": "no additional null-imputation ... null rate or velocity inputs can yield a null overall score",
+        "importance": 3,
+        "reason": "Missing score inputs may be presented as valid numeric scores and classifications."
+      },
+      {
+        "problem": "Recency thresholds use execution-time timestamps rather than today's date boundary.",
+        "about": "requirement",
+        "evidence_in_work": "last_engagement_date>=current_timestamp-interval 30 day",
+        "source": "engagement_recency_status: compare last_engagement_date to today",
+        "importance": 2,
+        "reason": "Contacts on the 30-, 90-, or 180-day boundary may receive different activity and MQL classifications."
+      },
+      {
+        "problem": "comprehensive_engagement_score is not explicitly cast to DOUBLE and may be inferred as DECIMAL.",
+        "about": "requirement",
+        "evidence_in_work": "least(email_open_rate*0.2+email_click_through_rate*0.2,40) ... comprehensive_engagement_score",
+        "source": "name: comprehensive_engagement_score; data_type: DOUBLE",
+        "importance": 2,
+        "reason": "The agent's column-name validation would not detect a schema-type mismatch."
+      },
+      {
+        "problem": "The required contact-to-event attribution-building join is replaced with a direct aggregation of all campaign events.",
+        "about": "requirement",
+        "evidence_in_work": "from raw.email_event_data where email_campaign_id is not null and recipient is not null group by recipient_email_address",
+        "source": "Email attribution (per email): join contacts to email events on email=recipient",
+        "importance": 1,
+        "reason": "The final join may make the outputs equivalent, but the prescribed processing and staging-contact dependency are omitted."
+      }
+    ],
+    "fewer_reason": "Five supported concerns were found; placeholder attribution values and most classification thresholds match the specification."
+  },
+  "hubspot__campaign_performance_analysis": {
+    "items": [
+      {
+        "problem": "total_sends is materialized from COUNT as BIGINT instead of the required HUGEINT.",
+        "about": "requirement",
+        "evidence_in_work": "count(*) filter(where type='SENT') total_sends",
+        "source": "name: total_sends; data_type: HUGEINT",
+        "importance": 2,
+        "reason": "The table schema does not strictly match the contract even though current counts fit either type."
+      }
+    ],
+    "fewer_reason": "The campaign formulas, constants, benchmarks, ordered recommendations, and final ordering otherwise match the supplied specification."
+  },
+  "hubspot__companies": {
+    "items": [],
+    "fewer_reason": "The exact staging passthrough matches this model's contract; missing company validation is assigned to the staging model."
+  },
+  "hubspot__sales_rep_performance": {
+    "items": [
+      {
+        "problem": "Monthly win rate returns NULL instead of zero for months without Won or Lost deals.",
+        "about": "requirement",
+        "evidence_in_work": "100.0*count(*) filter(where deal_status='Won')/nullif(count(*) filter(where deal_status in('Won','Lost')),0)",
+        "source": "monthly_win_rate ... otherwise 0",
+        "importance": 4,
+        "reason": "Monthly averages then exclude undecided months instead of including zero, changing trends and classifications."
+      },
+      {
+        "problem": "Segment revenue is NULL when there are no wins in that segment instead of contributing zero for non-qualifying deals.",
+        "about": "requirement",
+        "evidence_in_work": "sum(deal_amount) filter(where deal_status='Won' and deal_size_category='Enterprise (100K+)') enterprise_revenue",
+        "source": "enterprise/large/medium/small_revenue: sum won deal_amount within each named deal_size_category",
+        "importance": 3,
+        "reason": "Owners with territory data can have missing segment revenue rather than the expected zero-valued sums."
+      },
+      {
+        "problem": "Recomputed rankings, percentiles, and scores reuse names already present in SELECT *, potentially causing the final select to use inherited columns rather than the newly calculated ones.",
+        "about": "data",
+        "evidence_in_work": "ranks as (select *,row_number() ... revenue_rank ... from om); scored as (select *, ... overall_performance_score)",
+        "source": "Rankings and percentiles ... across all reps ... overall_performance_score",
+        "importance": 3,
+        "reason": "DuckDB can suffix duplicate column names, making apparently recomputed metrics silently refer to older values."
+      },
+      {
+        "problem": "Enterprise and large win rates are inherited from owner metrics rather than computed from the territory deal dataset.",
+        "about": "requirement",
+        "evidence_in_work": "select ... enterprise_win_rate,large_deal_win_rate ...",
+        "source": "Territory and segment analysis per owner from all deals ... enterprise_win_rate / large_deal_win_rate",
+        "importance": 3,
+        "reason": "The inherited rates also carry the upstream NULL-for-no-decisions problem."
+      },
+      {
+        "problem": "Monthly won counts use row sums rather than the required distinct deal IDs.",
+        "about": "requirement",
+        "evidence_in_work": "sum(case when deal_status='Won' then 1 else 0 end) monthly_deals_won",
+        "source": "monthly_deals_won: count distinct deal_id where deal_status = 'Won'",
+        "importance": 2,
+        "reason": "Duplicated enhanced deals produce the wrong intermediate monthly count, although this field is not directly emitted."
+      },
+      {
+        "problem": "Monthly win-rate numerator and denominator count rows rather than distinct deal IDs.",
+        "about": "requirement",
+        "evidence_in_work": "count(*) filter(where deal_status='Won') ... count(*) filter(where deal_status in('Won','Lost'))",
+        "source": "monthly_deals_created ... count distinct deal_id ... monthly_deals_won ... count distinct deal_id",
+        "importance": 2,
+        "reason": "Uneven duplication by status can distort monthly win rates and their trends."
+      },
+      {
+        "problem": "The recent-active-month count has no upper bound and therefore counts future-created months as recent activity.",
+        "about": "data",
+        "evidence_in_work": "count(*) filter(where month_index>=year(current_date)*12+month(current_date)-2)",
+        "source": "recent_active_months: count ... in the last 3 calendar months ... inclusive",
+        "importance": 2,
+        "reason": "Future-dated deals would inflate activity classifications, though the inspected examples are historical."
+      }
+    ],
+    "fewer_reason": "Seven supported concerns were found; the unusual score range and NULL-to-Significant-Decline behavior are explicitly specified."
+  },
+  "hubspot__sales_performance_dashboard": {
+    "items": [
+      {
+        "problem": "Previous-quarter win rate becomes NULL after a quarter with no decided deals instead of carrying that quarter's zero win rate.",
+        "about": "requirement",
+        "evidence_in_work": "lag(100.0*deals_won_in_quarter/nullif(deals_won_in_quarter+deals_lost_in_quarter,0))",
+        "source": "quarterly_win_rate ... returns 0 if no Won+Lost; prev_quarter_win_rate ... prior row's values",
+        "importance": 4,
+        "reason": "The lag expression does not use the same zero-denominator definition as the reported quarterly metric."
+      },
+      {
+        "problem": "COALESCE around filtered revenue and pipeline sums changes the specified aggregate null behavior for all-null qualifying cohorts.",
+        "about": "requirement",
+        "evidence_in_work": "coalesce(sum(deal_amount) filter(where deal_status='Open'),0)",
+        "source": "sum of deal_amount ... non-Won contribute zero; null amounts do not affect the sum",
+        "importance": 2,
+        "reason": "Cohorts containing only qualifying null amounts can be reported as zero rather than unknown."
+      },
+      {
+        "problem": "time_weighted_forecast returns NULL for quarters with no qualifying open deals because its CASE has no zero-valued ELSE.",
+        "about": "requirement",
+        "evidence_in_work": "sum(case when deal_status='Open' and deal_cycle_time_days is null then ... end)",
+        "source": "time_weighted_forecast: for Open deals with unknown cycle time, sum ...",
+        "importance": 2,
+        "reason": "The empty-contribution convention should be checked because other forecast sums are zero-defaulted."
+      },
+      {
+        "problem": "Future-quarter open deals receive the older-quarter 0.7 factor through the catch-all branch.",
+        "about": "data",
+        "evidence_in_work": "when ... current quarter then 0.3 ... last quarter then 0.5 else 0.7",
+        "source": "0.3 for current quarter, 0.5 for last quarter, 0.7 if older",
+        "importance": 2,
+        "reason": "Future creation dates are not filtered upstream and do not meet the documented older-date condition."
+      }
+    ],
+    "fewer_reason": "Four supported concerns were identified; distinct quarterly counts, historical category rates, percentile calculations, and goal thresholds otherwise match."
+  },
+  "hubspot__tickets": {
+    "items": [
+      {
+        "problem": "Ticket association joins may fail systematically because ticket IDs retain an ID prefix while association-table ticket IDs are plain numeric text.",
+        "about": "data",
+        "evidence_in_work": "left join ca on t.ticket_id=ca.ticket_id left join co on t.ticket_id=co.ticket_id",
+        "source": "Customer support specification separately extracts regexp_extract(t.id, 'ID(\\d+)', 1) to join raw ticket mappings",
+        "importance": 4,
+        "reason": "The prescribed direct join may leave company and contact association fields null for otherwise associated tickets."
+      },
+      {
+        "problem": "Contact association emails may be missing because numeric mapping contact IDs do not match prefixed staging contact IDs.",
+        "about": "data",
+        "evidence_in_work": "left join staging.stg_hubspot__contact c using(contact_id)",
+        "source": "raw.ticket_contact_data: contact_id:BIGINT; observed staging contact_id includes 'CON10000002048'",
+        "importance": 3,
+        "reason": "Even matched ticket mappings could produce empty contact-email elements."
+      },
+      {
+        "problem": "The required unique ticket grain is not tested after joins to pipeline, stage, and owner tables.",
+        "about": "requirement",
+        "evidence_in_work": "left join ... ticket_pipeline ... ticket_pipeline_stage ... owners_enhanced",
+        "source": "grain: One row per ticket_id; tests: not_null, unique",
+        "importance": 3,
+        "reason": "Unchecked duplicate lookup keys can multiply the final ticket facts."
+      }
+    ],
+    "fewer_reason": "Three supported concerns were found; association concatenation, null elements, duplicate preservation, and pipeline-qualified stage joins otherwise match."
+  },
+  "hubspot__customer_support_analytics": {
+    "items": [
+      {
+        "problem": "Stage matching is made case-insensitive by lowercasing, whereas the contract specifies literal LIKE checks.",
+        "about": "requirement",
+        "evidence_in_work": "lower(t.property_hs_pipeline_stage) like '%waiting%'",
+        "source": "t.property_hs_pipeline_stage LIKE '%waiting%' ... LIKE '%progress%'",
+        "importance": 3,
+        "reason": "Mixed-case stage strings can receive different ticket statuses and downstream service labels."
+      },
+      {
+        "problem": "Numeric ticket-contact mapping IDs may not match prefixed staging contact IDs.",
+        "about": "data",
+        "evidence_in_work": "cast(tc.contact_id as varchar)=c.contact_id",
+        "source": "Join ... staging.stg_hubspot__contact c on cast(tc.contact_id as varchar) = c.contact_id",
+        "importance": 3,
+        "reason": "The SQL follows the specified join, but the observed contact ID formats warrant checking for systematically missing contact attributes."
+      },
+      {
+        "problem": "Invalid ticket-ID extraction is silently converted to NULL rather than using the specified strict cast.",
+        "about": "requirement",
+        "evidence_in_work": "try_cast(regexp_extract(t.id,'ID([0-9]+)',1) as bigint) numeric_id",
+        "source": "cast(regexp_extract(t.id, 'ID(\\d+)', 1) as bigint)",
+        "importance": 2,
+        "reason": "Unexpected ID formats become unmatched associations without surfacing the contract's conversion failure."
+      }
+    ],
+    "fewer_reason": "Three supported concerns were identified; execution-time timestamps, fixed resolution times, deletion filtering, and ordered classifications otherwise follow the specification."
+  }
+}

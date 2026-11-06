@@ -1,0 +1,145 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "premises": [
+      {
+        "statement": "The staged project table contains a team_name column.",
+        "about": "data",
+        "target": "marts.asana__team_efficiency_metrics",
+        "evidence_of_dependence": "SELECT p.team_id,p.team_name ... FROM staging.stg_asana__project p ... GROUP BY p.team_id,p.team_name",
+        "alternative": "The stg_asana__project contract lists team_id but no team_name; team_name is supplied by staging.stg_asana__team.",
+        "importance": 5,
+        "reason": "The project aggregation cannot execute if the referenced column is absent.",
+        "updates": null
+      },
+      {
+        "statement": "Joining assigned task rows to the user directory would produce no matched users for any team.",
+        "about": "data",
+        "target": "marts.asana__team_efficiency_metrics",
+        "evidence_of_dependence": "0::BIGINT developing_performers ... NULL::DOUBLE avg_tasks_per_member",
+        "alternative": "The contract requires users linked by assignee_user_id=user_id, defaults their grade to 'developing_performer' and portfolio_task_count to 0, and counts distributions across joined task rows.",
+        "importance": 5,
+        "reason": "Omitting the user join replaces required task-weighted member distributions and averages with constants.",
+        "updates": null
+      },
+      {
+        "statement": "Both collaboration_efficiency_score and resource_optimization_score are zero for every team.",
+        "about": "data",
+        "target": "marts.asana__team_efficiency_metrics",
+        "evidence_of_dependence": "0::INTEGER collaboration_efficiency_score,0::INTEGER resource_optimization_score",
+        "alternative": "The contract requires these scores to be calculated from performer, workload, and risk shares when unique_team_members is positive.",
+        "importance": 5,
+        "reason": "Hardcoding both components can materially change overall efficiency scores and downstream classifications.",
+        "updates": null
+      },
+      {
+        "statement": "Every team passing the implemented identifier and count checks also has avg_completion_rate and avg_quality_rate within the required non-null range of 0 through 100.",
+        "about": "data",
+        "target": "marts.asana__team_efficiency_metrics",
+        "evidence_of_dependence": "(t.team_id IS NOT NULL AND t.team_name IS NOT NULL AND COALESCE(ps.total_projects,0)>=0 ... ) is_valid_record",
+        "alternative": "The contract requires avg_completion_rate and avg_quality_rate to be within [0,100] and says averages are NULL when no health values exist.",
+        "importance": 4,
+        "reason": "Teams without qualifying project health data can be retained despite failing the specified validation.",
+        "updates": null
+      },
+      {
+        "statement": "Project-size distribution in team efficiency metrics should be inferred from task-count bands rather than defaulted to medium_project.",
+        "about": "requirement",
+        "target": "marts.asana__team_efficiency_metrics",
+        "evidence_of_dependence": "COUNT(*) FILTER(WHERE h.total_tasks>100) enterprise_projects ... COUNT(*) FILTER(WHERE h.total_tasks BETWEEN 21 AND 50) medium_projects",
+        "alternative": "The contract specifies 'project_health_summary: project health fields with project_size_category defaulted to medium_project'.",
+        "importance": 4,
+        "reason": "The inferred bands redistribute projects across size categories instead of applying the documented default.",
+        "updates": null
+      },
+      {
+        "statement": "Time-management scoring may be based on completion and deadline status instead of schedule_forecast.",
+        "about": "requirement",
+        "target": "marts.asana__project_analytics",
+        "evidence_of_dependence": "CASE WHEN completion_percentage=100 THEN 25 WHEN remaining_days<0 THEN 5 ELSE 12 END time_management_score",
+        "alternative": "The contract maps schedule_forecast to scores: 'on_schedule 25; slight_delay 20; moderate_delay 15; significant_delay 10; overdue 5; else 12'.",
+        "importance": 5,
+        "reason": "This substitution changes the time score, comprehensive score, and performance ranks.",
+        "updates": null
+      },
+      {
+        "statement": "No project entering project analytics has a negative elapsed_days value.",
+        "about": "data",
+        "target": "marts.asana__project_analytics",
+        "evidence_of_dependence": "ROUND(completion_percentage/NULLIF(elapsed_days,0),4) completion_rate_per_day",
+        "alternative": "The contract requires completion_rate_per_day to be NULL 'if elapsed_days is not positive', whereas NULLIF only handles zero.",
+        "importance": 3,
+        "reason": "Future-created projects would receive negative completion rates instead of NULL.",
+        "updates": null
+      },
+      {
+        "statement": "Every non-null project team_id has a matching staged team.",
+        "about": "data",
+        "target": "marts.asana__project_analytics.team_id",
+        "evidence_of_dependence": "SELECT p.project_id,p.project_name,p.team_id,t.team_name",
+        "alternative": "The analytics column description says team_id is 'null if no matching team'; selecting p.team_id preserves unmatched identifiers.",
+        "importance": 3,
+        "reason": "Unmatched teams would leave non-null team identifiers where the output contract calls for NULL.",
+        "updates": null
+      },
+      {
+        "statement": "Any task with a non-null completed_at timestamp is completed, even when is_completed is false.",
+        "about": "data",
+        "target": "marts.asana__task_lifecycle_analysis",
+        "evidence_of_dependence": "DATE_DIFF('hour',t.created_at,COALESCE(t.completed_at,CURRENT_TIMESTAMP)) ... total_lifecycle_hours",
+        "alternative": "The contract specifies using completed_at 'if completed, else to the current time'.",
+        "importance": 4,
+        "reason": "An inconsistent open task would have its lifecycle duration and activity-rate denominator stopped at completed_at.",
+        "updates": null
+      },
+      {
+        "statement": "A task missing performance metrics should receive an activity contribution equivalent to activity_score 1 in lifecycle_health_score.",
+        "about": "requirement",
+        "target": "marts.asana__task_lifecycle_analysis.lifecycle_health_score",
+        "evidence_of_dependence": "COALESCE(activity_score,1)*4",
+        "alternative": "The contract specifies 'Activity: activity_score*4' without defining a fallback score for missing metrics.",
+        "importance": 3,
+        "reason": "The fallback changes health scores and permits scoring tasks whose performance metrics were excluded upstream.",
+        "updates": null
+      },
+      {
+        "statement": "An assigned open task with a missing modified_at timestamp should be classified as stagnant after failing the newly_assigned condition.",
+        "about": "requirement",
+        "target": "marts.asana__task_lifecycle_analysis.current_lifecycle_stage",
+        "evidence_of_dependence": "WHEN NOT is_completed AND assignee_user_id IS NOT NULL THEN 'stagnant'",
+        "alternative": "The contract requires 'last modification >7 days' for stagnant and provides an 'unknown_state' fallback.",
+        "importance": 3,
+        "reason": "Missing modification timestamps are treated as evidence of staleness rather than an unknown state.",
+        "updates": null
+      },
+      {
+        "statement": "Passing staging task timestamps through unchanged satisfies the lifecycle mart's timezone-aware timestamp requirements.",
+        "about": "requirement",
+        "target": "marts.asana__task_lifecycle_analysis",
+        "evidence_of_dependence": "SELECT task_id,task_name,created_at,completed_at,due_date ... FROM final",
+        "alternative": "Staging declares these fields as TIMESTAMP, while the lifecycle contract declares created_at, completed_at, and due_date as TIMESTAMP WITH TIME ZONE.",
+        "importance": 3,
+        "reason": "The mart inherits timezone-naive types without establishing the contracted timezone-aware types.",
+        "updates": null
+      },
+      {
+        "statement": "An open task without a due_date should receive five timeliness points in lifecycle_health_score.",
+        "about": "requirement",
+        "target": "marts.asana__task_lifecycle_analysis.lifecycle_health_score",
+        "evidence_of_dependence": "WHEN due_date::DATE>CURRENT_DATE THEN 35 WHEN due_date::DATE=CURRENT_DATE THEN 25 ELSE 5 END",
+        "alternative": "The contract assigns five points for 'overdue' but does not explicitly assign a timeliness contribution to tasks without a due date.",
+        "importance": 3,
+        "reason": "The unspecified missing-deadline treatment affects lifecycle scores and score-based patterns.",
+        "updates": null
+      }
+    ],
+    "fewer": [
+      {
+        "target": "marts.asana__project_analytics",
+        "count": 3,
+        "reason": "Only three additional unsupported premises were identifiable; other visible logic follows explicit contract rules or depends on premises already recorded."
+      }
+    ]
+  }
+}

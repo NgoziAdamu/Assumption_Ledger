@@ -1,0 +1,271 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "staging.stg_twilio__account_history": {
+      "items": [
+        {
+          "problem": "Invalid characters in friendly_name are nullified instead of receiving the deterministic correction required by the contract.",
+          "about": "requirement",
+          "evidence_in_work": "and not regexp_matches(friendly_name, '^[A-Za-z0-9\\s._-]+$') then null",
+          "source": "rule: \"friendly_name RLIKE '^[A-Za-z0-9\\\\s._-]+'\"; on_failure: correct",
+          "importance": 4,
+          "reason": "Recoverable account names can be lost in staging and downstream account reports."
+        },
+        {
+          "problem": "The friendly_name validation requires the entire string to match, whereas the documented regular expression only requires a matching prefix.",
+          "about": "requirement",
+          "evidence_in_work": "regexp_matches(friendly_name, '^[A-Za-z0-9\\s._-]+$')",
+          "source": "friendly_name RLIKE '^[A-Za-z0-9\\\\s._-]+'",
+          "importance": 3,
+          "reason": "Names with a valid prefix and later special characters receive stricter treatment than documented."
+        }
+      ],
+      "fewer_reason": "Only two concrete discrepancies are supported; the temporal and enum filters otherwise follow the supplied specification."
+    },
+    "staging.stg_twilio__address": {
+      "items": [],
+      "fewer_reason": "No specific discrepancy is supported by the visible implementation; the required mappings, types, NULL placeholder, and filters are present."
+    },
+    "staging.stg_twilio__call": {
+      "items": [
+        {
+          "problem": "price_in_usd is copied directly from raw_price without establishing what USD normalization requires.",
+          "about": "requirement",
+          "evidence_in_work": "raw_price as price_in_usd",
+          "source": "Normalized USD price computed as floating-point per current implementation.",
+          "importance": 3,
+          "reason": "If normalization includes a sign change or currency handling, account cost metrics will inherit incorrect values."
+        },
+        {
+          "problem": "user_phone_number and contact_phone_number are assigned from and to unconditionally, which may reverse their business roles for inbound calls.",
+          "about": "data",
+          "evidence_in_work": "\"from\" ... as user_phone_number_raw; \"to\" ... as contact_phone_number_raw",
+          "source": "name: user_phone_number; name: contact_phone_number",
+          "importance": 3,
+          "reason": "The contract does not resolve these roles, and inbound and outbound calls normally reverse the account-side endpoint."
+        },
+        {
+          "problem": "An unparseable non-NULL updated_at becomes NULL and is then accepted as if the source timestamp were genuinely missing.",
+          "about": "data",
+          "evidence_in_work": "try_cast(replace(updated_at, ' UTC', '') as timestamp) as updated_at; and (updated_at is null or updated_at >= created_at)",
+          "source": "updated_at IS NULL OR updated_at >= created_at; on_failure: delete_row",
+          "importance": 2,
+          "reason": "Malformed update timestamps could bypass temporal validation, although the contract does not explicitly distinguish malformed from missing values."
+        }
+      ],
+      "fewer_reason": "Only three supported uncertainties were found; the contract does not specify enough detail to assert additional call derivation errors."
+    },
+    "staging.stg_twilio__incoming_phone_number": {
+      "items": [
+        {
+          "problem": "The persisted staging table was not rebuilt after friendly_name changed from trimmed output to preservation of the original value.",
+          "about": "data",
+          "evidence_in_work": "replace(\"then trim(friendly_name)\\n             else null end as friendly_name\", \"then friendly_name\\n             else null end as friendly_name\")",
+          "source": "Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.",
+          "importance": 2,
+          "reason": "The delivered database and final SQL can differ for valid names with surrounding whitespace."
+        }
+      ],
+      "fewer_reason": "The final SQL otherwise follows the documented validations; no additional concrete discrepancy is visible."
+    },
+    "staging.stg_twilio__message": {
+      "items": [
+        {
+          "problem": "error_code and error_message are emitted as DOUBLE instead of the required staging VARCHAR types.",
+          "about": "requirement",
+          "evidence_in_work": "error_code::double as error_code, error_message::double as error_message",
+          "source": "name: error_code; data_type: VARCHAR; name: error_message; data_type: VARCHAR",
+          "importance": 4,
+          "reason": "The output schema explicitly violates the staging contract, despite the later models requiring DOUBLE."
+        },
+        {
+          "problem": "An unparseable non-NULL updated_at becomes NULL and can survive the temporal filter.",
+          "about": "data",
+          "evidence_in_work": "try_cast(replace(updated_at, ' UTC', '') as timestamp) as updated_at; and (updated_at is null or updated_at >= created_at)",
+          "source": "updated_at IS NULL OR updated_at >= created_at; on_failure: delete_row",
+          "importance": 2,
+          "reason": "Malformed source timestamps could be mistaken for permitted missing timestamps."
+        }
+      ],
+      "fewer_reason": "Only two supported concerns were found; phone normalization, status nullification, and required creation-time filtering are implemented."
+    },
+    "staging.stg_twilio__messaging_service": {
+      "items": [],
+      "fewer_reason": "No specific mismatch is supported; the implementation supplies the required fields, POST constant, and presence and temporal filters."
+    },
+    "staging.stg_twilio__outgoing_caller_id": {
+      "items": [
+        {
+          "problem": "The final SQL never checks that friendly_name equals its trimmed value, so whitespace-padded labels can survive a required delete-row rule.",
+          "about": "requirement",
+          "evidence_in_work": "friendly_name::varchar as friendly_name; and regexp_matches(friendly_name, '^[A-Za-z0-9\\s._-]*$')",
+          "source": "TRIM(friendly_name) = friendly_name AND friendly_name RLIKE '^[A-Za-z0-9\\\\s._-]*$' AND LENGTH(friendly_name) <= 50; on_failure: delete_row",
+          "importance": 4,
+          "reason": "Whitespace is allowed by the regex, making the omitted equality check independently necessary."
+        },
+        {
+          "problem": "The explanation for the empty result reverses the observed source values of friendly_name and phone_number.",
+          "about": "data",
+          "evidence_in_work": "select phone_number,friendly_name ... [('d5VLWqGM49mp3J80CtiQ9ASvyFgQIc3h+i0Av18mer8', '(555) 555-6062')]",
+          "source": "raw.outgoing_caller_id_data columns include friendly_name and phone_number",
+          "importance": 3,
+          "reason": "The incorrect diagnosis can obscure which source fields actually fail validation, although it does not establish that retaining these rows is appropriate."
+        }
+      ],
+      "fewer_reason": "Only two concrete concerns are supported; zero surviving rows alone is not evidence that the mandated filters are wrong."
+    },
+    "staging.stg_twilio__usage_record": {
+      "items": [
+        {
+          "problem": "Direct casts from raw BIGINT count and usage to INTEGER can abort the pipeline if future values exceed the INTEGER range.",
+          "about": "data",
+          "evidence_in_work": "count::integer as count; usage::integer as usage",
+          "source": "count: BIGINT; usage: BIGINT",
+          "importance": 1,
+          "reason": "The supplied data executes successfully, but the narrower required output types introduce an unchecked range assumption."
+        }
+      ],
+      "fewer_reason": "The required filters and output types otherwise match, and no current overflow is shown."
+    },
+    "intermediate.int_twilio__account_latest": {
+      "items": [
+        {
+          "problem": "Selected friendly_name values inherit the staging model's nullification of names that the contract calls for correcting.",
+          "about": "requirement",
+          "evidence_in_work": "select account_id, friendly_name, status, type, created_at, updated_at from ranked_accounts",
+          "source": "friendly_name ... on_failure: correct",
+          "importance": 3,
+          "reason": "Latest account names can remain unnecessarily missing even though snapshot selection itself is implemented correctly."
+        }
+      ],
+      "fewer_reason": "The ordering, NULL placement, partitioning, and arbitrary tie handling match the specification; only the upstream name issue is supported."
+    },
+    "intermediate.int_twilio__account_metrics": {
+      "items": [
+        {
+          "problem": "Call costs inherit the unverified assumption that raw_price already equals normalized price_in_usd.",
+          "about": "requirement",
+          "evidence_in_work": "sum(price_in_usd)::double as total_call_cost_usd",
+          "source": "price_in_usd: Normalized USD price computed as floating-point per current implementation.",
+          "importance": 3,
+          "reason": "Any staging normalization error affects both total_call_cost_usd and total_communication_cost_usd."
+        },
+        {
+          "problem": "The work does not check whether call and message account IDs actually match account_history IDs before treating unmatched activity as zero.",
+          "about": "data",
+          "evidence_in_work": "left join call_metrics as c on a.account_id = c.account_id; left join message_metrics as m on a.account_id = m.account_id",
+          "source": "Left join call_metrics and message_metrics to each account_history row on account_id.",
+          "importance": 2,
+          "reason": "The joins follow the contract, but low source-key overlap could make the reported zero metrics misleading without being detected by row-count checks."
+        }
+      ],
+      "fewer_reason": "Aggregation definitions and missing-value defaults match; only upstream normalization and unverified key coverage warrant checking."
+    },
+    "intermediate.int_twilio__messages": {
+      "items": [],
+      "fewer_reason": "The inbound/outbound UNION ALL, endpoint swapping, body calculations, date buckets, and required intermediate output types match the supplied logic."
+    },
+    "intermediate.int_twilio__messaging_service": {
+      "items": [],
+      "fewer_reason": "The selected fields and pass-through behavior match the contract, with no unsupported filters or deduplication."
+    },
+    "intermediate.int_twilio__usage_record_daily": {
+      "items": [],
+      "fewer_reason": "Grouping, SUM NULL behavior, price sign preservation, and lexicographic MAX of price_unit match the specification."
+    },
+    "marts.twilio__account_overview": {
+      "items": [
+        {
+          "problem": "The account and daily-usage joins were not checked for actual source-key overlap, so account attributes or account spend may be mostly unmatched without detection.",
+          "about": "data",
+          "evidence_in_work": "left join intermediate.int_twilio__account_latest as a on m.account_id = a.account_id; left join intermediate.int_twilio__usage_record_daily as u",
+          "source": "Left join ... on account_id ... and date_day equals start_date",
+          "importance": 2,
+          "reason": "The SQL follows the prescribed joins, but successful execution and row counts do not establish that the enrichment matched any records."
+        },
+        {
+          "problem": "Account names can inherit unnecessary NULLs from the staging friendly_name validation.",
+          "about": "requirement",
+          "evidence_in_work": "a.friendly_name as account_name",
+          "source": "friendly_name ... on_failure: correct",
+          "importance": 2,
+          "reason": "This affects account labeling rather than the mart's implemented count and spend formulas."
+        }
+      ],
+      "fewer_reason": "The specified grouping, count conditions, rounding, and even repeated joined daily-price summation are implemented as documented."
+    },
+    "marts.twilio__message_enhanced": {
+      "items": [
+        {
+          "problem": "The messaging-service join was not checked for matching identifiers or unexpected match multiplicity.",
+          "about": "data",
+          "evidence_in_work": "left join intermediate.int_twilio__messaging_service as s on m.messaging_service_id = s.messaging_service_id",
+          "source": "If there is no matching service row, all service attributes are NULL; if multiple service rows share the same messaging_service_id, the message row is duplicated.",
+          "importance": 2,
+          "reason": "The join is contract-compliant, but row-count-only validation can miss entirely absent service enrichment."
+        }
+      ],
+      "fewer_reason": "The projection, left join, duplicate policy, and num_words calculation otherwise match the specification."
+    },
+    "marts.twilio__number_overview": {
+      "items": [],
+      "fewer_reason": "The grouping, NULL phone group, conditional non-NULL-ID counts, and unrounded price sum match the contract."
+    },
+    "check_incoming": {
+      "items": [
+        {
+          "problem": "The temporary check verifies only row count and not preservation of friendly_name values after the final edit.",
+          "about": "data",
+          "evidence_in_work": "print(t,c.execute(f'select count(*) from {t}').fetchone()[0])",
+          "source": "TRIM(friendly_name) RLIKE ... AND LENGTH(TRIM(friendly_name)) <= 100",
+          "importance": 1,
+          "reason": "The changed output values can differ while the check still returns the same 1,495 rows."
+        }
+      ],
+      "fewer_reason": "This temporary result was only an execution and row-count check, so no further independent issue is supported."
+    },
+    "check_outgoing": {
+      "items": [
+        {
+          "problem": "The temporary result uses the final SQL that omits the required friendly_name trim-equality filter.",
+          "about": "requirement",
+          "evidence_in_work": "create or replace temp table check_outgoing as (...)",
+          "source": "TRIM(friendly_name) = friendly_name ...; on_failure: delete_row",
+          "importance": 2,
+          "reason": "The empty current result does not validate that the missing rule would correctly reject whitespace-padded labels."
+        }
+      ],
+      "fewer_reason": "Only the inherited omitted validation is supported for this temporary result."
+    },
+    "result.md": {
+      "items": [
+        {
+          "problem": "The outgoing caller-ID data-quality explanation swaps the observed contents of phone_number and friendly_name.",
+          "about": "data",
+          "evidence_in_work": "friendly_name 值为类似编码标识的字符串，而 phone_number 值为 `(555) 555-6062`",
+          "source": null,
+          "importance": 3,
+          "reason": "The actual query output places the encoded string in phone_number and the formatted number in friendly_name."
+        },
+        {
+          "problem": "The validation report establishes column-name agreement but does not establish compliance with the required column types.",
+          "about": "requirement",
+          "evidence_in_work": "expected=[x['name'] for x in m['columns']]; actual=[x[0] for x in c.execute(...).fetchall()]",
+          "source": "stg_twilio__message error_code and error_message: data_type: VARCHAR",
+          "importance": 3,
+          "reason": "The name-only check misses the demonstrated staging DOUBLE-versus-VARCHAR mismatch."
+        },
+        {
+          "problem": "The reported successful database build predates the final incoming and outgoing SQL edits, which were only executed into temporary check tables.",
+          "about": "data",
+          "evidence_in_work": "对完成后微调过的 incoming/outgoing phone number staging SQL 额外进行了 DuckDB 执行检查",
+          "source": "running python run.py completes the data transformation and outputs xxxx.duckdb",
+          "importance": 2,
+          "reason": "The persisted database is not necessarily the result of the final delivered SQL."
+        }
+      ],
+      "fewer_reason": "Only three specific reporting and validation concerns are supported; no overall judgment of the final response is made."
+    }
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "premises": [
+      {
+        "statement": "The revenue calculation supplies a revenue_per_transaction field before the final projection.",
+        "about": "data",
+        "target": "intermediate.int_google_play__revenue_analytics",
+        "evidence_of_dependence": "atv average_transaction_value,refund_rate,revenue_per_transaction",
+        "alternative": "The contract defines this field as \"daily net revenue divided by unique orders, rounded to 2 decimals,\" but no preceding CTE computes it.",
+        "importance": 5,
+        "reason": "The final projection depends on a field that the preceding calculations do not establish.",
+        "updates": null
+      },
+      {
+        "statement": "Subscription records can be matched to revenue without requiring buyer_country to equal country.",
+        "about": "requirement",
+        "target": "intermediate.int_google_play__revenue_analytics",
+        "evidence_of_dependence": "FROM t LEFT JOIN s USING(date_day,package_name,sku_id)",
+        "alternative": "The contract requires a join on \"(date_day, package_name, sku_id, buyer_country=country)\".",
+        "importance": 5,
+        "reason": "Omitting country can attach other countries' subscriptions and multiply revenue rows.",
+        "updates": null
+      },
+      {
+        "statement": "The specified revenue health component points are fully represented by binary growth, refund-rate, and churn thresholds at zero or 0.1.",
+        "about": "requirement",
+        "target": "intermediate.int_google_play__revenue_analytics",
+        "evidence_of_dependence": "30+CASE WHEN growth>0 THEN 25 ELSE 0 END+CASE WHEN refund_rate<=.1 THEN 20 ELSE 0 END+CASE WHEN churn IS NULL THEN 12 WHEN churn<=.1 THEN 25 ELSE 0 END",
+        "alternative": "The contract describes \"growth up to 25, refund rate up to 20, churn up to 25 with 12 points if churn is missing\" without establishing these binary threshold formulas.",
+        "importance": 4,
+        "reason": "These unsupported component formulas determine the health score for every positive-revenue row.",
+        "updates": null
+      },
+      {
+        "statement": "Testing net revenue at or below zero is equivalent to testing revenue_health_score below 30 for the Overall Health Risk classification.",
+        "about": "requirement",
+        "target": "intermediate.int_google_play__revenue_analytics",
+        "evidence_of_dependence": "WHEN net<=0 THEN 'Overall Health Risk'",
+        "alternative": "The contract specifies \"else Overall Health Risk if revenue_health_score<30\".",
+        "importance": 3,
+        "reason": "The substituted condition makes risk classification depend on an unestablished equivalence to the score rule.",
+        "updates": null
+      },
+      {
+        "statement": "Within each package and SKU, successive aggregated revenue rows represent successive calendar days, so row-based windows and a seven-row lag implement calendar-day trends.",
+        "about": "data",
+        "target": "intermediate.int_google_play__revenue_analytics",
+        "evidence_of_dependence": "PARTITION BY package_name,sku_id ORDER BY date_day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW; lag(net,7)",
+        "alternative": "The contract specifies \"7-day rolling average\" and \"the value 7 days earlier,\" while its aggregation grain also includes buyer_country, product_title, and merchant_currency.",
+        "importance": 5,
+        "reason": "Multiple dimension rows per date or missing dates make row offsets differ materially from elapsed days.",
+        "updates": null
+      },
+      {
+        "statement": "After filtering and joining, each package-country series has one record on every successive calendar day needed by its rolling windows and lags.",
+        "about": "data",
+        "target": "intermediate.int_google_play__user_behavior_metrics",
+        "evidence_of_dependence": "ROWS BETWEEN 6 PRECEDING AND CURRENT ROW; ROWS BETWEEN 29 PRECEDING AND CURRENT ROW; lag(daily_device_installs,7)",
+        "alternative": "The contract requires averages over \"the last 7 days\" and \"the last 30 days\" and growth versus \"7 days prior\"; filtering invalid source rows can leave calendar gaps.",
+        "importance": 4,
+        "reason": "Gaps cause the implementation to average or compare observations outside the specified calendar periods.",
+        "updates": null
+      },
+      {
+        "statement": "The filtered installs and ratings sources each contain at most one row per date_day, package_name, and country.",
+        "about": "data",
+        "target": "intermediate.int_google_play__user_behavior_metrics",
+        "evidence_of_dependence": "FROM installs i LEFT JOIN ratings r USING(date_day,package_name,country)",
+        "alternative": "The output contract specifies \"One row per (package_name, country, date_day),\" but the implementation neither aggregates nor resolves repeated source keys.",
+        "importance": 4,
+        "reason": "Repeated keys can multiply joined observations, violate the output grain, and distort all window metrics.",
+        "updates": null
+      },
+      {
+        "statement": "NULL order identifiers do not require their order-level totals to be attached to earnings rows.",
+        "about": "requirement",
+        "target": "intermediate.int_google_play__earnings",
+        "evidence_of_dependence": "GROUP BY order_id ... LEFT JOIN order_totals o USING(order_id)",
+        "alternative": "The contract says \"For each order_id\" compute a total and \"attach this order total to every row belonging to that order\"; it explicitly excludes NULL identifiers from distinct counts but does not specify excluding them from total attachment.",
+        "importance": 3,
+        "reason": "The ordinary equality join drops the computed NULL-key total from all corresponding rows.",
+        "updates": null
+      },
+      {
+        "statement": "Every earnings output group contains a row in each transaction category, or an absent category is intended to produce NULL instead of zero.",
+        "about": "data",
+        "target": "intermediate.int_google_play__earnings",
+        "evidence_of_dependence": "sum(amount_merchant_currency) FILTER (WHERE lower(transaction_type)='charge') AS charge_amount",
+        "alternative": "The contract says that for category sums \"non-matching rows contribute zero\"; FILTER excludes those rows instead, yielding NULL when no category rows exist.",
+        "importance": 4,
+        "reason": "Groups lacking charge, refund, or other transactions can receive different monetary outputs under the two approaches.",
+        "updates": null
+      }
+    ],
+    "fewer": [
+      {
+        "target": "intermediate.int_google_play__latest_product_info",
+        "count": 0,
+        "reason": "The selection, null-title filter, null-date ordering, and arbitrary tie handling are explicitly supported by the contract."
+      },
+      {
+        "target": "intermediate.int_google_play__store_performance",
+        "count": 0,
+        "reason": "The UNION ALL and field projections directly implement the specified pass-through behavior without additional unestablished premises."
+      },
+      {
+        "target": "intermediate.int_google_play__earnings",
+        "count": 2,
+        "reason": "Only NULL-key total attachment and absent-category sum behavior introduce new unestablished premises; the remaining aggregation behavior is specified explicitly."
+      },
+      {
+        "target": "intermediate.int_google_play__user_behavior_metrics",
+        "count": 2,
+        "reason": "Calendar continuity and source-key uniqueness are unverified; the other newly implemented filters, calculations, and segmentations follow explicit contract rules."
+      }
+    ]
+  }
+}

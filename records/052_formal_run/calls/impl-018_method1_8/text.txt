@@ -1,0 +1,111 @@
+{
+  "premises": [
+    {
+      "statement": "Retained staging line items have unique opportunity_line_item_id values.",
+      "about": "data",
+      "target": "salesforce__opportunity_line_item_enhanced",
+      "evidence_of_dependence": "from staging.stg_salesforce__opportunity_line_item oli",
+      "alternative": "The mart requires \"One row per opportunity_line_item_id\" and a unique test, but the staging contract does not declare this identifier unique.",
+      "importance": 4,
+      "reason": "Duplicate base identifiers would violate the required output grain even without join multiplication.",
+      "updates": null
+    },
+    {
+      "statement": "The staging opportunity table has at most one matching row per opportunity_id.",
+      "about": "data",
+      "target": "salesforce__opportunity_line_item_enhanced",
+      "evidence_of_dependence": "left join staging.stg_salesforce__opportunity opp on oli.opportunity_id=opp.opportunity_id",
+      "alternative": null,
+      "importance": 4,
+      "reason": "Multiple matching opportunity rows would multiply line items and their downstream measures.",
+      "updates": null
+    },
+    {
+      "statement": "The line-item status rules may match a branch even when another status input is NULL.",
+      "about": "requirement",
+      "target": "salesforce__opportunity_line_item_enhanced.opportunity_status",
+      "evidence_of_dependence": "case when is_won is true then 'Won' ... when is_closed is false and lower(forecast_category) in ('pipeline','forecast','bestcase') then 'Pipeline'",
+      "alternative": "The contract also says \"Any NULL in is_won, is_closed, or forecast_category prevents a match and defaults to 'Other'\".",
+      "importance": 3,
+      "reason": "Partially missing inputs can produce Won, Lost, or Pipeline instead of Other.",
+      "updates": null
+    },
+    {
+      "statement": "Every retained staging line item has a non-null opportunity_line_item_id.",
+      "about": "data",
+      "target": "salesforce__opportunity_line_item_enhanced.opportunity_line_item_id",
+      "evidence_of_dependence": "select opportunity_line_item_id ... from line_items",
+      "alternative": "The mart specifies \"NULLs not allowed\", whereas the staging column has no not-null constraint.",
+      "importance": 2,
+      "reason": "The mart performs no additional identifier validation to enforce its required key.",
+      "updates": null
+    },
+    {
+      "statement": "A close day containing won opportunities whose amounts are all NULL should report zero opportunities_won_amount.",
+      "about": "requirement",
+      "target": "salesforce__daily_activity.opportunities_won_amount",
+      "evidence_of_dependence": "coalesce(round(sum(amount) filter(where deal_status='Won')),0) as opportunities_won_amount",
+      "alternative": "The contract specifies zero \"when there are close_day records but none Won\" and says that amounts may be NULL and are used in sums; it does not explicitly extend that zero default to won rows with entirely missing amounts.",
+      "importance": 3,
+      "reason": "The coalescing conflates absent won opportunities with won opportunities whose monetary values are unknown.",
+      "updates": null
+    },
+    {
+      "statement": "Rounding daily monetary sums without explicitly casting them satisfies the required DECIMAL(38,0) output schema.",
+      "about": "requirement",
+      "target": "salesforce__daily_activity monetary columns",
+      "evidence_of_dependence": "round(sum(amount)) as opportunities_created_amount",
+      "alternative": "The contract declares opportunities_created_amount, opportunities_won_amount, opportunities_lost_amount, and pipeline_amount as \"DECIMAL(38,0)\".",
+      "importance": 2,
+      "reason": "Numerically integral results do not by themselves establish the required decimal precision and scale.",
+      "updates": null
+    },
+    {
+      "statement": "A closed opportunity with NULL is_won should count as lost in the sales snapshot.",
+      "about": "requirement",
+      "target": "salesforce__sales_snapshot.lost_opportunities, lost_amount, close_rate_pct",
+      "evidence_of_dependence": "is_closed is true and is_won is not true",
+      "alternative": "The snapshot contract defines lost opportunities as \"closed and not won\" and says conditional counts include only rows where the condition is true; a literal Boolean NOT of NULL would not qualify.",
+      "importance": 3,
+      "reason": "Treating unknown win status as not won changes lost counts, lost value, and the close rate.",
+      "updates": null
+    },
+    {
+      "statement": "The staging creation-period flags identify exactly the opportunities created in the execution date's current month and quarter.",
+      "about": "data",
+      "target": "salesforce__sales_snapshot.opportunities_created_this_month, opportunities_created_this_quarter, pipeline_created_this_month, pipeline_created_this_quarter",
+      "evidence_of_dependence": "count(*) filter(where is_created_this_month is true); sum(case when is_created_this_quarter is true then amount else 0 end)",
+      "alternative": null,
+      "importance": 3,
+      "reason": "The snapshot relies entirely on upstream flags rather than checking created_date against its execution-time context.",
+      "updates": null
+    },
+    {
+      "statement": "The staging closure-period flags identify exactly the closed opportunities whose close dates fall in the execution date's current month and quarter.",
+      "about": "data",
+      "target": "salesforce__sales_snapshot.opportunities_won_this_month, opportunities_won_this_quarter, revenue_this_month, revenue_this_quarter",
+      "evidence_of_dependence": "is_won is true and is_closed_this_month is true",
+      "alternative": null,
+      "importance": 3,
+      "reason": "These metrics never independently verify either closed status or the close-date period.",
+      "updates": null
+    }
+  ],
+  "fewer": [
+    {
+      "target": "salesforce__opportunity_line_item_enhanced",
+      "count": 4,
+      "reason": "Other relevant account-key uniqueness and staging relationship assumptions were already recorded; the remaining joins and projections follow the explicit contract."
+    },
+    {
+      "target": "salesforce__daily_activity",
+      "count": 2,
+      "reason": "The date aggregation, event fallback, spine joins, and ordinary null behavior are explicitly specified, while upstream cleaning assumptions were already recorded."
+    },
+    {
+      "target": "salesforce__sales_snapshot",
+      "count": 3,
+      "reason": "The remaining aggregates and single-row assembly follow the contract, and no additional distinct unsupported premises were identified."
+    }
+  ]
+}

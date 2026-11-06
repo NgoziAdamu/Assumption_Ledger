@@ -1,0 +1,964 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for specified source systems."
+  author: "Data Engineering Team"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+
+# --------------------------------------------------------------------------- #
+# Phase 1: Define transformation from raw data to clean staging tables       #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw data into clean, validated staging tables..."
+
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "standardize timezone formats", "normalize phone numbers"]
+    
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform staging data into business-ready, analysis-ready models..."
+
+  design_principles:
+    intermediate_purpose: "Build reusable, business-centric intermediate data models."
+    # ... other design principles
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-017/agent/dacomp-de-impl-017/greenhouse_start.duckdb
+{"table": "main.activity", "columns": ["id", "candidate_id", "user_id", "subject", "body", "created_at"]}
+{"table": "main.application", "columns": ["id", "candidate_id", "applied_at", "credited_to_user_id", "current_stage_id", "status", "last_activity_at", "rejected_at", "rejected_reason_id", "source_id", "prospect", "prospect_owner_id", "prospect_pool_id", "prospect_stage_id", "location_address", "is_deleted", "custom_are_you_currently_authorized_to_work_in_the_us_", "custom_what_is_your_preferred_pronoun_", "custom_will_you_now_or_later_require_visa_sponsorship_to_work_in_the_us_", "custom_are_you_currently_authorized_to_live_work_and_travel_regionally_in_singapore_"]}
+{"table": "main.application_history", "columns": ["application_id", "new_stage_id", "new_status", "updated_at"]}
+{"table": "main.attachment", "columns": ["id", "candidate_id", "index", "filename", "type", "url"]}
+{"table": "main.candidate", "columns": ["id", "first_name", "last_name", "company", "title", "coordinator_id", "recruiter_id", "created_at", "updated_at", "last_activity", "is_private", "new_candidate_id", "photo_url"]}
+{"table": "main.candidate_tag", "columns": ["candidate_id", "tag_id"]}
+{"table": "main.close_reason", "columns": ["id", "name"]}
+{"table": "main.department", "columns": ["id", "name", "external_id", "parent_id"]}
+{"table": "main.eeoc", "columns": ["application_id", "disability_status_description", "disability_status_id", "gender_description", "gender_id", "race_description", "race_id", "veteran_status_id", "veteran_status_message", "veteran_status_description", "submitted_at"]}
+{"table": "main.email_address", "columns": ["candidate_id", "index", "type", "value"]}
+{"table": "main.hiring_team", "columns": ["job_id", "user_id", "role"]}
+{"table": "main.interview", "columns": ["id", "job_stage_id", "name", "interview_kit_content"]}
+{"table": "main.job", "columns": ["id", "name", "requisition_id", "status", "created_at", "updated_at", "closed_at", "notes", "confidential", "custom_employee_level_designation", "custom_employment_type", "custom_recruiting_start_date", "custom_salary_expectations", "custom_stock_options", "custom_cost_center"]}
+{"table": "main.job_application", "columns": ["job_id", "application_id"]}
+{"table": "main.job_department", "columns": ["job_id", "department_id"]}
+{"table": "main.job_office", "columns": ["job_id", "office_id"]}
+{"table": "main.job_opening", "columns": ["id", "job_id", "application_id", "opening_id", "close_reason_id", "status", "opened_at", "closed_at"]}
+{"table": "main.job_post", "columns": ["id", "job_id", "title", "content", "internal_content", "location_name", "external", "internal", "live", "created_at", "updated_at"]}
+{"table": "main.job_stage", "columns": ["id", "job_id", "name", "created_at", "updated_at"]}
+{"table": "main.office", "columns": ["id", "name", "location_name", "external_id", "parent_id", "primary_contact_user_id"]}
+{"table": "main.phone_number", "columns": ["candidate_id", "index", "type", "value"]}
+{"table": "main.prospect_pool", "columns": ["id", "name", "active"]}
+{"table": "main.prospect_stage", "columns": ["id", "prospect_pool_id", "name"]}
+{"table": "main.scheduled_interview", "columns": ["id", "application_id", "interview_id", "organizer_id", "start", "end", "location", "status", "created_at", "updated_at"]}
+{"table": "main.scheduled_interview_postgres", "columns": ["id", "application_id", "interview_id", "organizer_id", "start", "end", "location", "status", "created_at", "updated_at"]}
+{"table": "main.scheduled_interview_snowflake", "columns": ["id", "application_id", "interview_id", "organizer_id", "end", "location", "status", "created_at", "updated_at", "\"START\""]}
+{"table": "main.scheduled_interviewer", "columns": ["scheduled_interview_id", "interviewer_id", "scorecard_id"]}
+{"table": "main.scorecard", "columns": ["id", "application_id", "candidate_id", "submitted_by_user_id", "interview", "interviewed_at", "overall_recommendation", "submitted_at", "created_at", "updated_at"]}
+{"table": "main.scorecard_attribute", "columns": ["id", "scorecard_id", "index", "name", "type", "rating", "note"]}
+{"table": "main.social_media_address", "columns": ["candidate_id", "index", "value"]}
+{"table": "main.source", "columns": ["id", "name", "source_type_id", "source_type_name"]}
+{"table": "main.tag", "columns": ["id", "name"]}
+{"table": "main.user", "columns": ["id", "first_name", "last_name", "employee_id", "created_at", "updated_at", "disabled", "site_admin"]}
+{"table": "main.user_email", "columns": ["user_id", "email"]}
+{"table": "raw.activity", "columns": ["id", "candidate_id", "user_id", "subject", "body", "created_at"]}
+{"table": "raw.application", "columns": ["id", "candidate_id", "applied_at", "credited_to_user_id", "current_stage_id", "status", "last_activity_at", "rejected_at", "rejected_reason_id", "source_id", "prospect", "prospect_owner_id", "prospect_pool_id", "prospect_stage_id", "location_address", "is_deleted", "custom_are_you_currently_authorized_to_work_in_the_us_", "custom_what_is_your_preferred_pronoun_", "custom_will_you_now_or_later_require_visa_sponsorship_to_work_in_the_us_", "custom_are_you_currently_authorized_to_live_work_and_travel_regionally_in_singapore_"]}
+{"table": "raw.application_history", "columns": ["application_id", "new_stage_id", "new_status", "updated_at"]}
+{"table": "raw.attachment", "columns": ["id", "candidate_id", "index", "filename", "type", "url"]}
+{"table": "raw.candidate", "columns": ["id", "first_name", "last_name", "company", "title", "coordinator_id", "recruiter_id", "created_at", "updated_at", "last_activity", "is_private", "new_candidate_id", "photo_url"]}
+{"table": "raw.candidate_tag", "columns": ["candidate_id", "tag_id"]}
+{"table": "raw.close_reason", "columns": ["id", "name"]}
+{"table": "raw.department", "columns": ["id", "name", "external_id", "parent_id"]}
+{"table": "raw.eeoc", "columns": ["application_id", "disability_status_description", "disability_status_id", "gender_description", "gender_id", "race_description", "race_id", "veteran_status_id", "veteran_status_message", "veteran_status_description", "submitted_at"]}
+{"table": "raw.email_address", "columns": ["candidate_id", "index", "type", "value"]}
+{"table": "raw.hiring_team", "columns": ["job_id", "user_id", "role"]}
+{"table": "raw.interview", "columns": ["id", "job_stage_id", "name", "interview_kit_content"]}
+{"table": "raw.job", "columns": ["id", "name", "requisition_id", "status", "created_at", "updated_at", "closed_at", "notes", "confidential", "custom_employee_level_designation", "custom_employment_type", "custom_recruiting_start_date", "custom_salary_expectations", "custom_stock_options", "custom_cost_center"]}
+{"table": "raw.job_application", "columns": ["job_id", "application_id"]}
+{"table": "raw.job_department", "columns": ["job_id", "department_id"]}
+{"table": "raw.job_office", "columns": ["job_id", "office_id"]}
+{"table": "raw.job_opening", "columns": ["id", "job_id", "application_id", "opening_id", "close_reason_id", "status", "opened_at", "closed_at"]}
+{"table": "raw.job_post", "columns": ["id", "job_id", "title", "content", "internal_content", "location_name", "external", "internal", "live", "created_at", "updated_at"]}
+{"table": "raw.job_stage", "columns": ["id", "job_id", "name", "created_at", "updated_at"]}
+{"table": "raw.office", "columns": ["id", "name", "location_name", "external_id", "parent_id", "primary_contact_user_id"]}
+{"table": "raw.phone_number", "columns": ["candidate_id", "index", "type", "value"]}
+{"table": "raw.prospect_pool", "columns": ["id", "name", "active"]}
+{"table": "raw.prospect_stage", "columns": ["id", "prospect_pool_id", "name"]}
+{"table": "raw.scheduled_interview", "columns": ["id", "application_id", "interview_id", "organizer_id", "start", "end", "location", "status", "created_at", "updated_at"]}
+{"table": "raw.scheduled_interview_postgres", "columns": ["id", "application_id", "interview_id", "organizer_id", "start", "end", "location", "status", "created_at", "updated_at"]}
+{"table": "raw.scheduled_interview_snowflake", "columns": ["id", "application_id", "interview_id", "organizer_id", "end", "location", "status", "created_at", "updated_at", "\"START\""]}
+{"table": "raw.scheduled_interviewer", "columns": ["scheduled_interview_id", "interviewer_id", "scorecard_id"]}
+{"table": "raw.scorecard", "columns": ["id", "application_id", "candidate_id", "submitted_by_user_id", "interview", "interviewed_at", "overall_recommendation", "submitted_at", "created_at", "updated_at"]}
+{"table": "raw.scorecard_attribute", "columns": ["id", "scorecard_id", "index", "name", "type", "rating", "note"]}
+{"table": "raw.social_media_address", "columns": ["candidate_id", "index", "value"]}
+{"table": "raw.source", "columns": ["id", "name", "source_type_id", "source_type_name"]}
+{"table": "raw.tag", "columns": ["id", "name"]}
+{"table": "raw.user", "columns": ["id", "first_name", "last_name", "employee_id", "created_at", "updated_at", "disabled", "site_admin"]}
+{"table": "raw.user_email", "columns": ["user_id", "email"]}
+
+
+=== Relevant specification and documentation ===
+
+
+=== Premises recorded in earlier reviews ===
+(none)
+
+=== Agent steps since the last review ===
+### event 5
+
+## 命令原文
+
+pwd && ls -la && find . -maxdepth 3 -type f | sort | head -100
+
+## agent 实际看到的执行结果
+
+/home/katherine/dac/runs/20261025_de_official_batch_01/impl-017/agent/dacomp-de-impl-017
+total 25412
+drwxr-xr-x 8 katherine katherine     4096 Oct 25 03:54 .
+drwx------ 3 katherine katherine       60 Oct 25 03:54 ..
+drwxr-xr-x 3 katherine katherine     4096 Oct 25 03:54 .agent-python
+drwxr-xr-x 2 katherine katherine     4096 Oct 25 03:54 .tmp
+drwxr-xr-x 2 katherine katherine     4096 Oct 17 17:41 config
+drwxr-xr-x 2 katherine katherine     4096 Oct 17 17:41 docs
+-rw-r--r-- 1 katherine katherine 25964544 Oct 17 17:41 greenhouse_start.duckdb
+-rw-r--r-- 1 katherine katherine        1 Oct 17 17:41 greenhouse_start.yaml
+drwxr-xr-x 2 katherine katherine     4096 Oct 17 17:41 raw_data
+-rw-r--r-- 1 katherine katherine    16830 Oct 17 17:41 run.py
+drwxr-xr-x 5 katherine katherine     4096 Oct 17 17:41 sql
+-rw-r--r-- 1 katherine katherine     3741 Oct 17 17:41 test_single_sql.py
+./.agent-python/constraints.txt
+./.agent-python/venv/pyvenv.cfg
+./config/layer_dependencies.yaml
+./docs/data_contract.yaml
+./greenhouse_start.duckdb
+./greenhouse_start.yaml
+./raw_data/activity.csv
+./raw_data/application.csv
+./raw_data/application_history.csv
+./raw_data/attachment.csv
+./raw_data/candidate.csv
+./raw_data/candidate_tag.csv
+./raw_data/close_reason.csv
+./raw_data/department.csv
+./raw_data/eeoc.csv
+./raw_data/email_address.csv
+./raw_data/hiring_team.csv
+./raw_data/interview.csv
+./raw_data/job.csv
+./raw_data/job_application.csv
+./raw_data/job_department.csv
+./raw_data/job_office.csv
+./raw_data/job_opening.csv
+./raw_data/job_post.csv
+./raw_data/job_stage.csv
+./raw_data/office.csv
+./raw_data/phone_number.csv
+./raw_data/prospect_pool.csv
+./raw_data/prospect_stage.csv
+./raw_data/scheduled_interview.csv
+./raw_data/scheduled_interview_postgres.csv
+./raw_data/scheduled_interview_snowflake.csv
+./raw_data/scheduled_interviewer.csv
+./raw_data/scorecard.csv
+./raw_data/scorecard_attribute.csv
+./raw_data/social_media_address.csv
+./raw_data/source.csv
+./raw_data/tag.csv
+./raw_data/user.csv
+./raw_data/user_email.csv
+./run.py
+./test_single_sql.py
+
+
+### event 7
+
+## 命令原文
+
+find sql -type f -maxdepth 3 -print
+
+## agent 实际看到的执行结果
+
+find: warning: you have specified the global option -maxdepth after the argument -type, but global options are not positional, i.e., -maxdepth affects tests specified before it as well as those specified after it.  Please specify global options before other arguments.
+
+
+### event 9
+
+## 命令原文
+
+cat config/layer_dependencies.yaml && sed -n '1,240p' run.py
+
+## agent 实际看到的执行结果
+
+# Data layer execution dependencies
+# This file defines the execution order for SQL transformations
+
+layers:
+  staging:
+    description: "Raw data standardization and cleaning"
+    tables:
+      - stg_greenhouse__user
+      - stg_greenhouse__user_email
+      - stg_greenhouse__candidate
+      - stg_greenhouse__application
+      - stg_greenhouse__job
+      - stg_greenhouse__phone_number
+      - stg_greenhouse__email_address
+      - stg_greenhouse__attachment
+      - stg_greenhouse__social_media_address
+      - stg_greenhouse__interview
+      - stg_greenhouse__scheduled_interview
+      - stg_greenhouse__scheduled_interviewer
+      - stg_greenhouse__scorecard
+      - stg_greenhouse__job_stage
+      - stg_greenhouse__tag
+      - stg_greenhouse__candidate_tag
+      - stg_greenhouse__hiring_team
+      - stg_greenhouse__job_department
+      - stg_greenhouse__job_office
+      - stg_greenhouse__department
+      - stg_greenhouse__office
+      - stg_greenhouse__application_history
+      - stg_greenhouse__activity
+      - stg_greenhouse__scorecard_attribute
+      - stg_greenhouse__eeoc
+      - stg_greenhouse__job_application
+      - stg_greenhouse__job_opening
+      - stg_greenhouse__job_post
+      - stg_greenhouse__source
+      - stg_greenhouse__prospect_pool
+      - stg_greenhouse__prospect_stage
+
+  intermediate:
+    description: "Business logic and data integration"
+    dependencies: ["staging"]
+    tables:
+      - int_greenhouse__user_emails
+      - int_greenhouse__candidate_contacts
+      - int_greenhouse__candidate_users
+      - int_greenhouse__candidate_tags
+      - int_greenhouse__application_users
+      - int_greenhouse__hiring_team
+      - int_greenhouse__job_departments
+      - int_greenhouse__job_offices
+      - int_greenhouse__job_info
+      - int_greenhouse__application_info
+      - int_greenhouse__interview_scorecard
+      - int_greenhouse__interview_users
+
+  marts:
+    description: "Analysis-ready business entities and advanced analytics"
+    dependencies: ["intermediate"]
+    tables:
+      - greenhouse__application_enhanced
+      - greenhouse__job_enhanced
+      - greenhouse__interview_enhanced
+      - greenhouse__application_history
+      - greenhouse__interview_scorecard_detail
+      - greenhouse__candidate_summary  
+      - greenhouse__recruitment_performance
+      - greenhouse__diversity_metrics
+      - greenhouse__talent_pipeline_simplified
+
+# Execution order within each layer (if specific order needed)
+execution_order:
+  intermediate:
+    - int_greenhouse__user_emails
+    - int_greenhouse__candidate_contacts
+    - int_greenhouse__candidate_users
+    - int_greenhouse__candidate_tags
+    - int_greenhouse__application_users
+    - int_greenhouse__hiring_team
+    - int_greenhouse__job_departments
+    - int_greenhouse__job_offices
+    - int_greenhouse__job_info
+    - int_greenhouse__application_info
+    - int_greenhouse__interview_scorecard
+    - int_greenhouse__interview_users
+  
+  marts:
+    - greenhouse__interview_enhanced
+    - greenhouse__application_enhanced
+    - greenhouse__job_enhanced
+    - greenhouse__application_history
+    - greenhouse__interview_scorecard_detail
+    - greenhouse__candidate_summary
+    - greenhouse__recruitment_performance
+    - greenhouse__diversity_metrics
+    - greenhouse__talent_pipeline_simplified#!/usr/bin/env python3
+import os
+import yaml
+import duckdb
+from pathlib import Path
+from typing import List, Optional
+import logging
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+class DataPipeline:
+    """Data Pipeline Orchestrator - Supports a layered Schema architecture"""
+    
+    def __init__(self, 
+                 source_db_path: str = "greenhouse_start.duckdb", 
+                 target_db_path: str = "greenhouse.duckdb",
+                 config_path: str = "config/layer_dependencies.yaml"):
+        self.source_db_path = source_db_path
+        self.target_db_path = target_db_path
+        self.config_path = config_path
+        self.config = self._load_config()
+        self.sql_dir = Path("sql")
+        
+                
+        self.schema_config = {
+            'raw': 'raw',                       
+            'staging': 'staging',               
+            'intermediate': 'intermediate',             
+            'marts': 'mart'                      
+        }
+        
+                
+        self.conn = None
+        
+    def _load_config(self) -> dict:
+        """Load the configuration file"""
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f)
+        except FileNotFoundError:
+            logger.error(f"Configuration file {self.config_path} not found")
+            raise
+        except yaml.YAMLError as e:
+            logger.error(f"Error parsing configuration file: {e}")
+            raise
+    
+    def _initialize_database(self):
+        """Initialize the working database, create the layered schema architecture, and import raw data"""
+        logger.info(f"📥 Creating a new layered database: {self.target_db_path}")
+        
+                
+        if not os.path.exists(self.source_db_path):
+            raise FileNotFoundError(f"Source database file not found: {self.source_db_path}")
+        
+        self.conn = duckdb.connect(self.target_db_path)
+        
+                
+        self._create_schemas()
+        
+                
+        self._import_raw_data()
+        
+        logger.info(f"✓ Layered database initialization complete: {self.target_db_path}")
+    
+    def _create_schemas(self):
+        """Create schemas for the data layers"""
+        logger.info("🏗️ Creating Schema layered architecture")
+        
+        for layer, schema_name in self.schema_config.items():
+            try:
+                self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
+                logger.info(f"  ✓ Created schema: {schema_name}")
+            except Exception as e:
+                logger.error(f"  ✗ Failed to create schema {schema_name}: {e}")
+                raise
+    
+    def _import_raw_data(self):
+        """Import raw data from the source database to the raw schema"""
+        logger.info("📥 Importing raw data into raw schema")
+        
+                
+        try:
+            source_conn = duckdb.connect(self.source_db_path)
+        except Exception as e:
+            logger.error(f"Could not connect to source database {self.source_db_path}: {e}")
+            raise
+        
+        try:
+            
+            try:
+                source_conn = duckdb.connect(self.source_db_path)
+            except Exception as e:
+                logger.error(f"Could not connect to source database {self.source_db_path}: {e}")
+                raise
+
+            tables_result = source_conn.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = 'raw' AND table_type IN ('BASE TABLE','VIEW') "
+                "ORDER BY table_name"
+            ).fetchall()
+            source_tables = [table[0] for table in tables_result]
+
+            logger.info(f"Found {len(source_tables)} raw tables (from source.raw)")
+
+            
+            for table_name in source_tables:
+                try:
+                    
+                    esc = table_name.replace('"', '""')
+                    fq = f'raw."{esc}"'
+                    
+                    data = source_conn.execute(f"SELECT * FROM {fq}").fetchall()
+                    columns_info = source_conn.execute(f"DESCRIBE {fq}").fetchall()
+
+                    
+                    column_defs = []
+                    for col_info in columns_info:
+                        col_name, col_type = col_info[0], col_info[1]
+                        
+                        if col_name.lower() in ['end', 'start', 'order', 'group', 'select', 'from', 'where']:
+                            safe_col_name = f'"{col_name}"'
+                        else:
+                            safe_col_name = col_name
+                        column_defs.append(f"{safe_col_name} {col_type}")
+
+                    create_sql = f"CREATE OR REPLACE TABLE raw.\"{esc}\" ({', '.join(column_defs)})"
+                    self.conn.execute(create_sql)
+
+                    
+                    if data:
+                        placeholders = ', '.join(['?' for _ in columns_info])
+                        insert_sql = f"INSERT INTO raw.\"{esc}\" VALUES ({placeholders})"
+                        self.conn.executemany(insert_sql, data)
+
+                    logger.info(f"  ✓ raw.{table_name}: {len(data)} rows")
+
+                except Exception as e:
+                    logger.error(f"  ✗ Failed to import table {table_name}: {e}")
+
+        finally:
+            source_conn.close()
+
+        logger.info("✓ Raw data import complete")
+    
+    def _load_sql_file(self, file_path: Path) -> str:
+        """Load the content of an SQL file"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except FileNotFoundError:
+            logger.error(f"SQL file {file_path} not found")
+            raise
+    
+    def _execute_sql(self, sql: str, table_name: str, layer_name: str) -> bool:
+        """Execute SQL and create a table in the specified schema"""
+        try:
+            
+            target_schema = self.schema_config[layer_name]
+            full_table_name = f"{target_schema}.{table_name}"
+            
+                        
+            processed_sql = self._process_sql_references(sql, layer_name)
+            
+                        
+            create_table_sql = f"CREATE OR REPLACE TABLE {full_table_name} AS ({processed_sql})"
+            
+            logger.info(f"Executing: {full_table_name}")
+            self.conn.execute(create_table_sql)
+            
+                        
+            count_result = self.conn.execute(f"SELECT COUNT(*) FROM {full_table_name}").fetchone()
+            row_count = count_result[0] if count_result else 0
+            
+            logger.info(f"✓ {full_table_name}: {row_count:,} rows")
+            return True
+            
+        except Exception as e:
+            logger.error(f"✗ {full_table_name}: {e}")
+            return False
+    
+    def _process_sql_references(self, sql: str, current_layer: str) -> str:
+        """Process table references in SQL, converting them to schema.table format"""
+        import re
+        processed_sql = sql
+        
+                
+        cte_pattern = r'(\w+)\s+as\s*\('
+        cte_names = set(re.findall(cte_pattern, sql, re.IGNORECASE))
+        
+                
+        raw_table_mappings = {
+            'user': 'raw.user',
+            'candidate': 'raw.candidate', 
+            'application': 'raw.application',
+            'job': 'raw.job',
+            'interview': 'raw.interview',
+            'scorecard': 'raw.scorecard',
+            'scorecard_attribute': 'raw.scorecard_attribute',
+            'phone_number': 'raw.phone_number',
+            'email_address': 'raw.email_address',
+            'attachment': 'raw.attachment',
+            'social_media_address': 'raw.social_media_address',
+            'job_stage': 'raw.job_stage',
+            'tag': 'raw.tag',
+            'candidate_tag': 'raw.candidate_tag',
+            'hiring_team': 'raw.hiring_team',
+            'job_department': 'raw.job_department',
+            'job_office': 'raw.job_office',
+            'department': 'raw.department',
+            'office': 'raw.office',
+            'application_history': 'raw.application_history',
+            'activity': 'raw.activity',
+            'eeoc': 'raw.eeoc',
+            'job_application': 'raw.job_application',
+            'job_opening': 'raw.job_opening',
+            'job_post': 'raw.job_post',
+            'prospect_pool': 'raw.prospect_pool',
+            'prospect_stage': 'raw.prospect_stage',
+            'scheduled_interview': 'raw.scheduled_interview',
+            'scheduled_interviewer': 'raw.scheduled_interviewer',
+            'user_email': 'raw.user_email'
+        }
+        
+                
+        for table_name, schema_table in raw_table_mappings.items():
+            if table_name not in cte_names:
+                
+                pattern = r'\bfrom\s+' + re.escape(table_name) + r'\b'
+                replacement = f'from {schema_table}'
+                processed_sql = re.sub(pattern, replacement, processed_sql, flags=re.IGNORECASE)
+        
+        processed_sql = re.sub(r'\bfrom\s+stg_greenhouse__', 'from staging.stg_greenhouse__', processed_sql, flags=re.IGNORECASE)
+        
+                
+
+
+### event 11
+
+## 命令原文
+
+wc -l docs/data_contract.yaml && sed -n '1,100p' docs/data_contract.yaml
+
+## agent 实际看到的执行结果
+
+2191 docs/data_contract.yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for specified source systems."
+  author: "Data Engineering Team"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+
+# --------------------------------------------------------------------------- #
+# Phase 1: Define transformation from raw data to clean staging tables       #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw data into clean, validated staging tables..."
+
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "standardize timezone formats", "normalize phone numbers"]
+    
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  tables:
+    - name: stg_greenhouse__candidate
+      description: "Cleaned and standardized candidate profile information with basic validation and formatting rules applied"
+      source_table: "raw.candidate"
+      primary_key: ["candidate_id"]
+      columns:
+        - name: candidate_id
+          data_type: BIGINT
+          constraints: [not_null, unique]
+        - name: first_name
+          data_type: VARCHAR(100)
+          constraints: [not_null]
+        - name: last_name
+          data_type: VARCHAR(100)
+          constraints: [not_null]
+        - name: full_name
+          data_type: VARCHAR(201)
+        - name: current_company
+          data_type: VARCHAR(255)
+          validation_rules:
+            - rule: "current_company = TRIM(current_company)"
+              on_failure: correct
+            - rule: "current_company = CASE WHEN LENGTH(TRIM(current_company)) = 0 THEN NULL ELSE current_company END"
+              on_failure: correct
+        - name: current_title
+          data_type: VARCHAR(255)
+        - name: coordinator_user_id
+          data_type: BIGINT
+        - name: recruiter_user_id
+          data_type: BIGINT
+        - name: created_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+          validation_rules:
+            - rule: "created_at <= CURRENT_TIMESTAMP"
+              on_failure: delete_row
+            - rule: "created_at >= '2000-01-01'"
+              on_failure: delete_row
+        - name: last_updated_at
+          data_type: TIMESTAMP
+        - name: last_activity_at
+          data_type: TIMESTAMP
+        - name: is_private
+          data_type: BOOLEAN
+        - name: new_candidate_id
+          data_type: BIGINT
+
+    - name: stg_greenhouse__application
+      description: "Cleaned application records with status validation and temporal consistency checks"
+      source_table: "raw.application"
+      primary_key: ["application_id"]
+      columns:
+        - name: application_id
+          data_type: BIGINT
+          constraints: [not_null, unique]
+        - name: candidate_id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: applied_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: current_stage_id
+          data_type: BIGINT
+        - name: status
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "status = LOWER(TRIM(status))"
+              on_failure: correct
+            - rule: "status IN ('active', 'hired', 'rejected', 'withdrawn')"
+              on_failure: delete_row
+        - name: last_activity_at
+          data_type: TIMESTAMP
+        - name: rejected_at
+          data_type: TIMESTAMP
+
+
+### event 13
+
+## 命令原文
+
+sed -n '220,520p' run.py && find sql -maxdepth 2 -type f
+
+## agent 实际看到的执行结果
+
+            'job_application': 'raw.job_application',
+            'job_opening': 'raw.job_opening',
+            'job_post': 'raw.job_post',
+            'prospect_pool': 'raw.prospect_pool',
+            'prospect_stage': 'raw.prospect_stage',
+            'scheduled_interview': 'raw.scheduled_interview',
+            'scheduled_interviewer': 'raw.scheduled_interviewer',
+            'user_email': 'raw.user_email'
+        }
+        
+                
+        for table_name, schema_table in raw_table_mappings.items():
+            if table_name not in cte_names:
+                
+                pattern = r'\bfrom\s+' + re.escape(table_name) + r'\b'
+                replacement = f'from {schema_table}'
+                processed_sql = re.sub(pattern, replacement, processed_sql, flags=re.IGNORECASE)
+        
+        processed_sql = re.sub(r'\bfrom\s+stg_greenhouse__', 'from staging.stg_greenhouse__', processed_sql, flags=re.IGNORECASE)
+        
+                
+        processed_sql = re.sub(r'\bfrom\s+int_greenhouse__', 'from intermediate.int_greenhouse__', processed_sql, flags=re.IGNORECASE)
+        
+                
+        processed_sql = re.sub(r'\bfrom\s+greenhouse__', 'from mart.greenhouse__', processed_sql, flags=re.IGNORECASE)
+        
+        return processed_sql
+    
+    def _execute_layer(self, layer_name: str) -> bool:
+        """Execute all tables for a specified layer"""
+        layer_config = self.config['layers'][layer_name]
+        tables = layer_config.get('tables', [])
+        
+                
+        execution_order = self.config.get('execution_order', {}).get(layer_name, tables)
+        
+        logger.info(f"\n=== Executing {layer_name.upper()} Layer ===")
+        logger.info(f"Description: {layer_config.get('description', '')}")
+        
+        success_count = 0
+        total_count = len(execution_order)
+        
+        for table_name in execution_order:
+            
+            sql_file_path = self.sql_dir / layer_name / f"{table_name}.sql"
+            
+                        
+            if not sql_file_path.exists() and layer_name == 'intermediate':
+                
+                for subdir in ['application', 'candidate', 'interview', 'job']:
+                    subdir_path = self.sql_dir / layer_name / subdir / f"{table_name}.sql"
+                    if subdir_path.exists():
+                        sql_file_path = subdir_path
+                        break
+                
+                if not sql_file_path.exists():
+                    sql_file_path = self.sql_dir / layer_name / f"{table_name}.sql"
+            
+            if not sql_file_path.exists():
+                logger.warning(f"Skipping {table_name}: SQL file does not exist ({sql_file_path})")
+                continue
+            
+            sql_content = self._load_sql_file(sql_file_path)
+            if self._execute_sql(sql_content, table_name, layer_name):
+                success_count += 1
+        
+        logger.info(f"{layer_name.upper()} layer complete: {success_count}/{total_count} tables created successfully")
+        return success_count == total_count
+    
+    def _clean_generated_tables(self):
+        """Clean all generated tables, preserving the raw data schema"""
+        logger.info("🧼 Cleaning previously generated schemas and tables...")
+        
+                
+        schemas_to_clean = ['staging', 'intermediate', 'mart']
+        
+        for schema_name in schemas_to_clean:
+            try:
+                
+                result = self.conn.execute(f"SELECT schema_name FROM information_schema.schemata WHERE schema_name = '{schema_name}'").fetchall()
+                if result:
+                    self.conn.execute(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE")
+                    logger.info(f"✓ Dropped schema: {schema_name}")
+            except Exception as e:
+                logger.warning(f"Failed to drop schema {schema_name}: {e}")
+        
+        logger.info("Cleaning complete")
+
+    def run_pipeline(self, layers: Optional[List[str]] = None) -> bool:
+        """Run the full data pipeline"""
+        if layers is None:
+            layers = list(self.config['layers'].keys())
+        
+        logger.info("🚀 Starting data pipeline execution")
+        logger.info(f"Source database: {self.source_db_path}")
+        logger.info(f"Target database: {self.target_db_path}")
+        
+                
+        if not os.path.exists(self.target_db_path):
+            logger.info("Target database does not exist, starting initialization...")
+            try:
+                
+                self._initialize_database()
+            except Exception as e:
+                logger.error(f"Failed to initialize database: {e}")
+                logger.info("Attempting to continue with existing database...")
+        else:
+            logger.info("Found existing target database, using it directly...")
+            
+            self.conn = duckdb.connect(self.target_db_path)
+        
+        self._clean_generated_tables()
+        
+                
+        self._create_schemas()
+        
+        total_success = True
+        
+        for layer_name in layers:
+            if layer_name not in self.config['layers']:
+                logger.error(f"Unknown layer: {layer_name}")
+                total_success = False
+                continue
+            
+            dependencies = self.config['layers'][layer_name].get('dependencies', [])
+            for dep in dependencies:
+                if dep not in layers[:layers.index(layer_name)]:
+                    logger.warning(f"{layer_name} depends on {dep}, but {dep} has not been executed yet")
+            
+            layer_success = self._execute_layer(layer_name)
+            total_success = total_success and layer_success
+        
+        if total_success:
+            logger.info("\n🎉 Data pipeline execution completed successfully!")
+            logger.info(f"✨ The complete data warehouse has been generated: {self.target_db_path}")
+            self._show_final_stats()
+        else:
+            logger.error("\n❌ Errors occurred during data pipeline execution")
+        
+        if self.conn:
+            self.conn.close()
+        
+        return total_success
+    
+    def _show_final_stats(self):
+        """Display final statistics - shown by layered Schema"""
+        logger.info("\n=== Final Data Statistics (by Schema Layer) ===")
+        
+                
+        for layer_name, schema_name in self.schema_config.items():
+            try:
+                
+                tables_result = self.conn.execute(f"""SELECT table_name 
+                                                     FROM information_schema.tables 
+                                                     WHERE table_schema = '{schema_name}'""").fetchall()
+                schema_tables = [table[0] for table in tables_result]
+                
+                if schema_tables:
+                    logger.info(f"\n{layer_name.upper()} Layer (Schema: {schema_name}):")
+                    for table in sorted(schema_tables):
+                        try:
+                            count = self.conn.execute(f"SELECT COUNT(*) FROM {schema_name}.{table}").fetchone()[0]
+                            logger.info(f"  ✓ {schema_name}.{table}: {count:,} rows")
+                        except Exception as e:
+                            logger.info(f"  ✗ {schema_name}.{table}: Query failed - {e}")
+                else:
+                    logger.info(f"\n{layer_name.upper()} Layer (Schema: {schema_name}): No tables")
+                    
+            except Exception as e:
+                logger.error(f"Failed to query schema {schema_name}: {e}")
+
+
+def main():
+    """Main function"""
+    pipeline = DataPipeline()
+    
+    success = pipeline.run_pipeline()
+    if success:
+        print("\n✅ Data transformation completed successfully!")
+        print("📋 Transformation Results:")
+        print(f"  📥 Source Database: {pipeline.source_db_path} (raw tables only)")
+        print(f"  📤 Target Database: {pipeline.target_db_path} (full layered architecture)")
+        print("\n🏗️ Data Architecture:")
+        print("  📊 Staging Layer - Standardized raw data")
+        print("  🔄 Intermediate Layer - Business logic processing")
+        print("  🎯 Mart Layer - Analysis-ready data")
+    else:
+        print("\n❌ Errors occurred during data transformation, please check the logs")
+
+
+if __name__ == "__main__":
+    main()
+
+

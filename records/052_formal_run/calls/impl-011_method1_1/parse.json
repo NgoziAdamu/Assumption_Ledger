@@ -1,0 +1,460 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "premises": [
+      {
+        "statement": "raw.issue_type exposes an is_subtask column that can be selected directly.",
+        "about": "data",
+        "target": "stg_jira__issue_type",
+        "evidence_of_dependence": "description,is_subtask is_subtask from raw.issue_type",
+        "alternative": "The DESCRIBE result lists \"subtask\", not \"is_subtask\".",
+        "importance": 5,
+        "reason": "The generated SQL depends on this column being available to execute.",
+        "updates": null
+      },
+      {
+        "statement": "The underscore-prefixed issue estimate and time-spent fields should take precedence over their unprefixed counterparts whenever both are populated.",
+        "about": "requirement",
+        "target": "stg_jira__issue",
+        "evidence_of_dependence": "coalesce(_original_estimate,original_estimate); coalesce(_remaining_estimate,remaining_estimate); coalesce(_time_spent,time_spent)",
+        "alternative": "The index exposes both versions of each field, while the contract names only the output fields and does not specify precedence.",
+        "importance": 4,
+        "reason": "Conflicting source values would change all three effort measures.",
+        "updates": null
+      },
+      {
+        "statement": "Both versions of each raw issue estimate and time-spent field already contain seconds.",
+        "about": "data",
+        "target": "stg_jira__issue",
+        "evidence_of_dependence": "cast(coalesce(_time_spent,time_spent) as double) time_spent_seconds",
+        "alternative": null,
+        "importance": 4,
+        "reason": "A different source unit would systematically scale downstream effort measures incorrectly.",
+        "updates": null
+      },
+      {
+        "statement": "Every retained issue has created and updated values that TRY_CAST can convert to non-null timestamps.",
+        "about": "data",
+        "target": "stg_jira__issue",
+        "evidence_of_dependence": "try_cast(created as timestamp) created_at, ... try_cast(updated as timestamp) updated_at ... where ... created is not null and updated is not null",
+        "alternative": "The contract requires both \"created_at\" and \"updated_at\" to be not_null, whereas the filters test only the source strings.",
+        "importance": 4,
+        "reason": "Non-null malformed strings would survive filtering but violate required output constraints.",
+        "updates": null
+      },
+      {
+        "statement": "Every retained issue has a non-null key.",
+        "about": "data",
+        "target": "stg_jira__issue",
+        "evidence_of_dependence": "cast(key as varchar) issue_key ... where id is not null and created is not null and updated is not null and project is not null",
+        "alternative": "The contract gives \"issue_key\" a not_null constraint.",
+        "importance": 3,
+        "reason": "The SQL does not validate this required attribute.",
+        "updates": null
+      },
+      {
+        "statement": "For repeated issue IDs, descending lexical order of updated selects the authoritative record, with any ties interchangeable.",
+        "about": "data",
+        "target": "stg_jira__issue",
+        "evidence_of_dependence": "row_number() over(partition by id order by updated desc nulls last)=1",
+        "alternative": null,
+        "importance": 3,
+        "reason": "The source column is VARCHAR, so formatting differences or conflicting ties could select a different issue state.",
+        "updates": null
+      },
+      {
+        "statement": "Version IDs require no whitespace correction beyond rejecting whitespace-only values.",
+        "about": "data",
+        "target": "stg_jira__version",
+        "evidence_of_dependence": "cast(id as varchar) version_id ... where id is not null and trim(id)<>''",
+        "alternative": "The contract explicitly requires \"version_id = TRIM(version_id)\" with on_failure: correct.",
+        "importance": 4,
+        "reason": "Uncorrected identifiers can violate the contract and fail downstream matches.",
+        "updates": null
+      },
+      {
+        "statement": "Direct TRY_CAST to TIMESTAMP correctly normalizes all supported version date formats, including timezone suffixes.",
+        "about": "data",
+        "target": "stg_jira__version",
+        "evidence_of_dependence": "try_cast(release_date as timestamp) release_date,try_cast(start_date as timestamp) start_date",
+        "alternative": "The contract explicitly calls for correction of date strings matching \".*\\\\+.{4}$\" before accepting valid timestamps.",
+        "importance": 4,
+        "reason": "Unsupported but correctable date strings could be silently nullified instead of normalized.",
+        "updates": null
+      },
+      {
+        "statement": "Version IDs are unique among the retained source rows.",
+        "about": "data",
+        "target": "stg_jira__version",
+        "evidence_of_dependence": "from raw.version where id is not null and trim(id)<>'' and name is not null and trim(name)<>''",
+        "alternative": "The contract requires \"version_id\" to be unique.",
+        "importance": 3,
+        "reason": "No uniqueness check or deduplication is performed.",
+        "updates": null
+      },
+      {
+        "statement": "archived and released need no correction to yield acceptable is_archived and is_released values.",
+        "about": "data",
+        "target": "stg_jira__version",
+        "evidence_of_dependence": "archived is_archived,released is_released",
+        "alternative": "The contract requires \"is_archived IN (TRUE,FALSE)\" and \"is_released IN (TRUE,FALSE)\" with on_failure: correct; DESCRIBE reports nullable BOOLEAN source columns.",
+        "importance": 2,
+        "reason": "The types establish boolean representation but do not establish the absence of null values requiring a policy.",
+        "updates": null
+      },
+      {
+        "statement": "User IDs are unique among source rows with non-null IDs.",
+        "about": "data",
+        "target": "stg_jira__user",
+        "evidence_of_dependence": "from raw.user where id is not null",
+        "alternative": "The contract requires \"user_id\" to be unique.",
+        "importance": 3,
+        "reason": "Duplicate accounts would remain and could multiply downstream joins.",
+        "updates": null
+      },
+      {
+        "statement": "Replacing a missing or whitespace-only user display name with the user ID is an acceptable correction.",
+        "about": "requirement",
+        "target": "stg_jira__user",
+        "evidence_of_dependence": "coalesce(nullif(trim(name), ''), cast(id as varchar)) user_display_name",
+        "alternative": "The contract requires a not_null display name but does not authorize ID substitution; the general quality actions include deletion for \"Essential business attributes contain irrecoverable errors\".",
+        "importance": 3,
+        "reason": "This policy retains accounts with invented display-name values rather than another handling of invalid names.",
+        "updates": null
+      },
+      {
+        "statement": "Trimming nonempty user display names is part of the required naming standardization.",
+        "about": "requirement",
+        "target": "stg_jira__user",
+        "evidence_of_dependence": "nullif(trim(name), '')",
+        "alternative": null,
+        "importance": 1,
+        "reason": "The description suggests consistent naming but does not prescribe this specific alteration.",
+        "updates": null
+      },
+      {
+        "statement": "Repeated project IDs have interchangeable attribute values, so an arbitrary retained row is sufficient.",
+        "about": "data",
+        "target": "stg_jira__project",
+        "evidence_of_dependence": "qualify row_number() over(partition by id order by id)=1",
+        "alternative": null,
+        "importance": 3,
+        "reason": "Ordering by the partition key does not resolve conflicting project records.",
+        "updates": null
+      },
+      {
+        "statement": "Every component row with a non-null ID also has a non-null name.",
+        "about": "data",
+        "target": "stg_jira__component",
+        "evidence_of_dependence": "name component_name ... from raw.component where id is not null",
+        "alternative": "The contract requires \"component_name\" to be not_null.",
+        "importance": 3,
+        "reason": "The SQL omits validation of a required attribute.",
+        "updates": null
+      },
+      {
+        "statement": "Repeated component IDs have interchangeable attribute values.",
+        "about": "data",
+        "target": "stg_jira__component",
+        "evidence_of_dependence": "row_number() over(partition by id order by id)=1",
+        "alternative": null,
+        "importance": 2,
+        "reason": "Conflicting duplicates would be resolved arbitrarily.",
+        "updates": null
+      },
+      {
+        "statement": "Every field definition with a non-null ID has a non-null name.",
+        "about": "data",
+        "target": "stg_jira__field",
+        "evidence_of_dependence": "name field_name ... from raw.field where id is not null",
+        "alternative": "The contract requires \"field_name\" to be not_null.",
+        "importance": 3,
+        "reason": "Required field metadata is not validated.",
+        "updates": null
+      },
+      {
+        "statement": "Repeated field IDs have interchangeable names and metadata flags.",
+        "about": "data",
+        "target": "stg_jira__field",
+        "evidence_of_dependence": "row_number() over(partition by id order by id)=1",
+        "alternative": null,
+        "importance": 2,
+        "reason": "Arbitrary duplicate selection could change field interpretation downstream.",
+        "updates": null
+      },
+      {
+        "statement": "Every issue type with a non-null ID has a non-null name.",
+        "about": "data",
+        "target": "stg_jira__issue_type",
+        "evidence_of_dependence": "name issue_type_name ... where id is not null",
+        "alternative": "The contract requires \"issue_type_name\" to be not_null.",
+        "importance": 3,
+        "reason": "The query does not validate the required name.",
+        "updates": null
+      },
+      {
+        "statement": "Repeated issue-type IDs have interchangeable attribute values.",
+        "about": "data",
+        "target": "stg_jira__issue_type",
+        "evidence_of_dependence": "row_number() over(partition by id order by id)=1",
+        "alternative": null,
+        "importance": 2,
+        "reason": "Conflicting duplicate definitions would be resolved arbitrarily.",
+        "updates": null
+      },
+      {
+        "statement": "Every priority with a non-null ID has a non-null name.",
+        "about": "data",
+        "target": "stg_jira__priority",
+        "evidence_of_dependence": "name priority_name ... from raw.priority where id is not null",
+        "alternative": "The contract requires \"priority_name\" to be not_null.",
+        "importance": 3,
+        "reason": "The required name constraint is not enforced.",
+        "updates": null
+      },
+      {
+        "statement": "Repeated priority IDs have interchangeable attribute values.",
+        "about": "data",
+        "target": "stg_jira__priority",
+        "evidence_of_dependence": "row_number() over(partition by id order by id)=1",
+        "alternative": null,
+        "importance": 2,
+        "reason": "Conflicting priority definitions would be resolved arbitrarily.",
+        "updates": null
+      },
+      {
+        "statement": "Every resolution with a non-null ID has a non-null name.",
+        "about": "data",
+        "target": "stg_jira__resolution",
+        "evidence_of_dependence": "name resolution_name ... from raw.resolution where id is not null",
+        "alternative": "The contract requires \"resolution_name\" to be not_null.",
+        "importance": 3,
+        "reason": "The required name constraint is not enforced.",
+        "updates": null
+      },
+      {
+        "statement": "Repeated resolution IDs have interchangeable attribute values.",
+        "about": "data",
+        "target": "stg_jira__resolution",
+        "evidence_of_dependence": "row_number() over(partition by id order by id)=1",
+        "alternative": null,
+        "importance": 2,
+        "reason": "Conflicting resolution definitions would be resolved arbitrarily.",
+        "updates": null
+      },
+      {
+        "statement": "Every status category with a non-null ID has a non-null name.",
+        "about": "data",
+        "target": "stg_jira__status_category",
+        "evidence_of_dependence": "name status_category_name ... from raw.status_category where id is not null",
+        "alternative": "The contract requires \"status_category_name\" to be not_null.",
+        "importance": 3,
+        "reason": "The required name constraint is not enforced.",
+        "updates": null
+      },
+      {
+        "statement": "Repeated status-category IDs have interchangeable names.",
+        "about": "data",
+        "target": "stg_jira__status_category",
+        "evidence_of_dependence": "row_number() over(partition by id order by id)=1",
+        "alternative": null,
+        "importance": 2,
+        "reason": "Conflicting category names would be resolved arbitrarily.",
+        "updates": null
+      },
+      {
+        "statement": "Every status with a non-null ID has a non-null name.",
+        "about": "data",
+        "target": "stg_jira__status",
+        "evidence_of_dependence": "name status_name ... from raw.status where id is not null",
+        "alternative": "The contract requires \"status_name\" to be not_null.",
+        "importance": 3,
+        "reason": "The required name constraint is not enforced.",
+        "updates": null
+      },
+      {
+        "statement": "Repeated status IDs have interchangeable names, descriptions, and category IDs.",
+        "about": "data",
+        "target": "stg_jira__status",
+        "evidence_of_dependence": "row_number() over(partition by id order by id)=1",
+        "alternative": null,
+        "importance": 3,
+        "reason": "An arbitrary category assignment could affect downstream lifecycle classification.",
+        "updates": null
+      },
+      {
+        "statement": "Sprint IDs are unique among retained source rows.",
+        "about": "data",
+        "target": "stg_jira__sprint",
+        "evidence_of_dependence": "from raw.sprint where id is not null and trim(id)<>'' and name is not null and trim(name)<>''",
+        "alternative": "The contract requires \"sprint_id\" to be unique.",
+        "importance": 3,
+        "reason": "There is no deduplication or uniqueness validation.",
+        "updates": null
+      },
+      {
+        "statement": "Direct TRY_CAST preserves all valid sprint dates with the intended timestamp meaning.",
+        "about": "data",
+        "target": "stg_jira__sprint",
+        "evidence_of_dependence": "try_cast(start_date as timestamp) started_at, try_cast(end_date as timestamp) ended_at, try_cast(complete_date as timestamp) completed_at",
+        "alternative": null,
+        "importance": 3,
+        "reason": "Unverified string formats could silently erase dates used for sprint analytics.",
+        "updates": null
+      },
+      {
+        "statement": "All retained comment created values convert to non-null timestamps.",
+        "about": "data",
+        "target": "stg_jira__comment",
+        "evidence_of_dependence": "try_cast(created as timestamp) created_at ... where ... created is not null",
+        "alternative": "The contract requires \"created_at\" to be not_null, not merely its source string.",
+        "importance": 3,
+        "reason": "Malformed non-null strings would survive as invalid required output values.",
+        "updates": null
+      },
+      {
+        "statement": "For repeated comment IDs, retaining the row with the lexically earliest created value selects the appropriate comment version, with ties interchangeable.",
+        "about": "data",
+        "target": "stg_jira__comment",
+        "evidence_of_dependence": "row_number() over(partition by id order by created)=1",
+        "alternative": null,
+        "importance": 3,
+        "reason": "Duplicate records could contain different bodies or updates that this ordering does not reconcile.",
+        "updates": null
+      },
+      {
+        "statement": "Every retained issue-field-history time converts to a non-null timestamp.",
+        "about": "data",
+        "target": "stg_jira__issue_field_history",
+        "evidence_of_dependence": "try_cast(time as timestamp) updated_at ... and time is not null",
+        "alternative": "The contract requires \"updated_at\" to be not_null.",
+        "importance": 3,
+        "reason": "The source-string check does not ensure valid required timestamps.",
+        "updates": null
+      },
+      {
+        "statement": "Every retained issue-field-history row has a non-null is_active value.",
+        "about": "data",
+        "target": "stg_jira__issue_field_history",
+        "evidence_of_dependence": "cast(value as varchar) field_value,is_active ... where field_id is not null and issue_id is not null and time is not null",
+        "alternative": "The contract requires \"is_active\" to be not_null; DESCRIBE reports a nullable source BOOLEAN.",
+        "importance": 3,
+        "reason": "The query does not handle missing activity flags.",
+        "updates": null
+      },
+      {
+        "statement": "Every retained multiselect-history time converts to a non-null timestamp.",
+        "about": "data",
+        "target": "stg_jira__issue_multiselect_history",
+        "evidence_of_dependence": "try_cast(time as timestamp) updated_at ... and time is not null",
+        "alternative": "The contract requires \"updated_at\" to be not_null.",
+        "importance": 3,
+        "reason": "Malformed source strings could violate the required output constraint.",
+        "updates": null
+      },
+      {
+        "statement": "Every retained multiselect-history row has a non-null is_active value.",
+        "about": "data",
+        "target": "stg_jira__issue_multiselect_history",
+        "evidence_of_dependence": "cast(value as varchar) field_value,is_active ... where field_id is not null and issue_id is not null and time is not null",
+        "alternative": "The contract requires \"is_active\" to be not_null; DESCRIBE reports a nullable source BOOLEAN.",
+        "importance": 3,
+        "reason": "The query does not handle missing activity flags.",
+        "updates": null
+      },
+      {
+        "statement": "The inward issue is the intended issue_id and the outward issue is the intended related_issue_id in the staging link representation.",
+        "about": "requirement",
+        "target": "stg_jira__issue_link",
+        "evidence_of_dependence": "inward_issue_id as varchar) issue_id,cast(outward_issue_id as varchar) related_issue_id",
+        "alternative": null,
+        "importance": 3,
+        "reason": "The contract names the output endpoints without defining their direction, which can affect directional relationship analysis.",
+        "updates": null
+      }
+    ],
+    "fewer": [
+      {
+        "target": "stg_jira__user",
+        "count": 3,
+        "reason": "The remaining mappings and email transformations are supported by the schema and contract; no additional material unestablished premises were identified."
+      },
+      {
+        "target": "stg_jira__project",
+        "count": 1,
+        "reason": "The SQL explicitly implements the required key and name corrections and filters; arbitrary duplicate selection is the remaining material uncertainty."
+      },
+      {
+        "target": "stg_jira__component",
+        "count": 2,
+        "reason": "Beyond required-name completeness and duplicate resolution, the projection follows the documented schema."
+      },
+      {
+        "target": "stg_jira__field",
+        "count": 2,
+        "reason": "The other fields are direct, type-compatible mappings with no additional specified validation."
+      },
+      {
+        "target": "stg_jira__field_option",
+        "count": 0,
+        "reason": "The direct mappings use available columns and enforce both specified non-null constraints; no uniqueness constraint or additional processing is specified."
+      },
+      {
+        "target": "stg_jira__issue_type",
+        "count": 3,
+        "reason": "Column availability, required-name completeness, and arbitrary duplicate resolution are the identifiable dependencies not established."
+      },
+      {
+        "target": "stg_jira__priority",
+        "count": 2,
+        "reason": "The remaining direct mappings are supported by the documented source schema."
+      },
+      {
+        "target": "stg_jira__resolution",
+        "count": 2,
+        "reason": "The remaining direct mappings are supported by the documented source schema."
+      },
+      {
+        "target": "stg_jira__status_category",
+        "count": 2,
+        "reason": "Only name completeness and duplicate resolution remain unestablished for this two-column projection."
+      },
+      {
+        "target": "stg_jira__status",
+        "count": 2,
+        "reason": "The other mappings and output types are established by the source schema."
+      },
+      {
+        "target": "stg_jira__version",
+        "count": 4,
+        "reason": "The SQL explicitly handles the other documented trimming, empty-value, and required-name rules."
+      },
+      {
+        "target": "stg_jira__sprint",
+        "count": 2,
+        "reason": "The explicit ID and name validation follows the contract; no concrete date-ordering rule is supplied to justify an additional premise."
+      },
+      {
+        "target": "stg_jira__comment",
+        "count": 2,
+        "reason": "Required identifiers are filtered and other mappings are direct; timestamp validity and duplicate-version selection are the material remaining uncertainties."
+      },
+      {
+        "target": "stg_jira__issue_field_history",
+        "count": 2,
+        "reason": "Identifier constraints are explicitly enforced and the contract specifies no uniqueness grain or additional transformation."
+      },
+      {
+        "target": "stg_jira__issue_link",
+        "count": 1,
+        "reason": "All specified non-null constraints are enforced; only endpoint-direction interpretation is unestablished."
+      },
+      {
+        "target": "stg_jira__issue_multiselect_history",
+        "count": 2,
+        "reason": "Identifier constraints are explicitly enforced and no additional uniqueness or value-processing requirement is specified."
+      }
+    ]
+  }
+}

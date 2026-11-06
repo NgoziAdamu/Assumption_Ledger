@@ -1,0 +1,869 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Marketo marketing automation platform data"
+  author: "Data Engineering Team"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+  last_updated: "2025-09-11"
+  source_system: "Marketo"
+  business_domain: "Marketing Automation & Lead Management"
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw Marketo data into clean, validated staging tables with standardized naming conventions, data types, and quality constraints. This phase focuses on data cleaning, validation, and standardization without applying business logic."
+  
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "standardize timezone formats", "normalize phone numbers"]
+    
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  data_governance:
+    naming_convention: "stg_marketo__[entity_name]"
+    timestamp_format: "TIMESTAMP"
+    id_format: "VARCHAR"
+    retention_policy: "Staging data retained for 90 days"
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform staging data into business-ready models that support marketing analytics, lead management, and campaign performance analysis. This phase applies complex business logic, creates reusable intermediate models, and produces final analytical marts."
+  
+  design_principles:
+    intermediate_purpose: "Create reusable, business-centric data models that implement complex logic and serve as building blocks for multiple downstream marts"
+    marts_purpose: "Produce analysis-ready fact and dimension tables optimized for BI tools and analytical queries"
+    grain_importance: "Every model must have an explicitly defined grain that determines the level of detail and uniqueness of each row"
+    naming_convention: "int_marketo__[business_concept] for intermediate models, marketo__[business_entity] for marts"
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-012/agent/dacomp-de-impl-012/marketo_start.duckdb
+{"table": "raw.marketo_activity_change_data_value", "columns": ["activity_date", "activity_type_id", "api_method_name", "campaign_id", "id", "lead_id", "modifying_user", "new_value", "old_value", "primary_attribute_value", "primary_attribute_value_id", "reason", "request_id", "source"]}
+{"table": "raw.marketo_activity_click_email", "columns": ["activity_date", "activity_type_id", "campaign_id", "campaign_run_id", "choice_number", "device", "email_template_id", "id", "is_mobile_device", "lead_id", "link", "platform", "primary_attribute_value", "primary_attribute_value_id", "step_id", "user_agent"]}
+{"table": "raw.marketo_activity_delete_lead", "columns": ["id", "activity_date", "activity_type_id", "campaign", "campaign_id", "lead_id", "primary_attribute_value", "primary_attribute_value_id"]}
+{"table": "raw.marketo_activity_email_bounced", "columns": ["activity_date", "activity_type_id", "campaign_id", "campaign_run_id", "category", "choice_number", "details", "email", "email_template_id", "id", "lead_id", "primary_attribute_value", "primary_attribute_value_id", "step_id", "subcategory"]}
+{"table": "raw.marketo_activity_email_delivered", "columns": ["activity_date", "activity_type_id", "campaign_id", "campaign_run_id", "choice_number", "email_template_id", "id", "lead_id", "primary_attribute_value", "primary_attribute_value_id", "step_id"]}
+{"table": "raw.marketo_activity_merge_leads", "columns": ["id", "activity_date", "activity_type_id", "campaign_id", "lead_id", "master_updated", "merge_ids", "merge_source", "merged_in_sales", "primary_attribute_value", "primary_attribute_value_id"]}
+{"table": "raw.marketo_activity_open_email", "columns": ["activity_date", "activity_type_id", "campaign_id", "campaign_run_id", "choice_number", "device", "email_template_id", "id", "is_mobile_device", "lead_id", "platform", "primary_attribute_value", "primary_attribute_value_id", "step_id", "user_agent"]}
+{"table": "raw.marketo_activity_send_email", "columns": ["activity_date", "activity_type_id", "campaign_id", "campaign_run_id", "choice_number", "email_template_id", "id", "lead_id", "primary_attribute_value_id", "primary_attribute_value", "step_id", "action_result"]}
+{"table": "raw.marketo_activity_unsubscribe_email", "columns": ["activity_date", "activity_type_id", "campaign_id", "campaign_run_id", "client_ip_address", "email_template_id", "form_fields", "id", "lead_id", "primary_attribute_value", "primary_attribute_value_id", "query_parameters", "referrer_url", "user_agent", "webform_id", "webpage_id"]}
+{"table": "raw.marketo_campaign", "columns": ["active", "created_at", "description", "id", "name", "program_id", "type", "updated_at", "workspace_name", "computed_url", "flow_id", "folder_id", "folder_type", "is_communication_limit_enabled", "is_requestable", "is_system", "max_members", "qualification_rule_type", "qualification_rule_interval", "qualification_rule_unit", "recurrence_start_at", "recurrence_end_at", "recurrence_interval_type", "recurrence_interval", "recurrence_weekday_only", "recurrence_day_of_month", "recurrence_day_of_week", "recurrence_week_of_month", "smart_list_id", "status"]}
+{"table": "raw.marketo_email_template_history", "columns": ["created_at", "description", "folder_folder_name", "folder_id", "folder_type", "folder_value", "from_email", "from_name", "id", "name", "operational", "program_id", "publish_to_msi", "reply_email", "status", "subject", "template", "text_only", "updated_at", "url", "version", "web_view", "workspace"]}
+{"table": "raw.marketo_lead", "columns": ["id", "created_at", "updated_at", "email", "first_name", "last_name"]}
+{"table": "raw.marketo_lead_describe", "columns": ["data_type", "display_name", "id", "length", "restname", "restread_only", "soapname", "soapread_only"]}
+{"table": "raw.marketo_program", "columns": ["id", "channel", "created_at", "description", "end_date", "name", "sfdc_id", "sfdc_name", "start_date", "status", "type", "updated_at", "url", "workspace"]}
+
+
+=== Relevant specification and documentation ===
+## stg_marketo__lead
+
+    - name: stg_marketo__lead
+      description: "Cleaned and standardized lead (contact) records from Marketo with basic contact information and timestamps"
+      source_table: "raw.marketo_lead"
+      grain: "One row per unique lead in Marketo"
+      columns:
+        - name: lead_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: created_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: updated_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: email
+          data_type: VARCHAR
+          constraints: [not_null]
+          description: "Email address of the lead"
+          validation_rules:
+            - rule: "email = LOWER(TRIM(email))"
+              description: "Normalize email to lowercase and remove whitespace"
+              on_failure: delete_row
+            - rule: "email ~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'"
+              description: "Email must follow valid email format"
+              on_failure: delete_row
+        - name: first_name
+          data_type: VARCHAR
+          description: "First name of the lead"
+          validation_rules:
+            - rule: "first_name = TRIM(first_name)"
+              description: "Remove leading and trailing whitespace"
+              on_failure: delete_row
+            - rule: "LENGTH(first_name) <= 100"
+              description: "First name cannot exceed 100 characters"
+              on_failure: delete_row
+        - name: last_name
+          data_type: VARCHAR
+          description: "Last name of the lead"
+          validation_rules:
+            - rule: "last_name = TRIM(last_name)"
+              description: "Remove leading and trailing whitespace"
+              on_failure: delete_row
+            - rule: "LENGTH(last_name) <= 100"
+              description: "Last name cannot exceed 100 characters"
+              on_failure: delete_row
+
+
+
+## stg_marketo__campaigns
+
+    - name: stg_marketo__campaigns
+      description: "Cleaned campaign records with standardized attributes and campaign configuration details"
+      source_table: "raw.marketo_campaign"
+      grain: "One row per unique campaign in Marketo"
+      columns:
+        - name: campaign_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+          validation_rules:
+            - rule: "campaign_id IS NOT NULL"
+              on_failure: delete_row
+        - name: campaign_name
+          data_type: VARCHAR
+          constraints: [not_null]
+          description: "Human-readable name of the campaign"
+          validation_rules:
+            - rule: "campaign_name = TRIM(campaign_name)"
+              description: "Clean campaign name from source"
+              on_failure: correct
+            - rule: "campaign_name IS NOT NULL AND TRIM(campaign_name) <> ''"
+              description: "Campaign name must be present"
+              on_failure: delete_row
+            - rule: "LENGTH(campaign_name) <= 255"
+              description: "Campaign name cannot exceed 255 characters"
+              on_failure: delete_row
+        - name: program_id
+          data_type: VARCHAR
+          description: "ID of the parent program this campaign belongs to"
+          validation_rules:
+            - rule: "program_id IS NULL OR program_id ~ '^MAR[0-9]+$'"
+              description: "Program ID must follow Marketo format when present"
+              on_failure: nullify_field
+        - name: campaign_type
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "campaign_type IS NOT NULL"
+              on_failure: delete_row
+        - name: is_active
+          data_type: BOOLEAN
+          constraints: [not_null]
+          description: "Whether the campaign is currently active"
+          validation_rules:
+            - rule: "is_active = COALESCE(is_active, FALSE)"
+              description: "Default NULL active flag to FALSE"
+              on_failure: correct
+        - name: created_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "created_timestamp IS NOT NULL"
+              on_failure: delete_row
+        - name: updated_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "updated_timestamp IS NOT NULL"
+              on_failure: delete_row
+        - name: description
+          data_type: VARCHAR
+        - name: workspace_name
+          data_type: VARCHAR
+          description: "Marketo workspace where campaign resides"
+        - name: computed_url
+          data_type: VARCHAR
+          description: "Computed URL for the campaign"
+        - name: flow_id
+          data_type: VARCHAR
+          description: "Flow ID associated with the campaign"
+        - name: folder_id
+          data_type: VARCHAR
+          description: "Folder ID where campaign is stored"
+        - name: folder_type
+          data_type: VARCHAR
+          description: "Type of folder containing the campaign"
+        - name: is_communication_limit_enabled
+          data_type: BOOLEAN
+          description: "Whether communication limits are enabled"
+        - name: is_requestable
+          data_type: BOOLEAN
+          description: "Whether the campaign is requestable"
+        - name: is_system
+          data_type: BOOLEAN
+          description: "Whether this is a system campaign"
+        - name: max_members
+          data_type: BIGINT
+          description: "Maximum number of members allowed"
+        - name: qualification_rule_type
+          data_type: VARCHAR
+          description: "Type of qualification rule"
+        - name: qualification_rule_interval
+          data_type: BIGINT
+          description: "Qualification rule interval"
+        - name: qualification_rule_unit
+          data_type: VARCHAR
+          description: "Unit for qualification rule interval"
+        - name: recurrence_start_at
+          data_type: VARCHAR
+          description: "When recurrence starts (passed through as text per SQL)"
+        - name: recurrence_end_at
+          data_type: VARCHAR
+          description: "When recurrence ends (passed through as text per SQL)"
+        - name: recurrence_interval_type
+          data_type: VARCHAR
+          description: "Type of recurrence interval"
+        - name: recurrence_interval
+          data_type: BIGINT
+          description: "Recurrence interval value"
+        - name: recurrence_weekday_only
+          data_type: BOOLEAN
+          description: "Whether recurrence is weekdays only"
+        - name: recurrence_day_of_month
+          data_type: BIGINT
+          description: "Day of month for recurrence"
+        - name: recurrence_day_of_week
+          data_type: BIGINT
+          description: "Day of week for recurrence"
+        - name: recurrence_week_of_month
+          data_type: BIGINT
+          description: "Week of month for recurrence"
+        - name: smart_list_id
+          data_type: VARCHAR
+          description: "Associated smart list ID"
+        - name: status
+          data_type: VARCHAR
+          description: "Current status of the campaign"
+
+
+
+
+## stg_marketo__program
+
+    - name: stg_marketo__program
+      description: "Cleaned program records that group related campaigns and assets"
+      source_table: "raw.marketo_program"
+      grain: "One row per unique program in Marketo"
+      columns:
+        - name: program_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: program_name
+          data_type: VARCHAR
+        - name: program_type
+          data_type: VARCHAR
+        - name: channel
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: program_status
+          data_type: VARCHAR
+        - name: created_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+          description: "When the program was created"
+        - name: updated_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+          description: "When the program was last updated"
+        - name: description
+          data_type: VARCHAR
+          description: "Program description"
+        - name: url
+          data_type: VARCHAR
+          description: "Program URL"
+        - name: workspace_name
+          data_type: VARCHAR
+          description: "Workspace where program resides"
+        - name: sfdc_id
+          data_type: VARCHAR
+          description: "Salesforce ID if connected"
+        - name: sfdc_name
+          data_type: VARCHAR
+          description: "Salesforce name if connected"
+        - name: start_date
+          data_type: DATE
+          description: "Program start date"
+        - name: end_date
+          data_type: DATE
+          description: "Program end date"
+
+
+
+## stg_marketo__email_template_history
+
+    - name: stg_marketo__email_template_history
+      description: "Cleaned email template records with version history and template metadata"
+      source_table: "raw.marketo_email_template_history"
+      grain: "One row per email template version"
+      columns:
+        - name: email_template_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: email_template_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: version
+          data_type: DOUBLE
+          constraints: [not_null]
+        - name: created_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: updated_timestamp
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: description
+          data_type: VARCHAR
+        - name: folder_id
+          data_type: VARCHAR
+        - name: folder_type
+          data_type: VARCHAR
+        - name: from_name
+          data_type: VARCHAR
+        - name: program_id
+          data_type: VARCHAR
+        - name: publish_to_msi
+          data_type: BOOLEAN
+        - name: reply_email
+          data_type: VARCHAR
+        - name: email_template_status
+          data_type: VARCHAR
+        - name: template
+          data_type: VARCHAR
+        - name: text_only
+          data_type: BOOLEAN
+        - name: url
+          data_type: VARCHAR
+        - name: web_view
+          data_type: BOOLEAN
+        - name: workspace
+          data_type: VARCHAR
+        - name: is_most_recent_version
+          data_type: BOOLEAN
+        - name: operational
+          data_type: BOOLEAN
+        - name: subject
+          data_type: VARCHAR
+          description: "Email subject line"
+        - name: from_email
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "from_email IS NULL OR from_email ~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'"
+              on_failure: nullify_field
+
+
+
+## stg_marketo__lead_describe
+
+    - name: stg_marketo__lead_describe
+      description: "Lead field metadata describing available lead fields and their properties"
+      source_table: "raw.marketo_lead_describe"
+      grain: "One row per lead field definition"
+      columns:
+        - name: lead_describe_id
+          data_type: BIGINT
+          constraints: [not_null, unique]
+        - name: data_type
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: display_name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: field_max_length
+          data_type: BIGINT
+        - name: rest_name
+          data_type: VARCHAR
+        - name: is_rest_readonly
+          data_type: BOOLEAN
+        - name: soap_name
+          data_type: VARCHAR
+        - name: is_soap_readonly
+          data_type: BOOLEAN
+        - name: rest_name_xf
+          data_type: VARCHAR
+
+# --------------------------------------------------------------------------- #
+# PHASE 2: Defines the business logic from staging tables to analytical models. #
+# --------------------------------------------------------------------------- #
+
+
+## marketo__campaigns
+
+    - name: marketo__campaigns
+      description: Campaign dimension enriched with email performance metrics aggregated by campaign_id.
+      grain: One row per input row in staging.stg_marketo__campaigns
+      source_models:
+      - staging.stg_marketo__campaigns
+      - marts.marketo__email_sends
+      business_logic: '- Begin with all rows and columns from staging.stg_marketo__campaigns; no filtering or deduplication is applied. - From marts.marketo__email_sends, keep only rows where campaign_id is present and aggregate by campaign_id: - count_sends: number of email_sends rows. - count_opens, count_bounces, count_clicks, count_deliveries, count_unsubscribes: total each metric across rows; null values in these fields are ignored in the totals. - count_unique_opens: number of distinct email_send_id where was_opened is true; null email_send_id are excluded. - count_unique_clicks: number of distinct email_send_id where was_clicked is true; null email_send_id are excluded. - Left join these aggregates to the campaigns on campaign_id; if no matching aggregate exists, set all metrics to 0. - Output one row for every input row in staging; if multiple rows share the same campaign_id, they all receive the same aggregated metrics.'
+      columns:
+      - name: is_active
+        data_type: BOOLEAN
+        description: Whether the campaign is currently active.
+      - name: created_timestamp
+        data_type: VARCHAR
+        description: Campaign creation timestamp as a string from the source.
+      - name: description
+        data_type: VARCHAR
+        description: Campaign description text from the source.
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier used to join email performance aggregates; rows sharing the same campaign_id receive the same metrics.
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign display name from the source.
+      - name: program_id
+        data_type: VARCHAR
+        description: Owning program identifier from the source.
+      - name: campaign_type
+        data_type: VARCHAR
+        description: Campaign type classification from the source.
+      - name: updated_timestamp
+        data_type: VARCHAR
+        description: Last update timestamp as a string from the source.
+      - name: workspace_name
+        data_type: VARCHAR
+        description: Marketo workspace name of the campaign.
+      - name: computed_url
+        data_type: VARCHAR
+        description: Source-provided URL for the campaign record.
+      - name: flow_id
+        data_type: VARCHAR
+        description: Associated flow identifier from the source.
+      - name: folder_id
+        data_type: VARCHAR
+        description: Folder identifier containing the campaign.
+      - name: folder_type
+        data_type: VARCHAR
+        description: Type of the folder containing the campaign.
+      - name: is_communication_limit_enabled
+        data_type: BOOLEAN
+        description: Whether communication limits are enabled for the campaign.
+      - name: is_requestable
+        data_type: BOOLEAN
+        description: Whether the campaign can be requested.
+      - name: is_system
+        data_type: BOOLEAN
+        description: Whether the campaign is a system campaign.
+      - name: max_members
+        data_type: BIGINT
+        description: Maximum allowed campaign members.
+      - name: qualification_rule_type
+        data_type: VARCHAR
+        description: Qualification rule type for campaign membership.
+      - name: qualification_rule_interval
+        data_type: BIGINT
+        description: Numeric interval used in qualification rules.
+      - name: qualification_rule_unit
+        data_type: VARCHAR
+        description: Time unit for the qualification rule interval.
+      - name: recurrence_start_at
+        data_type: VARCHAR
+        description: Recurrence start timestamp as a string.
+      - name: recurrence_end_at
+        data_type: VARCHAR
+        description: Recurrence end timestamp as a string.
+      - name: recurrence_interval_type
+        data_type: VARCHAR
+        description: Type of recurrence interval (e.g., daily, weekly).
+      - name: recurrence_interval
+        data_type: BIGINT
+        description: Numeric recurrence interval value.
+      - name: recurrence_weekday_only
+        data_type: BOOLEAN
+        description: Whether recurrence occurs only on weekdays.
+      - name: recurrence_day_of_month
+        data_type: BIGINT
+        description: Day of month used for recurrence.
+      - name: recurrence_day_of_week
+        data_type: BIGINT
+        description: Day of week used for recurrence.
+      - name: recurrence_week_of_month
+        data_type: BIGINT
+        description: Week of month used for recurrence.
+      - name: smart_list_id
+        data_type: VARCHAR
+        description: Identifier of the smart list associated with the campaign.
+      - name: status
+        data_type: VARCHAR
+        description: Campaign operational status from the source.
+      - name: count_sends
+        data_type: BIGINT
+        description: Number of email_sends rows linked to this campaign_id; zero when no matching rows.
+      - name: count_opens
+        data_type: HUGEINT
+        description: Total opens across email_sends rows for this campaign_id; null values are ignored; zero when no matches.
+      - name: count_bounces
+        data_type: HUGEINT
+        description: Total bounces across email_sends rows for this campaign_id; null values are ignored; zero when no matches.
+      - name: count_clicks
+        data_type: HUGEINT
+        description: Total clicks across email_sends rows for this campaign_id; null values are ignored; zero when no matches.
+      - name: count_deliveries
+        data_type: HUGEINT
+        description: Total deliveries across email_sends rows for this campaign_id; null values are ignored; zero when no matches.
+      - name: count_unsubscribes
+        data_type: HUGEINT
+        description: Total unsubscribes across email_sends rows for this campaign_id; null values are ignored; zero when no matches.
+      - name: count_unique_opens
+        data_type: BIGINT
+        description: Distinct email_send_id that were opened for this campaign_id; null ids excluded; zero when none.
+      - name: count_unique_clicks
+        data_type: BIGINT
+        description: Distinct email_send_id that were clicked for this campaign_id; null ids excluded; zero when none.
+
+
+
+
+=== Premises recorded in earlier reviews ===
+(none)
+
+=== Agent steps since the last review ===
+### event 15
+
+## 命令原文
+
+find docs -type f -maxdepth 2 -print && grep -n '^    - name:' docs/data_contract.yaml
+
+## agent 实际看到的执行结果
+
+find: warning: you have specified the global option -maxdepth after the argument -type, but global options are not positional, i.e., -maxdepth affects tests specified before it as well as those specified after it.  Please specify global options before other arguments.
+docs/data_contract.yaml
+36:    - name: stg_marketo__lead
+82:    - name: stg_marketo__campaigns
+210:    - name: stg_marketo__program
+257:    - name: stg_marketo__email_template_history
+316:    - name: stg_marketo__activity_send_email
+346:    - name: stg_marketo__activity_open_email
+386:    - name: stg_marketo__activity_click_email
+428:    - name: stg_marketo__activity_email_delivered
+460:    - name: stg_marketo__activity_email_bounced
+492:    - name: stg_marketo__activity_unsubscribe_email
+522:    - name: stg_marketo__activity_change_data_value
+560:    - name: stg_marketo__activity_merge_leads
+587:    - name: stg_marketo__activity_delete_lead
+611:    - name: stg_marketo__lead_describe
+651:    - name: int_marketo__lead
+700:    - name: marketo__email_sends_deduped
+759:    - name: marketo__opens__by_sent_email
+781:    - name: marketo__clicks__by_sent_email
+798:    - name: marketo__deliveries__by_sent_email
+815:    - name: marketo__bounces__by_sent_email
+832:    - name: marketo__unsubscribes__by_sent_email
+849:    - name: marketo__change_data_details
+924:    - name: marketo__change_data_pivot
+999:    - name: marketo__change_data_scd
+1036:    - name: marketo__lead_calendar_spine
+1061:    - name: marketo__email_sends
+1170:    - name: marketo__leads
+1268:    - name: marketo__campaigns
+1390:    - name: marketo__email_funnel_dashboard
+1457:    - name: marketo__lead_intelligence_simple
+1580:    - name: marketo__operational_health_simple
+1700:    - name: marketo__email_stats__by_campaign
+1737:    - name: marketo__email_stats__by_email_template
+1780:    - name: marketo__email_stats__by_lead
+1823:    - name: marketo__email_stats__by_program
+1866:    - name: marketo__email_templates
+1983:    - name: marketo__lead_history
+2022:    - name: marketo__programs
+
+
+### event 17
+
+## 命令原文
+
+python - <<'PY'
+import duckdb
+c=duckdb.connect('marketo_start.duckdb',read_only=True)
+for col in ['primary_attribute_value_id','primary_attribute_value','campaign_run_id','id']:
+ print(col)
+ for t in ['send_email','open_email','click_email','email_delivered','email_bounced','unsubscribe_email']:
+  try: print(t,c.execute(f"select count(*), count(distinct {col}) from raw.marketo_activity_{t} where {col} is not null").fetchone())
+  except: pass
+for col in ['primary_attribute_value_id','primary_attribute_value']:
+ print('match', col, c.execute(f'''select count(*) from raw.marketo_activity_open_email o join raw.marketo_activity_send_email s using ({col})''').fetchone())
+PY
+
+## agent 实际看到的执行结果
+
+primary_attribute_value_id
+send_email (15000, 15000)
+open_email (12000, 12000)
+click_email (8000, 8000)
+email_delivered (14000, 14000)
+email_bounced (2000, 2000)
+unsubscribe_email (1500, 1500)
+primary_attribute_value
+send_email (15000, 15000)
+open_email (12000, 12000)
+click_email (8000, 8000)
+email_delivered (14000, 14000)
+email_bounced (2000, 2000)
+unsubscribe_email (1500, 1500)
+campaign_run_id
+send_email (15000, 15000)
+open_email (12000, 12000)
+click_email (8000, 8000)
+email_delivered (14000, 14000)
+email_bounced (2000, 2000)
+unsubscribe_email (1500, 1500)
+id
+send_email (15000, 15000)
+open_email (12000, 12000)
+click_email (8000, 8000)
+email_delivered (14000, 14000)
+email_bounced (2000, 2000)
+unsubscribe_email (1500, 1500)
+match primary_attribute_value_id (0,)
+match primary_attribute_value (0,)
+
+
+### event 19
+
+## 命令原文
+
+mkdir -p sql/staging sql/intermediate sql/marts sql/utils && python - <<'PY'
+import duckdb
+c=duckdb.connect('marketo_start.duckdb',read_only=True)
+for q in ["select try_cast(activity_date as timestamptz), try_cast(activity_date as timestamp) from raw.marketo_activity_send_email limit 2", "select try_cast('2023-01-01 00:00:00 +0800' as timestamp)"]:
+ try: print(c.execute(q).fetchall())
+ except Exception as e: print(e)
+PY
+
+## agent 实际看到的执行结果
+
+[(None, None), (None, None)]
+[(None,)]
+
+
+### event 21
+
+## 命令原文
+
+python - <<'PY'
+import duckdb
+c=duckdb.connect('marketo_start.duckdb',read_only=True)
+for col in ['campaign_run_id','campaign_id','email_template_id','primary_attribute_value_id','primary_attribute_value']:
+ print(col)
+ for t in ['open_email','click_email','email_delivered','email_bounced','unsubscribe_email']:
+  print(t, c.execute(f"select count(*) from raw.marketo_activity_{t} a join raw.marketo_activity_send_email b on a.{col}=b.{col}").fetchone()[0])
+PY
+
+## agent 实际看到的执行结果
+
+campaign_run_id
+open_email 0
+click_email 0
+email_delivered 0
+email_bounced 0
+unsubscribe_email 0
+campaign_id
+open_email 35936
+click_email 24110
+email_delivered 41839
+email_bounced 6151
+unsubscribe_email 4594
+email_template_id
+open_email 36002
+click_email 24172
+email_delivered 42088
+email_bounced 5976
+unsubscribe_email 4518
+primary_attribute_value_id
+open_email 0
+click_email 0
+email_delivered 0
+email_bounced 0
+unsubscribe_email 0
+primary_attribute_value
+open_email 0
+click_email 0
+email_delivered 0
+email_bounced 0
+unsubscribe_email 0
+
+
+### event 23
+
+## 命令原文
+
+cat > /tmp/gen.py <<'PY'
+from pathlib import Path
+root=Path('sql')
+# staging: (file, raw table, projected cols, filters)
+models={
+'stg_marketo__lead':('marketo_lead',[('lead_id','id','VARCHAR'),('created_timestamp','created_at','VARCHAR'),('updated_timestamp','updated_at','VARCHAR'),('email','email','VARCHAR'),('first_name','first_name','VARCHAR'),('last_name','last_name','VARCHAR')]),
+'stg_marketo__campaigns':('marketo_campaign',[(a,b,t) for a,b,t in [('campaign_id','id','VARCHAR'),('campaign_name','name','VARCHAR'),('program_id','program_id','VARCHAR'),('campaign_type','type','VARCHAR'),('is_active','active','BOOLEAN'),('created_timestamp','created_at','VARCHAR'),('updated_timestamp','updated_at','VARCHAR'),('description','description','VARCHAR'),('workspace_name','workspace_name','VARCHAR'),('computed_url','computed_url','VARCHAR'),('flow_id','flow_id','VARCHAR'),('folder_id','folder_id','VARCHAR'),('folder_type','folder_type','VARCHAR'),('is_communication_limit_enabled','is_communication_limit_enabled','BOOLEAN'),('is_requestable','is_requestable','BOOLEAN'),('is_system','is_system','BOOLEAN'),('max_members','max_members','BIGINT'),('qualification_rule_type','qualification_rule_type','VARCHAR'),('qualification_rule_interval','qualification_rule_interval','BIGINT'),('qualification_rule_unit','qualification_rule_unit','VARCHAR'),('recurrence_start_at','recurrence_start_at','VARCHAR'),('recurrence_end_at','recurrence_end_at','VARCHAR'),('recurrence_interval_type','recurrence_interval_type','VARCHAR'),('recurrence_interval','recurrence_interval','BIGINT'),('recurrence_weekday_only','recurrence_weekday_only','BOOLEAN'),('recurrence_day_of_month','recurrence_day_of_month','BIGINT'),('recurrence_day_of_week','recurrence_day_of_week','BIGINT'),('recurrence_week_of_month','recurrence_week_of_month','BIGINT'),('smart_list_id','smart_list_id','VARCHAR'),('status','status','VARCHAR')]),'campaign'),
+'stg_marketo__program':('marketo_program',[(a,b,t) for a,b,t in [('program_id','id','VARCHAR'),('program_name','name','VARCHAR'),('program_type','type','VARCHAR'),('channel','channel','VARCHAR'),('program_status','status','VARCHAR'),('created_timestamp','created_at','VARCHAR'),('updated_timestamp','updated_at','VARCHAR'),('description','description','VARCHAR'),('url','url','VARCHAR'),('workspace_name','workspace','VARCHAR'),('sfdc_id','sfdc_id','VARCHAR'),('sfdc_name','sfdc_name','VARCHAR'),('start_date','start_date','DATE'),('end_date','end_date','DATE')]]),
+'stg_marketo__email_template_history':('marketo_email_template_history',[(a,b,t) for a,b,t in [('email_template_id','id','VARCHAR'),('email_template_name','name','VARCHAR'),('version','version','DOUBLE'),('created_timestamp','created_at','VARCHAR'),('updated_timestamp','updated_at','VARCHAR'),('description','description','VARCHAR'),('folder_id','folder_id','VARCHAR'),('folder_type','folder_type','VARCHAR'),('from_name','from_name','VARCHAR'),('program_id','program_id','VARCHAR'),('publish_to_msi','publish_to_msi','BOOLEAN'),('reply_email','reply_email','VARCHAR'),('email_template_status','status','VARCHAR'),('template','template','VARCHAR'),('text_only','text_only','BOOLEAN'),('url','url','VARCHAR'),('web_view','web_view','BOOLEAN'),('workspace','workspace','VARCHAR'),('operational','operational','BOOLEAN'),('subject','subject','VARCHAR'),('from_email','from_email','VARCHAR')]])}
+activity=[
+('send_email','activity_send_email',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('email_template_id','email_template_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('activity_type_id','activity_type_id','VARCHAR'),('campaign_run_id','campaign_run_id','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR'),('email_send_id','id','VARCHAR')]),
+('open_email','activity_open_email',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('email_template_id','email_template_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('open_device','device','VARCHAR'),('is_mobile_device','is_mobile_device','BOOLEAN'),('open_platform','platform','VARCHAR'),('open_user_agent','user_agent','VARCHAR'),('activity_type_id','activity_type_id','VARCHAR'),('campaign_run_id','campaign_run_id','VARCHAR'),('step_id','step_id','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR'),('email_send_id','id','VARCHAR')]),
+('click_email','activity_click_email',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('email_template_id','email_template_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('click_link_url','link','VARCHAR'),('click_device','device','VARCHAR'),('is_mobile_device','is_mobile_device','BOOLEAN'),('click_platform','platform','VARCHAR'),('click_user_agent','user_agent','VARCHAR'),('activity_type_id','activity_type_id','VARCHAR'),('campaign_run_id','campaign_run_id','VARCHAR'),('step_id','step_id','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR'),('email_send_id','id','VARCHAR')]),
+('email_delivered','activity_email_delivered',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('email_template_id','email_template_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('activity_type_id','activity_type_id','VARCHAR'),('campaign_run_id','campaign_run_id','VARCHAR'),('step_id','step_id','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR'),('email_send_id','id','VARCHAR')]),
+('email_bounced','activity_email_bounced',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('email_template_id','email_template_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('activity_type_id','activity_type_id','VARCHAR'),('campaign_run_id','campaign_run_id','VARCHAR'),('step_id','step_id','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR'),('email_send_id','id','VARCHAR')]),
+('unsubscribe_email','activity_unsubscribe_email',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('email_template_id','email_template_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('activity_type_id','activity_type_id','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR'),('campaign_run_id','campaign_run_id','VARCHAR'),('email_send_id','id','VARCHAR')]),
+('change_data_value','activity_change_data_value',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('activity_type_id','activity_type_id','VARCHAR'),('api_method_name','api_method_name','DOUBLE'),('campaign_id','campaign_id','VARCHAR'),('modifying_user','modifying_user','DOUBLE'),('new_value','new_value','VARCHAR'),('old_value','old_value','VARCHAR'),('field_name','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','BIGINT'),('reason','reason','VARCHAR'),('request_id','request_id','VARCHAR'),('source','source','VARCHAR')]),
+('merge_leads','activity_merge_leads',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('activity_type_id','activity_type_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('merged_lead_ids','merge_ids','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR')]),
+('delete_lead','activity_delete_lead',[('activity_id','id','VARCHAR'),('lead_id','lead_id','VARCHAR'),('activity_timestamp','activity_date','TIMESTAMP'),('activity_type_id','activity_type_id','VARCHAR'),('campaign_id','campaign_id','VARCHAR'),('primary_attribute_value','primary_attribute_value','VARCHAR'),('primary_attribute_value_id','primary_attribute_value_id','VARCHAR')])]
+for key,(table,cols,*extra) in models.items():
+ select=[]
+ for out,src,typ in cols:
+  expr=f'CAST({src} AS {typ})'
+  if typ=='VARCHAR': expr=f'CAST({src} AS VARCHAR)'
+  if key=='stg_marketo__lead' and out=='email': expr='LOWER(TRIM(email))'
+  if key=='stg_marketo__lead' and out in ('first_name','last_name'): expr=f'TRIM({src})'
+  if key=='stg_marketo__campaigns' and out=='campaign_name': expr='TRIM(name)'
+  if typ=='DATE': expr=f'TRY_CAST({src} AS DATE)'
+  select.append(f'    {expr} AS {out}')
+ where=''
+ if key=='stg_marketo__lead': where="\nWHERE id IS NOT NULL AND created_at IS NOT NULL AND updated_at IS NOT NULL AND email IS NOT NULL AND LOWER(TRIM(email)) ~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$' AND first_name = TRIM(first_name) AND LENGTH(first_name) <= 100 AND last_name = TRIM(last_name) AND LENGTH(last_name) <= 100\nQUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY updated_at DESC NULLS LAST) = 1"
+ if key=='stg_marketo__campaigns': where="\nWHERE id IS NOT NULL AND name IS NOT NULL AND TRIM(name) <> '' AND LENGTH(TRIM(name)) <= 255 AND type IS NOT NULL AND created_at IS NOT NULL AND updated_at IS NOT NULL\nQUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY updated_at DESC NULLS LAST) = 1"
+ sql=f"SELECT\n{',\n'.join(select)}\nFROM raw.{table}{where}"
+ (root/'staging'/f'{key}.sql').write_text(sql)
+for name,table,cols in activity:
+ select=[]
+ for out,src,typ in cols:
+  expr=f'CAST({src} AS {typ})'
+  if typ=='TIMESTAMP': expr=f"TRY_STRPTIME({src}, '%Y-%m-%d %H:%M:%S.%f %z')::TIMESTAMP"
+  select.append(f'    {expr} AS {out}')
+ sql=f"SELECT\n{',\n'.join(select)}\nFROM raw.marketo_{table}\nWHERE id IS NOT NULL AND lead_id IS NOT NULL AND activity_date IS NOT NULL\nQUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY activity_date) = 1"
+ (root/'staging'/f'stg_marketo__activity_{name}.sql').write_text(sql)
+# describe
+(root/'staging/stg_marketo__lead_describe.sql').write_text("""SELECT CAST(id AS BIGINT) AS lead_describe_id, CAST(data_type AS VARCHAR) AS data_type, CAST(display_name AS VARCHAR) AS display_name, CAST(length AS BIGINT) AS field_max_length, CAST(restname AS VARCHAR) AS rest_name, CAST(restread_only AS BOOLEAN) AS is_rest_readonly, CAST(soapname AS VARCHAR) AS soap_name, CAST(soapread_only AS BOOLEAN) AS is_soap_readonly, CAST(restname AS VARCHAR) AS rest_name_xf FROM raw.marketo_lead_describe WHERE id IS NOT NULL AND data_type IS NOT NULL AND display_name IS NOT NULL QUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY id) = 1""")
+# utility calendar through current day, data coverage created onwards
+(root/'utils/marketo__calendar_spine.sql').write_text("""WITH date_bounds AS ( SELECT COALESCE(MIN(TRY_CAST(created_at AS DATE)), CURRENT_DATE) AS min_date, CURRENT_DATE AS max_date FROM raw.marketo_lead ) SELECT CAST(generate_series AS DATE) AS date_day FROM date_bounds, GENERATE_SERIES(min_date, max_date, INTERVAL 1 DAY) AS calendar(generate_series)""")
+PY
+python /tmp/gen.py
+
+## agent 实际看到的执行结果
+
+  File "/tmp/gen.py", line 6
+    'stg_marketo__campaigns':('marketo_campaign',[(a,b,t) for a,b,t in [('campaign_id','id','VARCHAR'),('campaign_name','name','VARCHAR'),('program_id','program_id','VARCHAR'),('campaign_type','type','VARCHAR'),('is_active','active','BOOLEAN'),('created_timestamp','created_at','VARCHAR'),('updated_timestamp','updated_at','VARCHAR'),('description','description','VARCHAR'),('workspace_name','workspace_name','VARCHAR'),('computed_url','computed_url','VARCHAR'),('flow_id','flow_id','VARCHAR'),('folder_id','folder_id','VARCHAR'),('folder_type','folder_type','VARCHAR'),('is_communication_limit_enabled','is_communication_limit_enabled','BOOLEAN'),('is_requestable','is_requestable','BOOLEAN'),('is_system','is_system','BOOLEAN'),('max_members','max_members','BIGINT'),('qualification_rule_type','qualification_rule_type','VARCHAR'),('qualification_rule_interval','qualification_rule_interval','BIGINT'),('qualification_rule_unit','qualification_rule_unit','VARCHAR'),('recurrence_start_at','recurrence_start_at','VARCHAR'),('recurrence_end_at','recurrence_end_at','VARCHAR'),('recurrence_interval_type','recurrence_interval_type','VARCHAR'),('recurrence_interval','recurrence_interval','BIGINT'),('recurrence_weekday_only','recurrence_weekday_only','BOOLEAN'),('recurrence_day_of_month','recurrence_day_of_month','BIGINT'),('recurrence_day_of_week','recurrence_day_of_week','BIGINT'),('recurrence_week_of_month','recurrence_week_of_month','BIGINT'),('smart_list_id','smart_list_id','VARCHAR'),('status','status','VARCHAR')]),'campaign'),
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    ^
+SyntaxError: closing parenthesis ')' does not match opening parenthesis '['
+
+
+

@@ -1,0 +1,96 @@
+{
+  "premises": [
+    {
+      "statement": "Every project entering the health-indicator calculation has at least one completed task.",
+      "about": "data",
+      "target": "intermediate.int_asana__project_health_indicators",
+      "evidence_of_dependence": "quality_tasks/NULLIF(completed_tasks,0) ... quality_percentage BETWEEN 0 AND 100 ... FROM final WHERE is_valid_record",
+      "alternative": "The contract says percentages must be set to 0 \"when denominator is 0\"; the final SELECT applies COALESCE only after the validity filter has excluded rows with null percentages.",
+      "importance": 5,
+      "reason": "Projects with no completed tasks, including projects with no tasks, would be excluded instead of receiving the specified zero percentages.",
+      "updates": null
+    },
+    {
+      "statement": "The last 12 months of productivity output means the current calendar month plus the preceding 11 calendar months.",
+      "about": "requirement",
+      "target": "intermediate.int_asana__user_productivity_trends",
+      "evidence_of_dependence": "WHERE activity_month>=DATE_TRUNC('month',CURRENT_DATE-INTERVAL '11 months')",
+      "alternative": "The contract says \"activity_month within the last 12 months\", which could instead mean a cutoff at CURRENT_DATE minus 12 months.",
+      "importance": 3,
+      "reason": "The interpretation determines whether an additional boundary month appears in the output.",
+      "updates": null
+    },
+    {
+      "statement": "A timezone-naive month bucket satisfies the productivity model's timezone-aware activity_month requirement.",
+      "about": "requirement",
+      "target": "intermediate.int_asana__user_productivity_trends.activity_month",
+      "evidence_of_dependence": "DATE_TRUNC('month',t.created_at) AS activity_month",
+      "alternative": "Staging declares created_at as \"TIMESTAMP\", while activity_month is declared \"TIMESTAMP WITH TIME ZONE\" with the description \"timezone preserved\".",
+      "importance": 3,
+      "reason": "The expression inherits a timezone-naive staging type rather than establishing the required output type.",
+      "updates": null
+    },
+    {
+      "statement": "The 24-month productivity computation window starts exactly 24 months before the current date rather than at a calendar-month boundary.",
+      "about": "requirement",
+      "target": "intermediate.int_asana__user_productivity_trends",
+      "evidence_of_dependence": "WHERE t.created_at>=CURRENT_DATE-INTERVAL '24 months'",
+      "alternative": "The contract describes \"Monthly user productivity trends\" using a \"24-month history\", which also permits a calendar-month-aligned interpretation.",
+      "importance": 3,
+      "reason": "A partially included earliest month can change cumulative totals and historical window calculations.",
+      "updates": null
+    },
+    {
+      "statement": "No tasks included in the productivity calculation have future creation timestamps.",
+      "about": "data",
+      "target": "intermediate.int_asana__user_productivity_trends",
+      "evidence_of_dependence": "t.created_at>=CURRENT_DATE-INTERVAL '24 months' ... WHERE activity_month>=DATE_TRUNC('month',CURRENT_DATE-INTERVAL '11 months')",
+      "alternative": "The contract limits aggregation to tasks \"created in the last 24 months\" and output to \"the last 12 months\"; neither filter supplies an upper bound.",
+      "importance": 3,
+      "reason": "Future-dated tasks could introduce future reporting months and alter cumulative metrics.",
+      "updates": null
+    },
+    {
+      "statement": "Project deadline status should compare only the calendar date of project_due_date with today.",
+      "about": "requirement",
+      "target": "intermediate.int_asana__project_health_indicators.deadline_status",
+      "evidence_of_dependence": "WHEN project_due_date::DATE>CURRENT_DATE THEN 'on_time' WHEN project_due_date::DATE=CURRENT_DATE THEN 'due_today'",
+      "alternative": "The contract defines due_date as TIMESTAMP and says \"on_time if due_date > today; due_today if equal\", which could instead require direct timestamp comparison.",
+      "importance": 2,
+      "reason": "Projects due later today can receive different deadline and forecast labels under the two interpretations.",
+      "updates": null
+    },
+    {
+      "statement": "Task creation and completion timestamps used for project recency counts are never in the future.",
+      "about": "data",
+      "target": "intermediate.int_asana__project_health_indicators.recent_task_creation, recent_task_completion",
+      "evidence_of_dependence": "task_created_at>=CURRENT_DATE-INTERVAL '7 days' ... completed_at>=CURRENT_DATE-INTERVAL '7 days'",
+      "alternative": "The contract requires tasks created or completed \"within the last 7 days\", whereas these conditions have no upper bound.",
+      "importance": 2,
+      "reason": "Future timestamps would inflate recent activity counts and activity_percentage.",
+      "updates": null
+    },
+    {
+      "statement": "Every retained project's creation calendar date is on or before the current date.",
+      "about": "data",
+      "target": "intermediate.int_asana__project_health_indicators.project_age_days",
+      "evidence_of_dependence": "DATE_DIFF('day',project_created_at::DATE,CURRENT_DATE)::BIGINT project_age_days",
+      "alternative": "The contract describes project_age_days as a \"non-negative integer\", but the calculation and validity checks do not enforce that bound.",
+      "importance": 2,
+      "reason": "Future-dated projects would produce negative ages contrary to the declared output constraint.",
+      "updates": null
+    }
+  ],
+  "fewer": [
+    {
+      "target": "intermediate.int_asana__project_health_indicators",
+      "count": 4,
+      "reason": "Four distinct unestablished premises were identifiable; the remaining logic largely implements explicit contract rules or relies on staging guarantees already covered by earlier reviews."
+    },
+    {
+      "target": "intermediate.int_asana__user_productivity_trends",
+      "count": 4,
+      "reason": "Four distinct unestablished premises were identifiable; the joins, observed-month windows, rankings, and classifications otherwise follow the supplied specification."
+    }
+  ]
+}

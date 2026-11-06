@@ -1,0 +1,726 @@
+{
+  "stg_twitter_ads__account_history": {
+    "items": [
+      {
+        "problem": "Unsupported timezone values are replaced with UTC rather than corrected to their intended canonical timezone where possible.",
+        "about": "requirement",
+        "evidence_in_work": "then timezone else 'UTC' end as timezone",
+        "source": "timezone ... on_failure: correct",
+        "importance": 3,
+        "reason": "Whitespace or casing errors in otherwise recognizable timezones would become a different timezone."
+      },
+      {
+        "problem": "Empty or whitespace-only account identifiers can survive because only SQL NULL identifiers are rejected.",
+        "about": "data",
+        "evidence_in_work": "where id is not null",
+        "source": "Remove entire row when records contain severe data quality issues ... Invalid primary identifiers",
+        "importance": 2,
+        "reason": "If present, unusable identifiers would enter account dimensions and downstream joins."
+      }
+    ],
+    "fewer_reason": "Only two concrete concerns are supported; latest-version tie semantics are not specified for this staging model."
+  },
+  "stg_twitter_ads__campaign_history": {
+    "items": [
+      {
+        "problem": "Rows with NULL account_id are not removed despite the staging not-null requirement.",
+        "about": "requirement",
+        "evidence_in_work": "from raw.twitter_campaign_history_data where id is not null",
+        "source": "name: account_id ... constraints: [not_null]",
+        "importance": 4,
+        "reason": "Invalid ownership keys would propagate to the campaign dimension."
+      },
+      {
+        "problem": "Casting floating-point total-budget micro amounts directly to BIGINT can round fractional micro-units while the standard-unit budget is calculated from the uncast value.",
+        "about": "data",
+        "evidence_in_work": "cast(total_budget_amount_local_micro as bigint) as total_budget_amount_local_micro",
+        "source": "twitter_campaign_history_data: total_budget_amount_local_micro: DOUBLE",
+        "importance": 1,
+        "reason": "This matters only if fractional micro-unit values exist and would usually have a small monetary effect."
+      }
+    ],
+    "fewer_reason": "No additional substantial model-specific discrepancies are visible."
+  },
+  "stg_twitter_ads__line_item_history": {
+    "items": [
+      {
+        "problem": "A numeric end_time would be parsed as timestamp text rather than interpreted using its actual numeric time encoding.",
+        "about": "data",
+        "evidence_in_work": "try_cast(replace(cast(end_time as varchar), ' UTC', '') as timestamp) as end_timestamp",
+        "source": "twitter_line_item_history_data: end_time: DOUBLE",
+        "importance": 2,
+        "reason": "All inspected values are NULL, but populated numeric timestamps would likely be silently lost."
+      },
+      {
+        "problem": "Empty line-item and campaign identifiers remain eligible even though they may be invalid primary or relationship identifiers.",
+        "about": "data",
+        "evidence_in_work": "where id is not null and campaign_id is not null",
+        "source": "Invalid primary identifiers",
+        "importance": 2,
+        "reason": "Such values could create unusable dimension keys, although their presence was not established."
+      }
+    ],
+    "fewer_reason": "The visible monetary conversions and declared staging types otherwise align with the supplied specification."
+  },
+  "stg_twitter_ads__promoted_tweet_history": {
+    "items": [
+      {
+        "problem": "Empty promoted-tweet identifiers can survive the identifier validation.",
+        "about": "data",
+        "evidence_in_work": "where id is not null",
+        "source": "Invalid primary identifiers",
+        "importance": 2,
+        "reason": "If present, these records would become invalid keys in promoted-tweet dimensions."
+      }
+    ],
+    "fewer_reason": "No further specific discrepancy is established by the supplied staging definition."
+  },
+  "stg_twitter_ads__tweet": {
+    "items": [
+      {
+        "problem": "The created_at filter uses an invented 2006–2100 window that may not implement the intended reasonable timestamp bounds.",
+        "about": "requirement",
+        "evidence_in_work": "between timestamp '2006-01-01' and timestamp '2100-01-01'",
+        "source": "Cleaned tweets with validated language and reasonable created_at bounds applied at staging filter.",
+        "importance": 3,
+        "reason": "The broad upper bound permits implausible future tweets and the undocumented lower bound can change enrichment coverage."
+      },
+      {
+        "problem": "NULL or unparseable created_at values are deleted implicitly, although the contract does not explicitly define their treatment.",
+        "about": "requirement",
+        "evidence_in_work": "where try_cast(replace(created_at, ' UTC', '') as timestamp) between",
+        "source": "reasonable created_at bounds applied at staging filter",
+        "importance": 2,
+        "reason": "Otherwise usable tweet text may disappear from downstream enrichment."
+      }
+    ],
+    "fewer_reason": "Exact timestamp-bound and missing-timestamp policies are unspecified, limiting further supported findings."
+  },
+  "stg_twitter_ads__tweet_url": {
+    "items": [
+      {
+        "problem": "The staging url_path includes the hostname rather than just the URL path.",
+        "about": "requirement",
+        "evidence_in_work": "'/' || regexp_replace(substr(expanded_url, strpos(expanded_url, '//') + 2), '\\?.*$', '')",
+        "source": "url_path ... description: \"Path portion beginning with '/'.\"",
+        "importance": 4,
+        "reason": "A URL such as https://example.com/page becomes /example.com/page instead of /page."
+      },
+      {
+        "problem": "Absent UTM parameters are emitted as empty strings rather than NULL.",
+        "about": "requirement",
+        "evidence_in_work": "regexp_extract(expanded_url, '[?&]utm_source=([^&#]*)', 1) as utm_source",
+        "source": "UTM source ... NULL if not present.",
+        "importance": 3,
+        "reason": "DuckDB returns an empty string for an unmatched extraction, changing missing-value semantics downstream."
+      },
+      {
+        "problem": "base_url strips fragments as well as the query string, which may exceed the documented transformation.",
+        "about": "requirement",
+        "evidence_in_work": "regexp_replace(expanded_url, '[?#].*$', '')",
+        "source": "Expanded URL without query string from u.base_url",
+        "importance": 2,
+        "reason": "Fragment-only URLs can lose meaningful destination information and group together unexpectedly."
+      }
+    ],
+    "fewer_reason": "Only three supported URL-parsing concerns were identified."
+  },
+  "stg_twitter_ads__campaign_report": {
+    "items": [
+      {
+        "problem": "Required date_day, account_id, and campaign_id values are not validated or filtered.",
+        "about": "requirement",
+        "evidence_in_work": "try_cast(date as timestamp) as date_day ... from raw.twitter_campaign_report_data",
+        "source": "date_day, account_id, campaign_id ... constraints: [not_null]",
+        "importance": 4,
+        "reason": "NULL keys and failed date parses can reach all campaign-report layers."
+      },
+      {
+        "problem": "All conversion inputs are hardcoded to NULL, leaving the contractual conversion measures unavailable.",
+        "about": "data",
+        "evidence_in_work": "cast(null as bigint) as conversion_purchases_metric",
+        "source": "conversion_purchases_metric; conversion_custom_metric; conversion_purchases_sale_amount; conversion_custom_sale_amount",
+        "importance": 2,
+        "reason": "The indexed raw schema lacks these fields, but the fallback makes every downstream conversion total zero rather than observed."
+      }
+    ],
+    "fewer_reason": "The absent conversion columns are a documented source limitation; no further supported model-specific problems are visible."
+  },
+  "stg_twitter_ads__line_item_report": {
+    "items": [
+      {
+        "problem": "Required date_day, account_id, and line_item_id values are not validated or filtered.",
+        "about": "requirement",
+        "evidence_in_work": "try_cast(date as timestamp) as date_day ... from raw.twitter_line_item_report_data",
+        "source": "date_day, account_id, line_item_id ... constraints: [not_null]",
+        "importance": 4,
+        "reason": "Invalid reporting keys could propagate into the base model and mart."
+      },
+      {
+        "problem": "All conversion inputs are hardcoded to NULL rather than populated from observed conversion data.",
+        "about": "data",
+        "evidence_in_work": "cast(null as double) as conversion_purchases_sale_amount",
+        "source": "conversion_purchases_metric; conversion_custom_metric; conversion_purchases_sale_amount; conversion_custom_sale_amount",
+        "importance": 2,
+        "reason": "The source schema lacks these measures, so downstream zeros cannot be interpreted as measured absence of conversions."
+      }
+    ],
+    "fewer_reason": "Only two supported issues were identified for this staging projection."
+  },
+  "stg_twitter_ads__line_item_keywords_report": {
+    "items": [
+      {
+        "problem": "keyword_id is copied from nullable keyword text rather than derived as a non-null identifier scoped to line item and placement.",
+        "about": "requirement",
+        "evidence_in_work": "keyword as keyword_id",
+        "source": "Keyword identifier scoped to the line item and placement. ... tests: - not_null",
+        "importance": 4,
+        "reason": "NULL keywords produce NULL identifiers and repeated text across scopes does not provide a scoped identity."
+      },
+      {
+        "problem": "Required date_day, account_id, and line_item_id values are not validated or filtered.",
+        "about": "requirement",
+        "evidence_in_work": "from raw.twitter_line_item_keywords_report_data",
+        "source": "date_day, account_id, line_item_id ... constraints: [not_null]",
+        "importance": 4,
+        "reason": "Invalid reporting keys can survive into keyword analytics."
+      },
+      {
+        "problem": "All conversion inputs are hardcoded to NULL, making downstream conversion totals uniformly zero.",
+        "about": "data",
+        "evidence_in_work": "cast(null as bigint) as conversion_custom_metric",
+        "source": "conversion_purchases_metric; conversion_custom_metric; conversion_purchases_sale_amount; conversion_custom_sale_amount",
+        "importance": 2,
+        "reason": "This accommodates missing source columns but does not supply observed conversion performance."
+      }
+    ],
+    "fewer_reason": "No exact keyword-ID derivation algorithm or additional staging validation rules are supplied."
+  },
+  "stg_twitter_ads__promoted_tweet_report": {
+    "items": [
+      {
+        "problem": "The required date_ts column is omitted entirely.",
+        "about": "requirement",
+        "evidence_in_work": "fields=[\"try_cast(date as timestamp) as date_day\"]",
+        "source": "name: date_ts ... data_type: TIMESTAMP",
+        "importance": 4,
+        "reason": "The output schema does not match the contract even though execution succeeds."
+      },
+      {
+        "problem": "Required date_day, account_id, and promoted_tweet_id values are not validated or filtered.",
+        "about": "requirement",
+        "evidence_in_work": "from raw.twitter_promoted_tweet_report_data",
+        "source": "date_day, account_id, promoted_tweet_id ... constraints: [not_null]",
+        "importance": 4,
+        "reason": "Invalid keys can affect account, promoted-tweet, and URL reporting."
+      },
+      {
+        "problem": "All conversion inputs are hardcoded to NULL instead of containing observed conversion measures.",
+        "about": "data",
+        "evidence_in_work": "cast(null as bigint) as conversion_purchases_metric",
+        "source": "conversion_purchases_metric; conversion_custom_metric; conversion_purchases_sale_amount; conversion_custom_sale_amount",
+        "importance": 2,
+        "reason": "The source lacks these columns, but downstream zero totals can be mistaken for actual measured zeros."
+      }
+    ],
+    "fewer_reason": "Only three supported staging-specific discrepancies were identified."
+  },
+  "stg_twitter_ads__campaign_locations_report": {
+    "items": [
+      {
+        "problem": "Required date_day, account_id, and campaign_id values are not validated or filtered.",
+        "about": "requirement",
+        "evidence_in_work": "from raw.twitter_campaign_locations_report_data",
+        "source": "date_day, account_id, campaign_id ... constraints: [not_null]",
+        "importance": 4,
+        "reason": "Invalid reporting keys could survive into country-level analytics."
+      },
+      {
+        "problem": "All conversion inputs are hardcoded to NULL rather than populated with observed values.",
+        "about": "data",
+        "evidence_in_work": "cast(null as double) as conversion_custom_sale_amount",
+        "source": "conversion_purchases_metric; conversion_custom_metric; conversion_purchases_sale_amount; conversion_custom_sale_amount",
+        "importance": 2,
+        "reason": "Missing source columns explain the fallback, but conversion reporting remains unavailable."
+      }
+    ],
+    "fewer_reason": "The remaining visible projection and spend conversion match the supplied definition."
+  },
+  "stg_twitter_ads__campaign_regions_report": {
+    "items": [
+      {
+        "problem": "The literal autogenerated account_id values are passed through without checking whether they represent actual accounts.",
+        "about": "data",
+        "evidence_in_work": "('autogenerated', 'zwucc3', 'JP', '2022-05-10', ... 'Asia Pacific')",
+        "source": "account_id ... Twitter Ads account identifier",
+        "importance": 4,
+        "reason": "The inspected region rows have placeholder account keys, which can prevent account enrichment and misrepresent ownership."
+      },
+      {
+        "problem": "Required date_day, account_id, and campaign_id values are not validated or filtered.",
+        "about": "requirement",
+        "evidence_in_work": "from raw.twitter_campaign_regions_report_data",
+        "source": "date_day, account_id, campaign_id ... constraints: [not_null]",
+        "importance": 4,
+        "reason": "NULL keys or failed timestamp parses could propagate through regional reporting."
+      },
+      {
+        "problem": "All conversion inputs are hardcoded to NULL rather than representing observed conversion performance.",
+        "about": "data",
+        "evidence_in_work": "cast(null as bigint) as conversion_purchases_metric",
+        "source": "conversion_purchases_metric; conversion_custom_metric; conversion_purchases_sale_amount; conversion_custom_sale_amount",
+        "importance": 2,
+        "reason": "The raw schema lacks these measures, so later zero totals are not measured results."
+      }
+    ],
+    "fewer_reason": "Only three concrete concerns are supported by the provided material."
+  },
+  "int_twitter_ads__accounts": {
+    "items": [
+      {
+        "problem": "The dimension inherits potentially incorrect UTC replacements for recoverable timezone formatting errors.",
+        "about": "data",
+        "evidence_in_work": "timezone ... from staging.stg_twitter_ads__account_history",
+        "source": "timezone ... on_failure: correct",
+        "importance": 3,
+        "reason": "The intermediate projection correctly passes values through but cannot recover timezone information lost upstream."
+      }
+    ],
+    "fewer_reason": "The latest-version filter and selected fields otherwise follow the intermediate contract."
+  },
+  "int_twitter_ads__campaigns": {
+    "items": [
+      {
+        "problem": "frequency_cap is cast in the intermediate layer despite the explicit pass-through-only rule.",
+        "about": "requirement",
+        "evidence_in_work": "try_cast(frequency_cap as double) as frequency_cap",
+        "source": "Select the listed columns without transformation ... All values are pass-through from staging",
+        "importance": 3,
+        "reason": "This resolves conflicting declared staging and intermediate types but can silently replace nonnumeric values with NULL."
+      },
+      {
+        "problem": "NULL account_id values can be inherited because campaign staging does not enforce its required ownership key.",
+        "about": "requirement",
+        "evidence_in_work": "from staging.stg_twitter_ads__campaign_history where is_latest_version is true",
+        "source": "account_id ... tests: - not_null",
+        "importance": 3,
+        "reason": "The dimension can violate its own key requirements even with a successful pipeline run."
+      }
+    ],
+    "fewer_reason": "No additional discrepancies in the dimension projection are visible."
+  },
+  "int_twitter_ads__line_items": {
+    "items": [
+      {
+        "problem": "Several attributes are cast despite the explicit prohibition on intermediate casting.",
+        "about": "requirement",
+        "evidence_in_work": "try_cast(primary_web_event_tag as double) ... cast(bid_amount as double) ... cast(total_budget_amount as double)",
+        "source": "all other fields are passed through without casting, normalization, rounding, or defaulting",
+        "importance": 3,
+        "reason": "The contract has inconsistent layer type declarations, but the implementation departs from its explicit transformation rule."
+      }
+    ],
+    "fewer_reason": "The latest-version filtering, renaming, and join-free structure otherwise match the specification."
+  },
+  "int_twitter_ads__promoted_tweets": {
+    "items": [],
+    "fewer_reason": "No concrete model-specific problem is visible: the projection, status rename, and latest-version filter match the supplied contract."
+  },
+  "int_twitter_ads__tweets": {
+    "items": [
+      {
+        "problem": "tweet_id is cast rather than passed through unchanged from staging.",
+        "about": "requirement",
+        "evidence_in_work": "try_cast(tweet_id as bigint) as tweet_id",
+        "source": "Pass through values as stored ... tweet_id ... pass-through",
+        "importance": 2,
+        "reason": "The declared layer types conflict, and the current raw BIGINT origin makes value loss unlikely, but the explicit pass-through rule is not followed."
+      },
+      {
+        "problem": "Tweet enrichment coverage depends on the undocumented timestamp bounds imposed upstream.",
+        "about": "data",
+        "evidence_in_work": "from staging.stg_twitter_ads__tweet",
+        "source": "reasonable created_at bounds applied at staging filter",
+        "importance": 2,
+        "reason": "Tweets discarded by the assumed bounds cannot supply names or text to downstream marts."
+      }
+    ],
+    "fewer_reason": "No other specific projection or grain issue is supported."
+  },
+  "int_twitter_ads__tweet_url_first": {
+    "items": [
+      {
+        "problem": "Missing UTM parameters remain empty strings because the staging extraction does not produce NULL for absent matches.",
+        "about": "data",
+        "evidence_in_work": "utm_source, utm_medium, utm_campaign, utm_content, utm_term",
+        "source": "UTM source ... NULL if not present.",
+        "importance": 3,
+        "reason": "The first-URL model preserves the upstream missing-value discrepancy into URL analytics."
+      },
+      {
+        "problem": "The host extraction permits an empty host where the documented extraction would have no host text to match.",
+        "about": "requirement",
+        "evidence_in_work": "regexp_extract(..., '^([^/?#]*)', 1)",
+        "source": "if no such pattern exists, set NULL",
+        "importance": 1,
+        "reason": "Malformed URLs such as a scheme followed by an empty authority could produce an empty string instead of NULL."
+      }
+    ],
+    "fewer_reason": "The unusual hostname-inclusive url_path and NULL-as-999999 ranking are explicitly required here and are not treated as errors."
+  },
+  "int_twitter_ads__campaign_report_base": {
+    "items": [
+      {
+        "problem": "All conversion totals are zero because every upstream conversion input was synthesized as NULL.",
+        "about": "data",
+        "evidence_in_work": "cast(coalesce(conversion_purchases_metric, 0) as bigint) + cast(coalesce(conversion_custom_metric, 0) as bigint)",
+        "source": "Daily campaign metrics ... two deterministic conversion totals computed",
+        "importance": 2,
+        "reason": "The NULL fallback follows the formula but cannot produce observed conversion performance from this extract."
+      },
+      {
+        "problem": "date_day is explicitly cast twice instead of passed through without modification.",
+        "about": "requirement",
+        "evidence_in_work": "replace('select date_day, ', 'select cast(date_day as date) as date_day, ')",
+        "source": "Read date_day ... directly from staging without modification.",
+        "importance": 2,
+        "reason": "This reconciles conflicting TIMESTAMP and DATE declarations but would discard nonmidnight time information."
+      }
+    ],
+    "fewer_reason": "Conversion-count inputs are already BIGINT in staging, so the cast does not currently introduce a fractional truncation error."
+  },
+  "int_twitter_ads__line_item_report_base": {
+    "items": [
+      {
+        "problem": "Conversion totals represent the hardcoded missing-source fallback rather than measured line-item conversions.",
+        "about": "data",
+        "evidence_in_work": "coalesce(conversion_purchases_sale_amount, 0.0) + coalesce(conversion_custom_sale_amount, 0.0)",
+        "source": "Compute total_conversions_sale_amount ... purchases and custom sale amounts",
+        "importance": 2,
+        "reason": "Both upstream inputs are always NULL, so totals are uniformly zero."
+      },
+      {
+        "problem": "date_day is cast to DATE despite the requirement to pass the staging field through unchanged.",
+        "about": "requirement",
+        "evidence_in_work": "select cast(date_day as date) as date_day",
+        "source": "Pass through date_day ... unchanged",
+        "importance": 2,
+        "reason": "The output type requirement conflicts with staging, but the cast can discard time components."
+      }
+    ],
+    "fewer_reason": "No further supported discrepancy in the row-for-row projection is visible."
+  },
+  "int_twitter_ads__keyword_report_base": {
+    "items": [
+      {
+        "problem": "keyword_id can be NULL and is not scoped beyond raw keyword text.",
+        "about": "requirement",
+        "evidence_in_work": "select ... keyword_id, keyword ... from staging.stg_twitter_ads__line_item_keywords_report",
+        "source": "Keyword identifier scoped to the line item and placement. ... tests: - not_null",
+        "importance": 4,
+        "reason": "The upstream identity shortcut undermines the model's required keyword key."
+      },
+      {
+        "problem": "Conversion totals are uniformly zero because the input conversion columns were hardcoded to NULL.",
+        "about": "data",
+        "evidence_in_work": "cast(coalesce(conversion_purchases_metric, 0) as bigint)",
+        "source": "Purchases conversions metric plus custom conversions metric",
+        "importance": 2,
+        "reason": "These totals reflect absent extract fields, not measured keyword conversion activity."
+      },
+      {
+        "problem": "date_day is cast rather than passed through as specified.",
+        "about": "requirement",
+        "evidence_in_work": "select cast(date_day as date) as date_day",
+        "source": "Pass-through fields: date_day",
+        "importance": 2,
+        "reason": "The cast satisfies the declared DATE output but changes the staging TIMESTAMP value if it contains a time."
+      }
+    ],
+    "fewer_reason": "Only three supported concerns were found."
+  },
+  "int_twitter_ads__promoted_tweet_report_base": {
+    "items": [
+      {
+        "problem": "Conversion totals are derived entirely from synthesized NULL inputs and therefore are not observed promoted-tweet conversions.",
+        "about": "data",
+        "evidence_in_work": "coalesce(conversion_purchases_sale_amount, 0.0) + coalesce(conversion_custom_sale_amount, 0.0)",
+        "source": "conversion totals derived from source metrics",
+        "importance": 2,
+        "reason": "This limitation propagates to account, promoted-tweet, and URL marts."
+      },
+      {
+        "problem": "date_day is cast to DATE despite the explicit exact-pass-through rule.",
+        "about": "requirement",
+        "evidence_in_work": "select cast(date_day as date) as date_day",
+        "source": "Pass through date_day ... exactly as provided by the source",
+        "importance": 2,
+        "reason": "The declared output type conflicts with staging, but nonmidnight timestamps would be altered."
+      }
+    ],
+    "fewer_reason": "The remaining formulas and one-row-per-source-row behavior match the visible specification."
+  },
+  "int_twitter_ads__campaign_locations_report_base": {
+    "items": [
+      {
+        "problem": "date_day is cast to DATE even though this model explicitly forbids pass-through type changes.",
+        "about": "requirement",
+        "evidence_in_work": "select cast(date_day as date) as date_day",
+        "source": "Pass through date_day ... with ... no ... type changes",
+        "importance": 3,
+        "reason": "The implementation resolves conflicting type declarations by violating an explicit transformation restriction."
+      },
+      {
+        "problem": "Conversion totals are uniformly zero because all upstream conversion fields were synthesized as NULL.",
+        "about": "data",
+        "evidence_in_work": "cast(coalesce(conversion_custom_metric, 0) as bigint)",
+        "source": "derived total conversions and sale amounts",
+        "importance": 2,
+        "reason": "The formulas execute correctly but cannot supply observed country-level conversion measures."
+      }
+    ],
+    "fewer_reason": "No additional supported model-specific concern is visible."
+  },
+  "int_twitter_ads__campaign_regions_report_base": {
+    "items": [
+      {
+        "problem": "Placeholder account identifiers are preserved without verifying their relationship to actual accounts.",
+        "about": "data",
+        "evidence_in_work": "account_id ... from staging.stg_twitter_ads__campaign_regions_report",
+        "source": "account_id ... Owning account ID",
+        "importance": 4,
+        "reason": "Inspected source rows use autogenerated, which can leave regional metrics without valid account context."
+      },
+      {
+        "problem": "Conversion totals are zero-valued missing-source fallbacks rather than measured regional conversions.",
+        "about": "data",
+        "evidence_in_work": "cast(coalesce(conversion_purchases_metric, 0) as bigint)",
+        "source": "derived conversion totals",
+        "importance": 2,
+        "reason": "All upstream conversion inputs are hardcoded NULL."
+      },
+      {
+        "problem": "date_day is cast to DATE instead of being passed through exactly.",
+        "about": "requirement",
+        "evidence_in_work": "select cast(date_day as date) as date_day",
+        "source": "Pass through these columns exactly as in the source: date_day",
+        "importance": 2,
+        "reason": "The cast aligns the declared output type but can discard staging time components."
+      }
+    ],
+    "fewer_reason": "Only three supported concerns are identifiable."
+  },
+  "twitter_ads__account_report": {
+    "items": [
+      {
+        "problem": "The conversion measures are sums of synthetic zeros rather than observed account conversion activity.",
+        "about": "data",
+        "evidence_in_work": "sum(total_conversions) as total_conversions",
+        "source": "Total conversions for the group",
+        "importance": 2,
+        "reason": "Every base conversion input ultimately comes from hardcoded staging NULLs."
+      },
+      {
+        "problem": "The account timezone attribute can inherit an arbitrary UTC replacement for recoverable timezone formatting errors.",
+        "about": "data",
+        "evidence_in_work": "a.timezone",
+        "source": "Account timezone from accounts",
+        "importance": 2,
+        "reason": "This can misstate the account's timezone even though the mart itself correctly passes the attribute through."
+      }
+    ],
+    "fewer_reason": "Aggregation before the account join is correct, and using promoted-tweet activity rather than the unused raw account report is explicitly required."
+  },
+  "twitter_ads__campaign_report": {
+    "items": [
+      {
+        "problem": "Most campaign attributes have country/region-style aliases instead of the required campaign-report column names.",
+        "about": "requirement",
+        "evidence_in_work": "c.is_deleted as is_campaign_deleted ... c.currency as campaign_currency ... c.daily_budget_amount as campaign_daily_budget_amount",
+        "source": "name: is_deleted; name: currency; name: daily_budget_amount; name: total_budget_amount",
+        "importance": 5,
+        "reason": "Many required output columns are missing under their contractual names despite successful SQL execution."
+      },
+      {
+        "problem": "Conversion measures aggregate synthetic zeros rather than observed campaign conversion performance.",
+        "about": "data",
+        "evidence_in_work": "sum(r.total_conversions) as total_conversions",
+        "source": "Sum of total conversions within each group",
+        "importance": 2,
+        "reason": "Missing source conversion columns propagate through staging into zero-valued totals."
+      }
+    ],
+    "fewer_reason": "The joins and grouping otherwise follow the documented campaign mart logic."
+  },
+  "twitter_ads__line_item_report": {
+    "items": [
+      {
+        "problem": "Conversion totals contain only the upstream zero fallback for absent source measures.",
+        "about": "data",
+        "evidence_in_work": "sum(r.total_conversions_sale_amount) as total_conversions_sale_amount",
+        "source": "Sum of conversion sale amount over the group",
+        "importance": 2,
+        "reason": "The output cannot distinguish unavailable conversion data from measured zero activity."
+      }
+    ],
+    "fewer_reason": "No further mart-specific error is visible in the joins, selected attributes, or aggregation grain."
+  },
+  "twitter_ads__promoted_tweet_report": {
+    "items": [
+      {
+        "problem": "currency is selected from line items instead of campaigns.",
+        "about": "requirement",
+        "evidence_in_work": "ptdims=[... 'li.currency', ...]",
+        "source": "currency ... ISO currency from campaigns; NULL if no match",
+        "importance": 4,
+        "reason": "Currency can be populated when no campaign matches or differ from the specified campaign currency."
+      },
+      {
+        "problem": "campaign_id is selected from line items rather than the matched campaign dimension.",
+        "about": "requirement",
+        "evidence_in_work": "ptdims=[... 'li.campaign_id', 'c.campaign_name', ...]",
+        "source": "campaign_id ... Campaign ID from campaigns; NULL if no match.",
+        "importance": 4,
+        "reason": "An unmatched campaign retains an identifier where the contract requires NULL."
+      },
+      {
+        "problem": "line_item_id is selected from promoted tweets rather than the matched line-item dimension.",
+        "about": "requirement",
+        "evidence_in_work": "ptdims=[... 'pt.line_item_id', 'li.line_item_name', ...]",
+        "source": "line_item_id ... Line item ID from line items; NULL if no match.",
+        "importance": 4,
+        "reason": "An unmatched line item retains an identifier and changes the required grouping behavior."
+      },
+      {
+        "problem": "Conversion measures aggregate synthetic zeros from missing upstream conversion fields.",
+        "about": "data",
+        "evidence_in_work": "sum(r.total_conversions) as total_conversions",
+        "source": "Sum of total conversions within each group",
+        "importance": 2,
+        "reason": "These are unavailable-source fallbacks rather than measured performance."
+      }
+    ],
+    "fewer_reason": "Only four supported discrepancies were found in this mart."
+  },
+  "twitter_ads__keyword_report": {
+    "items": [
+      {
+        "problem": "The required keyword_id inherits nullable raw keyword text rather than a scoped derived identifier.",
+        "about": "requirement",
+        "evidence_in_work": "r.keyword_id, r.keyword",
+        "source": "keyword_id ... tests: - not_null",
+        "importance": 4,
+        "reason": "NULL keyword text creates an invalid required key, and text reuse does not establish scoped identity."
+      },
+      {
+        "problem": "Conversion measures are synthetic zero totals caused by absent upstream conversion fields.",
+        "about": "data",
+        "evidence_in_work": "sum(r.total_conversions) as total_conversions",
+        "source": "Total conversions summed within each group",
+        "importance": 2,
+        "reason": "The mart cannot represent actual keyword conversion activity from this extract."
+      }
+    ],
+    "fewer_reason": "The visible joins, dimensions, and SUM behavior otherwise match the mart definition."
+  },
+  "twitter_ads__url_report": {
+    "items": [
+      {
+        "problem": "campaign_id comes from the line-item foreign key rather than the matched campaign record.",
+        "about": "requirement",
+        "evidence_in_work": "udims=[... 'li.campaign_id', 'c.campaign_name', ...]",
+        "source": "campaign_id ... Campaign ID from c.campaign_id",
+        "importance": 4,
+        "reason": "Missing campaign matches should produce NULL campaign IDs rather than retain foreign-key values."
+      },
+      {
+        "problem": "line_item_id comes from promoted tweets rather than the matched line-item record.",
+        "about": "requirement",
+        "evidence_in_work": "udims=[... 'pt.line_item_id', 'li.line_item_name', ...]",
+        "source": "line_item_id ... Line item ID from li.line_item_id",
+        "importance": 4,
+        "reason": "Unmatched line items retain identifiers and can split groups contrary to the contract."
+      },
+      {
+        "problem": "Absent UTM parameters are grouped as empty strings rather than NULL.",
+        "about": "requirement",
+        "evidence_in_work": "u.utm_source, u.utm_medium, u.utm_campaign, u.utm_content, u.utm_term",
+        "source": "UTM source ... NULL if not present.",
+        "importance": 3,
+        "reason": "The staging extraction's empty-string fallback propagates into contractual output fields."
+      },
+      {
+        "problem": "Conversion totals are synthetic zeros rather than observed URL-associated conversion activity.",
+        "about": "data",
+        "evidence_in_work": "sum(r.total_conversions_sale_amount) as total_conversions_sale_amount",
+        "source": "Sum of r.total_conversions_sale_amount within each dimension group",
+        "importance": 2,
+        "reason": "No observed conversion fields are available in the upstream source projection."
+      }
+    ],
+    "fewer_reason": "The first-URL filter and hostname-inclusive intermediate path are explicitly specified, so they are not additional errors."
+  },
+  "twitter_ads__campaign_country_report": {
+    "items": [
+      {
+        "problem": "Conversion totals aggregate the upstream zero fallback rather than observed country-level conversion measures.",
+        "about": "data",
+        "evidence_in_work": "sum(r.total_conversions) as total_conversions",
+        "source": "Sum of total_conversions within the group",
+        "importance": 2,
+        "reason": "All underlying conversion inputs were hardcoded to NULL due to missing raw columns."
+      }
+    ],
+    "fewer_reason": "The campaign-prefixed aliases, joins, and grouping are correct for this particular mart."
+  },
+  "twitter_ads__campaign_region_report": {
+    "items": [
+      {
+        "problem": "Regional metrics can be grouped under the placeholder account_id autogenerated instead of actual account identities.",
+        "about": "data",
+        "evidence_in_work": "r.account_id ... left join intermediate.int_twitter_ads__accounts a on r.account_id = a.account_id",
+        "source": "account_id ... Twitter Ads account identifier from the base report",
+        "importance": 4,
+        "reason": "The inspected source uses this placeholder, making account attribution and account-name enrichment unreliable."
+      },
+      {
+        "problem": "Conversion totals are sums of synthetic zeros rather than observed regional conversion performance.",
+        "about": "data",
+        "evidence_in_work": "sum(r.total_conversions_sale_amount) as total_conversions_sale_amount",
+        "source": "Sum of conversion sale amounts over grouped rows",
+        "importance": 2,
+        "reason": "Missing raw conversion fields were replaced by NULL and subsequently zero."
+      }
+    ],
+    "fewer_reason": "No further specific discrepancy appears in the regional mart's aliases, joins, or aggregation."
+  },
+  "result.md": {
+    "items": [
+      {
+        "problem": "Verification relies on successful table creation and row counts without checking contractual column names, required fields, or data constraints.",
+        "about": "requirement",
+        "evidence_in_work": "All configured models were created in their expected schemas ... no SQL errors.",
+        "source": "produce high-quality data results that meet business requirements",
+        "importance": 4,
+        "reason": "Execution success did not expose the missing date_ts, campaign-report alias mismatches, or wrong attribute sources."
+      },
+      {
+        "problem": "The statement that unavailable conversion fields are the only unresolved limitation overlooks other explicit assumptions and schema discrepancies.",
+        "about": "requirement",
+        "evidence_in_work": "The only unresolved contract/data limitation is the unavailable conversion fields in raw report sources.",
+        "source": "Strictly Adhere to Configuration",
+        "importance": 3,
+        "reason": "This can discourage checking unresolved keyword identity, timezone correction, timestamp bounds, and output-schema issues."
+      },
+      {
+        "problem": "The claim that intermediate models preserve configured values overlooks explicit casts that contradict pass-through requirements.",
+        "about": "requirement",
+        "evidence_in_work": "Intermediate models preserve configured source grains",
+        "source": "all other fields are passed through without casting, normalization, rounding, or defaulting",
+        "importance": 2,
+        "reason": "The report does not distinguish preserving row grain from preserving field values and types."
+      }
+    ],
+    "fewer_reason": "Only three specific review concerns are supported for the written implementation report; SQL correctness issues are listed under their affected tables."
+  }
+}

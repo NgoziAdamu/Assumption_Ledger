@@ -1,0 +1,934 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Social Media Reporting source system. This YAML is the single source of truth describing what transformations must occur from raw to staging to intermediate and marts. It defines table purposes, validation actions, and business logic in natural language."
+  author: "Data Engineering Team"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw social media data into clean, validated staging tables that are standardized across platforms, with data quality steps applied before business modeling."
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as casing, whitespace trimming, protocol normalization for URLs, and standardized date/timezone formats."
+      examples: ["LOWER(TRIM(screen_name))", "normalize phone numbers", "ensure https:// protocol for URL fields", "standardize valid IANA timezones when pattern matches"]
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["screen_name contains disallowed characters and cannot be corrected", "invalid primary keys", "timezone not in allowed list AND malformed format", "phone numbers with impossible format"]
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful downstream."
+      examples: ["optional URL fails regex but record otherwise usable", "emails array malformed for page metadata", "non-essential descriptive fields corrupted"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Apply business logic and generate analysis-ready models using strictly layered dependencies."
+  design_principles:
+    - "Staging layer must only reference raw tables."
+    - "Intermediate layer must only reference staging tables."
+    - "Marts layer must only reference intermediate tables."
+    - "Cross-layer and same-layer dependencies are prohibited."
+    - "Grain must be explicit and unique per model."
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-023/agent/dacomp-de-impl-023/social_media_reporting_start.duckdb
+{"table": "raw.account_history", "columns": ["id", "updated_at", "_fivetran_synced", "approval_status", "business_id", "business_name", "created_at", "deleted", "industry_type", "name", "salt", "timezone", "timezone_switch_at"]}
+{"table": "raw.facebook_pages_daily_page_metrics", "columns": ["date", "page_id", "_fivetran_synced", "page_actions_post_reactions_anger_total", "page_actions_post_reactions_haha_total", "page_actions_post_reactions_like_total", "page_actions_post_reactions_love_total", "page_actions_post_reactions_sorry_total", "page_actions_post_reactions_total", "page_actions_post_reactions_wow_total", "page_fan_adds", "page_fan_removes", "page_fans", "page_impressions", "page_impressions_nonviral", "page_impressions_organic", "page_impressions_paid", "page_impressions_viral", "page_negative_feedback", "page_places_checkin_total", "page_post_engagements", "page_posts_impressions", "page_posts_impressions_nonviral", "page_posts_impressions_organic", "page_posts_impressions_paid", "page_posts_impressions_viral", "page_total_actions", "page_video_complete_views_30_s", "page_video_complete_views_30_s_autoplayed", "page_video_complete_views_30_s_click_to_play", "page_video_complete_views_30_s_organic", "page_video_complete_views_30_s_paid", "page_video_complete_views_30_s_repeat_views", "page_video_repeat_views", "page_video_view_time", "page_video_views", "page_video_views_10_s", "page_video_views_10_s_autoplayed", "page_video_views_10_s_click_to_play", "page_video_views_10_s_organic", "page_video_views_10_s_paid", "page_video_views_10_s_repeat", "page_video_views_autoplayed", "page_video_views_click_to_play", "page_video_views_organic", "page_video_views_paid", "page_views_total", "page_fans_online_per_day"]}
+{"table": "raw.facebook_pages_lifetime_post_metrics", "columns": ["date", "post_id", "_fivetran_synced", "post_clicks", "post_engaged_fan", "post_engaged_users", "post_impressions", "post_impressions_fan", "post_impressions_nonviral", "post_impressions_organic", "post_impressions_paid", "post_impressions_viral", "post_negative_feedback", "post_reactions_anger_total", "post_reactions_haha_total", "post_reactions_like_total", "post_reactions_love_total", "post_reactions_sorry_total", "post_reactions_wow_total", "post_video_avg_time_watched", "post_video_complete_views_30_s_autoplayed", "post_video_complete_views_30_s_clicked_to_play", "post_video_complete_views_30_s_organic", "post_video_complete_views_30_s_paid", "post_video_complete_views_organic", "post_video_complete_views_paid", "post_video_view_time", "post_video_view_time_organic", "post_video_views", "post_video_views_10_s", "post_video_views_10_s_autoplayed", "post_video_views_10_s_clicked_to_play", "post_video_views_10_s_organic", "post_video_views_10_s_paid", "post_video_views_10_s_sound_on", "post_video_views_autoplayed", "post_video_views_clicked_to_play", "post_video_views_organic", "post_video_views_paid", "post_video_views_sound_on", "post_video_length", "post_video_views_15_s"]}
+{"table": "raw.facebook_pages_page_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "affiliation", "app_id", "artists_we_like", "attire", "awards", "band_interests", "band_members", "bio", "birthday", "booking_agent", "built", "can_checkin", "can_post", "category", "category_list", "checkins", "company_overview", "culinary_team", "current_location", "description", "directed_by", "display_subtext", "emails", "fan_count", "features", "food_styles", "founded", "general_info", "general_manager", "genre", "global_brand_page_name", "has_added_app", "has_whatsapp_number", "hometown", "impressum", "influences", "is_always_open", "is_chain", "is_community_page", "is_eligible_for_branded_content", "is_messenger_bot_get_started_enabled", "is_messenger_platform_bot", "is_owned", "is_permanently_closed", "is_published", "is_unclaimed", "members", "mission", "mpg", "name", "network", "new_like_count", "overall_star_rating", "personal_info", "personal_interests", "pharma_safety_info", "phone", "place_type", "plot_outline", "press_contact", "price_range", "produced_by", "products", "promotion_eligible", "promotion_ineligible_reason", "public_transit", "rating_count", "record_label", "release_date", "schedule", "screenplay_by", "season", "single_line_address", "starring", "store_number", "studio", "talking_about_count", "username", "website", "were_here_count", "whatsapp_number", "written_by", "has_transitioned_to_new_page_experience", "about", "website_url", "created_time"]}
+{"table": "raw.facebook_pages_post_history", "columns": ["id", "updated_time", "_fivetran_synced", "created_time", "page_id", "status_type", "message", "share_count", "is_published", "privacy_value", "is_hidden", "is_eligible_for_promotion", "is_instagram_eligible"]}
+{"table": "raw.instagram_business_media_history", "columns": ["_fivetran_id", "_fivetran_synced", "id", "ig_id", "user_id", "username", "media_type", "caption", "created_time", "media_url", "permalink"]}
+{"table": "raw.instagram_business_media_insights", "columns": ["_fivetran_id", "_fivetran_synced", "carousel_album_engagement", "carousel_album_reach", "carousel_album_saved", "carousel_album_shares", "carousel_album_views", "comment_count", "id", "like_count", "story_exits", "story_reach", "story_replies", "story_taps_back", "story_taps_forward", "story_shares", "story_views", "video_photo_engagement", "video_photo_reach", "video_photo_saved", "video_photo_shares", "video_photo_views", "reel_comments", "reel_likes", "reel_reach", "reel_shares", "reel_total_interactions", "reel_views", "source_relation", "carousel_album_impressions", "carousel_album_video_views", "story_impressions", "video_photo_impressions", "video_views", "reel_plays"]}
+{"table": "raw.instagram_business_user_history", "columns": ["_fivetran_id", "_fivetran_synced", "followers_count", "follows_count", "id", "ig_id", "media_count", "name", "username", "website"]}
+{"table": "raw.linkedin_pages_organization", "columns": ["id", "_fivetran_synced", "cover_photo_v_2_crop_info_height", "cover_photo_v_2_crop_info_width", "cover_photo_v_2_crop_info_x", "cover_photo_v_2_crop_info_y", "cover_photo_v_2_cropped", "cover_photo_v_2_original", "default_locale_country", "default_locale_language", "description_preferred_locale_country", "description_preferred_locale_language", "founded_on_day", "founded_on_month", "founded_on_year", "logo_v_2_crop_info_height", "logo_v_2_crop_info_width", "logo_v_2_crop_info_x", "logo_v_2_crop_info_y", "logo_v_2_cropped", "logo_v_2_original", "name_preferred_locale_country", "name_preferred_locale_language", "organization_status", "organization_type", "overview_photo_v_2_crop_info_height", "overview_photo_v_2_crop_info_width", "overview_photo_v_2_crop_info_x", "overview_photo_v_2_crop_info_y", "overview_photo_v_2_cropped", "overview_photo_v_2_original", "parent_relationship_parent_id", "parent_relationship_status", "parent_relationship_type", "primary_organization_type", "school_attributes_hierarchy_classification", "school_attributes_legacy_school", "school_attributes_type", "school_attributes_year_level", "staff_count_range", "version_tag", "website_preferred_locale_country", "website_preferred_locale_language", "description_localized", "localized_description", "localized_name", "localized_website", "name_localized", "vanity_name", "website_localized"]}
+{"table": "raw.linkedin_pages_organization_ugc_post", "columns": ["organiation_id", "ugc_post_id", "_fivetran_synced"]}
+{"table": "raw.linkedin_pages_post_content", "columns": ["_fivetran_synced", "_fivetran_id", "post_id", "type", "article_title", "media_id", "media_title", "media_alt_text"]}
+{"table": "raw.linkedin_pages_share_statistic", "columns": ["_fivetran_id", "_fivetran_synced", "_organization_entity_urn", "_share_entity_urn", "click_count", "comment_count", "engagement", "impression_count", "like_count", "share_count"]}
+{"table": "raw.linkedin_pages_ugc_post_history", "columns": ["_fivetran_synced", "author", "commentary", "container_entity", "created_actor", "created_time", "distribution_external_distribution_channels", "distribution_feed_distribution", "first_published_at", "id", "last_modified_actor", "last_modified_time", "lifecycle_state", "response_context_parent", "response_context_root", "visibility"]}
+{"table": "raw.linkedin_pages_ugc_post_share_statistic", "columns": ["share_statistic_id", "ugc_post_id", "_fivetran_synced"]}
+{"table": "raw.organic_tweet_report", "columns": ["account_id", "date", "organic_tweet_id", "placement", "_fivetran_synced", "app_clicks", "card_engagements", "carousel_swipes", "clicks", "engagements", "follows", "impressions", "likes", "poll_card_vote", "qualified_impressions", "replies", "retweets", "tweets_send", "unfollows", "url_clicks", "video_15_s_views", "video_3_s_100_pct_views", "video_6_s_views", "video_content_starts", "video_cta_clicks", "video_total_views", "video_views_100", "video_views_25", "video_views_50", "video_views_75"]}
+{"table": "raw.tweet", "columns": ["id", "_fivetran_synced", "account_id", "created_at", "full_test", "favorite_count", "retweet_count", "user_id", "lang", "source"]}
+{"table": "raw.twitter_user_history", "columns": ["id", "_fivetran_synced", "contributors_enabled", "created_at", "default_profile", "default_profile_image", "description", "favourites_count", "followers_count", "friends_count", "geo_enabled", "is_translation_enabled", "is_translator", "lang", "listed_count", "location", "name", "profile_background_image_url", "profile_background_image_url_https", "profile_background_tile", "profile_banner_url", "profile_image_url", "profile_image_url_https", "profile_use_background_image", "protected_user", "screen_name", "statuses_count", "time_zone", "url", "utc_offset", "verified"]}
+{"table": "raw.youtube_channel_basic", "columns": ["_fivetran_id", "date", "_fivetran_synced", "annotation_click_through_rate", "annotation_clickable_impressions", "annotation_clicks", "annotation_closable_impressions", "annotation_close_rate", "annotation_closes", "annotation_impressions", "average_view_duration_percentage", "average_view_duration_seconds", "card_click_rate", "card_clicks", "card_impressions", "card_teaser_click_rate", "card_teaser_clicks", "card_teaser_impressions", "channel_id", "comments", "country_code", "dislikes", "likes", "live_or_on_demand", "red_views", "red_watch_time_minutes", "shares", "subscribed_status", "subscribers_gained", "subscribers_lost", "video_id", "videos_added_to_playlists", "videos_removed_from_playlists", "views", "watch_time_minutes", "channel_display_name", "channel_subscribers", "channel_views", "channel_watch_time_minutes", "channel_estimated_partner_revenue", "channel_annotations_ctr"]}
+{"table": "raw.youtube_channel_demographics", "columns": ["_fivetran_id", "date", "_fivetran_synced", "age_group", "channel_id", "country_code", "gender", "live_or_on_demand", "subscribed_status", "video_id", "views_percentage"]}
+{"table": "raw.youtube_video", "columns": ["id", "_fivetran_synced", "content_details_caption", "content_details_definition", "content_details_dimension", "content_details_duration", "content_details_has_custom_thumbnail", "content_details_licensed_content", "content_details_projection", "content_details_region_restriction", "etag", "kind", "player_embed_height", "player_embed_html", "player_embed_width", "privacy_status", "snippet_category_id", "snippet_channel_id", "snippet_channel_title", "snippet_default_audio_language", "snippet_default_language", "snippet_description", "snippet_live_broadcast_content", "snippet_localized", "snippet_published_at", "snippet_tags", "snippet_thumbnails", "snippet_title", "statistics_comment_count", "statistics_dislike_count", "statistics_favorite_count", "statistics_like_count", "statistics_view_count", "status_embeddable", "status_failure_reason", "status_license", "status_made_for_kids", "status_public_stats_viewable", "status_publish_at", "status_rejection_reason", "status_self_declared_made_for_kids", "upload_status"]}
+
+
+=== Relevant specification and documentation ===
+## stg_social_media__account_history
+
+    - name: stg_social_media__account_history
+      description: "Standardized account metadata with validated timezone field for downstream joins and reporting."
+      source_table: raw.account_history
+      columns:
+        - name: id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: updated_at
+          data_type: TIMESTAMP
+        - name: approval_status
+          data_type: VARCHAR
+        - name: business_id
+          data_type: VARCHAR
+        - name: business_name
+          data_type: VARCHAR
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: deleted
+          data_type: BOOLEAN
+        - name: industry_type
+          data_type: VARCHAR
+        - name: name
+          data_type: VARCHAR
+        - name: salt
+          data_type: VARCHAR
+        - name: timezone
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "timezone ~ '^[A-Z][a-z]+/[A-Z][a-z_]+$'"
+              on_failure: delete_row
+        - name: timezone_switch_at
+          data_type: TIMESTAMP
+
+
+
+## stg_social_media__twitter_user_history
+
+    - name: stg_social_media__twitter_user_history
+      description: "Cleaned and standardized Twitter user profile attributes for safe downstream joins and reporting."
+      source_table: raw.twitter_user_history
+      columns:
+        - name: id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: _fivetran_synced
+          data_type: TIMESTAMP
+        - name: screen_name
+          data_type: VARCHAR
+          constraints: [not_null]
+          description: >
+            Best-effort cleaning to keep only [A-Za-z0-9_]; rows with NULL/blank or harmful characters are removed.
+          validation_rules:
+            - rule: "screen_name = CASE WHEN screen_name IS NULL OR TRIM(screen_name) = '' THEN NULL ELSE REGEXP_REPLACE(screen_name, '[^A-Za-z0-9_]', '') END"
+              on_failure: correct
+            - rule: "screen_name IS NOT NULL AND NOT (screen_name RLIKE '[!@#$%^&*()+=<>?}{|,]')"
+              on_failure: delete_row
+        - name: url
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "url IS NULL OR url RLIKE '^https?://[A-Za-z0-9.-]+\\.[A-Za-z]{2,}(/.*)?'"
+              on_failure: nullify_field
+            - rule: "url IS NULL OR (url RLIKE '^(https?://)?[A-Za-z0-9.-]+\\.[A-Za-z]{2,}(/.*)?' AND url RLIKE '^https?://')"
+              on_failure: correct
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: followers_count
+          data_type: BIGINT
+        - name: following_count
+          data_type: BIGINT
+          description: "Renamed from friends_count."
+        - name: listed_count
+          data_type: BIGINT
+        - name: favourites_count
+          data_type: BIGINT
+        - name: statuses_count
+          data_type: BIGINT
+        - name: verified
+          data_type: BOOLEAN
+        - name: protected
+          data_type: BOOLEAN
+          description: "Derived from protected_user: TRUE if protected_user=TRUE else FALSE."
+        - name: default_profile
+          data_type: BOOLEAN
+        - name: default_profile_image
+          data_type: BOOLEAN
+        - name: location
+          data_type: VARCHAR
+        - name: description
+          data_type: VARCHAR
+        - name: time_zone
+          data_type: VARCHAR
+        - name: lang
+          data_type: VARCHAR
+
+
+
+## stg_social_media__twitter_organic_tweets
+
+    - name: stg_social_media__twitter_organic_tweets
+      description: "Tweet-level organic performance records enriched with tweet text and user attributes; recent 2-year window."
+      source_table: raw.organic_tweet_report
+      notes:
+        - "Rows restricted to last 2 years via: date >= CURRENT_DATE - INTERVAL '2 years'."
+        - "Tweet text joined from raw.tweet.full_text; user attributes joined from raw.twitter_user_history."
+        - "All metrics default to 0 when NULL."
+        - "engagement_rate guarded against division by zero."
+      columns:
+        - name: account_id
+          data_type: VARCHAR
+        - name: date
+          data_type: DATE
+        - name: organic_tweet_id
+          data_type: VARCHAR
+          description: "CAST(o.organic_tweet_id AS VARCHAR)."
+        - name: placement
+          data_type: VARCHAR
+        - name: _fivetran_synced
+          data_type: TIMESTAMP
+        - name: app_clicks
+          data_type: BIGINT
+        - name: card_engagements
+          data_type: BIGINT
+        - name: carousel_swipes
+          data_type: BIGINT
+        - name: clicks
+          data_type: BIGINT
+        - name: engagements
+          data_type: BIGINT
+        - name: follows
+          data_type: BIGINT
+        - name: impressions
+          data_type: BIGINT
+        - name: likes
+          data_type: BIGINT
+        - name: poll_card_vote
+          data_type: BIGINT
+        - name: qualified_impressions
+          data_type: BIGINT
+        - name: replies
+          data_type: BIGINT
+        - name: retweets
+          data_type: BIGINT
+        - name: tweets_send
+          data_type: BIGINT
+        - name: unfollows
+          data_type: BIGINT
+        - name: url_clicks
+          data_type: BIGINT
+        - name: video_15_s_views
+          data_type: BIGINT
+        - name: video_3_s_100_pct_views
+          data_type: BIGINT
+        - name: video_6_s_views
+          data_type: BIGINT
+        - name: video_content_starts
+          data_type: BIGINT
+        - name: video_cta_clicks
+          data_type: BIGINT
+        - name: video_total_views
+          data_type: BIGINT
+        - name: video_views_100
+          data_type: BIGINT
+        - name: video_views_25
+          data_type: BIGINT
+        - name: video_views_50
+          data_type: BIGINT
+        - name: video_views_75
+          data_type: BIGINT
+        - name: tweet_text
+          data_type: VARCHAR
+          description: "From raw.tweet.full_text."
+        - name: screen_name
+          data_type: VARCHAR
+          description: "From raw.twitter_user_history.screen_name."
+        - name: user_name
+          data_type: VARCHAR
+          description: "From raw.twitter_user_history.name."
+        - name: lang
+          data_type: VARCHAR
+          description: "From raw.tweet.lang."
+        - name: tweet_created_at
+          data_type: TIMESTAMP
+          description: "From raw.tweet.created_at."
+        - name: engagement_rate
+          data_type: DOUBLE
+          description: "CASE WHEN impressions > 0 THEN engagements / impressions ELSE 0.0 END."
+
+
+
+
+## stg_social_media__facebook_posts
+
+    - name: stg_social_media__facebook_posts
+      description: "Published, visible Facebook posts joined to page info, standardized fields for analysis; recent 2-year window."
+      source_table: 
+        - raw.facebook_pages_post_history
+        - raw.facebook_pages_page_data
+      columns:
+        - name: id
+          data_type: VARCHAR
+        - name: created_timestamp
+          data_type: TIMESTAMP
+          description: "From created_time."
+        - name: post_id
+          data_type: VARCHAR
+          description: "CAST(id)."
+        - name: post_message
+          data_type: VARCHAR
+          description: "COALESCE(message, '')."
+        - name: page_id
+          data_type: VARCHAR
+          description: "CAST(page_id)."
+        - name: page_name
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "page_name IS NOT NULL AND page_name <> ''"
+              on_failure: correct  
+          description: "Defaults to 'Unknown Page' when page name is missing."
+        - name: page_username
+          data_type: VARCHAR
+        - name: page_category
+          data_type: VARCHAR
+        - name: page_followers
+          data_type: BIGINT
+        - name: shares
+          data_type: BIGINT
+        - name: impressions
+          data_type: BIGINT
+          description: "Default 0 in staging."
+        - name: status_type
+          data_type: VARCHAR
+        - name: privacy_value
+          data_type: VARCHAR
+        - name: is_eligible_for_promotion
+          data_type: BOOLEAN
+        - name: is_instagram_eligible
+          data_type: BOOLEAN
+        - name: post_url
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "post_url ~ '^https://facebook\\.com/.+'"
+              on_failure: correct
+
+
+
+## stg_social_media__instagram_posts
+
+    - name: stg_social_media__instagram_posts
+      description: "Normalized Instagram media posts enriched with account details and insights metrics; username cleaned; recent 2-year window."
+      source_table: raw.instagram_business_media_history
+      columns:
+        - name: post_id
+          data_type: VARCHAR
+        - name: ig_post_id
+          data_type: VARCHAR
+        - name: created_timestamp
+          data_type: TIMESTAMP
+        - name: post_caption
+          data_type: VARCHAR
+          description: "COALESCE(caption, '')."
+        - name: page_id
+          data_type: VARCHAR
+          description: "CAST(user_id AS VARCHAR) from media history."
+        - name: page_name
+          data_type: VARCHAR
+          description: "COALESCE(u.account_name, m.username, 'Unknown Account')."
+        - name: account_username
+          data_type: VARCHAR
+          description: >
+              Best-effort cleaning:
+              - If NULL or blank -> NULL
+              - Else remove characters not in [A-Za-z0-9_.] via REGEXP_REPLACE
+              No re-validation of '..', '__', '_.' patterns; no forced 1–30 length trimming.
+          validation_rules:
+            - rule: "account_username = CASE WHEN account_username IS NULL OR TRIM(account_username) = '' THEN NULL ELSE REGEXP_REPLACE(account_username, '[^A-Za-z0-9_.]', '') END"
+              on_failure: correct
+        - name: media_type
+          data_type: VARCHAR
+        - name: media_type_category
+          data_type: VARCHAR
+          description: "Derived: IMAGE->Photo, VIDEO->Video, CAROUSEL_ALBUM->Carousel, REEL->Reel, STORY->Story, else passthrough."
+        - name: post_url
+          data_type: VARCHAR
+          description: "permalink from media history."
+        - name: media_url
+          data_type: VARCHAR
+        - name: impressions_override
+          data_type: BIGINT
+          description: "Default to 0 when insights missing; used for fallback impressions."
+        - name: impressions
+          data_type: BIGINT
+          description: "COALESCE(mi.impressions, 0) from media insights."
+        - name: likes
+          data_type: BIGINT
+          description: "COALESCE(mi.likes, 0) from media insights."
+        - name: comments
+          data_type: BIGINT
+          description: "COALESCE(mi.comments, 0) from media insights."
+        - name: saves
+          data_type: BIGINT
+          description: "COALESCE(mi.saves, 0) from media insights."
+        - name: shares
+          data_type: BIGINT
+          description: "COALESCE(mi.shares, 0) from media insights."
+        - name: engagement
+          data_type: BIGINT
+          description: "COALESCE(mi.engagement, 0) from media insights."
+        - name: reach
+          data_type: BIGINT
+          description: "COALESCE(mi.reach, 0) from media insights."
+        - name: account_followers
+          data_type: BIGINT
+          description: "COALESCE(u.followers_count, 0) from user history."
+        - name: account_media_count
+          data_type: BIGINT
+        - name: engagement_rate
+          data_type: DOUBLE
+          description: "Computed as engagement / impressions; defaults to 0.0 when denominator is not positive."
+        - name: _fivetran_synced
+          data_type: TIMESTAMP
+          description: "_fivetran_synced from media history."
+
+
+
+## stg_social_media__linkedin_posts
+
+    - name: stg_social_media__linkedin_posts
+      description: "Minimal staging representation of LinkedIn organization UGC posts with standardized identifiers and URL."
+      source_table: raw.linkedin_pages_organization_ugc_post
+      columns:
+        - name: organization_id
+          data_type: VARCHAR
+        - name: post_id
+          data_type: VARCHAR
+        - name: created_timestamp
+          data_type: TIMESTAMP
+        - name: platform
+          data_type: VARCHAR
+        - name: post_message
+          data_type: VARCHAR
+        - name: content_type
+          data_type: VARCHAR
+        - name: post_url
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "post_url RLIKE '^https://www.linkedin.com/feed/update/.+'"
+              on_failure: correct
+
+
+
+## stg_social_media__youtube_videos
+
+    - name: stg_social_media__youtube_videos
+      description: "YouTube videos staged with standardized fields and basic derived metrics; recent 2-year window."
+      source_table: raw.youtube_video
+      notes:
+        - "Include only videos with view data: statistics_view_count IS NOT NULL."
+        - "Restrict to last 2 years: snippet_published_at >= CURRENT_DATE - INTERVAL '2 years'."
+        - "post_url is constructed as https://img.youtube.com/vi/{video_id}/default.jpg."
+        - "All numeric metrics default to 0 when NULL."
+        - "impressions and clicks both mirror statistics_view_count per SQL."
+      columns:
+        - name: video_id
+          data_type: VARCHAR
+          description: "CAST(id AS VARCHAR)."
+        - name: video_published_at
+          data_type: TIMESTAMP
+          description: "snippet_published_at."
+        - name: video_title
+          data_type: VARCHAR
+        - name: video_description
+          data_type: VARCHAR
+        - name: channel_id
+          data_type: VARCHAR
+        - name: channel_title
+          data_type: VARCHAR
+        - name: page_name
+          data_type: VARCHAR
+        - name: post_url
+          data_type: VARCHAR
+          description: "Thumbnail URL used as post URL: https://img.youtube.com/vi/{video_id}/default.jpg."
+          validation_rules:
+            - rule: "post_url RLIKE '^https://img.youtube.com/vi/.+/default.jpg'"
+              on_failure: correct
+        - name: privacy_status
+          data_type: VARCHAR
+        - name: clicks
+          data_type: BIGINT
+        - name: impressions
+          data_type: BIGINT
+          description: "COALESCE(statistics_view_count, 0) — estimated as views in SQL."
+        - name: likes
+          data_type: BIGINT
+        - name: comments
+          data_type: BIGINT
+        - name: estimated_shares
+          data_type: BIGINT
+          description: >
+            CASE WHEN statistics_like_count > 10 THEN FLOOR(statistics_like_count / 10) ELSE 0 END.
+        - name: subscribers
+          data_type: BIGINT
+          description: "COALESCE(channel_info.channel_subscribers, 0)."
+        - name: engagement_rate
+          data_type: DOUBLE
+          description: "CASE WHEN impressions > 0 THEN (likes + comments + estimated_shares)::DOUBLE / impressions ELSE 0.0 END."
+        - name: _fivetran_synced
+          data_type: TIMESTAMP
+          description: "_fivetran_synced from raw.youtube_video."
+
+
+# --------------------------------------------------------------------------- #
+# PHASE 2: Defines the business logic from staging to analytical models.      #
+# --------------------------------------------------------------------------- #
+
+
+
+
+=== Premises recorded in earlier reviews ===
+(none)
+
+=== Agent steps since the last review ===
+### event 25
+
+## 命令原文
+
+python - <<'PY'
+import duckdb
+c=duckdb.connect('social_media_reporting_start.duckdb',read_only=True)
+for t in ['instagram_business_user_history','instagram_business_media_insights','linkedin_pages_ugc_post_history','linkedin_pages_post_content','linkedin_pages_share_statistic','linkedin_pages_organization_ugc_post']:
+ print(t, [x[0] for x in c.execute(f'describe raw.{t}').fetchall()])
+PY
+
+## agent 实际看到的执行结果
+
+instagram_business_user_history ['_fivetran_id', '_fivetran_synced', 'followers_count', 'follows_count', 'id', 'ig_id', 'media_count', 'name', 'username', 'website']
+instagram_business_media_insights ['_fivetran_id', '_fivetran_synced', 'carousel_album_engagement', 'carousel_album_reach', 'carousel_album_saved', 'carousel_album_shares', 'carousel_album_views', 'comment_count', 'id', 'like_count', 'story_exits', 'story_reach', 'story_replies', 'story_taps_back', 'story_taps_forward', 'story_shares', 'story_views', 'video_photo_engagement', 'video_photo_reach', 'video_photo_saved', 'video_photo_shares', 'video_photo_views', 'reel_comments', 'reel_likes', 'reel_reach', 'reel_shares', 'reel_total_interactions', 'reel_views', 'source_relation', 'carousel_album_impressions', 'carousel_album_video_views', 'story_impressions', 'video_photo_impressions', 'video_views', 'reel_plays']
+linkedin_pages_ugc_post_history ['_fivetran_synced', 'author', 'commentary', 'container_entity', 'created_actor', 'created_time', 'distribution_external_distribution_channels', 'distribution_feed_distribution', 'first_published_at', 'id', 'last_modified_actor', 'last_modified_time', 'lifecycle_state', 'response_context_parent', 'response_context_root', 'visibility']
+linkedin_pages_post_content ['_fivetran_synced', '_fivetran_id', 'post_id', 'type', 'article_title', 'media_id', 'media_title', 'media_alt_text']
+linkedin_pages_share_statistic ['_fivetran_id', '_fivetran_synced', '_organization_entity_urn', '_share_entity_urn', 'click_count', 'comment_count', 'engagement', 'impression_count', 'like_count', 'share_count']
+linkedin_pages_organization_ugc_post ['organiation_id', 'ugc_post_id', '_fivetran_synced']
+
+
+### event 27
+
+## 命令原文
+
+python - <<'PY'
+import duckdb
+c=duckdb.connect('social_media_reporting_start.duckdb',read_only=True)
+for t in ['linkedin_pages_organization_ugc_post','linkedin_pages_ugc_post_history','linkedin_pages_post_content','linkedin_pages_share_statistic','linkedin_pages_organization','instagram_business_media_insights']:
+ print('\n',t); print(c.execute(f'select * from raw.{t} limit 3').fetchdf().to_string(index=False))
+PY
+
+## agent 实际看到的执行结果
+
+
+ linkedin_pages_organization_ugc_post
+ organiation_id                      ugc_post_id        _fivetran_synced
+          10429 urn:li:share:5975571345575022592 2021-10-27 14:40:09.984
+          10429 urn:li:share:5994461776131948545 2021-10-27 14:40:09.984
+          10429 urn:li:share:5986812882107527168 2021-10-27 14:40:09.984
+
+ linkedin_pages_ugc_post_history
+       _fivetran_synced                      author               commentary container_entity created_actor            created_time distribution_external_distribution_channels distribution_feed_distribution      first_published_at                                 id last_modified_actor      last_modified_time lifecycle_state response_context_parent response_context_root visibility
+2023-10-16 17:40:48.712 urn:li:organization:3954657 uDfL4SB+lHgin1DHtu6udg==             None          None 2023-10-13 17:32:47.678                                          []                           NONE 2023-10-13 17:32:47.678 urn:li:ugcPost:7118649787851124736                None 2023-10-13 17:32:47.732       PUBLISHED                    None                  None     PUBLIC
+2023-10-16 17:40:48.817 urn:li:organization:3954657 uDfL4SB+lHgin1DHtu6udg==             None          None 2023-10-05 22:00:04.871                                          []                           NONE 2023-10-05 22:00:04.871 urn:li:ugcPost:7115817949629685760                None 2023-10-05 22:00:04.919       PUBLISHED                    None                  None     PUBLIC
+2023-10-16 17:40:48.711 urn:li:organization:3954657 KsVVYNtNduP4F2Bl/3I7+w==             None          None 2023-10-13 17:34:23.935                                          []                           NONE 2023-10-13 17:34:23.935 urn:li:ugcPost:7118650191544467456                None 2023-10-13 17:34:23.983       PUBLISHED                    None                  None     PUBLIC
+
+ linkedin_pages_post_content
+          _fivetran_synced                         _fivetran_id                       post_id    type                                 article_title                             media_id                       media_title                                           media_alt_text
+2025-10-17 12:53:52.917479 a250d4e0-3e5b-48b6-8ef7-f04a99ed1ce0 urn:li:share:8353346934522473   image                                          None e54d5698-13e2-48e9-bfa6-51b9ed98d6cf Zugof piw dikvxomi iavliq ycvydr. Gpuuscvzc oixvksq xgc optimization enboadeiy hchi gpfbf.
+2025-10-17 12:53:52.917633 3b833310-e7a0-4b3f-aa0c-e39be7416f2a urn:li:share:4064340715408667    text                                          None                                 None                              None                                                     None
+2025-10-17 12:53:52.917661 ed6ca9ec-a9d8-4183-b7ac-42f8d4b0aa71 urn:li:share:6597634956254925 article Zaufk ilwoexebe ROI performance vnln yqbrdea.                                 None                              None                                                     None
+
+ linkedin_pages_share_statistic
+                _fivetran_id        _fivetran_synced  _organization_entity_urn                _share_entity_urn  click_count  comment_count  engagement  impression_count  like_count  share_count
+kCNOlZBalUE2cJaWaDz3xQWHP04= 2021-10-27 03:59:43.438 urn:li:organization:10429 urn:li:share:6123513602981842944            0              0         2.5                 4          10            0
+pmDCzBLfMwF3rxGnPIAn42OSiOg= 2021-10-22 02:28:41.165 urn:li:organization:10429 urn:li:share:6123513602981842944            0              0        10.0                 1          10            0
+/oQcYtwYyVld/yJyxYg9mIJa+yA= 2021-10-26 21:04:50.082 urn:li:organization:10429 urn:li:share:6123513602981842944            0              0         5.0                 2          10            0
+
+ linkedin_pages_organization
+     id           _fivetran_synced  cover_photo_v_2_crop_info_height  cover_photo_v_2_crop_info_width  cover_photo_v_2_crop_info_x  cover_photo_v_2_crop_info_y                      cover_photo_v_2_cropped                     cover_photo_v_2_original default_locale_country default_locale_language description_preferred_locale_country description_preferred_locale_language founded_on_day founded_on_month founded_on_year  logo_v_2_crop_info_height  logo_v_2_crop_info_width  logo_v_2_crop_info_x  logo_v_2_crop_info_y                             logo_v_2_cropped                            logo_v_2_original name_preferred_locale_country name_preferred_locale_language  organization_status   organization_type overview_photo_v_2_crop_info_height overview_photo_v_2_crop_info_width overview_photo_v_2_crop_info_x overview_photo_v_2_crop_info_y overview_photo_v_2_cropped overview_photo_v_2_original parent_relationship_parent_id parent_relationship_status parent_relationship_type primary_organization_type school_attributes_hierarchy_classification school_attributes_legacy_school school_attributes_type school_attributes_year_level staff_count_range  version_tag website_preferred_locale_country website_preferred_locale_language                                                                                    description_localized    localized_description           localized_name        localized_website           name_localized              vanity_name                website_localized
+  10429 2021-10-27 14:33:23.937000                               NaN                              NaN                          NaN                          NaN                                         None                                         None                     US                      en                                   US                                    en           None             None            None                        0.0                       0.0                   0.0                   0.0 urn:li:digitalmediaAsset:C560BAQHLfJsj_Db26Q urn:li:digitalmediaAsset:C560BAQHLfJsj_Db26Q                            US                             en OPERATING_SUBSIDIARY      PUBLIC_COMPANY                                None                               None                           None                           None                       None                        None                          None                       None                     None                      NONE                                       None                            None                   None                         None              None 1939699407.0                               US                                en                                                                                 6IfqA3jweJXtmBft1QQzIw== dXVpGunXJrfzRJgOGJcVJw== EplbYztN8mAIzOGB+jIlGQ== E3EmcmtWozD1xpuxP+1cpg== rCTebeLAmCPS1joCzVwYxg== qgxp/23M+nmE4qXDcspTYg==         h8R+GJcuJyGpCEUYqjw08g==
+3954657 2021-10-27 14:33:24.013000                             191.0                           1129.0                          0.0                          0.0 urn:li:digitalmediaAsset:C561BAQEvDoEtu3nA4Q urn:li:digitalmediaAsset:C561BAQEvDoEtu3nA4Q                     US                      en                                   US                                    en           None             None            None                        0.0                       0.0                   0.0                   0.0 urn:li:digitalmediaAsset:C4E0BAQHEOJHNqMopbA urn:li:digitalmediaAsset:C4E0BAQHEOJHNqMopbA                            US                             en            OPERATING      PRIVATELY_HELD                                None                               None                           None                           None                       None                        None                          None                       None                     None                      NONE                                       None                            None                   None                         None              None  648416531.0                               US                                en                                                                                 Pz/dxWd6N3d9FAxVnT2P/g== h7qqeP4CY9y185B8Met90g== p6zp17DVJVjAD3VAr1btVw== nUVvvh0bVagIdGocIzHm+g== JtHfsUgwheQpuh3gQgXvEQ== 9fnms4W1QiOXfnF4Tn58rQ==         cKzkPfQ3ryqa917RJkFZ4A==
+  10430 2025-10-17 12:06:18.033943                               NaN                              NaN                          NaN                          NaN                                         None                                         None                   None                    None                                 None                                  None           None             None            None                        NaN                       NaN                   NaN                   NaN                                         None                                         None                          None                           None OPERATING_SUBSIDIARY SOLE_PROPRIETORSHIP                                None                               None                           None                           None                       None                        None                          None                       None                     None                      None                                       None                            None                   None                         None            51-200          NaN                             None                              None Vabetvjux scalability efficiency fhy and dbefxgmo jfhrabwanp bodbpz atjs jbcmu brxug smf to scalability.                     None                     None                     None On performance with Corp    onperformancewithcorp https://on-performance-with-.com
+
+ instagram_business_media_insights
+                _fivetran_id        _fivetran_synced  carousel_album_engagement  carousel_album_reach  carousel_album_saved  carousel_album_shares  carousel_album_views  comment_count                id  like_count  story_exits  story_reach  story_replies  story_taps_back  story_taps_forward  story_shares  story_views  video_photo_engagement  video_photo_reach  video_photo_saved  video_photo_shares  video_photo_views  reel_comments  reel_likes  reel_reach  reel_shares  reel_total_interactions  reel_views source_relation  carousel_album_impressions  carousel_album_video_views  story_impressions  video_photo_impressions  video_views  reel_plays
+HHKa3JBGx1RRxWfgqqMXC6ewgc4= 2021-10-27 14:22:01.906                          4                    47                     2                      1                    22              1 17875951606801054           3            1           33              0                0                   1             2           25                       4                 43                  0                   1                 56              1           2           4            5                        6          78        source_1                          68                           0                 88                       56           54          11
+zzVHxeqeogmAzEWFVvBrhOwm5w0= 2021-10-27 14:22:01.901                          5                    52                     1                      0                    12              1 17846746730324230           7            0           29              0                1                   2             3           28                       8                 57                  0                   0                 79              1           2           4            5                        6          82        source_2                          61                           0                 84                       79           67          10
+E3Z4FOw/J3joWUdHoLL1FXIGrXE= 2021-10-27 14:22:01.904                          3                    49                     3                      1                    18              0 17912811451468757           5            1           31              1                1                   3             4           31                       5                 60                  0                   2                 96              1           2           4            5                        6          91        source_3                          59                           0                 83                       96           60           9
+
+
+### event 29
+
+## 命令原文
+
+mkdir -p sql/staging sql/intermediate sql/marts && cat > /tmp/write_sql.py <<'PY'
+from pathlib import Path
+files={}
+files['staging/stg_social_media__account_history.sql'] = '''select
+    try_cast(id as bigint) as id,
+    updated_at::timestamp as updated_at,
+    approval_status::varchar as approval_status,
+    business_id::varchar as business_id,
+    business_name::varchar as business_name,
+    created_at::timestamp as created_at,
+    deleted::boolean as deleted,
+    industry_type::varchar as industry_type,
+    name::varchar as name,
+    salt::varchar as salt,
+    timezone::varchar as timezone,
+    timezone_switch_at::timestamp as timezone_switch_at
+from raw.account_history
+where try_cast(id as bigint) is not null
+  and timezone is not null
+  and regexp_matches(timezone, '^[A-Z][a-z]+/[A-Z][a-z_]+$')'''
+files['staging/stg_social_media__twitter_user_history.sql'] = '''with user_cleaned as (
+    select
+        try_cast(id as bigint) as id,
+        _fivetran_synced::timestamp as _fivetran_synced,
+        case when screen_name is null or trim(screen_name) = '' then null
+             else regexp_replace(screen_name, '[^A-Za-z0-9_]', '', 'g') end as screen_name,
+        case
+            when url is null then null
+            when regexp_matches(url, '^(https?://)?[A-Za-z0-9.-]+\\.[A-Za-z]{2,}(/.*)?')
+                then case when regexp_matches(url, '^https?://') then url else 'https://' || url end
+            else null
+        end as url,
+        created_at::timestamp as created_at,
+        try_cast(followers_count as bigint) as followers_count,
+        try_cast(friends_count as bigint) as following_count,
+        try_cast(listed_count as bigint) as listed_count,
+        try_cast(favourites_count as bigint) as favourites_count,
+        try_cast(statuses_count as bigint) as statuses_count,
+        verified::boolean as verified,
+        coalesce(protected_user, false)::boolean as protected,
+        default_profile::boolean as default_profile,
+        default_profile_image::boolean as default_profile_image,
+        location::varchar as location,
+        description::varchar as description,
+        time_zone::varchar as time_zone,
+        lang::varchar as lang
+    from raw.twitter_user_history
+)
+select *
+from user_cleaned
+where id is not null
+  and screen_name is not null
+  and screen_name <> '' '''
+files['staging/stg_social_media__twitter_organic_tweets.sql'] = '''with organic as (
+    select *
+    from raw.organic_tweet_report
+    where cast(date as date) >= current_date - interval '2 years'
+),
+tweets as (
+    select
+        try_cast(id as bigint) as tweet_id,
+        full_test as tweet_text,
+        lang,
+        created_at as tweet_created_at
+    from raw.tweet
+),
+users as (
+    select *, row_number() over (partition by id order by _fivetran_synced desc nulls last) as row_num
+    from raw.twitter_user_history
+)
+select
+    o.account_id::varchar as account_id,
+    cast(o.date as date) as date,
+    cast(o.organic_tweet_id as varchar) as organic_tweet_id,
+    o.placement::varchar as placement,
+    o._fivetran_synced::timestamp as _fivetran_synced,
+    coalesce(o.app_clicks, 0)::bigint as app_clicks,
+    coalesce(o.card_engagements, 0)::bigint as card_engagements,
+    coalesce(o.carousel_swipes, 0)::bigint as carousel_swipes,
+    coalesce(o.clicks, 0)::bigint as clicks,
+    coalesce(o.engagements, 0)::bigint as engagements,
+    coalesce(o.follows, 0)::bigint as follows,
+    coalesce(o.impressions, 0)::bigint as impressions,
+    coalesce(o.likes, 0)::bigint as likes,
+    coalesce(o.poll_card_vote, 0)::bigint as poll_card_vote,
+    coalesce(o.qualified_impressions, 0)::bigint as qualified_impressions,
+    coalesce(o.replies, 0)::bigint as replies,
+    coalesce(o.retweets, 0)::bigint as retweets,
+    coalesce(o.tweets_send, 0)::bigint as tweets_send,
+    coalesce(o.unfollows, 0)::bigint as unfollows,
+    coalesce(o.url_clicks, 0)::bigint as url_clicks,
+    coalesce(o.video_15_s_views, 0)::bigint as video_15_s_views,
+    coalesce(o.video_3_s_100_pct_views, 0)::bigint as video_3_s_100_pct_views,
+    coalesce(o.video_6_s_views, 0)::bigint as video_6_s_views,
+    coalesce(o.video_content_starts, 0)::bigint as video_content_starts,
+    coalesce(o.video_cta_clicks, 0)::bigint as video_cta_clicks,
+    coalesce(o.video_total_views, 0)::bigint as video_total_views,
+    coalesce(o.video_views_100, 0)::bigint as video_views_100,
+    coalesce(o.video_views_25, 0)::bigint as video_views_25,
+    coalesce(o.video_views_50, 0)::bigint as video_views_50,
+    coalesce(o.video_views_75, 0)::bigint as video_views_75,
+    t.tweet_text::varchar as tweet_text,
+    regexp_replace(u.screen_name, '[^A-Za-z0-9_]', '', 'g')::varchar as screen_name,
+    u.name::varchar as user_name,
+    t.lang::varchar as lang,
+    t.tweet_created_at::timestamp as tweet_created_at,
+    case when coalesce(o.impressions, 0) > 0
+         then coalesce(o.engagements, 0)::double / o.impressions else 0.0 end as engagement_rate
+from organic o
+left join tweets t on try_cast(o.organic_tweet_id as bigint) = t.tweet_id
+left join users u on u.id = o.account_id and u.row_num = 1'''
+files['staging/stg_social_media__facebook_posts.sql'] = '''with post_metrics as (
+    select post_id, max(post_impressions) as impressions
+    from raw.facebook_pages_lifetime_post_metrics
+    group by post_id
+), pages as (
+    select *, row_number() over (partition by id order by _fivetran_synced desc nulls last) as row_num
+    from raw.facebook_pages_page_data
+)
+select
+    p.id::varchar as id,
+    p.created_time::timestamp as created_timestamp,
+    p.id::varchar as post_id,
+    coalesce(p.message, '')::varchar as post_message,
+    cast(p.page_id as varchar) as page_id,
+    coalesce(nullif(pg.name, ''), 'Unknown Page')::varchar as page_name,
+    pg.username::varchar as page_username,
+    pg.category::varchar as page_category,
+    coalesce(try_cast(pg.fan_count as bigint), 0)::bigint as page_followers,
+    coalesce(p.share_count, 0)::bigint as shares,
+    coalesce(pm.impressions, 0)::bigint as impressions,
+    p.status_type::varchar as status_type,
+    p.privacy_value::varchar as privacy_value,
+    p.is_eligible_for_promotion::boolean as is_eligible_for_promotion,
+    p.is_instagram_eligible::boolean as is_instagram_eligible,
+    ('https://facebook.com/' || p.id)::varchar as post_url
+from raw.facebook_pages_post_history p
+left join pages pg on p.page_id = pg.id and pg.row_num = 1
+left join post_metrics pm on pm.post_id = p.id
+where coalesce(p.is_published, false)
+  and not coalesce(p.is_hidden, false)
+  and p.created_time >= current_date - interval '2 years'
+  and p.created_time is not null'''
+files['staging/stg_social_media__instagram_posts.sql'] = '''with users as (
+    select *, row_number() over (partition by id order by _fivetran_synced desc nulls last) as row_num
+    from raw.instagram_business_user_history
+), insights as (
+    select
+        id,
+        coalesce(carousel_album_impressions, video_photo_impressions, story_impressions, video_views, reel_plays, 0) as impressions,
+        coalesce(like_count, reel_likes, 0) as likes,
+        coalesce(comment_count, reel_comments, 0) as comments,
+        coalesce(carousel_album_saved, video_photo_saved, 0) as saves,
+        coalesce(carousel_album_shares, video_photo_shares, story_shares, reel_shares, 0) as shares,
+        coalesce(carousel_album_engagement, video_photo_engagement, reel_total_interactions, 0) as engagement,
+        coalesce(carousel_album_reach, video_photo_reach, story_reach, reel_reach, 0) as reach
+    from raw.instagram_business_media_insights
+)
+select
+    cast(m.id as varchar) as post_id,
+    cast(m.ig_id as varchar) as ig_post_id,
+    m.created_time::timestamp as created_timestamp,
+    coalesce(m.caption, '')::varchar as post_caption,
+    cast(m.user_id as varchar) as page_id,
+    coalesce(nullif(u.name, ''), nullif(m.username, ''), 'Unknown Account')::varchar as page_name,
+    case when m.username is null or trim(m.username) = '' then null
+         else regexp_replace(m.username, '[^A-Za-z0-9_.]', '', 'g') end::varchar as account_username,
+    m.media_type::varchar as media_type,
+    case upper(m.media_type)
+        when 'IMAGE' then 'Photo'
+        when 'VIDEO' then 'Video'
+        when 'CAROUSEL_ALBUM' then 'Carousel'
+        when 'REEL' then 'Reel'
+        when 'STORY' then 'Story'
+        else m.media_type end::varchar as media_type_category,
+    m.permalink::varchar as post_url,
+    m.media_url::varchar as media_url,
+    coalesce(i.impressions, 0)::bigint as impressions_override,
+    coalesce(i.impressions, 0)::bigint as impressions,
+    coalesce(i.likes, 0)::bigint as likes,
+    coalesce(i.comments, 0)::bigint as comments,
+    coalesce(i.saves, 0)::bigint as saves,
+    coalesce(i.shares, 0)::bigint as shares,
+    coalesce(i.engagement, 0)::bigint as engagement,
+    coalesce(i.reach, 0)::bigint as reach,
+    coalesce(try_cast(u.followers_count as bigint), 0)::bigint as account_followers,
+    coalesce(try_cast(u.media_count as bigint), 0)::bigint as account_media_count,
+    case when coalesce(i.impressions, 0) > 0 then coalesce(i.engagement, 0)::double / i.impressions else 0.0 end as engagement_rate,
+    m._fivetran_synced::timestamp as _fivetran_synced
+from raw.instagram_business_media_history m
+left join users u on m.user_id = u.id and u.row_num = 1
+left join insights i on m.id = i.id
+where m.created_time >= current_date - interval '2 years'
+  and m.created_time is not null'''
+files['staging/stg_social_media__linkedin_posts.sql'] = '''with post_metrics as (
+    select
+        _share_entity_urn,
+        max(click_count) as click_count,
+        max(impression_count) as impression_count,
+        max(like_count) as like_count,
+        max(share_count) as share_count,
+        max(comment_count) as comment_count,
+        max(engagement) as engagement
+    from raw.linkedin_pages_share_statistic
+    group by _share_entity_urn
+)
+select
+    cast(o.organiation_id as varchar) as organization_id,
+    o.ugc_post_id::varchar as post_id,
+    h.created_time::timestamp as created_timestamp,
+    'linkedin'::varchar as platform,
+    coalesce(pc.article_title, pc.media_title, h.commentary)::varchar as post_message,
+    pc.type::varchar as content_type,
+    ('https://www.linkedin.com/feed/update/' || o.ugc_post_id)::varchar as post_url
+from raw.linkedin_pages_organization_ugc_post o
+left join raw.linkedin_pages_ugc_post_history h on h.id = o.ugc_post_id
+left join raw.linkedin_pages_post_content pc on pc.post_id = regexp_replace(o.ugc_post_id, '^urn:li:share:', 'urn:li:share:')
+left join post_metrics pm on pm._share_entity_urn = o.ugc_post_id
+where o.organiation_id is not null'''
+files['staging/stg_social_media__youtube_videos.sql'] = '''with channel_info as (
+    select channel_id, max(channel_subscribers) as channel_subscribers
+    from raw.youtube_channel_basic
+    group by channel_id
+)
+select
+    cast(v.id as varchar) as video_id,
+    v.snippet_published_at::timestamp as video_published_at,
+    v.snippet_title::varchar as video_title,
+    v.snippet_description::varchar as video_description,
+    v.snippet_channel_id::varchar as channel_id,
+    v.snippet_channel_title::varchar as channel_title,
+    coalesce(v.snippet_channel_title, 'Unknown Channel')::varchar as page_name,
+    ('https://img.youtube.com/vi/' || v.id || '/default.jpg')::varchar as post_url,
+    v.privacy_status::varchar as privacy_status,
+    coalesce(v.statistics_view_count, 0)::bigint as clicks,
+    coalesce(v.statistics_view_count, 0)::bigint as impressions,
+    coalesce(v.statistics_like_count, 0)::bigint as likes,
+    coalesce(v.statistics_comment_count, 0)::bigint as comments,
+    case when v.statistics_like_count > 10 then floor(v.statistics_like_count / 10.0)::bigint else 0 end as estimated_shares,
+    coalesce(try_cast(ci.channel_subscribers as bigint), 0)::bigint as subscribers,
+    case when coalesce(v.statistics_view_count, 0) > 0
+         then (coalesce(v.statistics_like_count, 0) + coalesce(v.statistics_comment_count, 0)
+               + case when v.statistics_like_count > 10 then floor(v.statistics_like_count / 10.0) else 0 end)::double / v.statistics_view_count
+         else 0.0 end as engagement_rate,
+    v._fivetran_synced::timestamp as _fivetran_synced
+from raw.youtube_video v
+left join channel_info ci on ci.channel_id = v.snippet_channel_id
+where v.statistics_view_count is not null
+  and v.snippet_published_at >= current_date - interval '2 years'
+  and v.snippet_published_at is not null'''
+for name,sql in files.items():
+ p=Path('sql')/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(sql+'\n')
+PY
+python /tmp/write_sql.py
+
+## agent 实际看到的执行结果
+
+
+
+

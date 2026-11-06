@@ -1,0 +1,535 @@
+{
+  "stg_social_media__account_history": {
+    "items": [
+      {
+        "problem": "Casting account identifiers to BIGINT and deleting conversion failures removes legitimate-looking alphanumeric account IDs, so the contract-to-source identifier mismatch needs checking.",
+        "about": "data",
+        "evidence_in_work": "where try_cast(id as bigint) is not null; output: stg_social_media__account_history 0",
+        "source": "id: data_type: BIGINT; constraints: [not_null]",
+        "importance": 2,
+        "reason": "The implementation follows the declared type, but the observed source ID '18ce54lbsn8' suggests the contract cannot represent actual account keys."
+      }
+    ],
+    "fewer_reason": "No other concrete mismatch is apparent; the timezone regex and required type filtering implement the supplied contract."
+  },
+  "stg_social_media__twitter_user_history": {
+    "items": [
+      {
+        "problem": "Harmful characters are stripped before row validation, potentially retaining profiles that the description says should be removed.",
+        "about": "requirement",
+        "evidence_in_work": "regexp_replace(screen_name, '[^A-Za-z0-9_]', '', 'g'); where ... screen_name <> ''",
+        "source": "rows with NULL/blank or harmful characters are removed",
+        "importance": 2,
+        "reason": "The contract also prescribes best-effort correction, so the intended order of correction and harmful-character deletion needs confirmation."
+      },
+      {
+        "problem": "The extra cleaned-name nonempty filter removes names made entirely of removable characters even though the literal post-correction validation only requires a non-null name without harmful characters.",
+        "about": "requirement",
+        "evidence_in_work": "and screen_name <> ''",
+        "source": "screen_name IS NOT NULL AND NOT (screen_name RLIKE '[!@#$%^&*()+=<>?}{|,]')",
+        "importance": 1,
+        "reason": "This is a narrow ambiguity between the narrative blank-name requirement and the literal validation rule."
+      }
+    ],
+    "fewer_reason": "Only these validation-order ambiguities are supported; the other mappings and null handling match the documented fields."
+  },
+  "stg_social_media__twitter_organic_tweets": {
+    "items": [
+      {
+        "problem": "Converting tweet IDs to BIGINT for the text join makes observed IDs above the BIGINT range null and prevents otherwise matching tweets from joining.",
+        "about": "data",
+        "evidence_in_work": "left join tweets t on try_cast(o.organic_tweet_id as bigint) = t.tweet_id",
+        "source": "raw.organic_tweet_report.organic_tweet_id; raw.tweet.id",
+        "importance": 5,
+        "reason": "An observed ID is approximately 1.095761e+24, while the agent's direct raw-ID join found 2,500 matches."
+      },
+      {
+        "problem": "User metadata is joined using the reporting account ID rather than the tweet author's user ID, which may be a different identifier domain.",
+        "about": "data",
+        "evidence_in_work": "left join users u on u.id = o.account_id and u.row_num = 1",
+        "source": "raw.tweet columns include account_id and user_id; raw.twitter_user_history columns include id",
+        "importance": 4,
+        "reason": "The observed account value 'default_account' does not resemble the user IDs, so names and handles may be missing across the result."
+      },
+      {
+        "problem": "Raw screen names are modified even though this staging model specifies passing screen_name through from raw user history.",
+        "about": "requirement",
+        "evidence_in_work": "regexp_replace(u.screen_name, '[^A-Za-z0-9_]', '', 'g')::varchar as screen_name",
+        "source": "screen_name: From raw.twitter_user_history.screen_name.",
+        "importance": 3,
+        "reason": "This changes downstream page-name selection and canonical URLs rather than merely enriching the records."
+      },
+      {
+        "problem": "Selecting only the latest raw user-history row silently assumes latest-profile enrichment rather than preserving all matches or using a historical profile.",
+        "about": "data",
+        "evidence_in_work": "row_number() over (partition by id order by _fivetran_synced desc nulls last) ... u.row_num = 1",
+        "source": "user attributes joined from raw.twitter_user_history",
+        "importance": 2,
+        "reason": "No temporal or deduplication policy is specified, and the choice can change profile attribution."
+      },
+      {
+        "problem": "The tweet enrichment join assumes one raw tweet row per identifier without checking uniqueness.",
+        "about": "data",
+        "evidence_in_work": "from raw.tweet; left join tweets t on ...",
+        "source": "Tweet-level organic performance records enriched with tweet text and user attributes",
+        "importance": 2,
+        "reason": "Multiple tweet records per ID would multiply performance rows and later summed metrics."
+      }
+    ],
+    "fewer_reason": "Five supported risks were identified; the required date window and metric defaults are otherwise implemented."
+  },
+  "stg_social_media__facebook_posts": {
+    "items": [
+      {
+        "problem": "Impressions are populated from lifetime metrics although the staging contract specifies a default of zero.",
+        "about": "requirement",
+        "evidence_in_work": "max(post_impressions) as impressions; coalesce(pm.impressions, 0)::bigint as impressions",
+        "source": "impressions: Default 0 in staging.",
+        "importance": 5,
+        "reason": "This changes Facebook engagement denominators, scores, rankings, and every downstream metric summary."
+      },
+      {
+        "problem": "Taking the maximum lifetime impressions assumes the largest snapshot is the correct metric even if later snapshots contain corrections.",
+        "about": "data",
+        "evidence_in_work": "select post_id, max(post_impressions) as impressions ... group by post_id",
+        "source": "raw.facebook_pages_lifetime_post_metrics columns include date, post_id, _fivetran_synced, post_impressions",
+        "importance": 2,
+        "reason": "Even if enrichment were intended, independent maximum selection is not a documented snapshot policy."
+      },
+      {
+        "problem": "Page enrichment silently collapses raw page rows to the latest sync, which is an unspecified source-duplicate and historical-attribution policy.",
+        "about": "data",
+        "evidence_in_work": "row_number() over (partition by id order by _fivetran_synced desc nulls last) ... pg.row_num = 1",
+        "source": "source_table: raw.facebook_pages_post_history; raw.facebook_pages_page_data",
+        "importance": 2,
+        "reason": "This can change page metadata and join multiplicity where multiple page records exist."
+      }
+    ],
+    "fewer_reason": "The published/visible filters, date window, field mappings, and URL construction otherwise have support in the contract."
+  },
+  "stg_social_media__instagram_posts": {
+    "items": [
+      {
+        "problem": "Metric coalescing chooses the first populated media-family field without considering the post's media type.",
+        "about": "data",
+        "evidence_in_work": "coalesce(carousel_album_impressions, video_photo_impressions, story_impressions, video_views, reel_plays, 0)",
+        "source": "raw.instagram_business_media_insights includes separate carousel_album, story, video_photo, and reel metric columns",
+        "importance": 5,
+        "reason": "The inspected rows have several families populated simultaneously, so non-carousel posts can receive carousel metrics."
+      },
+      {
+        "problem": "Views and reel plays are substituted for impressions without a documented equivalence or fallback definition.",
+        "about": "data",
+        "evidence_in_work": "coalesce(... story_impressions, video_views, reel_plays, 0) as impressions",
+        "source": "impressions: COALESCE(mi.impressions, 0) from media insights.",
+        "importance": 4,
+        "reason": "Changing the denominator's meaning affects engagement rates, quality scores, rankings, and cross-platform comparisons."
+      },
+      {
+        "problem": "The insights join assumes id alone uniquely identifies an insight record despite the presence of source_relation and sync history.",
+        "about": "data",
+        "evidence_in_work": "left join insights i on m.id = i.id",
+        "source": "raw.instagram_business_media_insights columns include id, source_relation, _fivetran_id, _fivetran_synced",
+        "importance": 3,
+        "reason": "Multiple insight records per media ID could multiply source posts and inflate downstream counts and sums."
+      },
+      {
+        "problem": "The page-name expression treats empty strings as missing even though the specified COALESCE preserves them.",
+        "about": "requirement",
+        "evidence_in_work": "coalesce(nullif(u.name, ''), nullif(m.username, ''), 'Unknown Account')",
+        "source": "COALESCE(u.account_name, m.username, 'Unknown Account').",
+        "importance": 2,
+        "reason": "This changes display-name values for blank-but-non-null source fields."
+      },
+      {
+        "problem": "Selecting the latest user-history row introduces an undocumented current-profile enrichment policy.",
+        "about": "data",
+        "evidence_in_work": "row_number() over (partition by id order by _fivetran_synced desc nulls last) ... u.row_num = 1",
+        "source": "account_followers: COALESCE(u.followers_count, 0) from user history.",
+        "importance": 2,
+        "reason": "Follower counts and follower-based engagement can differ substantially between current and posting-time profiles."
+      },
+      {
+        "problem": "Uppercasing media_type before mapping recognizes values outside the exact mappings stated in the contract.",
+        "about": "requirement",
+        "evidence_in_work": "case upper(m.media_type)",
+        "source": "IMAGE->Photo, VIDEO->Video, CAROUSEL_ALBUM->Carousel, REEL->Reel, STORY->Story, else passthrough.",
+        "importance": 1,
+        "reason": "Lowercase or mixed-case source categories would be reclassified rather than passed through."
+      }
+    ],
+    "fewer_reason": "Six concrete mapping and join risks are visible; further issues would require unsupported assumptions about the raw metrics."
+  },
+  "stg_social_media__linkedin_posts": {
+    "items": [
+      {
+        "problem": "The exact association-to-history join produces no matching timestamps, leaving LinkedIn posts unusable downstream despite history rows inside the four-year window.",
+        "about": "data",
+        "evidence_in_work": "left join raw.linkedin_pages_ugc_post_history h on h.id = o.ugc_post_id; ids linkedin match (0,)",
+        "source": "raw.linkedin_pages_organization_ugc_post.ugc_post_id; raw.linkedin_pages_ugc_post_history.id and created_time",
+        "importance": 5,
+        "reason": "All 100 staged associations are lost from reporting because their timestamps are null, not because 2023 is outside the four-year window."
+      },
+      {
+        "problem": "The post-content join may use incompatible identifiers and its regexp_replace performs no normalization.",
+        "about": "data",
+        "evidence_in_work": "pc.post_id = regexp_replace(o.ugc_post_id, '^urn:li:share:', 'urn:li:share:')",
+        "source": "raw.linkedin_pages_post_content columns include post_id, type, article_title, media_title",
+        "importance": 3,
+        "reason": "Unmatched content causes missing messages and all-default content categories."
+      },
+      {
+        "problem": "Joining post content directly assumes at most one content row per post even though the table contains media-level fields.",
+        "about": "data",
+        "evidence_in_work": "left join raw.linkedin_pages_post_content pc on pc.post_id = ...",
+        "source": "raw.linkedin_pages_post_content columns include _fivetran_id, post_id, media_id, media_title",
+        "importance": 3,
+        "reason": "Multiple media components could multiply association rows and downstream post counts."
+      },
+      {
+        "problem": "Available LinkedIn statistics are joined but never exposed, leaving no route for downstream metric-preservation logic.",
+        "about": "requirement",
+        "evidence_in_work": "left join post_metrics pm on pm._share_entity_urn = o.ugc_post_id",
+        "source": "LinkedIn reporting: Metrics ... set to 0 when null; integers are otherwise preserved ... if the source engagement_rate is positive, use it.",
+        "importance": 3,
+        "reason": "The staging schema omits metrics, but the modeling logic and indexed statistics reveal an unresolved contract gap rather than proof that all metrics are absent."
+      },
+      {
+        "problem": "History enrichment assumes one history row per post identifier without selecting a version.",
+        "about": "data",
+        "evidence_in_work": "left join raw.linkedin_pages_ugc_post_history h on h.id = o.ugc_post_id",
+        "source": "raw.linkedin_pages_ugc_post_history columns include id, last_modified_time, _fivetran_synced",
+        "importance": 2,
+        "reason": "If matching history versions become available, the join could multiply posts."
+      }
+    ],
+    "fewer_reason": "Five supported concerns were found; the remaining minimal staging fields have no more detailed transformation requirements."
+  },
+  "stg_social_media__youtube_videos": {
+    "items": [
+      {
+        "problem": "Channel subscribers are selected as the historical maximum rather than a defined current or posting-time snapshot.",
+        "about": "data",
+        "evidence_in_work": "select channel_id, max(channel_subscribers) as channel_subscribers ... group by channel_id",
+        "source": "subscribers: COALESCE(channel_info.channel_subscribers, 0).",
+        "importance": 3,
+        "reason": "Subscriber declines or varying dated records would change views-per-subscriber ratios."
+      }
+    ],
+    "fewer_reason": "The other staging mappings, share estimate, view-data filter, date window, and rate formula match the supplied specification."
+  },
+  "social_media_reporting__facebook_posts_reporting": {
+    "items": [
+      {
+        "problem": "The model inherits nonzero lifetime impressions from staging even though Facebook staging impressions should be zero.",
+        "about": "requirement",
+        "evidence_in_work": "coalesce(impressions, 0)::integer as impressions",
+        "source": "stg_social_media__facebook_posts impressions: Default 0 in staging.",
+        "importance": 5,
+        "reason": "This changes the report's impressions and engagement rates whenever recent source rows are available."
+      },
+      {
+        "problem": "The engagement-rate guard returns zero for negative impressions although the explicit business formula divides whenever impressions are nonzero.",
+        "about": "requirement",
+        "evidence_in_work": "case when impressions > 0 then shares::double / impressions else 0.0 end",
+        "source": "engagement_rate is 0.0 when impressions are 0; otherwise (likes + shares + comments) divided by impressions",
+        "importance": 2,
+        "reason": "Only negative-denominator cases differ, and the column description is less explicit than the business formula."
+      }
+    ],
+    "fewer_reason": "The classification precedence, text metrics, buckets, duplicate preservation, and window frames otherwise match the contract."
+  },
+  "social_media_reporting__instagram_posts_reporting": {
+    "items": [
+      {
+        "problem": "The report propagates media-family metrics chosen without reference to media type in staging.",
+        "about": "data",
+        "evidence_in_work": "coalesce(engagement, 0)::bigint as clicks; coalesce(impressions, 0)::bigint as impressions",
+        "source": "raw.instagram_business_media_insights has separate carousel_album, video_photo, story, and reel metrics",
+        "importance": 5,
+        "reason": "Incorrect staging metrics affect nearly every numeric output and both engagement-rate measures."
+      },
+      {
+        "problem": "One-to-many staging insights matches may already have multiplied the source records that this model preserves.",
+        "about": "data",
+        "evidence_in_work": "select * from staging.stg_social_media__instagram_posts",
+        "source": "grain: One row per source post record (no deduplication)",
+        "importance": 3,
+        "reason": "Preserving source duplicates is required, but accidental enrichment fanout is a separate risk."
+      }
+    ],
+    "fewer_reason": "The intermediate model's own filters, defaults, format mappings, and ratio logic otherwise implement the specification."
+  },
+  "social_media_reporting__linkedin_posts_reporting": {
+    "items": [
+      {
+        "problem": "All LinkedIn rows are excluded because the upstream association/history join supplies no timestamps, although available history dates satisfy the four-year window.",
+        "about": "data",
+        "evidence_in_work": "where ... created_timestamp is not null; output: social_media_reporting__linkedin_posts_reporting 0",
+        "source": "created_timestamp ... within the last 4 years from the current date",
+        "importance": 5,
+        "reason": "This removes an entire platform from every downstream result and warrants resolving identifier coverage."
+      },
+      {
+        "problem": "All interaction metrics are hardcoded to zero rather than preserving any non-null source metrics.",
+        "about": "requirement",
+        "evidence_in_work": "0::integer as impressions, 0::integer as likes, 0::integer as shares",
+        "source": "Metrics ... set to 0 when null; integers are otherwise preserved (including negatives if present)",
+        "importance": 4,
+        "reason": "The staging contract omits these fields, but indexed statistics exist and the implementation permanently bypasses the required preservation behavior."
+      },
+      {
+        "problem": "The required positive source-engagement-rate override is omitted.",
+        "about": "requirement",
+        "evidence_in_work": "case when impressions > 0 then (clicks + likes + comments + shares)::double / impressions else 0.0 end",
+        "source": "if the source engagement_rate is positive, use it",
+        "importance": 3,
+        "reason": "The current schema gap masks this omitted branch, which would matter if metrics were supplied."
+      }
+    ],
+    "fewer_reason": "The other identifier, URL, fallback-message, case-sensitive category, and date-filter expressions align with the documented behavior."
+  },
+  "social_media_reporting__twitter_posts_reporting": {
+    "items": [
+      {
+        "problem": "created_timestamp is derived from tweet creation time instead of the earliest performance-record date.",
+        "about": "requirement",
+        "evidence_in_work": "min(tweet_created_at) as created_timestamp",
+        "source": "created_timestamp: earliest date in the group; null if all dates are missing.",
+        "importance": 5,
+        "reason": "This changes dates, cohort membership, and recent-window inclusion, and the broken text join can make all such timestamps null."
+      },
+      {
+        "problem": "The report inherits missing tweet text and timestamps from the BIGINT conversion used in the upstream tweet join.",
+        "about": "data",
+        "evidence_in_work": "max(tweet_text) as post_message; min(tweet_created_at) as created_timestamp",
+        "source": "Tweet text joined from raw.tweet.full_text",
+        "importance": 4,
+        "reason": "Observed oversized IDs can prevent enrichment, and the chosen timestamp expression then causes downstream row loss."
+      },
+      {
+        "problem": "Whitespace-only names are not treated as blank and account_id is not checked for blankness.",
+        "about": "requirement",
+        "evidence_in_work": "coalesce(nullif(screen_name, ''), nullif(user_name, ''), account_id::varchar)",
+        "source": "choose the first non-blank among screen_name, user_name, then account_id as text (blank strings treated as missing)",
+        "importance": 3,
+        "reason": "Whitespace candidates can win lexicographic selection and produce invalid-looking page names and URLs."
+      },
+      {
+        "problem": "Page names and URLs may fall back to reporting account IDs because upstream user enrichment joins incompatible account and user identifiers.",
+        "about": "data",
+        "evidence_in_work": "max(page_name_candidate) as page_name; 'https://twitter.com/' || page_name",
+        "source": "raw.tweet includes user_id; raw.twitter_user_history includes id",
+        "importance": 3,
+        "reason": "Incorrect author attribution propagates into canonical tweet URLs."
+      }
+    ],
+    "fewer_reason": "The group grain, metric summations, average engagement rate, defaults, and calculated-rate numerator otherwise match the specification."
+  },
+  "social_media_reporting__youtube_videos_reporting": {
+    "items": [
+      {
+        "problem": "Impressions are read from the staging impressions field rather than explicitly mirroring source clicks as required.",
+        "about": "requirement",
+        "evidence_in_work": "coalesce(impressions, 0)::bigint as impressions",
+        "source": "clicks and impressions: both set to the video's views; views come from the source clicks field",
+        "importance": 2,
+        "reason": "Current staging makes the fields equal, but the intermediate transformation does not independently enforce its specified mapping."
+      },
+      {
+        "problem": "views_per_subscriber inherits an unspecified historical-maximum subscriber denominator.",
+        "about": "data",
+        "evidence_in_work": "case when channel_subscribers > 0 then clicks::double / channel_subscribers",
+        "source": "views_per_subscriber: clicks divided by channel_subscribers when subscribers > 0",
+        "importance": 2,
+        "reason": "The ratio can be understated if staging's maximum subscriber count exceeds the relevant snapshot."
+      }
+    ],
+    "fewer_reason": "No further concrete issue is apparent in the intermediate filters, defaults, engagement override, or derived ratios."
+  },
+  "social_media_reporting__rollup_report": {
+    "items": [
+      {
+        "problem": "Twitter rows can be assigned the wrong date or excluded entirely because their upstream timestamp uses tweet_created_at instead of earliest report date.",
+        "about": "requirement",
+        "evidence_in_work": "where created_timestamp is not null ... created_timestamp >= current_date - interval '2 years'",
+        "source": "Twitter created_timestamp: earliest date in the group",
+        "importance": 5,
+        "reason": "This affects platform coverage, display ordering, recent-window filtering, and daily rankings."
+      },
+      {
+        "problem": "Facebook impressions, quality scores, and engagement rates inherit lifetime impressions that contradict the staging zero-impressions requirement.",
+        "about": "requirement",
+        "evidence_in_work": "when 'facebook' then case when impressions > 0 then 75 else 50 end",
+        "source": "Facebook staging impressions: Default 0 in staging.",
+        "importance": 5,
+        "reason": "The incorrect upstream denominator also changes cross-platform rankings."
+      },
+      {
+        "problem": "Instagram metrics and rankings inherit unverified cross-media-family coalescing and possible insight-join fanout.",
+        "about": "data",
+        "evidence_in_work": "from intermediate.social_media_reporting__instagram_posts_reporting; row_number() ... order by impressions desc",
+        "source": "raw.instagram_business_media_insights contains media-family-specific metrics and source_relation",
+        "importance": 4,
+        "reason": "Incorrect metrics or duplicated enrichment rows affect totals, scores, and rank positions."
+      },
+      {
+        "problem": "LinkedIn is absent because association records do not match history timestamps, not because the available 2023 history is outside the four-year window.",
+        "about": "data",
+        "evidence_in_work": "from intermediate.social_media_reporting__linkedin_posts_reporting; output: rollup_report 0",
+        "source": "LinkedIn: keep the last 4 years.",
+        "importance": 4,
+        "reason": "A platform-wide coverage gap remains unresolved upstream."
+      },
+      {
+        "problem": "The rollup does not enforce its non-null page_id and post_id tests even though several upstream models explicitly allow null identifiers.",
+        "about": "requirement",
+        "evidence_in_work": "where created_timestamp is not null",
+        "source": "rollup page_id and post_id: tests: not_null",
+        "importance": 2,
+        "reason": "Rows with valid timestamps but missing identifiers can violate the output contract."
+      }
+    ],
+    "fewer_reason": "The rollup's own union-all, metric defaults, scoring formula, rank windows, and ordering otherwise match the documented business logic."
+  },
+  "social_media_reporting__daily_kpis": {
+    "items": [
+      {
+        "problem": "Twitter daily buckets and spine bounds inherit the wrong timestamp definition and potentially null timestamps from failed enrichment.",
+        "about": "requirement",
+        "evidence_in_work": "cast(created_timestamp as date) as day; where created_timestamp is not null",
+        "source": "Twitter created_timestamp: earliest date in the group",
+        "importance": 5,
+        "reason": "Activity can move to the wrong day or disappear before aggregation and spine construction."
+      },
+      {
+        "problem": "Facebook daily impressions and rates inherit lifetime metrics despite the staging requirement to use zero impressions.",
+        "about": "requirement",
+        "evidence_in_work": "sum(impressions)::hugeint as impressions",
+        "source": "Facebook staging impressions: Default 0 in staging.",
+        "importance": 5,
+        "reason": "Facebook aggregate denominators and both reported rates would change."
+      },
+      {
+        "problem": "Instagram daily sums and post counts inherit media-family misselection and possible insight-join multiplication.",
+        "about": "data",
+        "evidence_in_work": "count(*)::bigint as posts_count; sum(clicks)::hugeint as clicks",
+        "source": "raw.instagram_business_media_insights contains separate media-family metrics and source_relation",
+        "importance": 4,
+        "reason": "These upstream issues affect aggregate counts and most KPI values."
+      },
+      {
+        "problem": "LinkedIn daily activity is missing because upstream history identifiers do not match staged associations.",
+        "about": "data",
+        "evidence_in_work": "from intermediate.social_media_reporting__linkedin_posts_reporting",
+        "source": "raw.linkedin_pages_ugc_post_history includes created_time; LinkedIn reporting retains the last 4 years",
+        "importance": 4,
+        "reason": "Without LinkedIn normalized rows, neither activity aggregates nor a platform date spine can be produced."
+      },
+      {
+        "problem": "The unbounded engagement formula can violate the declared zero-to-one rate tests.",
+        "about": "requirement",
+        "evidence_in_work": "(clicks + likes + shares + comments)::double / impressions",
+        "source": "tests: engagement_rate BETWEEN 0 AND 1",
+        "importance": 2,
+        "reason": "The formula itself is specified, but YouTube clicks equal impressions, so positive interactions can make the test impossible without resolving the contract inconsistency."
+      }
+    ],
+    "fewer_reason": "The end-exclusive spine, content defaults, aggregation grain, zero filling, and CTR guard otherwise match the specification."
+  },
+  "social_media_reporting__retention_kpis": {
+    "items": [
+      {
+        "problem": "Twitter cohort weeks and weekly activity use upstream tweet-created timestamps rather than earliest performance dates.",
+        "about": "requirement",
+        "evidence_in_work": "date_trunc('week', created_timestamp)::date ... from intermediate.social_media_reporting__twitter_posts_reporting",
+        "source": "Twitter created_timestamp: earliest date in the group",
+        "importance": 5,
+        "reason": "Incorrect or null timestamps change cohort assignment, observed activity, and retention numerators."
+      },
+      {
+        "problem": "LinkedIn cohorts are entirely absent because staged association records never receive matching history timestamps.",
+        "about": "data",
+        "evidence_in_work": "from intermediate.social_media_reporting__linkedin_posts_reporting where created_timestamp is not null",
+        "source": "LinkedIn reporting: created_timestamp ... within the last 4 years",
+        "importance": 4,
+        "reason": "The join-coverage issue eliminates all LinkedIn retention observations despite available in-window history."
+      },
+      {
+        "problem": "Null page identifiers are removed before cohort formation although the input instructions only explicitly filter missing timestamps.",
+        "about": "requirement",
+        "evidence_in_work": "from page_activity where page_id is not null",
+        "source": "Union page activity from the five source models; only keep rows where created_timestamp is present.",
+        "importance": 1,
+        "reason": "Distinct page counts normally ignore nulls, but this extra filter can remove otherwise observable zero-page cohort groups."
+      }
+    ],
+    "fewer_reason": "The 13 offsets, Monday week buckets, distinct page-week activity, and platform-wide rather than cohort-restricted numerator are correctly implemented."
+  },
+  "social_media_reporting__ctr_by_platform": {
+    "items": [
+      {
+        "problem": "Twitter month buckets and row inclusion inherit the wrong timestamp source and failed tweet enrichment.",
+        "about": "requirement",
+        "evidence_in_work": "date_trunc('month', created_timestamp)::date as month; where created_timestamp is not null",
+        "source": "Twitter created_timestamp: earliest date in the group",
+        "importance": 5,
+        "reason": "Posts can fall into incorrect monthly groups or be excluded entirely."
+      },
+      {
+        "problem": "Facebook monthly impressions and rates inherit lifetime impressions instead of the specified staging zero.",
+        "about": "requirement",
+        "evidence_in_work": "sum(impressions)::hugeint as impressions",
+        "source": "Facebook staging impressions: Default 0 in staging.",
+        "importance": 5,
+        "reason": "This changes the denominators and engagement measures for Facebook groups."
+      },
+      {
+        "problem": "Instagram monthly metrics and post counts inherit type-agnostic insight coalescing and possible join fanout.",
+        "about": "data",
+        "evidence_in_work": "count(*)::bigint as posts_count; sum(likes)::hugeint as likes",
+        "source": "raw.instagram_business_media_insights includes carousel_album, video_photo, story, reel metrics and source_relation",
+        "importance": 4,
+        "reason": "Incorrect inputs propagate directly into monthly sums, counts, and rates."
+      },
+      {
+        "problem": "LinkedIn monthly coverage is missing because upstream association/history joins do not provide timestamps.",
+        "about": "data",
+        "evidence_in_work": "from intermediate.social_media_reporting__linkedin_posts_reporting",
+        "source": "LinkedIn reporting includes posts within the last 4 years",
+        "importance": 4,
+        "reason": "The entire platform is omitted rather than merely reporting zero interactions."
+      }
+    ],
+    "fewer_reason": "The monthly model otherwise follows the required content normalization, union-all counts, distinct accounts, and engagement formula excluding clicks."
+  },
+  "result.md": {
+    "items": [
+      {
+        "problem": "The diagnostic explanation attributes empty intermediate and mart results to date windows even though 2023 LinkedIn history is inside the required four-year window.",
+        "about": "data",
+        "evidence_in_work": "按合同中相对于 CURRENT_DATE 的最近 2 年/4 年过滤要求，记录不在窗口内；本次中间层及 marts 因此为空",
+        "source": "LinkedIn: keep the last 4 years.",
+        "importance": 4,
+        "reason": "This obscures the separately observed LinkedIn identifier-join failure."
+      },
+      {
+        "problem": "The statement that no extra deduplication was performed overlooks latest-row selection and grouped metric reductions in staging.",
+        "about": "requirement",
+        "evidence_in_work": "来源重复按合同保留，未额外去重。",
+        "source": "Twitter organic code uses u.row_num = 1; Facebook code uses pg.row_num = 1; Instagram code uses u.row_num = 1",
+        "importance": 2,
+        "reason": "The claim makes the undocumented enrichment-cardinality policies harder to identify."
+      },
+      {
+        "problem": "Successful execution against empty reporting tables does not substantiate the claimed coverage of required transformation behavior.",
+        "about": "requirement",
+        "evidence_in_work": "Intermediate：5/5；Marts：4/4 模型创建成功。",
+        "source": "produce high-quality data results that meet business requirements",
+        "importance": 2,
+        "reason": "The checks establish executability but do not exercise the incorrect timestamp, metric-selection, or enrichment behavior."
+      }
+    ],
+    "fewer_reason": "Only specific diagnostic and verification claims tied to the implementation are listed; no overall judgment of the final answer is made."
+  }
+}
