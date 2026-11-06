@@ -1,0 +1,131 @@
+{
+  "premises": [
+    {
+      "statement": "Cash-flow monetary impacts may use converted_amount while cash-flow directions use transaction_amount.",
+      "about": "requirement",
+      "target": "int_netsuite2__cash_flow_analysis",
+      "evidence_of_dependence": "t.transaction_amount AS amount, t.converted_amount AS cash_amount",
+      "alternative": "The contract consistently refers to one amount: 'actual_cash_impact equals the amount only for Bank accounts' and 'Cash Inflow if account_type is Bank and amount > 0'.",
+      "importance": 5,
+      "reason": "Using different amount measures for classification and aggregation can change every cash-flow total and its interpretation.",
+      "updates": null
+    },
+    {
+      "statement": "Bank transaction_amount and converted_amount always have matching positive, negative, or zero classifications.",
+      "about": "data",
+      "target": "int_netsuite2__cash_flow_analysis.inflow_transactions and outflow_transactions",
+      "evidence_of_dependence": "count(DISTINCT transaction_id) FILTER(WHERE direction='Cash Inflow') inflow_transactions",
+      "alternative": "The contract defines these counts using 'actual_cash_impact > 0' and 'actual_cash_impact < 0', whereas direction is calculated from transaction_amount and monetary impacts use converted_amount.",
+      "importance": 4,
+      "reason": "Zero conversions or sign differences would make transaction counts inconsistent with the actual cash impacts.",
+      "updates": null
+    },
+    {
+      "statement": "Each subsidiary's observed monthly cash-flow rows are consecutive calendar months, so the prior two rows represent the prior two months.",
+      "about": "data",
+      "target": "int_netsuite2__cash_flow_analysis.three_month_avg_cash_flow",
+      "evidence_of_dependence": "ROWS BETWEEN 2 PRECEDING AND CURRENT ROW",
+      "alternative": "The contract specifies moving averages over 'the current and prior two months'; the code creates no rows for missing calendar months.",
+      "importance": 3,
+      "reason": "Gaps would extend moving averages beyond three calendar months and alter forecasts and stability classifications.",
+      "updates": null
+    },
+    {
+      "statement": "The last-24-month output window includes the entire calendar month containing the date exactly 24 months before execution.",
+      "about": "requirement",
+      "target": "int_netsuite2__cash_flow_analysis",
+      "evidence_of_dependence": "analysis_month>=date_trunc('month',current_date-interval '24 months')",
+      "alternative": "The contract says 'filtered to analysis_month within the last 24 months', which could instead require comparing analysis_month directly with the rolling cutoff date.",
+      "importance": 3,
+      "reason": "The interpretation can add an extra boundary month to the output.",
+      "updates": null
+    },
+    {
+      "statement": "Cash-flow analysis does not require explicit final ordering.",
+      "about": "requirement",
+      "target": "int_netsuite2__cash_flow_analysis",
+      "evidence_of_dependence": "FROM final WHERE analysis_month>=date_trunc('month',current_date-interval '24 months') AND subsidiary_id IS NOT NULL",
+      "alternative": "The contract explicitly requires output 'ordered by subsidiary_id ascending and analysis_month descending'.",
+      "importance": 3,
+      "reason": "The final query omits the specified presentation order.",
+      "updates": null
+    },
+    {
+      "statement": "Total equity is never negative in a retained financial-ratios group.",
+      "about": "data",
+      "target": "int_netsuite2__financial_ratios.return_on_equity",
+      "evidence_of_dependence": "i.net_income/nullif(e.total_equity,0) return_on_equity",
+      "alternative": "The contract requires the ratio to be NULL when equity is 'NULL or <= 0'.",
+      "importance": 4,
+      "reason": "Negative equity would produce a numeric return instead of the required NULL.",
+      "updates": null
+    },
+    {
+      "statement": "Twelve-month total revenue is never negative in a retained financial-ratios group.",
+      "about": "data",
+      "target": "int_netsuite2__financial_ratios.gross_margin_ratio and net_profit_margin",
+      "evidence_of_dependence": "(i.total_revenue-i.total_cogs)/nullif(i.total_revenue,0) gross_margin_ratio",
+      "alternative": "The contract requires both revenue-denominated ratios to be NULL when revenue is 'NULL or <= 0'.",
+      "importance": 4,
+      "reason": "Negative revenue would generate noncontractual margins and could change profitability scores and health grades.",
+      "updates": null
+    },
+    {
+      "statement": "Latest-period accounts receivable is never negative in a retained financial-ratios group.",
+      "about": "data",
+      "target": "int_netsuite2__financial_ratios.receivables_turnover",
+      "evidence_of_dependence": "i.total_revenue/nullif(a.accounts_receivable,0) receivables_turnover",
+      "alternative": "The contract specifies 'NULL if AR is NULL or <= 0'.",
+      "importance": 4,
+      "reason": "Signed negative receivables would produce a turnover value where the contract requires NULL.",
+      "updates": null
+    },
+    {
+      "statement": "No income-statement row passing the twelve-month lower bound has an accounting-period ending after today.",
+      "about": "data",
+      "target": "int_netsuite2__financial_ratios income metrics",
+      "evidence_of_dependence": "WHERE accounting_period_ending>=current_date-interval '12 months'",
+      "alternative": "The contract describes income rows 'within the last 12 months from today', which supports excluding future-dated periods.",
+      "importance": 3,
+      "reason": "Without an upper bound, future periods could enter revenue, income, and profitability calculations.",
+      "updates": null
+    },
+    {
+      "statement": "Every latest-date balance-sheet group with a non-null subsidiary has a non-null accounting_period_id.",
+      "about": "data",
+      "target": "int_netsuite2__financial_ratios.accounting_period_id and financial_ratios_id",
+      "evidence_of_dependence": "md5(subsidiary_id||'_'||accounting_period_id) financial_ratios_id FROM scores WHERE subsidiary_id IS NOT NULL",
+      "alternative": "The financial-ratios contract tests both accounting_period_id and financial_ratios_id as not_null, while the balance-sheet contract obtains the period identifier through a left join.",
+      "importance": 3,
+      "reason": "An unmatched period would survive the final filter and also create a NULL hash identifier.",
+      "updates": null
+    },
+    {
+      "statement": "The available entities, classification, and consolidated-exchange-rate tables are the intended substitutes for the three nonexistent raw sources named in the contract.",
+      "about": "data",
+      "target": "stg_netsuite2__entities, stg_netsuite2__classes, stg_netsuite2__consolidated_exchange_rates",
+      "evidence_of_dependence": "replace('raw.netsuite2_entity_data','raw.netsuite2_entities_data'); replace('raw.netsuite2_class_data','raw.netsuite2_classification_data'); replace('raw.netsuite2_exchange_rate_data','raw.netsuite2_consolidated_exchange_rate_data')",
+      "alternative": null,
+      "importance": 2,
+      "reason": "The substitutions resolve observed catalog errors, but table-name similarity alone does not establish that they supply the intended source populations.",
+      "updates": "c2-1"
+    }
+  ],
+  "fewer": [
+    {
+      "target": "stg_netsuite2__entities",
+      "count": 1,
+      "reason": "Only the source reference changed; other unsupported mapping, uniqueness, deletion, and metadata premises were already recorded."
+    },
+    {
+      "target": "stg_netsuite2__classes",
+      "count": 1,
+      "reason": "Only the source reference changed; remaining dependencies on generated projections and staging quality handling are covered by earlier premises."
+    },
+    {
+      "target": "stg_netsuite2__consolidated_exchange_rates",
+      "count": 1,
+      "reason": "Only the source reference changed; earlier premises already cover metadata-dependent projections, casting, uniqueness, and deletion handling."
+    }
+  ]
+}

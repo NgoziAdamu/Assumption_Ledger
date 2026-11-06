@@ -1,0 +1,1621 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Customer360 system - transforming raw customer data from multiple sources into unified customer profiles"
+  author: "Data Engineering Team"
+  created_date: "2025-09-08"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+  source_systems: ["Marketo", "Stripe", "Zendesk"]
+  business_purpose: "Create unified customer 360-degree view for marketing, sales, and support operations"
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw data into clean, validated staging tables with standardized formats, data quality validation, and reference data enrichment. This phase focuses on data cleansing, format standardization, and basic validation without business logic application."
+  
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "standardize timezone formats", "normalize phone numbers"]
+    
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  tables:
+    # Reference Data Tables
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform staging data into business-ready models that implement customer identity resolution, data enrichment, and analytical structures for Customer360 insights. This phase applies complex business logic, performs identity matching across systems, and creates comprehensive customer profiles."
+  
+  design_principles:
+    intermediate_purpose: "Create reusable, business-centric data models that implement identity resolution logic and data enrichment patterns. Intermediate models serve as building blocks for final mart models."
+    marts_purpose: "Deliver analysis-ready data structures optimized for business intelligence, reporting, and analytical workflows with consistent grain and comprehensive business context."
+    identity_resolution: "Implement probabilistic matching across email addresses, names, and organizational affiliations to create unified customer identities."
+    data_enrichment: "Enhance customer profiles with standardized geographic data, name variants, and derived attributes."
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-003/agent/dacomp-de-impl-003/customer360_start.duckdb
+{"table": "raw.country_codes", "columns": ["country_name", "alternative_country_name", "country_code_numeric", "country_code_alpha_2", "country_code_alpha_3"]}
+{"table": "raw.marketo_leads", "columns": ["lead_id", "email", "email_address_stripped", "email_domain", "full_name_clean", "first_name_clean", "last_name_clean", "name_title", "name_suffix", "full_name", "first_name", "last_name", "organization_name", "organization_name_no_suffix", "organization_name_suffix", "inferred_organization_name", "inferred_organization_name_no_suffix", "inferred_organization_name_suffix", "phone", "phone_extension", "company_phone", "company_phone_extension", "mobile_phone", "mobile_phone_extension", "address_line_1", "address_line_1_long", "address_line_2", "city", "state_code", "state_long", "country_code", "country_long", "country_long_alt", "postal_code", "billing_address_line_1", "billing_address_line_1_long", "billing_address_line_2", "billing_city", "billing_state_code", "billing_state_long", "billing_country_code", "billing_country_long", "billing_country_long_alt", "billing_postal_code", "inferred_city", "inferred_state_code", "inferred_state_long", "inferred_country_code", "inferred_country_long", "inferred_country_long_alt", "inferred_postal_code", "ip_address", "is_unsubscribed", "is_email_invalid", "do_not_call", "updated_at", "created_at", "possible_alt_first_names"]}
+{"table": "raw.nicknames", "columns": ["canonical_name", "nickname"]}
+{"table": "raw.state_territory_codes", "columns": ["state_territory", "state_code", "alpha2_country_code"]}
+{"table": "raw.stripe_customers", "columns": ["customer_id", "email", "email_address_stripped", "email_domain", "customer_name", "customer_name_clean", "customer_name_title", "customer_name_suffix", "shipping_name", "shipping_name_clean", "shipping_name_title", "shipping_name_suffix", "customer_organization_name", "customer_organization_name_no_suffix", "customer_organization_name_suffix", "shipping_organization_name", "shipping_organization_name_no_suffix", "shipping_organization_name_suffix", "phone", "phone_extension", "shipping_phone", "shipping_phone_extension", "customer_address_line_1", "customer_address_line_1_long", "customer_address_line_2", "customer_address_line_2_long", "customer_city", "customer_state_code", "customer_state_long", "customer_country_code", "customer_country_long", "customer_country_long_alt", "customer_postal_code", "shipping_address_line_1", "shipping_address_line_1_long", "shipping_address_line_2", "shipping_address_line_2_long", "shipping_city", "shipping_state_code", "shipping_state_long", "shipping_country_code", "shipping_country_long", "shipping_country_long_alt", "shipping_postal_code", "is_delinquent", "is_deleted", "updated_at", "created_at", "customer_possible_alt_first_names", "shipping_possible_alt_first_names"]}
+{"table": "raw.zendesk_users", "columns": ["user_id", "organization_id", "email", "email_address_stripped", "email_domain", "full_name", "full_name_clean", "name_title", "name_suffix", "organization_name", "organization_name_no_suffix", "organization_name_suffix", "phone", "phone_extension", "is_active", "is_deleted", "is_suspended", "updated_at", "created_at", "organization_updated_at", "organization_created_at", "possible_alt_first_names"]}
+
+
+=== Relevant specification and documentation ===
+## int_customer360__marketo
+
+    - name: int_customer360__marketo
+      description: Marketo leads passed through from raw.marketo_leads with non-empty emails and timestamps cast
+      grain: One row per raw.marketo_leads record where email IS NOT NULL and email != ''
+      source_models:
+      - raw.marketo_leads
+      business_logic: '- Read all rows from raw.marketo_leads. - Select the listed columns exactly as in the source; no joins, aggregations, or de-duplication; duplicates are preserved. - Keep only records where email is neither NULL nor an empty string; emails containing only whitespace are retained because no trimming is applied. - Cast updated_at and created_at to TIMESTAMP; all other fields are passed through unchanged from source. - Nulls from the source are preserved for all pass-through columns. - No specific row ordering is applied.'
+      columns:
+      - name: lead_id
+        data_type: BIGINT
+        description: Lead identifier from source; duplicates may exist
+      - name: email
+        data_type: VARCHAR
+        description: Email address used for filtering; must be non-null and not empty; case and whitespace preserved
+      - name: email_address_stripped
+        data_type: VARCHAR
+        description: Standardized email from source
+      - name: email_domain
+        data_type: VARCHAR
+        description: Email domain from source
+      - name: full_name_clean
+        data_type: VARCHAR
+        description: Cleaned full name from source
+      - name: first_name_clean
+        data_type: VARCHAR
+        description: Cleaned first name from source
+      - name: last_name_clean
+        data_type: VARCHAR
+        description: Cleaned last name from source
+      - name: name_title
+        data_type: VARCHAR
+        description: Name title from source
+      - name: name_suffix
+        data_type: VARCHAR
+        description: Name suffix from source
+      - name: full_name
+        data_type: VARCHAR
+        description: Full name from source
+      - name: first_name
+        data_type: VARCHAR
+        description: First name from source
+      - name: last_name
+        data_type: VARCHAR
+        description: Last name from source
+      - name: organization_name
+        data_type: VARCHAR
+        description: Organization name from source
+      - name: organization_name_no_suffix
+        data_type: VARCHAR
+        description: Organization name without suffix from source
+      - name: organization_name_suffix
+        data_type: VARCHAR
+        description: Organization name suffix from source
+      - name: inferred_organization_name
+        data_type: VARCHAR
+        description: Inferred organization name from source
+      - name: inferred_organization_name_no_suffix
+        data_type: VARCHAR
+        description: Inferred organization name without suffix from source
+      - name: inferred_organization_name_suffix
+        data_type: VARCHAR
+        description: Inferred organization name suffix from source
+      - name: phone
+        data_type: VARCHAR
+        description: Phone number from source; formatting preserved
+      - name: phone_extension
+        data_type: BIGINT
+        description: Phone extension from source
+      - name: company_phone
+        data_type: VARCHAR
+        description: Company phone number from source; formatting preserved
+      - name: company_phone_extension
+        data_type: BIGINT
+        description: Company phone extension from source
+      - name: mobile_phone
+        data_type: VARCHAR
+        description: Mobile phone number from source; formatting preserved
+      - name: mobile_phone_extension
+        data_type: VARCHAR
+        description: Mobile phone extension from source
+      - name: address_line_1
+        data_type: VARCHAR
+        description: Primary address line from source; spacing preserved
+      - name: address_line_1_long
+        data_type: VARCHAR
+        description: Long primary address line from source; spacing preserved
+      - name: address_line_2
+        data_type: VARCHAR
+        description: Secondary address line from source; spacing preserved
+      - name: city
+        data_type: VARCHAR
+        description: City from source
+      - name: state_code
+        data_type: VARCHAR
+        description: State or territory code from source
+      - name: state_long
+        data_type: VARCHAR
+        description: State or territory name from source
+      - name: country_code
+        data_type: VARCHAR
+        description: Country code from source
+      - name: country_long
+        data_type: VARCHAR
+        description: Country name from source
+      - name: country_long_alt
+        data_type: VARCHAR
+        description: Alternate country name from source
+      - name: postal_code
+        data_type: BIGINT
+        description: Postal code from source
+      - name: billing_address_line_1
+        data_type: VARCHAR
+        description: Billing primary address line from source; spacing preserved
+      - name: billing_address_line_1_long
+        data_type: VARCHAR
+        description: Billing long primary address line from source; spacing preserved
+      - name: billing_address_line_2
+        data_type: VARCHAR
+        description: Billing secondary address line from source; spacing preserved
+      - name: billing_city
+        data_type: VARCHAR
+        description: Billing city from source
+      - name: billing_state_code
+        data_type: VARCHAR
+        description: Billing state or territory code from source
+      - name: billing_state_long
+        data_type: VARCHAR
+        description: Billing state or territory name from source
+      - name: billing_country_code
+        data_type: VARCHAR
+        description: Billing country code from source
+      - name: billing_country_long
+        data_type: VARCHAR
+        description: Billing country name from source
+      - name: billing_country_long_alt
+        data_type: VARCHAR
+        description: Billing alternate country name from source
+      - name: billing_postal_code
+        data_type: BIGINT
+        description: Billing postal code from source
+      - name: inferred_city
+        data_type: VARCHAR
+        description: Inferred city from source
+      - name: inferred_state_code
+        data_type: VARCHAR
+        description: Inferred state or territory code from source
+      - name: inferred_state_long
+        data_type: VARCHAR
+        description: Inferred state or territory name from source
+      - name: inferred_country_code
+        data_type: VARCHAR
+        description: Inferred country code from source
+      - name: inferred_country_long
+        data_type: VARCHAR
+        description: Inferred country name from source
+      - name: inferred_country_long_alt
+        data_type: VARCHAR
+        description: Inferred alternate country name from source
+      - name: inferred_postal_code
+        data_type: BIGINT
+        description: Inferred postal code from source
+      - name: ip_address
+        data_type: VARCHAR
+        description: IP address from source; formatting preserved
+      - name: is_unsubscribed
+        data_type: BOOLEAN
+        description: Unsubscribe flag from source
+      - name: is_email_invalid
+        data_type: BOOLEAN
+        description: Invalid-email flag from source
+      - name: do_not_call
+        data_type: BOOLEAN
+        description: Do-not-call flag from source
+      - name: updated_at
+        data_type: TIMESTAMP
+        description: Source updated_at cast to TIMESTAMP
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Source created_at cast to TIMESTAMP
+      - name: possible_alt_first_names
+        data_type: VARCHAR
+        description: Possible alternate first names from source; delimiter and casing preserved
+
+
+## int_customer360__stripe
+
+    - name: int_customer360__stripe
+      description: Filtered projection of Stripe customers with timestamp casting; no joins, aggregations, or deduplication.
+      grain: One row per raw.stripe_customers record where email is present and non-empty and is_deleted is false (duplicates preserved).
+      source_models:
+      - raw.stripe_customers
+      business_logic: '- Use raw.stripe_customers as the input. - Keep rows only if: - email is not NULL, and - email is not a zero-length string, and - is_deleted is exactly false (rows with TRUE or NULL are excluded). - Select only the columns listed below from the source. - Cast updated_at and created_at to TIMESTAMP; all other columns are passed through as-is. - No joins, no aggregations, and no deduplication; duplicate customer_id values are preserved if present in source. - Output row order is not guaranteed.'
+      columns:
+      - name: customer_id
+        data_type: VARCHAR
+        description: Stripe customer identifier from source; duplicates may exist; NULLs allowed.
+      - name: email
+        data_type: VARCHAR
+        description: Customer email from source; guaranteed non-NULL and not a zero-length string due to filters.
+      - name: email_address_stripped
+        data_type: VARCHAR
+        description: Normalized/stripped email variant from source; passed through as-is.
+      - name: email_domain
+        data_type: VARCHAR
+        description: Domain portion of email from source; passed through as-is.
+      - name: customer_name
+        data_type: VARCHAR
+        description: Customer name from source; passed through as-is.
+      - name: customer_name_clean
+        data_type: VARCHAR
+        description: Cleaned customer name from source; passed through as-is.
+      - name: customer_name_title
+        data_type: VARCHAR
+        description: Parsed customer name title from source; passed through as-is.
+      - name: customer_name_suffix
+        data_type: VARCHAR
+        description: Parsed customer name suffix from source; passed through as-is.
+      - name: shipping_name
+        data_type: VARCHAR
+        description: Shipping contact name from source; passed through as-is.
+      - name: shipping_name_clean
+        data_type: VARCHAR
+        description: Cleaned shipping contact name from source; passed through as-is.
+      - name: shipping_name_title
+        data_type: VARCHAR
+        description: Shipping contact name title from source; passed through as-is.
+      - name: shipping_name_suffix
+        data_type: VARCHAR
+        description: Shipping contact name suffix from source; passed through as-is.
+      - name: customer_organization_name
+        data_type: VARCHAR
+        description: Customer organization name from source; passed through as-is.
+      - name: customer_organization_name_no_suffix
+        data_type: VARCHAR
+        description: Organization name without legal suffix from source; passed through as-is.
+      - name: customer_organization_name_suffix
+        data_type: VARCHAR
+        description: Organization legal suffix from source; passed through as-is.
+      - name: shipping_organization_name
+        data_type: VARCHAR
+        description: Shipping organization name from source; passed through as-is.
+      - name: shipping_organization_name_no_suffix
+        data_type: VARCHAR
+        description: Shipping organization name without legal suffix from source; passed through as-is.
+      - name: shipping_organization_name_suffix
+        data_type: VARCHAR
+        description: Shipping organization legal suffix from source; passed through as-is.
+      - name: phone
+        data_type: VARCHAR
+        description: Primary phone number from source; passed through as-is.
+      - name: phone_extension
+        data_type: BIGINT
+        description: Primary phone extension from source; passed through as-is; NULLs allowed.
+      - name: shipping_phone
+        data_type: VARCHAR
+        description: Shipping phone number from source; passed through as-is.
+      - name: shipping_phone_extension
+        data_type: BIGINT
+        description: Shipping phone extension from source; passed through as-is; NULLs allowed.
+      - name: customer_address_line_1
+        data_type: VARCHAR
+        description: Customer address line 1 from source; passed through as-is.
+      - name: customer_address_line_1_long
+        data_type: VARCHAR
+        description: Standardized customer address line 1 from source; passed through as-is.
+      - name: customer_address_line_2
+        data_type: VARCHAR
+        description: Customer address line 2 from source; passed through as-is.
+      - name: customer_address_line_2_long
+        data_type: VARCHAR
+        description: Standardized customer address line 2 from source; passed through as-is.
+      - name: customer_city
+        data_type: VARCHAR
+        description: Customer city from source; passed through as-is.
+      - name: customer_state_code
+        data_type: VARCHAR
+        description: Customer state/province code from source; passed through as-is.
+      - name: customer_state_long
+        data_type: VARCHAR
+        description: Full customer state/province name from source; passed through as-is.
+      - name: customer_country_code
+        data_type: VARCHAR
+        description: Customer ISO country code from source; passed through as-is.
+      - name: customer_country_long
+        data_type: VARCHAR
+        description: Full customer country name from source; passed through as-is.
+      - name: customer_country_long_alt
+        data_type: VARCHAR
+        description: Alternate customer country name from source; passed through as-is.
+      - name: customer_postal_code
+        data_type: BIGINT
+        description: Customer postal code from source; passed through as-is; NULLs allowed.
+      - name: shipping_address_line_1
+        data_type: VARCHAR
+        description: Shipping address line 1 from source; passed through as-is.
+      - name: shipping_address_line_1_long
+        data_type: VARCHAR
+        description: Standardized shipping address line 1 from source; passed through as-is.
+      - name: shipping_address_line_2
+        data_type: VARCHAR
+        description: Shipping address line 2 from source; passed through as-is.
+      - name: shipping_address_line_2_long
+        data_type: VARCHAR
+        description: Standardized shipping address line 2 from source; passed through as-is.
+      - name: shipping_city
+        data_type: VARCHAR
+        description: Shipping city from source; passed through as-is.
+      - name: shipping_state_code
+        data_type: VARCHAR
+        description: Shipping state/province code from source; passed through as-is.
+      - name: shipping_state_long
+        data_type: VARCHAR
+        description: Full shipping state/province name from source; passed through as-is.
+      - name: shipping_country_code
+        data_type: VARCHAR
+        description: Shipping ISO country code from source; passed through as-is.
+      - name: shipping_country_long
+        data_type: VARCHAR
+        description: Full shipping country name from source; passed through as-is.
+      - name: shipping_country_long_alt
+        data_type: VARCHAR
+        description: Alternate shipping country name from source; passed through as-is.
+      - name: shipping_postal_code
+        data_type: BIGINT
+        description: Shipping postal code from source; passed through as-is; NULLs allowed.
+      - name: is_delinquent
+        data_type: BOOLEAN
+        description: Delinquency flag from source; passed through as-is; may be NULL.
+      - name: is_deleted
+        data_type: BOOLEAN
+        description: Deletion flag from source; always false in output due to filter; TRUE and NULL rows are excluded.
+      - name: updated_at
+        data_type: TIMESTAMP
+        description: Last update timestamp cast to TIMESTAMP; NULLs preserved.
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Creation timestamp cast to TIMESTAMP; NULLs preserved.
+      - name: customer_possible_alt_first_names
+        data_type: VARCHAR
+        description: Possible alternative first names for customer from source; passed through as-is.
+      - name: shipping_possible_alt_first_names
+        data_type: VARCHAR
+        description: Possible alternative first names for shipping contact from source; passed through as-is.
+
+
+## int_customer360__zendesk
+
+    - name: int_customer360__zendesk
+      description: Zendesk users filtered to non-empty emails and not deleted; timestamp fields are cast to TIMESTAMP.
+      grain: One row per raw.zendesk_users record with email not NULL/empty and is_deleted = false
+      source_models:
+      - raw.zendesk_users
+      business_logic: '- Load all rows from raw.zendesk_users. - Keep rows only when: - email is present and not an empty string; whitespace-only values are kept as-is. - is_deleted is explicitly false; rows with true or NULL are removed. - Project the listed columns only. - Cast updated_at, created_at, organization_updated_at, and organization_created_at to TIMESTAMP; all other fields are unchanged. - No joins, aggregations, deduplication, or ordering; duplicate user_id values can appear if present upstream. - Output one row per source record that passes the filters.'
+      columns:
+      - name: user_id
+        data_type: BIGINT
+        description: Pass-through user identifier; may be NULL and non-unique; no deduplication.
+      - name: organization_id
+        data_type: BIGINT
+        description: Pass-through organization identifier; may be NULL; unchanged.
+      - name: email
+        data_type: VARCHAR
+        description: Required; rows with NULL or empty email are excluded; value is preserved as-is.
+      - name: email_address_stripped
+        data_type: VARCHAR
+        description: Pass-through email field; may be NULL; unchanged.
+      - name: email_domain
+        data_type: VARCHAR
+        description: Pass-through email domain; may be NULL; not recomputed.
+      - name: full_name
+        data_type: VARCHAR
+        description: Pass-through full name; may be NULL; no trimming or casing changes.
+      - name: full_name_clean
+        data_type: VARCHAR
+        description: Pass-through cleaned full name from source; may be NULL; not recomputed.
+      - name: name_title
+        data_type: VARCHAR
+        description: Pass-through name title (e.g., Mr, Dr); may be NULL.
+      - name: name_suffix
+        data_type: VARCHAR
+        description: Pass-through name suffix; may be NULL.
+      - name: organization_name
+        data_type: VARCHAR
+        description: Pass-through organization name; may be NULL.
+      - name: organization_name_no_suffix
+        data_type: VARCHAR
+        description: Pass-through organization name without suffix; may be NULL; not recomputed.
+      - name: organization_name_suffix
+        data_type: VARCHAR
+        description: Pass-through organization name suffix; may be NULL.
+      - name: phone
+        data_type: VARCHAR
+        description: Pass-through phone number; may be NULL; formatting preserved.
+      - name: phone_extension
+        data_type: BIGINT
+        description: Pass-through phone extension; may be NULL; unchanged.
+      - name: is_active
+        data_type: BOOLEAN
+        description: Pass-through active flag; may be NULL; unchanged.
+      - name: is_deleted
+        data_type: BOOLEAN
+        description: Always false in output due to filtering; rows with true or NULL are excluded.
+      - name: is_suspended
+        data_type: BOOLEAN
+        description: Pass-through suspended flag; may be NULL; unchanged.
+      - name: updated_at
+        data_type: TIMESTAMP
+        description: Cast to TIMESTAMP from source; NULLs preserved; no timezone changes.
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Cast to TIMESTAMP from source; NULLs preserved; no timezone changes.
+      - name: organization_updated_at
+        data_type: TIMESTAMP
+        description: Cast to TIMESTAMP from source; NULLs preserved; no timezone changes.
+      - name: organization_created_at
+        data_type: TIMESTAMP
+        description: Cast to TIMESTAMP from source; NULLs preserved; no timezone changes.
+      - name: possible_alt_first_names
+        data_type: VARCHAR
+        description: Pass-through alternate first names; may be NULL; delimiter and casing preserved.
+
+
+## int_customer360__customer_behavior_analysis
+
+    - name: int_customer360__customer_behavior_analysis
+      description: Customer behavior profile per resolved customer with cross-platform engagement, lifecycle metrics, and segmentation
+      grain: One row per source match key (marketo_lead_id, stripe_customer_id, zendesk_user_id) with non-null primary_email
+      source_models:
+      - intermediate.int_customer360__source_matches
+      - intermediate.int_customer360__marketo
+      - intermediate.int_customer360__stripe
+      - intermediate.int_customer360__zendesk
+      business_logic: 'Build per-customer behavior and segmentation by: - Source inputs: - Marketo (intermediate.int_customer360__marketo) per lead_id - Stripe (intermediate.int_customer360__stripe) per customer_id - Zendesk (intermediate.int_customer360__zendesk) per user_id - Identity map (intermediate.int_customer360__source_matches) providing the cross-platform ID linkage - Per-platform metrics: - Marketo: - marketo_first_touch = created_at; marketo_last_activity = updated_at - marketo_engagement_score: - 0 if is_unsubscribed = true or is_email_invalid = true - else 3 if days between created_at and updated_at < 30 - else 2 if < 90 - else 1 - has_organization_data = 1 if organization_name_no_suffix not null and length > 3 else 0 - has_phone_contact = 1 if phone or mobile_phone present else 0 - address_completeness_score: - 3 if country_code, state_code, and city all present - 2 if country_code present and at least one of state_code or city present - 1 if only country_code present - 0 otherwise - Stripe: - stripe_first_transaction = created_at; stripe_last_activity = updated_at - stripe_engagement_score: - 0 if is_deleted = true - 1 if is_delinquent = true (and not deleted) - else 4 if days between created_at and updated_at < 30 - else 3 if < 90 - else 2 - payment_reliability_score: - 3 if is_delinquent = false and is_deleted = false - 1 if is_delinquent = true and is_deleted = false - 0 otherwise - billing_completeness_score: - 2 if customer_address_line_1 and customer_country_code present - 1 if only customer_country_code present - 0 otherwise - Zendesk: - zendesk_first_contact = created_at; zendesk_last_activity = updated_at - zendesk_engagement_score: - 0 if is_suspended = true or is_deleted = true - 1 if is_active = false - else 4 if days between created_at and updated_at < 30 - else 3 if < 90 - else 2 - org_relationship_strength: - 2 if organization_id and organization_name_no_suffix present - 1 if only organization_id present - 0 otherwise - Join and aggregate: - Left join per-platform metrics to source_matches on respective IDs - primary_email = coalesce(Marketo.email, Stripe.email, Zendesk.email); rows with NULL primary_email are excluded - email_domain and primary_organization use the same COALESCE order (Marketo, then Stripe, then Zendesk) - customer_first_touchpoint = the earliest of the three per-platform first-touch timestamps - customer_last_activity = the latest of the three per-platform last-activity timestamps - If any of the three timestamps is NULL, the earliest/latest result is NULL - marketo_engagement/stripe_engagement/zendesk_engagement = respective per-platform scores with NULL → 0 - composite_engagement_score = weighted average (weights: Marketo 0.3, Stripe 0.5, Zendesk 0.2), rounded to two decimals and stored with one decimal precision - in_marketo/in_stripe/in_zendesk = 1 if respective joined record exists, else 0 - organization_data_quality = coalesce(has_organization_data,0) + coalesce(billing_completeness_score,0) + coalesce(org_relationship_strength,0) - has_contact_phone = coalesce(has_phone_contact, 0) - address_data_quality = coalesce(address_completeness_score,0) + coalesce(billing_completeness_score,0) - marketing_to_sales_days = days between Marketo first touch and Stripe first transaction only if both present; else NULL - sales_to_support_days = days between Stripe first transaction and Zendesk first contact only if both present; else NULL - account_age_days = days between the earliest available first-touch and current_date; NULL if the earliest is NULL - customer_maturity (derived from the same earliest timestamp vs current_date): - ''New Customer'' if < 90 days - ''Growing Relationship'' if < 365 days - ''Established Customer'' if < 1095 days - ''Long-term Customer'' otherwise (including when the start date is NULL) - customer_journey_pattern based on platform presence, evaluated in this order: - ''Full Journey'' if all three present - ''Marketing to Sales'' if Marketo and Stripe - ''Sales to Support'' if Stripe and Zendesk - ''Marketing to Support'' if Marketo and Zendesk - ''Marketing Only'' if only Marketo - ''Sales Only'' if only Stripe - ''Support Only'' if only Zendesk - ''Unknown'' otherwise - payment_reliability = coalesce(Stripe.payment_reliability_score, 0) - Classification: - customer_segment (first match wins): - ''Champion'' if composite_engagement_score >= 3.5 and payment_reliability >= 2 - ''Loyal Customer'' if composite_engagement_score >= 3.0 and customer_journey_pattern = ''Full Journey'' - ''Potential Loyalist'' if composite_engagement_score >= 2.5 and payment_reliability >= 2 - ''New Customer'' if composite_engagement_score >= 2.0 and account_age_days < 90 - ''At Risk'' if composite_engagement_score >= 1.5 - ''Hibernating'' if composite_engagement_score > 0 - ''Lost'' otherwise - churn_risk_level: - ''High Risk'' if payment_reliability = 0 or composite_engagement_score < 1 - ''Medium Risk'' if composite_engagement_score < 2 and account_age_days > 365 - ''Medium Risk'' if customer_last_activity is more than 90 days ago - ''Low Risk'' otherwise (including when comparisons evaluate to NULL) - recommended_action based on customer_segment: - ''Upsell/Cross-sell'' for ''Champion'' or ''Loyal Customer'' - ''Engagement Campaign'' for ''Potential Loyalist'' - ''Onboarding Focus'' for ''New Customer'' - ''Win-back Campaign'' for ''At Risk'' - ''Reactivation Campaign'' for ''Hibernating'' - ''Recovery Campaign'' otherwise - Output filter and ordering: - Keep only rows where primary_email is not NULL - Order rows by composite_engagement_score descending, then account_age_days descending'
+      columns:
+      - name: marketo_lead_id
+        data_type: BIGINT
+        description: Marketo lead identifier from source_matches; nullable when no Marketo mapping exists
+      - name: stripe_customer_id
+        data_type: VARCHAR
+        description: Stripe customer identifier from source_matches; nullable when no Stripe mapping exists
+      - name: zendesk_user_id
+        data_type: BIGINT
+        description: Zendesk user identifier from source_matches; nullable when no Zendesk mapping exists
+      - name: primary_email
+        data_type: VARCHAR
+        description: Primary email chosen by Marketo then Stripe then Zendesk; not null due to final filter; casing and spacing preserved
+        tests:
+        - not_null
+      - name: email_domain
+        data_type: VARCHAR
+        description: Email domain chosen by the same precedence as primary_email; NULL if all source domains are NULL; formatting preserved
+      - name: primary_organization
+        data_type: VARCHAR
+        description: Organization chosen by precedence Marketo, then Stripe, then Zendesk; NULL if all are NULL
+      - name: customer_first_touchpoint
+        data_type: TIMESTAMP
+        description: Earliest timestamp across the three platform first-touch timestamps; NULL if any input is NULL
+      - name: customer_last_activity
+        data_type: TIMESTAMP
+        description: Latest timestamp across the three platform last-activity timestamps; NULL if any input is NULL
+      - name: marketo_engagement
+        data_type: INTEGER
+        description: Marketo engagement score per rules in business_logic (0/1/2/3); NULL Marketo row yields 0
+      - name: stripe_engagement
+        data_type: INTEGER
+        description: Stripe engagement score per rules in business_logic (0/1/2/3/4); NULL Stripe row yields 0
+      - name: zendesk_engagement
+        data_type: INTEGER
+        description: Zendesk engagement score per rules in business_logic (0/1/2/3/4); NULL Zendesk row yields 0
+      - name: composite_engagement_score
+        data_type: DECIMAL(14,1)
+        description: Weighted average of platform scores (weights 0.3, 0.5, 0.2), rounded to two decimals then stored with one decimal; missing scores treated as 0; range 0.0–3.7
+      - name: in_marketo
+        data_type: INTEGER
+        description: Platform presence flag derived from join on Marketo (1 if joined row exists, else 0); values strictly 0 or 1
+      - name: in_stripe
+        data_type: INTEGER
+        description: Platform presence flag derived from join on Stripe (1 if joined row exists, else 0); values strictly 0 or 1
+      - name: in_zendesk
+        data_type: INTEGER
+        description: Platform presence flag derived from join on Zendesk (1 if joined row exists, else 0); values strictly 0 or 1
+      - name: organization_data_quality
+        data_type: INTEGER
+        description: Aggregate org data score = has_organization_data(0/1) + billing_completeness_score(0/1/2) + org_relationship_strength(0/1/2); NULL components treated as 0; range 0–5
+      - name: has_contact_phone
+        data_type: INTEGER
+        description: 1 if Marketo has phone or mobile_phone, else 0; NULL treated as 0; values strictly 0 or 1
+      - name: address_data_quality
+        data_type: INTEGER
+        description: Address/billing completeness = Marketo.address_completeness_score(0–3) + Stripe.billing_completeness_score(0–2); NULL components treated as 0; range 0–5
+      - name: marketing_to_sales_days
+        data_type: BIGINT
+        description: Days from Marketo first touch to Stripe first transaction; NULL unless both timestamps are non-null; may be negative or positive
+      - name: sales_to_support_days
+        data_type: BIGINT
+        description: Days from Stripe first transaction to Zendesk first contact; NULL unless both timestamps are non-null; may be negative or positive
+      - name: account_age_days
+        data_type: BIGINT
+        description: Days from the earliest first-touch timestamp to current_date; NULL if the earliest is NULL; computed at execution time
+      - name: customer_maturity
+        data_type: VARCHAR
+        description: 'Lifecycle label based on days since earliest touch: New Customer (<90), Growing Relationship (<365), Established Customer (<1095), else Long-term Customer; NULL start yields Long-term Customer'
+      - name: customer_journey_pattern
+        data_type: VARCHAR
+        description: 'Journey coverage across platforms with precedence: Full Journey; Marketing to Sales; Sales to Support; Marketing to Support; Marketing Only; Sales Only; Support Only; else Unknown'
+      - name: payment_reliability
+        data_type: INTEGER
+        description: 'Stripe-derived reliability score: 3 (not delinquent and not deleted), 1 (delinquent and not deleted), 0 otherwise; NULL Stripe row yields 0'
+      - name: customer_segment
+        data_type: VARCHAR
+        description: 'Segment assigned by ordered rules: Champion; Loyal Customer; Potential Loyalist; New Customer; At Risk; Hibernating; else Lost'
+      - name: churn_risk_level
+        data_type: VARCHAR
+        description: 'Risk level by ordered rules: High if payment_reliability=0 or composite<1; Medium if composite<2 and age>365; Medium if last activity >90 days ago; else Low'
+      - name: recommended_action
+        data_type: VARCHAR
+        description: 'Next best action mapped from customer_segment: Upsell/Cross-sell; Engagement Campaign; Onboarding Focus; Win-back Campaign; Reactivation Campaign; else Recovery Campaign'
+
+
+## int_customer360__customer_lifecycle_metrics
+
+    - name: int_customer360__customer_lifecycle_metrics
+      description: Customer lifecycle metrics, health scoring, retention/churn risk, and cohort/tier enrichments derived from customer behavior analysis
+      grain: One row per customer from intermediate.int_customer360__customer_behavior_analysis
+      source_models:
+      - intermediate.int_customer360__customer_behavior_analysis
+      business_logic: 'Starting from intermediate.int_customer360__customer_behavior_analysis (one row per resolved customer), compute lifecycle metrics and enrichments: - Activity windows and recency: - days_since_last_activity = number of days between customer_last_activity and today; NULL if customer_last_activity is missing. - active_X_days flags (X ∈ {30,60,90,180,365}) = 1 if customer_last_activity occurred within X days of today, else 0; missing customer_last_activity yields 0. - Lifecycle stage (first match wins): - ''Acquisition'' if account_age_days ≤ 30 - ''Activation'' if account_age_days ≤ 90 and last_activity within 30 days - ''Growth'' if account_age_days ≤ 365 and last_activity within 60 days - ''Maturity'' if account_age_days > 365 and last_activity within 90 days - ''Dormant'' if last_activity older than 180 days - Else ''Retention'' - Note: NULL account_age_days or last_activity causes earlier conditions to fail and typically falls through to ''Retention''. - Cohort and platform consistency: - acquisition_cohort_month = month of the first touchpoint (truncated to month); NULL if first_touchpoint is missing. - platform_consistency_score ∈ {1,2,3}: sum of presence flags (in_marketo + in_stripe + in_zendesk); 3 if sum ≥ 3, 2 if sum = 2, else 1. NULL in any flag leads to the else path → 1. - Value and engagement scores: - estimated_customer_value (DECIMAL(6,2)) by customer_segment: - ''Champion'' 5000.00; ''Loyal Customer'' 3500.00; ''Potential Loyalist'' 2000.00; ''New Customer'' 800.00; ''At Risk'' 1200.00; ''Hibernating'' 500.00; else 200.00. - frequency_score (1–5): 5 if platform_consistency_score = 3 and active_30_days = 1; 4 if platform_consistency_score ≥ 2 and active_60_days = 1; 3 if platform_consistency_score ≥ 2 and active_90_days = 1; 2 if active_180_days = 1; else 1. - recency_score (1–5) by days_since_last_activity: 5 (≤7), 4 (≤30), 3 (≤60), 2 (≤180), else 1; NULL days_since_last_activity maps to 1. - estimated_transaction_count (DOUBLE): simulated per run: - If segment in (''Champion'',''Loyal Customer'') → integer 2–9 - If ''Potential Loyalist'' → integer 1–4 - Else → integer 0–1 - Stored as DOUBLE; values vary each execution. - customer_health_score (DECIMAL(15,2)) = rounded to 2 decimals from: recency_component*0.3 + platform_consistency_score*0.3 + segment_component*0.4, where: - recency_component: 5/4/3/2/1 as in recency_score logic - segment_component: ''Champion'' 5.0; ''Loyal Customer'' 4.5; ''Potential Loyalist'' 3.5; ''New Customer'' 3.0; ''At Risk'' 2.0; ''Hibernating'' 1.5; else 1.0 - Advanced lifecycle metrics: - estimated_customer_ltv (DECIMAL(18,2)) = estimated_customer_value × (1 + 0.2 × frequency_score) × (1 + 0.1 × platform_consistency_score) × stage_factor; rounded to 2 decimals, where stage_factor: Growth 1.5; Maturity 2.0; Retention 1.8; Activation 1.2; else 1.0. - retention_probability (DECIMAL(3,2)) by customer_health_score: ≥4.5→0.95; ≥4.0→0.85; ≥3.5→0.75; ≥3.0→0.65; ≥2.5→0.50; ≥2.0→0.35; else 0.20. - churn_probability (DECIMAL(3,2)) inverse mapping: ≥4.5→0.05; ≥4.0→0.15; ≥3.5→0.25; ≥3.0→0.35; ≥2.5→0.50; ≥2.0→0.65; else 0.80. - revenue_at_risk (DECIMAL(9,2)) = estimated_customer_value × churn-probability mapping above; rounded to 2 decimals. - growth_potential (first match wins): - ''High Growth Potential'' if lifecycle_stage in (''Acquisition'',''Activation'') and customer_health_score ≥ 3.5 - ''Expansion Ready'' if lifecycle_stage = ''Growth'' and platform_consistency_score ≥ 2 - ''Upsell Candidate'' if lifecycle_stage = ''Maturity'' and customer_health_score ≥ 4.0 - ''Stable Account'' if lifecycle_stage = ''Retention'' and customer_health_score ≥ 3.0 - ''Reactivation Needed'' if lifecycle_stage = ''Dormant'' - Else ''Monitor'' - action_priority (INT, first match wins): - 5 if churn-probability mapping ≥ 0.65 - 4 if lifecycle_stage = ''Acquisition'' and customer_health_score ≥ 3.5 - 4 if lifecycle_stage = ''Growth'' and platform_consistency_score ≥ 2 - 3 if customer_health_score ≥ 4.0 and estimated_customer_value ≥ 3000 - 3 if churn-probability mapping ≥ 0.35 - Else 2 - acquisition_year = year of acquisition_cohort_month; acquisition_month = month number; months_since_acquisition = whole months between acquisition_cohort_month and today; NULL if acquisition_cohort_month is NULL. - acquisition_season: ''Holiday Season'' if month in (11,12,1); ''Summer Season'' if in (6,7,8); ''Spring Season'' if in (3,4,5); else ''Fall Season'' (default for NULL or not matched). - Final enrichments: - customer_tier by estimated_customer_ltv: Platinum (≥8000), Gold (≥5000), Silver (≥2500), Bronze (≥1000), else Basic. - is_strategic_account = TRUE if estimated_customer_ltv ≥ 10000 OR (customer_segment in (''Champion'',''Loyal Customer'') AND platform_consistency_score = 3); else FALSE. - intervention_urgency by action_priority: 5→''Immediate''; 4→''This Week''; 3→''This Month''; else ''Routine''. - expected_retention_rate by LTV and lifecycle: 0.90 if LTV ≥ 8000; 0.85 if LTV ≥ 5000; 0.75 if LTV ≥ 2500 and lifecycle_stage ≠ ''Dormant''; 0.60 if LTV ≥ 1000 and lifecycle_stage in (''Growth'',''Maturity''); else 0.45. - performance_vs_expectation: ''Above Expectation'' if retention_probability > expected_retention_rate; ''Meeting Expectation'' if retention_probability ≥ 80% of expected_retention_rate; else ''Below Expectation''. - Output ordering: sorted by is_strategic_account (true first), then action_priority descending, then estimated_customer_ltv descending, then customer_health_score descending.'
+      columns:
+      - name: marketo_lead_id
+        data_type: BIGINT
+        description: Marketo lead identifier; may be NULL
+      - name: stripe_customer_id
+        data_type: VARCHAR
+        description: Stripe customer identifier
+      - name: zendesk_user_id
+        data_type: BIGINT
+        description: Zendesk user identifier; may be NULL
+      - name: primary_email
+        data_type: VARCHAR
+        description: Primary resolved customer email
+      - name: primary_organization
+        data_type: VARCHAR
+        description: Resolved customer organization or account label
+      - name: customer_first_touchpoint
+        data_type: TIMESTAMP
+        description: Earliest known customer interaction; used to derive acquisition_cohort_month
+      - name: customer_last_activity
+        data_type: TIMESTAMP
+        description: Most recent activity timestamp; used for recency and active window flags
+      - name: account_age_days
+        data_type: BIGINT
+        description: Account age in days; used in lifecycle_stage rules
+      - name: customer_segment
+        data_type: VARCHAR
+        description: Behavioral segment driving value and scoring rules
+      - name: customer_journey_pattern
+        data_type: VARCHAR
+        description: Descriptive journey pattern label
+      - name: days_since_last_activity
+        data_type: BIGINT
+        description: Days between customer_last_activity and today; NULL if customer_last_activity is NULL
+      - name: active_30_days
+        data_type: INTEGER
+        description: 1 if last_activity within 30 days of today, else 0; NULL last_activity yields 0
+      - name: active_60_days
+        data_type: INTEGER
+        description: 1 if last_activity within 60 days of today, else 0; NULL last_activity yields 0
+      - name: active_90_days
+        data_type: INTEGER
+        description: 1 if last_activity within 90 days of today, else 0; NULL last_activity yields 0
+      - name: active_180_days
+        data_type: INTEGER
+        description: 1 if last_activity within 180 days of today, else 0; NULL last_activity yields 0
+      - name: active_365_days
+        data_type: INTEGER
+        description: 1 if last_activity within 365 days of today, else 0; NULL last_activity yields 0
+      - name: lifecycle_stage
+        data_type: VARCHAR
+        description: 'Stage from ordered rules using account_age_days and recency: Acquisition, Activation, Growth, Maturity, Dormant, else Retention'
+      - name: acquisition_cohort_month
+        data_type: DATE
+        description: Month of first touchpoint; NULL if customer_first_touchpoint is NULL
+      - name: platform_consistency_score
+        data_type: INTEGER
+        description: 'Cross-platform presence score: 3 if all three sources, 2 if two, else 1; NULL flags fall through to 1'
+      - name: estimated_customer_value
+        data_type: DECIMAL(6,2)
+        description: Segment-based monetary value estimate with fixed mapping; never NULL
+      - name: frequency_score
+        data_type: INTEGER
+        description: Engagement frequency score (1–5) from platform consistency and recent activity per ordered rules
+      - name: recency_score
+        data_type: INTEGER
+        description: Recency score (1–5) from days_since_last_activity thresholds; NULL recency maps to 1
+      - name: estimated_transaction_count
+        data_type: DOUBLE
+        description: 'Simulated integer count: 2–9 for top segments, 1–4 for Potential Loyalist, else 0–1; varies each run'
+      - name: customer_health_score
+        data_type: DECIMAL(15,2)
+        description: 'Weighted composite: 0.3×recency_component + 0.3×platform_consistency + 0.4×segment_component; rounded to 2 decimals'
+      - name: estimated_customer_ltv
+        data_type: DECIMAL(18,2)
+        description: LTV estimate from value × frequency × platform × stage_factor; rounded to 2 decimals
+      - name: retention_probability
+        data_type: DECIMAL(3,2)
+        description: Probability mapped from customer_health_score thresholds (≥4.5→0.95 down to else 0.20)
+      - name: churn_probability
+        data_type: DECIMAL(3,2)
+        description: Inverse of retention mapping from customer_health_score (≥4.5→0.05 up to else 0.80)
+      - name: revenue_at_risk
+        data_type: DECIMAL(9,2)
+        description: Estimated_customer_value multiplied by churn mapping; rounded to 2 decimals
+      - name: growth_potential
+        data_type: VARCHAR
+        description: Categorical potential per ordered rules using lifecycle_stage, platform consistency, and health score
+      - name: action_priority
+        data_type: INTEGER
+        description: Next-action priority (2–5) from ordered rules using churn mapping, lifecycle, platform consistency, health, and value
+      - name: acquisition_year
+        data_type: BIGINT
+        description: Year extracted from acquisition_cohort_month; NULL if acquisition_cohort_month is NULL
+      - name: acquisition_month
+        data_type: BIGINT
+        description: Month number (1–12) extracted from acquisition_cohort_month; NULL if acquisition_cohort_month is NULL
+      - name: months_since_acquisition
+        data_type: BIGINT
+        description: Whole months between acquisition_cohort_month and today; NULL if acquisition_cohort_month is NULL
+      - name: acquisition_season
+        data_type: VARCHAR
+        description: 'Season by acquisition month: Holiday (11,12,1), Summer (6,7,8), Spring (3,4,5), else Fall (default for NULL/not matched)'
+      - name: customer_tier
+        data_type: VARCHAR
+        description: 'Tier by estimated_customer_ltv: Platinum (≥8000), Gold (≥5000), Silver (≥2500), Bronze (≥1000), else Basic'
+      - name: is_strategic_account
+        data_type: BOOLEAN
+        description: TRUE if estimated_customer_ltv ≥ 10000 or (segment in ('Champion','Loyal Customer') and platform_consistency_score = 3), else FALSE
+      - name: intervention_urgency
+        data_type: VARCHAR
+        description: 'Urgency label by action_priority: 5→Immediate; 4→This Week; 3→This Month; else Routine'
+      - name: expected_retention_rate
+        data_type: DECIMAL(3,2)
+        description: 'Expected rate by LTV and lifecycle: 0.90, 0.85, 0.75 (non-Dormant), 0.60 (Growth/Maturity), else 0.45'
+      - name: performance_vs_expectation
+        data_type: VARCHAR
+        description: 'Comparison of retention_probability vs expected_retention_rate: Above (>), Meeting (≥80%), or Below'
+
+
+## customer360__customer
+
+    - name: customer360__customer
+      description: Unified customer and organization header profile with pass-through attributes and deterministic sample metrics/aggregations.
+      grain: One row per customer360_id
+      source_models:
+      - marts.customer360__mapping
+      - marts.customer360__summary
+      business_logic: '1) Build a dimensions set by inner joining marts.customer360__mapping to marts.customer360__summary on customer360_id, selecting: customer360_organization_id, is_organization_header, source_ids (from mapping) and email, full_name, organization_name, address_line_1, address_line_2, city, state, country, country_alt_name, postal_code, ip_address, phone (from summary). Only ids present in both sources are kept; all fields are passed through as stored. 2) For non-organization headers (is_organization_header = FALSE), assign sample metrics per customer360_id: - For ''sample_customer_1'': sends=10, opens=3, clicks=1, sales_amount=1250.00, sales_count=2, first_sale_date=2024-01-15, most_recent_sale_date=2024-03-15, tickets_created=3, tickets_resolved=2, avg_satisfaction=4.5. - For all others: sends=5, opens=2, clicks=0, sales_amount=750.00, sales_count=1, first_sale_date=2024-02-10, most_recent_sale_date=2024-02-10, tickets_created=1, tickets_resolved=1, avg_satisfaction=5.0. 3) Combine dimensions with these metrics by customer360_id. For rows without assigned metrics (headers), set numeric metrics to 0 (including avg_satisfaction_score) and leave first_sale_date and most_recent_sale_date as NULL. 4) For organization headers only, produce one row per unique header by aggregating the combined dataset across the header’s own rows: sum email sends/opens/clicks, sum sales amount and sales count, take the earliest first_sale_date, the latest most_recent_sale_date, sum tickets created/resolved, and average the satisfaction score. Aggregations consider only header rows (child/customer rows are not included in header rollups); standard null handling applies to aggregates (nulls are ignored in averages; earliest/latest dates return NULL if all inputs are NULL). 5) Output includes all non-header rows from step 3 and the aggregated header rows from step 4 appended together. No specific output ordering is enforced.'
+      columns:
+      - name: customer360_id
+        data_type: VARCHAR
+        description: Primary identifier; one output row per id; also the join key between mapping and summary.
+      - name: customer360_organization_id
+        data_type: VARCHAR
+        description: Organization identifier from mapping; passed through unchanged.
+      - name: is_organization_header
+        data_type: BOOLEAN
+        description: TRUE for organization headers (included via header aggregation), FALSE for individual/non-header customers (receive sample metrics).
+      - name: source_ids
+        data_type: VARCHAR
+        description: Source system identifier(s) from mapping; passed through with original formatting.
+      - name: email
+        data_type: VARCHAR
+        description: Email from summary; passed through.
+      - name: full_name
+        data_type: VARCHAR
+        description: Full name from summary; passed through.
+      - name: organization_name
+        data_type: VARCHAR
+        description: Organization name from summary; passed through.
+      - name: address_line_1
+        data_type: VARCHAR
+        description: Address line 1 from summary; passed through.
+      - name: address_line_2
+        data_type: VARCHAR
+        description: Address line 2 from summary; passed through.
+      - name: city
+        data_type: VARCHAR
+        description: City from summary; passed through.
+      - name: state
+        data_type: VARCHAR
+        description: State/region from summary; passed through.
+      - name: country
+        data_type: VARCHAR
+        description: Country from summary; passed through.
+      - name: country_alt_name
+        data_type: VARCHAR
+        description: Alternative country name from summary; passed through.
+      - name: postal_code
+        data_type: BIGINT
+        description: Postal/ZIP code from summary stored as numeric; passed through.
+      - name: ip_address
+        data_type: VARCHAR
+        description: IP address from summary; passed through.
+      - name: phone
+        data_type: VARCHAR
+        description: Phone number from summary; passed through.
+      - name: marketing_email_sends
+        data_type: HUGEINT
+        description: 'Count of marketing emails sent; non-headers: 10 for ''sample_customer_1'' else 5; headers: summed across header rows; missing metrics default to 0.'
+      - name: marketing_email_opens
+        data_type: HUGEINT
+        description: 'Count of marketing email opens; non-headers: 3 for ''sample_customer_1'' else 2; headers: summed across header rows; missing metrics default to 0.'
+      - name: marketing_email_clicks
+        data_type: HUGEINT
+        description: 'Count of marketing email clicks; non-headers: 1 for ''sample_customer_1'' else 0; headers: summed across header rows; missing metrics default to 0.'
+      - name: total_sales_amount
+        data_type: DECIMAL(38,2)
+        description: 'Total sales amount; non-headers: 1250.00 for ''sample_customer_1'' else 750.00; headers: summed across header rows; missing metrics default to 0.00.'
+      - name: total_sales_count
+        data_type: HUGEINT
+        description: 'Total number of sales; non-headers: 2 for ''sample_customer_1'' else 1; headers: summed across header rows; missing metrics default to 0.'
+      - name: first_sale_date
+        data_type: DATE
+        description: 'First sale date; non-headers: 2024-01-15 for ''sample_customer_1'' else 2024-02-10; headers: earliest across header rows; NULL if no non-NULL values.'
+      - name: most_recent_sale_date
+        data_type: DATE
+        description: 'Most recent sale date; non-headers: 2024-03-15 for ''sample_customer_1'' else 2024-02-10; headers: latest across header rows; NULL if no non-NULL values.'
+      - name: support_tickets_created
+        data_type: HUGEINT
+        description: 'Count of support tickets created; non-headers: 3 for ''sample_customer_1'' else 1; headers: summed across header rows; missing metrics default to 0.'
+      - name: support_tickets_resolved
+        data_type: HUGEINT
+        description: 'Count of support tickets resolved; non-headers: 2 for ''sample_customer_1'' else 1; headers: summed across header rows; missing metrics default to 0.'
+      - name: avg_satisfaction_score
+        data_type: DOUBLE
+        description: 'Average satisfaction score; non-headers: 4.5 for ''sample_customer_1'' else 5.0; headers: averaged across header rows; missing metrics default to 0.0.'
+
+
+## customer360__customer_activity_metrics
+
+    - name: customer360__customer_activity_metrics
+      description: Customer activity and engagement metrics across marketing, sales, and support with recency, velocity, depth, risk, and intervention signals
+      grain: One row per primary_email
+      source_models:
+      - intermediate.int_customer360__customer_behavior_analysis
+      - intermediate.int_customer360__customer_lifecycle_metrics
+      - intermediate.int_customer360__marketo
+      - intermediate.int_customer360__stripe
+      - intermediate.int_customer360__zendesk
+      business_logic: 'Overview - Start from behavior_analysis (intermediate.int_customer360__customer_behavior_analysis, one row per customer) and left join lifecycle_metrics (intermediate.int_customer360__customer_lifecycle_metrics) on primary_email. - Enrich with platform data via left joins on platform IDs: - Marketo: intermediate.int_customer360__marketo on lead_id - Stripe: intermediate.int_customer360__stripe on customer_id - Zendesk: intermediate.int_customer360__zendesk on user_id - Filter: exclude rows where primary_email is NULL; no de-duplication beyond joins. - Time anchors: current_date for recency calculations and current_timestamp for activity_analysis_timestamp; results vary by execution time. - Ordering: rows are sorted by activity_priority_score (desc), then weighted_engagement_score (desc), then active_channel_count (desc). Activity recency and counts - days/weeks/months_since_last_activity: difference between customer_last_activity and current_date by unit; returns NULL if customer_last_activity is NULL. - active_channel_count: integer sum (in_marketo + in_stripe + in_zendesk); if any flag is NULL the sum becomes NULL; expected domain is 0–3 from 0/1 flags. Estimated and adjusted activity (stochastic components) - estimated_monthly_activities: simulated with random() per run based on composite_engagement_score: - >=4.0 → 15 + floor(random()*10) ∈ [15,24] - >=3.0 → 8 + floor(random()*7) ∈ [8,14] - >=2.0 → 3 + floor(random()*5) ∈ [3,7] - >=1.0 → 1 + floor(random()*3) ∈ [1,3] - else → floor(random()*2) ∈ [0,1] - Note: random() yields different results each execution; this column is non-deterministic by design. - seasonally_adjusted_activity: estimated_monthly_activities multiplied by a month factor (Nov/Dec/Jan ×1.2; Jun/Jul/Aug ×0.8; else ×1.0); no rounding. - predicted_next_month_activity: estimated_monthly_activities multiplied by a factor from engagement_velocity category (Accelerating ×1.3; Steady High ×1.1; Steady Medium ×1.0; Declining ×0.7; Slow ×0.4; Stagnant ×0.2); no rounding. Engagement velocity, momentum, maturity (rule-based categories) - engagement_velocity (uses activity recency and composite_engagement_score): - <=7 days and score>=3.0 → Accelerating - <=14 days and score>=2.5 → Steady High - <=30 days and score>=2.0 → Steady Medium - <=60 days → Declining - <=90 days → Slow - else → Stagnant - activity_momentum (uses days_since_last_activity and composite_engagement_score): - <=7 days and score>=3.5 → High Momentum - <=14 days and score>=3.0 → Medium Momentum - <=30 days and score>=2.0 → Low Momentum - <=60 days → Losing Momentum - else → No Momentum - engagement_maturity (uses account_age_days and active_channel_count): - age>=365 and channels>=3 → Mature Multi-channel - age>=180 and channels>=2 → Developing Multi-channel - age>=90 and channels>=1 → Single Channel Engaged - age<90 → Early Stage - else → Minimal Engagement Channel scores and depths - marketing_engagement_score: if in_marketo=1 and is_unsubscribed=false and is_email_invalid=false then round(marketo_engagement × (1 − days since last Marketo update / 90), 2); else 0; may be negative; if the last update timestamp is NULL the result is NULL in the true branch. - sales_engagement_score: if in_stripe=1 and is_deleted=false and is_delinquent=false then round(stripe_engagement × (1 − days since last Stripe update / 60), 2); else 0; may be negative; NULL if the last update timestamp is NULL in the true branch. - support_engagement_score: if in_zendesk=1 and is_active=true and is_suspended=false and is_deleted=false then round(zendesk_engagement × (1 − days since last Zendesk update / 120), 2); else 0; may be negative; NULL if the last update timestamp is NULL in the true branch. - primary_engagement_channel: choose the channel with the highest raw engagement; ties break in order Marketing Driven > Sales Driven > Support Driven; if comparisons do not resolve (e.g., NULL inputs) fallback is Balanced. - marketing_depth/sales_depth/support_depth (per channel): if in_* = 1: engagement>=4 → Deep; engagement>=2 → Medium; else → Shallow; if in_*=0 → None. Cross-platform and composite scores - cross_platform_consistency: round( average of raw engagement across platforms where in_*=1, 2 decimals ); returns NULL if no active platforms or if any included operand (flags or raw engagements) is NULL. - activity_efficiency: round(composite_engagement_score divided by active_channel_count, 2); NULL if active_channel_count is 0 or NULL. - weighted_engagement_score: round(0.3×marketing_engagement_score (NULL→0) + 0.5×sales_engagement_score (NULL→0) + 0.2×support_engagement_score (NULL→0), 2); can be negative. - activity_grade: from weighted_engagement_score and active_channel_count: >=4.0 & channels>=3 → A+; >=3.5 & channels>=2 → A; >=3.0 → B+; >=2.5 → B; >=2.0 → C+; >=1.5 → C; >=1.0 → D; else → F. - activity_priority_score: round(0.4×weighted_engagement_score + 0.3×active_channel_count + 0.3×priority_component, 2) where priority_component is 5/4/3/2/1 by recency+composite rules (<=7 days & score>=3.5 → 5; <=14 & score>=3.0 → 4; <=30 & score>=2.0 → 3; <=60 → 2; else → 1). Risk and interventions - activity_risk_level: if days_since_last_activity>90 and customer_health_score<3.0 → High Activity Risk; else if days_since_last_activity>60 or active_channel_count=1 → Medium Activity Risk; else if days_since_last_activity>30 → Low Activity Risk; else → No Activity Risk. - recommended_activity_intervention (evaluated top-to-bottom): Declining/Slow/Stagnant with health>=3.0 → Re-engagement Campaign; else single channel (count=1) with composite>=2.5 → Channel Expansion; else Marketing Driven with in_stripe=0 → Sales Conversion Focus; else Sales Driven with in_zendesk=0 → Success Onboarding; else recent (<=7 days) with composite>=3.5 → Upsell Opportunity; else Standard Engagement.'
+      columns:
+      - name: marketo_lead_id
+        data_type: BIGINT
+        description: Marketo lead identifier sourced from behavior_analysis; may be NULL if not matched
+      - name: stripe_customer_id
+        data_type: VARCHAR
+        description: Stripe customer identifier sourced from behavior_analysis; may be NULL if not matched
+      - name: zendesk_user_id
+        data_type: BIGINT
+        description: Zendesk user identifier sourced from behavior_analysis; may be NULL if not matched
+      - name: primary_email
+        data_type: VARCHAR
+        description: Customer email key; rows with NULL are excluded from output; grain is one row per primary_email
+      - name: primary_organization
+        data_type: VARCHAR
+        description: Customer organization from behavior_analysis; passthrough value
+      - name: customer_segment
+        data_type: VARCHAR
+        description: Customer segment from behavior_analysis; passthrough value
+      - name: customer_journey_pattern
+        data_type: VARCHAR
+        description: Journey pattern label from behavior_analysis; passthrough value
+      - name: lifecycle_stage
+        data_type: VARCHAR
+        description: Lifecycle stage from lifecycle_metrics joined on primary_email; may be NULL
+      - name: composite_engagement_score
+        data_type: DECIMAL(14,1)
+        description: Base composite engagement score from behavior_analysis; used by multiple downstream rules without further rounding
+      - name: weighted_engagement_score
+        data_type: DOUBLE
+        description: 0.3*marketing_engagement_score + 0.5*sales_engagement_score + 0.2*support_engagement_score rounded to 2 decimals; NULL channel scores treated as 0; may be negative
+      - name: customer_health_score
+        data_type: DECIMAL(15,2)
+        description: Health score from lifecycle_metrics; passthrough value used in risk and intervention logic
+      - name: activity_grade
+        data_type: VARCHAR
+        description: 'Letter grade from weighted_engagement_score and active_channel_count with thresholds: A+, A, B+, B, C+, C, D, F as defined in Business Logic'
+      - name: activity_priority_score
+        data_type: DOUBLE
+        description: 'Priority score rounded to 2 decimals: 0.4*weighted_engagement_score + 0.3*active_channel_count + 0.3*recency_component (5–1) per rules'
+      - name: days_since_last_activity
+        data_type: BIGINT
+        description: Number of days between customer_last_activity and current_date; NULL if customer_last_activity is NULL
+      - name: weeks_since_last_activity
+        data_type: BIGINT
+        description: Number of weeks between customer_last_activity and current_date; NULL if customer_last_activity is NULL
+      - name: months_since_last_activity
+        data_type: BIGINT
+        description: Number of months between customer_last_activity and current_date; NULL if customer_last_activity is NULL
+      - name: account_age_days
+        data_type: BIGINT
+        description: Account age in days from behavior_analysis; passthrough value used in maturity logic
+      - name: active_channel_count
+        data_type: INTEGER
+        description: Sum of in_marketo + in_stripe + in_zendesk (expected 0–3); NULL if any flag is NULL
+      - name: primary_engagement_channel
+        data_type: VARCHAR
+        description: Channel with highest raw engagement; ties break Marketing Driven > Sales Driven > Support Driven; fallback Balanced when comparisons cannot be resolved (e.g., NULL inputs)
+      - name: marketing_engagement_score
+        data_type: DOUBLE
+        description: If in_marketo=1 and not unsubscribed/invalid then mark_engagement×(1 − days since last update/90) rounded to 2 decimals; else 0; may be negative or NULL if updated_at is NULL in the true branch
+      - name: sales_engagement_score
+        data_type: DOUBLE
+        description: If in_stripe=1 and not deleted and not delinquent then stripe_engagement×(1 − days since last update/60) rounded to 2 decimals; else 0; may be negative or NULL if updated_at is NULL in the true branch
+      - name: support_engagement_score
+        data_type: DOUBLE
+        description: If in_zendesk=1 and active and not suspended/deleted then zendesk_engagement×(1 − days since last update/120) rounded to 2 decimals; else 0; may be negative or NULL if updated_at is NULL in the true branch
+      - name: marketing_depth
+        data_type: VARCHAR
+        description: 'Depth within Marketo: if in_marketo=1 then engagement>=4 Deep, >=2 Medium, else Shallow; if in_marketo=0 then None'
+      - name: sales_depth
+        data_type: VARCHAR
+        description: 'Depth within Stripe: if in_stripe=1 then engagement>=4 Deep, >=2 Medium, else Shallow; if in_stripe=0 then None'
+      - name: support_depth
+        data_type: VARCHAR
+        description: 'Depth within Zendesk: if in_zendesk=1 then engagement>=4 Deep, >=2 Medium, else Shallow; if in_zendesk=0 then None'
+      - name: engagement_velocity
+        data_type: VARCHAR
+        description: 'Velocity category from recency and composite_engagement_score: Accelerating, Steady High, Steady Medium, Declining, Slow, or Stagnant per thresholds'
+      - name: activity_momentum
+        data_type: VARCHAR
+        description: 'Momentum category from days_since_last_activity and composite_engagement_score: High/Medium/Low Momentum, Losing Momentum, or No Momentum per thresholds'
+      - name: engagement_maturity
+        data_type: VARCHAR
+        description: 'Maturity category from account_age_days and active_channel_count: Mature Multi-channel, Developing Multi-channel, Single Channel Engaged, Early Stage, or Minimal Engagement'
+      - name: estimated_monthly_activities
+        data_type: DOUBLE
+        description: Simulated integer in defined ranges using random() and composite_engagement_score; stochastic and varies each run
+      - name: predicted_next_month_activity
+        data_type: DOUBLE
+        description: Estimated future activity = estimated_monthly_activities × factor from engagement_velocity (1.3/1.1/1.0/0.7/0.4/0.2); not rounded
+      - name: seasonally_adjusted_activity
+        data_type: DOUBLE
+        description: 'Estimated_monthly_activities adjusted by month: Nov–Jan ×1.2, Jun–Aug ×0.8, else ×1.0; not rounded'
+      - name: active_30_days
+        data_type: INTEGER
+        description: Activity metric for last 30 days from lifecycle_metrics; passthrough
+      - name: active_60_days
+        data_type: INTEGER
+        description: Activity metric for last 60 days from lifecycle_metrics; passthrough
+      - name: active_90_days
+        data_type: INTEGER
+        description: Activity metric for last 90 days from lifecycle_metrics; passthrough
+      - name: active_180_days
+        data_type: INTEGER
+        description: Activity metric for last 180 days from lifecycle_metrics; passthrough
+      - name: active_365_days
+        data_type: INTEGER
+        description: Activity metric for last 365 days from lifecycle_metrics; passthrough
+      - name: activity_risk_level
+        data_type: VARCHAR
+        description: 'Risk category from days_since_last_activity, customer_health_score, and active_channel_count: High/Medium/Low/No Activity Risk per rules'
+      - name: cross_platform_consistency
+        data_type: DOUBLE
+        description: Average of raw engagement across active platforms (in_*=1) rounded to 2 decimals; NULL if no active platforms or any included operand is NULL
+      - name: activity_efficiency
+        data_type: DOUBLE
+        description: Composite_engagement_score divided by active_channel_count rounded to 2 decimals; NULL if denominator is 0 or NULL
+      - name: recommended_activity_intervention
+        data_type: VARCHAR
+        description: 'Intervention label evaluated in order: Re-engagement Campaign, Channel Expansion, Sales Conversion Focus, Success Onboarding, Upsell Opportunity, else Standard Engagement'
+      - name: in_marketo
+        data_type: INTEGER
+        description: Channel presence flag from behavior_analysis (expected 0/1); used in counts and conditional logic; may be NULL
+      - name: in_stripe
+        data_type: INTEGER
+        description: Channel presence flag from behavior_analysis (expected 0/1); used in counts and conditional logic; may be NULL
+      - name: in_zendesk
+        data_type: INTEGER
+        description: Channel presence flag from behavior_analysis (expected 0/1); used in counts and conditional logic; may be NULL
+      - name: is_unsubscribed
+        data_type: BOOLEAN
+        description: Marketo unsubscribe flag from platform data; influences marketing_engagement_score
+      - name: is_email_invalid
+        data_type: BOOLEAN
+        description: Marketo invalid email flag from platform data; influences marketing_engagement_score
+      - name: do_not_call
+        data_type: BOOLEAN
+        description: Marketo do-not-call flag from platform data; passthrough
+      - name: is_delinquent
+        data_type: BOOLEAN
+        description: Stripe delinquency flag from platform data; influences sales_engagement_score
+      - name: stripe_deleted
+        data_type: BOOLEAN
+        description: Stripe deletion flag from platform data; influences sales_engagement_score
+      - name: zendesk_active
+        data_type: BOOLEAN
+        description: Zendesk active flag from platform data; required true for support_engagement_score to be computed
+      - name: zendesk_suspended
+        data_type: BOOLEAN
+        description: Zendesk suspended flag from platform data; must be false for support_engagement_score to be computed
+      - name: zendesk_deleted
+        data_type: BOOLEAN
+        description: Zendesk deletion flag from platform data; must be false for support_engagement_score to be computed
+      - name: customer_first_touchpoint
+        data_type: TIMESTAMP
+        description: First touch timestamp from behavior_analysis; passthrough
+      - name: customer_last_activity
+        data_type: TIMESTAMP
+        description: Most recent activity timestamp from behavior_analysis; drives recency metrics
+      - name: marketo_registration_date
+        data_type: TIMESTAMP
+        description: Marketo created_at from platform data; passthrough
+      - name: stripe_registration_date
+        data_type: TIMESTAMP
+        description: Stripe created_at from platform data; passthrough
+      - name: zendesk_registration_date
+        data_type: TIMESTAMP
+        description: Zendesk created_at from platform data; passthrough
+      - name: activity_analysis_timestamp
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Current timestamp at model execution time; changes each run and reflects generation time
+
+
+## customer360__customer_value_analysis
+
+    - name: customer360__customer_value_analysis
+      description: Customer value analysis with RFM, adjusted LTV, portfolio metrics, risk and engagement recommendations
+      grain: One row per customer (from int_customer360__customer_lifecycle_metrics) with non-null primary_email
+      source_models:
+      - intermediate.int_customer360__customer_lifecycle_metrics
+      business_logic: 'Starting from intermediate.int_customer360__customer_lifecycle_metrics (aliased lm), compute RFM metrics and value segments, then portfolio and recommendation metrics; finally filter to rows where primary_email is not NULL and sort for presentation (sorting does not affect metric values). - Monetary score: bucket lm.estimated_customer_value into {>=5000→5, >=3000→4, >=1500→3, >=800→2, else 1}. - RFM score string: concatenate recency_score, frequency_score, and monetary_score with no delimiter in R-F-M order; if any component is NULL the result is NULL. - RFM average: average of recency_score, frequency_score, and monetary_score, rounded to 2 decimals; NULL if any component is NULL. - RFM segment: apply deterministic rules in this order: rfm_avg_score≥4.5→Champions; rfm_avg_score≥4.0 and recency_score≥4→Loyal Customers; rfm_avg_score≥3.5 and monetary_score≥4→Potential Loyalists; recency_score≥4 and frequency_score≤2→New Customers; recency_score≥3 and frequency_score≤2 and monetary_score≤2→Promising; recency_score≥3 and monetary_score≥3→Customers Needing Attention; recency_score≤2 and frequency_score≥3→At Risk; recency_score≤2 and frequency_score≤2 and monetary_score≥4→Cannot Lose Them; recency_score≤1 and frequency_score≥2→Hibernating; else Lost. - Adjusted LTV: estimated_customer_ltv multiplied by lifecycle_stage multiplier {Acquisition 0.3, Activation 0.6, Growth 1.2, Maturity 1.0, Retention 0.8, else 0.5}; not explicitly rounded; stored with 3-decimal precision. - Revenue tier: by estimated_customer_ltv thresholds {≥10000 Tier 1 - Strategic; ≥5000 Tier 2 - High Value; ≥2500 Tier 3 - Core; ≥1000 Tier 4 - Developing; else Tier 5 - Basic}. - Value stability: by customer_health_score and churn_probability {≥4.0 and ≤0.20→High Stability; ≥3.0 and ≤0.40→Medium Stability; ≥2.0 and ≤0.60→Low Stability; else Unstable}. - Upsell potential: {rfm_avg_score≥4.0 and frequency_score≥4→High Upsell; rfm_avg_score≥3.5 and monetary_score≥3→Medium Upsell; recency_score≥4 and frequency_score≤2→Cross-sell Focus; else Retention Focus}. - Expected annual revenue: compute adjusted_ltv × (1 − churn_probability) divided by the age denominator (account_age_days/365.0 when account_age_days≥365, otherwise 1); round to 2 decimals; returns NULL if adjusted_ltv or churn_probability is NULL. - Portfolio contribution pct: adjusted_ltv divided by the total adjusted_ltv across all customers in the portfolio (computed before the final email filter), multiplied by 100 and rounded to 4 decimals; NULL when the portfolio total is 0 or NULL. - Concentration risk: by adjusted_ltv {≥50000→High Concentration Risk; ≥20000→Medium Concentration Risk; else Low Concentration Risk}. - Investment priority score: weighted composite of rfm_segment (40%), revenue_tier (30%), and churn risk (30%), rounded to 2 decimals; segment weights {Champions 5; Loyal Customers 4.5; Potential Loyalists 4; New Customers 3.5; Promising 3; Customers Needing Attention 4.5; At Risk 5; Cannot Lose Them 5; Hibernating 2; else 1}; revenue tier weights {Tier 1 - Strategic 5; Tier 2 - High Value 4; Tier 3 - Core 3; Tier 4 - Developing 2; else 1}; churn risk weights by churn_probability {≥0.70→5; ≥0.50→4; ≥0.30→3; ≥0.10→2; else 1}. - Acquisition ROI assessment: by expected_annual_revenue {≥5000→Excellent ROI; ≥2000→Good ROI; ≥1000→Acceptable ROI; ≥500→Marginal ROI; else→Poor ROI}. - Strategic classification: combine rfm_segment and revenue_tier: {(Champions, Cannot Lose Them)∧(Tier 1, Tier 2)→Strategic Account; (Loyal Customers, Potential Loyalists)∧(Tier 2, Tier 3)→Key Account; (New Customers, Promising)∧(Tier 3, Tier 4)→Growth Account; (At Risk, Hibernating)∧(Tier 1, Tier 2)→Recovery Account; else→Standard Account}. - Recommended engagement model: map strategic_classification {Strategic→Executive Relationship Management; Key→Dedicated Account Management; Growth→Expansion Programs; Recovery→Retention & Recovery Initiatives; else→Standard Engagement}. - Investment recommendation: by investment_priority_score {≥4.5→High Investment; ≥3.5→Medium Investment; ≥2.5→Standard Investment; else→Minimal Investment}. - Success target: by rfm_segment {Champions/Loyal Customers→Maintain Excellence; Potential Loyalists/Customers Needing Attention→Drive Engagement; New Customers/Promising→Accelerate Onboarding; At Risk/Cannot Lose Them→Immediate Intervention; else→Reactivation Required}. - Revenue risk percentage: churn_probability expressed as a percentage rounded to 2 decimals; NULL if adjusted_ltv is NULL or zero. - Development opportunity: by upsell_potential and value_stability {High Upsell∧High Stability→Premium Growth; High/Medium Upsell→Expansion Ready; Cross-sell Focus→Product Adoption; else→Value Preservation}. - Analysis timestamp: set at query execution time (time zone preserved). - Final filter and ordering: keep only rows with primary_email IS NOT NULL; order by investment_priority_score desc, adjusted_ltv desc, customer_health_score desc.'
+      columns:
+      - name: marketo_lead_id
+        data_type: BIGINT
+        description: Marketo lead identifier from lifecycle metrics; may be NULL if not available
+      - name: stripe_customer_id
+        data_type: VARCHAR
+        description: Stripe customer identifier from lifecycle metrics; opaque string; may be NULL
+      - name: zendesk_user_id
+        data_type: BIGINT
+        description: Zendesk user identifier from lifecycle metrics; may be NULL
+      - name: primary_email
+        data_type: VARCHAR
+        description: Primary customer email; final result filters to non-NULL values
+      - name: primary_organization
+        data_type: VARCHAR
+        description: Customer organization name from lifecycle metrics; free text; may be NULL
+      - name: customer_segment
+        data_type: VARCHAR
+        description: Upstream segment label from lifecycle metrics; not recomputed here
+      - name: customer_tier
+        data_type: VARCHAR
+        description: Upstream customer tier from lifecycle metrics; not recomputed here
+      - name: rfm_segment
+        data_type: VARCHAR
+        description: Deterministic RFM segment per case rules using rfm_avg_score, recency_score, frequency_score, and monetary_score
+      - name: rfm_score
+        data_type: VARCHAR
+        description: Three-digit string formed by concatenating recency, frequency, and monetary scores in R-F-M order with no delimiter; NULL if any component is NULL
+      - name: rfm_avg_score
+        data_type: DOUBLE
+        description: Average of recency_score, frequency_score, and monetary_score rounded to 2 decimals; NULL if any component is NULL
+      - name: recency_score
+        data_type: INTEGER
+        description: Recency score from lifecycle metrics (expected 1–5); higher is more recent; may be NULL
+      - name: frequency_score
+        data_type: INTEGER
+        description: Frequency score from lifecycle metrics (expected 1–5); higher is more frequent; may be NULL
+      - name: monetary_score
+        data_type: INTEGER
+        description: 'Derived spend score (1–5) bucketed from estimated_customer_value using thresholds: >=5000, >=3000, >=1500, >=800, else 1'
+      - name: estimated_customer_ltv
+        data_type: DECIMAL(18,2)
+        description: Upstream estimated customer lifetime value in source currency with 2-decimal precision; may be NULL
+      - name: adjusted_ltv
+        data_type: DECIMAL(18,3)
+        description: 'Lifecycle-stage-adjusted LTV (multipliers: Acquisition 0.3, Activation 0.6, Growth 1.2, Maturity 1.0, Retention 0.8, else 0.5) stored with 3-decimal precision; not explicitly rounded in SQL'
+      - name: expected_annual_revenue
+        data_type: DOUBLE
+        description: Adjusted LTV × (1 − churn_probability) divided by account_age_days/365.0 when age≥365, otherwise by 1; rounded to 2 decimals; NULL if adjusted_ltv or churn_probability is NULL
+      - name: revenue_tier
+        data_type: VARCHAR
+        description: 'Tier based on estimated_customer_ltv: >=10000 Tier 1 - Strategic; >=5000 Tier 2 - High Value; >=2500 Tier 3 - Core; >=1000 Tier 4 - Developing; else Tier 5 - Basic'
+      - name: strategic_classification
+        data_type: VARCHAR
+        description: 'Account class from rfm_segment and revenue_tier: Strategic, Key, Growth, Recovery, or Standard per deterministic mapping'
+      - name: value_stability
+        data_type: VARCHAR
+        description: 'Stability category by customer_health_score and churn_probability: High, Medium, Low, or Unstable per thresholds'
+      - name: upsell_potential
+        data_type: VARCHAR
+        description: 'Opportunity label from RFM metrics: High Upsell, Medium Upsell, Cross-sell Focus, or Retention Focus'
+      - name: churn_probability
+        data_type: DECIMAL(3,2)
+        description: Probability of churn in [0.00,1.00] from lifecycle metrics; used directly in downstream formulas
+      - name: potential_revenue_loss
+        data_type: DECIMAL(18,2)
+        description: Product of adjusted LTV and churn_probability rounded to 2 decimals; NULL if either input is NULL
+      - name: revenue_risk_percentage
+        data_type: DOUBLE
+        description: Churn probability expressed as a percentage rounded to 2 decimals; NULL if adjusted_ltv is NULL or zero
+      - name: portfolio_contribution_pct
+        data_type: DOUBLE
+        description: Adjusted LTV as a percentage of total adjusted LTV across all customers (before email filter), rounded to 4 decimals; NULL when the portfolio total is 0 or NULL
+      - name: concentration_risk
+        data_type: VARCHAR
+        description: 'Risk bucket by adjusted_ltv: >=50000 High, >=20000 Medium, else Low Concentration Risk'
+      - name: investment_priority_score
+        data_type: DECIMAL(15,2)
+        description: Weighted composite of segment (40%), revenue tier (30%), and churn risk (30%), rounded to 2 decimals
+      - name: acquisition_roi_assessment
+        data_type: VARCHAR
+        description: 'ROI category by expected_annual_revenue: Excellent, Good, Acceptable, Marginal, or Poor ROI'
+      - name: recommended_engagement_model
+        data_type: VARCHAR
+        description: 'Engagement model derived from strategic_classification: Executive, Dedicated AM, Expansion Programs, Retention & Recovery, or Standard'
+      - name: investment_recommendation
+        data_type: VARCHAR
+        description: 'Allocation suggestion by investment_priority_score: High, Medium, Standard, or Minimal Investment'
+      - name: success_target
+        data_type: VARCHAR
+        description: 'Customer success focus by rfm_segment: Maintain Excellence, Drive Engagement, Accelerate Onboarding, Immediate Intervention, or Reactivation Required'
+      - name: development_opportunity
+        data_type: VARCHAR
+        description: 'Opportunity theme by upsell_potential and value_stability: Premium Growth, Expansion Ready, Product Adoption, or Value Preservation'
+      - name: customer_health_score
+        data_type: DECIMAL(15,2)
+        description: Upstream health score (higher is better) used in stability scoring; 2-decimal precision
+      - name: lifecycle_stage
+        data_type: VARCHAR
+        description: Customer lifecycle stage from lifecycle metrics (e.g., Acquisition, Activation, Growth, Maturity, Retention)
+      - name: risk_category
+        data_type: VARCHAR
+        description: 'Risk bucket by churn_probability: >=0.70 High Risk; >=0.50 Medium Risk; >=0.30 Low Risk; else Minimal Risk'
+      - name: account_age_days
+        data_type: BIGINT
+        description: Age of account in days from lifecycle metrics; used to normalize expected_annual_revenue
+      - name: days_since_last_activity
+        data_type: BIGINT
+        description: Days since the last activity from lifecycle metrics; passthrough field
+      - name: analysis_timestamp
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Evaluation timestamp set at query execution; includes time zone
+
+
+
+
+=== Premises recorded in earlier reviews ===
+[
+  {
+    "statement": "Customer lifecycle frequency scoring does not need to distinguish recently active customers who qualify for scores 4 or 5.",
+    "about": "requirement",
+    "target": "intermediate.int_customer360__customer_lifecycle_metrics.frequency_score",
+    "evidence_of_dependence": "case when platform_sum>=2 and active_90_days=1 then 3 when active_180_days=1 then 2 else 1 end as frequency_score",
+    "alternative": "The contract requires \"5 if platform_consistency_score = 3 and active_30_days = 1; 4 if platform_consistency_score ≥ 2 and active_60_days = 1\" before evaluating the score-3 condition.",
+    "importance": 5,
+    "reason": "Omitting the highest frequency scores can change LTV, tiers, strategic-account flags, and downstream recommendations.",
+    "updates": null,
+    "id": "c2-1",
+    "call": 2
+  },
+  {
+    "statement": "Zendesk organization timestamps are eligible inputs to the overall customer updated_at and created_at extrema.",
+    "about": "requirement",
+    "target": "intermediate.int_customer360__source_matches.marketo_updated_at and marketo_created_at",
+    "evidence_of_dependence": "greatest(ms_m_updated, ms_s_updated, mz_m_updated, mz_z_updated, mz_zo_updated, sz_s_updated, sz_z_updated, sz_zo_updated)",
+    "alternative": "The contract specifies extrema among \"the Marketo, Stripe, and Zendesk updated_at values\" and separately specifies Zendesk organization timestamp outputs.",
+    "importance": 4,
+    "reason": "Organization creation or update dates can move the overall customer timestamps beyond the platform record timestamps.",
+    "updates": null,
+    "id": "c2-2",
+    "call": 2
+  },
+  {
+    "statement": "An empty Stripe customer ID can be treated as equal to a missing Marketo–Stripe customer ID when merging pairwise matches.",
+    "about": "requirement",
+    "target": "intermediate.int_customer360__source_matches.merged_market",
+    "evidence_of_dependence": "coalesce(ms.stripe_id, '') = sz.stripe_id",
+    "alternative": "The contract says to join \"when either Stripe customer ID matches or Zendesk user ID matches\" and does not prescribe replacing NULL IDs with empty strings.",
+    "importance": 4,
+    "reason": "This substitution can link otherwise unrelated matches and multiply output rows if empty customer IDs occur.",
+    "updates": null,
+    "id": "c2-3",
+    "call": 2
+  },
+  {
+    "statement": "Every Stripe–Zendesk pairwise row with a NULL customer ID or user ID already attached to merged_market is absent from the input.",
+    "about": "data",
+    "target": "intermediate.int_customer360__source_matches.all_matches",
+    "evidence_of_dependence": "where not exists (select 1 from merged_market mm where mm.sz_stripe_id = sz.stripe_id and mm.sz_zendesk_id = sz.zendesk_id)",
+    "alternative": "The contract permits NULL Stripe customer IDs and Zendesk user IDs and requires a full outer join that retains all resulting rows.",
+    "importance": 4,
+    "reason": "Ordinary equality cannot recognize an attached pair with a NULL ID, so the unmatched-row emulation can append that pair again.",
+    "updates": null,
+    "id": "c2-4",
+    "call": 2
+  },
+  {
+    "statement": "When multiple valid country records normalize to the same alpha-2 code, retaining the first record ordered by country name and alpha-3 code is the required conflict-resolution policy.",
+    "about": "requirement",
+    "target": "staging.stg_customer360__country_codes",
+    "evidence_of_dependence": "row_number() over (partition by country_code_alpha_2 order by country_name, country_code_alpha_3) as _row_num",
+    "alternative": "The contract declares country_code_alpha_2 \"[not_null, unique]\" but does not specify which conflicting record should survive.",
+    "importance": 3,
+    "reason": "The selection policy determines which country names and codes become authoritative reference data.",
+    "updates": null,
+    "id": "c2-5",
+    "call": 2
+  },
+  {
+    "statement": "The required ordering of customer behavior results may be omitted.",
+    "about": "requirement",
+    "target": "intermediate.int_customer360__customer_behavior_analysis",
+    "evidence_of_dependence": "from labels\nwhere primary_email is not null",
+    "alternative": "The contract requires \"Order rows by composite_engagement_score descending, then account_age_days descending\".",
+    "importance": 3,
+    "reason": "The generated query does not enforce the explicitly requested result ordering.",
+    "updates": null,
+    "id": "c2-6",
+    "call": 2
+  },
+  {
+    "statement": "The required ordering of customer lifecycle results may be omitted.",
+    "about": "requirement",
+    "target": "intermediate.int_customer360__customer_lifecycle_metrics",
+    "evidence_of_dependence": "growth_potential, action_priority\nfrom completed",
+    "alternative": "The contract requires sorting by \"is_strategic_account (true first), then action_priority descending, then estimated_customer_ltv descending, then customer_health_score descending\".",
+    "importance": 3,
+    "reason": "Consumers cannot rely on the prescribed prioritization order without an explicit ordering step.",
+    "updates": null,
+    "id": "c2-7",
+    "call": 2
+  },
+  {
+    "statement": "Activity windows measured relative to today should use the execution-time instant rather than the start of the current date.",
+    "about": "requirement",
+    "target": "intermediate.int_customer360__customer_lifecycle_metrics.active_30_days through active_365_days",
+    "evidence_of_dependence": "customer_last_activity >= current_timestamp - interval '30 days'",
+    "alternative": "The contract describes activity as occurring \"within X days of today\" and defines recency in days relative to today, which also supports a current_date-based boundary.",
+    "importance": 3,
+    "reason": "Different boundary conventions can change activity flags, lifecycle stages, frequency scores, and LTV.",
+    "updates": null,
+    "id": "c2-8",
+    "call": 2
+  },
+  {
+    "statement": "A customer becomes Dormant only after the day difference from last activity to current_date exceeds 180.",
+    "about": "requirement",
+    "target": "intermediate.int_customer360__customer_lifecycle_metrics.lifecycle_stage",
+    "evidence_of_dependence": "when days_since_last_activity > 180 then 'Dormant'",
+    "alternative": "The contract says \"Dormant if last_activity older than 180 days\", which can instead mean an elapsed-time comparison consistent with the timestamp-based activity windows.",
+    "importance": 2,
+    "reason": "Customers near the 180-day boundary can receive different lifecycle stages and associated enrichments.",
+    "updates": null,
+    "id": "c2-9",
+    "call": 2
+  },
+  {
+    "statement": "The customer behavior churn-risk cutoff of more than 90 days ago should be measured from the execution-time instant.",
+    "about": "requirement",
+    "target": "intermediate.int_customer360__customer_behavior_analysis.churn_risk_level",
+    "evidence_of_dependence": "when last_activity < current_timestamp - interval '90 days' then 'Medium Risk'",
+    "alternative": "The contract says \"customer_last_activity is more than 90 days ago\" without specifying whether the boundary is elapsed time or calendar days.",
+    "importance": 2,
+    "reason": "The interpretation changes risk labels for customers near the cutoff.",
+    "updates": null,
+    "id": "c2-10",
+    "call": 2
+  },
+  {
+    "statement": "Nickname rows whose canonical name or nickname becomes empty after trimming must be deleted.",
+    "about": "requirement",
+    "target": "staging.stg_customer360__nicknames",
+    "evidence_of_dependence": "where canonical_name is not null and trim(canonical_name) <> '' and nickname is not null and trim(nickname) <> ''",
+    "alternative": "The contract specifies not_null constraints and trimming corrections for both fields, but no non-empty validation or deletion rule.",
+    "importance": 2,
+    "reason": "The extra filters can remove mappings that satisfy the documented constraints.",
+    "updates": null,
+    "id": "c2-11",
+    "call": 2
+  },
+  {
+    "statement": "State and territory rows with a non-NULL but whitespace-only state_territory value must be deleted.",
+    "about": "requirement",
+    "target": "staging.stg_customer360__state_territory_codes",
+    "evidence_of_dependence": "where state_territory is not null and trim(state_territory) <> ''",
+    "alternative": "The contract gives state_territory only a \"[not_null]\" constraint, without a non-empty validation rule.",
+    "importance": 2,
+    "reason": "This additional deletion condition changes reference-table membership.",
+    "updates": null,
+    "id": "c2-12",
+    "call": 2
+  },
+  {
+    "statement": "Country-code whitespace corrections should be applied before evaluating the code-length deletion rules.",
+    "about": "requirement",
+    "target": "staging.stg_customer360__country_codes",
+    "evidence_of_dependence": "length(trim(country_code_alpha_2)) = 2",
+    "alternative": "The contract's deletion rules use \"LENGTH(country_code_alpha_2) = 2\" and \"LENGTH(country_code_alpha_3) = 3\", while trimming is listed separately as a correction.",
+    "importance": 2,
+    "reason": "Validation order determines whether padded codes are repaired or deleted.",
+    "updates": null,
+    "id": "c2-13",
+    "call": 2
+  },
+  {
+    "statement": "Country-code whitespace corrections should precede the country-code length deletion rule for state and territory records.",
+    "about": "requirement",
+    "target": "staging.stg_customer360__state_territory_codes.alpha2_country_code",
+    "evidence_of_dependence": "length(trim(alpha2_country_code)) = 2",
+    "alternative": "The contract specifies \"LENGTH(alpha2_country_code) = 2\" as a deletion rule and separately specifies uppercase-and-trim correction.",
+    "importance": 2,
+    "reason": "Padded country codes can survive this implementation even under a validate-before-correct interpretation.",
+    "updates": null,
+    "id": "c2-14",
+    "call": 2
+  },
+  {
+    "statement": "Blank alternative country names should become NULL rather than remain empty or whitespace-only strings.",
+    "about": "requirement",
+    "target": "staging.stg_customer360__country_codes.alternative_country_name",
+    "evidence_of_dependence": "nullif(trim(alternative_country_name), '') as alternative_country_name",
+    "alternative": "The contract lists alternative_country_name as VARCHAR(255) without a nullification rule.",
+    "importance": 1,
+    "reason": "This changes optional reference values and their downstream NULL behavior.",
+    "updates": null,
+    "id": "c2-15",
+    "call": 2
+  },
+  {
+    "statement": "Leading and trailing whitespace in state and territory names should be removed.",
+    "about": "requirement",
+    "target": "staging.stg_customer360__state_territory_codes.state_territory",
+    "evidence_of_dependence": "nullif(trim(state_territory), '') as state_territory",
+    "alternative": "The contract specifies explicit trimming corrections for state_code and alpha2_country_code but not for state_territory.",
+    "importance": 1,
+    "reason": "This alters reference labels beyond their explicitly listed validation rules.",
+    "updates": null,
+    "id": "c2-16",
+    "call": 2
+  },
+  {
+    "statement": "The full-outer-join portion of mapping construction need not retain unmatched source records in addition to the explicitly appended unmatched-source sets.",
+    "about": "requirement",
+    "target": "marts.customer360__mapping",
+    "evidence_of_dependence": "from intermediate.int_customer360__source_matches sm left join intermediate.int_customer360__marketo m ... union all ... where not exists",
+    "alternative": "The contract requires \"Chain full outer joins\" and then \"Union in three additional sets\" and explicitly notes, \"This can yield duplicates relative to the full outer joins.\"",
+    "importance": 5,
+    "reason": "Replacing the full joins with left joins removes a required occurrence of unmatched source records and changes mapping multiplicities.",
+    "updates": null,
+    "id": "c3-1",
+    "call": 3
+  },
+  {
+    "statement": "Source-match timestamps are sufficient for matched mapping rows without falling back to the corresponding source-table timestamps.",
+    "about": "data",
+    "target": "marts.customer360__mapping timestamp columns",
+    "evidence_of_dependence": "z.organization_id, sm.marketo_updated_at, sm.marketo_created_at, sm.stripe_updated_at, sm.stripe_created_at",
+    "alternative": "The contract requires \"taking source_matches timestamps when available, else the source table’s\" and corresponding fallback rules for Stripe, Zendesk, and organization timestamps.",
+    "importance": 4,
+    "reason": "Missing or incomplete match timestamps can suppress available source dates and change both individual and organization-header timestamps.",
+    "updates": null,
+    "id": "c3-2",
+    "call": 3
+  },
+  {
+    "statement": "Any positive component score is the intended trigger for its corresponding primary_risk_factor label.",
+    "about": "requirement",
+    "target": "intermediate.int_customer360__risk_assessment.primary_risk_factor",
+    "evidence_of_dependence": "case when payment_behavior_risk>0 then 'Payment Issues' when activity_decline_risk>0 then 'Engagement Decline'",
+    "alternative": null,
+    "importance": 4,
+    "reason": "The contract specifies label precedence but not these trigger thresholds, which determine the reported dominant risk.",
+    "updates": null,
+    "id": "c3-3",
+    "call": 3
+  },
+  {
+    "statement": "Recommended interventions other than Executive Outreach should be triggered by any positive associated risk score, with any non-null lifecycle stage sufficient for Lifecycle-specific Campaign.",
+    "about": "requirement",
+    "target": "intermediate.int_customer360__risk_assessment.recommended_intervention",
+    "evidence_of_dependence": "when support_engagement_risk>0 then 'Customer Success Check-in' ... when lifecycle_stage is not null then 'Lifecycle-specific Campaign'",
+    "alternative": "The contract lists intervention precedence and explicitly defines the Executive Outreach condition, but does not specify the other trigger thresholds.",
+    "importance": 4,
+    "reason": "These inferred conditions determine intervention selection and its associated cost and ROI.",
+    "updates": null,
+    "id": "c3-4",
+    "call": 3
+  },
+  {
+    "statement": "DuckDB's inferred numeric types are acceptable for risk outputs whose contract specifies explicit decimal precision and scale.",
+    "about": "requirement",
+    "target": "intermediate.int_customer360__risk_assessment numeric output schema",
+    "evidence_of_dependence": "round(activity_decline_risk*.2+platform_abandonment_risk*.15+... ,2) as total_risk_score; case when S>=8 then .30 ... else .95 end as intervention_success_probability",
+    "alternative": "The contract specifies, among others, total_risk_score as DECIMAL(18,2), intervention_success_probability as DECIMAL(3,2), and intervention_roi as DECIMAL(18,2).",
+    "importance": 3,
+    "reason": "Rounding values does not establish the contracted storage types, so the output schema depends on unverified type inference.",
+    "updates": null,
+    "id": "c3-5",
+    "call": 3
+  },
+  {
+    "statement": "The required final ordering of risk-assessment results may be omitted.",
+    "about": "requirement",
+    "target": "intermediate.int_customer360__risk_assessment",
+    "evidence_of_dependence": "intervention_roi,current_timestamp as risk_assessment_timestamp\nfrom final",
+    "alternative": "The contract requires sorting by \"critical_alert_flag (descending), then customer_priority_score (descending), potential_revenue_loss (descending), and total_risk_score (descending).\"",
+    "importance": 3,
+    "reason": "The query does not enforce the explicitly requested prioritization order.",
+    "updates": null,
+    "id": "c3-6",
+    "call": 3
+  },
+  {
+    "statement": "The support inactivity threshold of more than 90 days ago should be evaluated against the execution-time instant rather than a calendar-day difference.",
+    "about": "requirement",
+    "target": "intermediate.int_customer360__risk_assessment.support_engagement_risk",
+    "evidence_of_dependence": "zendesk_last_update<current_timestamp-interval '90 days'",
+    "alternative": "The contract says \"last_update was > 90 days ago,\" which also supports a calendar-day interpretation consistent with the date_diff-based activity-decline calculations.",
+    "importance": 2,
+    "reason": "The boundary interpretation can change support risk and intervention labels for records near the cutoff.",
+    "updates": null,
+    "id": "c3-7",
+    "call": 3
+  }
+]
+
+=== Agent steps since the last review ===
+### event 25
+
+## 命令原文
+
+cat >> /tmp/gen.py <<'PY'
+
+put('marts','customer360__customer_value_analysis', '''
+with base as (
+ select *,case when estimated_customer_value>=5000 then 5 when estimated_customer_value>=3000 then 4 when estimated_customer_value>=1500 then 3 when estimated_customer_value>=800 then 2 else 1 end as monetary_score
+ from intermediate.int_customer360__customer_lifecycle_metrics
+), rfm as (
+ select *,concat(recency_score::varchar,frequency_score::varchar,monetary_score::varchar) as rfm_score,
+ round((recency_score+frequency_score+monetary_score)/3.0,2) as rfm_avg_score,
+ estimated_customer_ltv*case lifecycle_stage when 'Acquisition' then .3 when 'Activation' then .6 when 'Growth' then 1.2 when 'Maturity' then 1.0 when 'Retention' then .8 else .5 end as adjusted_ltv,
+ case when estimated_customer_ltv>=10000 then 'Tier 1 - Strategic' when estimated_customer_ltv>=5000 then 'Tier 2 - High Value' when estimated_customer_ltv>=2500 then 'Tier 3 - Core' when estimated_customer_ltv>=1000 then 'Tier 4 - Developing' else 'Tier 5 - Basic' end as revenue_tier,
+ case when customer_health_score>=4 and churn_probability<=.2 then 'High Stability' when customer_health_score>=3 and churn_probability<=.4 then 'Medium Stability' when customer_health_score>=2 and churn_probability<=.6 then 'Low Stability' else 'Unstable' end as value_stability,
+ case when recency_score>=4 and frequency_score>=4 then 'High Upsell' when rfm_avg_score>=3.5 and monetary_score>=3 then 'Medium Upsell' when recency_score>=4 and frequency_score<=2 then 'Cross-sell Focus' else 'Retention Focus' end as upsell_potential
+ from base
+), scored as (
+ select *, round(adjusted_ltv*churn_probability,2) as potential_revenue_loss,
+ round(adjusted_ltv*(1-churn_probability)/case when account_age_days>=365 then account_age_days/365.0 else 1 end,2) as expected_annual_revenue,
+ case when adjusted_ltv>=50000 then 'High Concentration Risk' when adjusted_ltv>=20000 then 'Medium Concentration Risk' else 'Low Concentration Risk' end as concentration_risk,
+ case when churn_probability>=.7 then 5 when churn_probability>=.5 then 4 when churn_probability>=.3 then 3 when churn_probability>=.1 then 2 else 1 end as churn_weight,
+ case when rfm_avg_score>=4.5 then 'Champions' when rfm_avg_score>=4 and recency_score>=4 then 'Loyal Customers'
+ when rfm_avg_score>=3.5 and monetary_score>=4 then 'Potential Loyalists' when recency_score>=4 and frequency_score<=2 then 'New Customers'
+ when recency_score>=3 and frequency_score<=2 and monetary_score<=2 then 'Promising' when recency_score>=3 and monetary_score>=3 then 'Customers Needing Attention'
+ when recency_score<=2 and frequency_score>=3 then 'At Risk' when recency_score<=2 and frequency_score<=2 and monetary_score>=4 then 'Cannot Lose Them'
+ when recency_score<=1 and frequency_score>=2 then 'Hibernating' else 'Lost' end as rfm_segment
+ from rfm
+), investment as (
+ select *, round((case rfm_segment when 'Champions' then 5 when 'Loyal Customers' then 4.5 when 'Potential Loyalists' then 4 when 'New Customers' then 3.5 when 'Promising' then 3 when 'Customers Needing Attention' then 4.5 when 'At Risk' then 5 when 'Cannot Lose Them' then 5 when 'Hibernating' then 2 else 1 end*.4 +
+ case revenue_tier when 'Tier 1 - Strategic' then 5 when 'Tier 2 - High Value' then 4 when 'Tier 3 - Core' then 3 when 'Tier 4 - Developing' then 2 else 1 end*.3+churn_weight*.3),2) as investment_priority_score,
+ case when (rfm_segment in ('Champions','Cannot Lose Them') and revenue_tier in ('Tier 1 - Strategic','Tier 2 - High Value')) then 'Strategic Account'
+ when rfm_segment in ('Loyal Customers','Potential Loyalists') and revenue_tier in ('Tier 2 - High Value','Tier 3 - Core') then 'Key Account'
+ when rfm_segment in ('New Customers','Promising') and revenue_tier in ('Tier 3 - Core','Tier 4 - Developing') then 'Growth Account'
+ when rfm_segment in ('At Risk','Hibernating') and revenue_tier in ('Tier 1 - Strategic','Tier 2 - High Value') then 'Recovery Account' else 'Standard Account' end as strategic_classification
+ from scored
+), portfolio as (
+ select *,sum(adjusted_ltv) over() as portfolio_ltv from investment
+)
+select marketo_lead_id,stripe_customer_id,zendesk_user_id,primary_email,primary_organization,customer_segment,customer_tier,
+ rfm_segment,rfm_score,rfm_avg_score,recency_score,frequency_score,monetary_score,estimated_customer_ltv,adjusted_ltv,expected_annual_revenue,revenue_tier,strategic_classification,
+ value_stability,upsell_potential,churn_probability,potential_revenue_loss,
+ case when adjusted_ltv is null or adjusted_ltv=0 then null else round(churn_probability*100,2) end as revenue_risk_percentage,
+ case when portfolio_ltv=0 then null else round(adjusted_ltv/portfolio_ltv*100,4) end as portfolio_contribution_pct,concentration_risk,
+ investment_priority_score,
+ case when expected_annual_revenue>=5000 then 'Excellent ROI' when expected_annual_revenue>=2000 then 'Good ROI' when expected_annual_revenue>=1000 then 'Acceptable ROI' when expected_annual_revenue>=500 then 'Marginal ROI' else 'Poor ROI' end as acquisition_roi_assessment,
+ case strategic_classification when 'Strategic Account' then 'Executive Relationship Management' when 'Key Account' then 'Dedicated Account Management' when 'Growth Account' then 'Expansion Programs' when 'Recovery Account' then 'Retention & Recovery Initiatives' else 'Standard Engagement' end as recommended_engagement_model,
+ case when investment_priority_score>=4.5 then 'High Investment' when investment_priority_score>=3.5 then 'Medium Investment' when investment_priority_score>=2.5 then 'Standard Investment' else 'Minimal Investment' end as investment_recommendation,
+ case when rfm_segment in ('Champions','Loyal Customers') then 'Maintain Excellence' when rfm_segment in ('Potential Loyalists','Customers Needing Attention') then 'Drive Engagement' when rfm_segment in ('New Customers','Promising') then 'Accelerate Onboarding' when rfm_segment in ('At Risk','Cannot Lose Them') then 'Immediate Intervention' else 'Reactivation Required' end as success_target,
+ case when upsell_potential='High Upsell' and value_stability='High Stability' then 'Premium Growth' when upsell_potential in ('High Upsell','Medium Upsell') then 'Expansion Ready' when upsell_potential='Cross-sell Focus' then 'Product Adoption' else 'Value Preservation' end as development_opportunity,
+ customer_health_score,lifecycle_stage,
+ case when churn_probability>=.7 then 'High Risk' when churn_probability>=.5 then 'Medium Risk' when churn_probability>=.3 then 'Low Risk' else 'Minimal Risk' end as risk_category,
+ account_age_days,days_since_last_activity,current_timestamp as analysis_timestamp
+from portfolio where primary_email is not null''')
+
+put('marts','customer360__customer_activity_metrics', '''
+with base as (
+ select ba.*,lm.lifecycle_stage,lm.customer_health_score,lm.active_30_days,lm.active_60_days,lm.active_90_days,lm.active_180_days,lm.active_365_days,lm.account_age_days,
+ m.is_unsubscribed,m.is_email_invalid,m.do_not_call,m.updated_at as m_updated,s.is_delinquent,s.is_deleted as stripe_deleted,s.updated_at as s_updated,
+ z.is_active as zendesk_active,z.is_suspended as zendesk_suspended,z.is_deleted as zendesk_deleted,z.updated_at as z_updated,
+ m.created_at as marketo_registration_date,s.created_at as stripe_registration_date,z.created_at as zendesk_registration_date,
+ m.email as m_email,s.email as s_email,z.email as z_email
+ from intermediate.int_customer360__customer_behavior_analysis ba
+ left join intermediate.int_customer360__customer_lifecycle_metrics lm using(primary_email)
+ left join intermediate.int_customer360__marketo m on ba.marketo_lead_id=m.lead_id
+ left join intermediate.int_customer360__stripe s on ba.stripe_customer_id=s.customer_id
+ left join intermediate.int_customer360__zendesk z on ba.zendesk_user_id=z.user_id
+ where ba.primary_email is not null
+), recency as (
+ select *,date_diff('day',customer_last_activity,current_date)::bigint as days_since_last_activity,
+ (in_marketo+in_stripe+in_zendesk)::integer as active_channel_count,
+ case when customer_last_activity is null then null else date_diff('week',customer_last_activity,current_date)::bigint end as weeks_since_last_activity,
+ case when customer_last_activity is null then null else date_diff('month',customer_last_activity,current_date)::bigint end as months_since_last_activity
+ from base
+), channels as (
+ select *,case when in_marketo=1 and is_unsubscribed=false and is_email_invalid=false then round(marketo_engagement*(1-date_diff('day',m_updated,current_timestamp)/90.0),2) else 0 end as marketing_engagement_score,
+ case when in_stripe=1 and stripe_deleted=false and is_delinquent=false then round(stripe_engagement*(1-date_diff('day',s_updated,current_timestamp)/60.0),2) else 0 end as sales_engagement_score,
+ case when in_zendesk=1 and zendesk_active=true and zendesk_suspended=false and zendesk_deleted=false then round(zendesk_engagement*(1-date_diff('day',z_updated,current_timestamp)/120.0),2) else 0 end as support_engagement_score,
+ case when days_since_last_activity<=7 and composite_engagement_score>=3 then 'Accelerating' when days_since_last_activity<=14 and composite_engagement_score>=2.5 then 'Steady High'
+ when days_since_last_activity<=30 and composite_engagement_score>=2 then 'Steady Medium' when days_since_last_activity<=60 then 'Declining' when days_since_last_activity<=90 then 'Slow' else 'Stagnant' end as engagement_velocity,
+ case when days_since_last_activity<=7 and composite_engagement_score>=3.5 then 'High Momentum' when days_since_last_activity<=14 and composite_engagement_score>=3 then 'Medium Momentum'
+ when days_since_last_activity<=30 and composite_engagement_score>=2 then 'Low Momentum' when days_since_last_activity<=60 then 'Losing Momentum' else 'No Momentum' end as activity_momentum
+ from recency
+), scores as (
+ select *,round(coalesce(marketing_engagement_score,0)*.3+coalesce(sales_engagement_score,0)*.5+coalesce(support_engagement_score,0)*.2,2) as weighted_engagement_score,
+ case when marketing_engagement_score>=sales_engagement_score and marketing_engagement_score>=support_engagement_score then 'Marketing Driven'
+ when sales_engagement_score>=support_engagement_score then 'Sales Driven' when support_engagement_score is not null then 'Support Driven' else 'Balanced' end as primary_engagement_channel,
+ case when in_marketo=1 then case when marketo_engagement>=4 then 'Deep' when marketo_engagement>=2 then 'Medium' else 'Shallow' end else 'None' end as marketing_depth,
+ case when in_stripe=1 then case when stripe_engagement>=4 then 'Deep' when stripe_engagement>=2 then 'Medium' else 'Shallow' end else 'None' end as sales_depth,
+ case when in_zendesk=1 then case when zendesk_engagement>=4 then 'Deep' when zendesk_engagement>=2 then 'Medium' else 'Shallow' end else 'None' end as support_depth,
+ case when account_age_days>=365 and active_channel_count>=3 then 'Mature Multi-channel' when account_age_days>=180 and active_channel_count>=2 then 'Developing Multi-channel'
+ when account_age_days>=90 and active_channel_count>=1 then 'Single Channel Engaged' when account_age_days<90 then 'Early Stage' else 'Minimal Engagement' end as engagement_maturity,
+ case when composite_engagement_score>=4 then 15+floor(random()*10) when composite_engagement_score>=3 then 8+floor(random()*7) when composite_engagement_score>=2 then 3+floor(random()*5) when composite_engagement_score>=1 then 1+floor(random()*3) else floor(random()*2) end as estimated_monthly_activities
+ from channels
+), final_scores as (
+ select *,round(composite_engagement_score/nullif(active_channel_count,0),2) as activity_efficiency,
+ round(case when in_marketo=1 then marketo_engagement else 0 end + case when in_stripe=1 then stripe_engagement else 0 end + case when in_zendesk=1 then zendesk_engagement else 0 end,2) as cross_platform_consistency,
+ case when weighted_engagement_score>=4 and active_channel_count>=3 then 'A+' when weighted_engagement_score>=3.5 and active_channel_count>=2 then 'A' when weighted_engagement_score>=3 then 'B+' when weighted_engagement_score>=2.5 then 'B' when weighted_engagement_score>=2 then 'C+' when weighted_engagement_score>=1.5 then 'C' when weighted_engagement_score>=1 then 'D' else 'F' end as activity_grade,
+ round(.4*weighted_engagement_score+.3*active_channel_count+.3*case when days_since_last_activity<=7 and composite_engagement_score>=3.5 then 5 when days_since_last_activity<=14 and composite_engagement_score>=3 then 4 when days_since_last_activity<=30 and composite_engagement_score>=2 then 3 when days_since_last_activity<=60 then 2 else 1 end,2) as activity_priority_score
+ from scores
+)
+select marketo_lead_id,stripe_customer_id,zendesk_user_id,primary_email,primary_organization,customer_segment,customer_journey_pattern,lifecycle_stage,composite_engagement_score,
+ weighted_engagement_score,customer_health_score,activity_grade,activity_priority_score,days_since_last_activity,weeks_since_last_activity,months_since_last_activity,account_age_days,active_channel_count,
+ primary_engagement_channel,marketing_engagement_score,sales_engagement_score,support_engagement_score,marketing_depth,sales_depth,support_depth,engagement_velocity,activity_momentum,engagement_maturity,
+ estimated_monthly_activities,
+ estimated_monthly_activities*case engagement_velocity when 'Accelerating' then 1.3 when 'Steady High' then 1.1 when 'Steady Medium' then 1.0 when 'Declining' then .7 when 'Slow' then .4 else .2 end as predicted_next_month_activity,
+ estimated_monthly_activities*case when month(current_date) in (11,12,1) then 1.2 when month(current_date) in (6,7,8) then .8 else 1 end as seasonally_adjusted_activity,
+ active_30_days,active_60_days,active_90_days,active_180_days,active_365_days,
+ case when days_since_last_activity>90 and customer_health_score<3 then 'High Activity Risk' when days_since_last_activity>60 or active_channel_count=1 then 'Medium Activity Risk' when days_since_last_activity>30 then 'Low Activity Risk' else 'No Activity Risk' end as activity_risk_level,
+ cross_platform_consistency,activity_efficiency,
+ case when engagement_velocity in ('Declining','Slow','Stagnant') and customer_health_score>=3 then 'Re-engagement Campaign' when active_channel_count=1 and composite_engagement_score>=2.5 then 'Channel Expansion'
+ when primary_engagement_channel='Marketing Driven' and in_stripe=0 then 'Sales Conversion Focus' when primary_engagement_channel='Sales Driven' and in_zendesk=0 then 'Success Onboarding'
+ when days_since_last_activity<=7 and composite_engagement_score>=3.5 then 'Upsell Opportunity' else 'Standard Engagement' end as recommended_activity_intervention,
+ in_marketo,in_stripe,in_zendesk,is_unsubscribed,is_email_invalid,do_not_call,is_delinquent,stripe_deleted,zendesk_active,zendesk_suspended,zendesk_deleted,
+ customer_first_touchpoint,customer_last_activity,marketo_registration_date,stripe_registration_date,zendesk_registration_date,current_timestamp as activity_analysis_timestamp
+from final_scores''')
+PY
+python /tmp/gen.py
+
+## agent 实际看到的执行结果
+
+
+
+

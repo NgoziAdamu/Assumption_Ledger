@@ -1,0 +1,205 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "premises": [
+      {
+        "statement": "The configured sources raw.worker_position and raw.worker_position_organization can be queried directly without first mapping or aliasing the available history tables.",
+        "about": "data",
+        "target": "stg_workday__worker_position; stg_workday__worker_position_organization",
+        "evidence_of_dependence": "raw=t['source_table'].split('.')[1]; ... f'\\nFROM raw.{raw} AS r{joins}'",
+        "alternative": "The contract summary names \"raw.worker_position\" and \"raw.worker_position_organization\", but the available-data index instead lists \"raw.worker_position_history\" and \"raw.worker_position_organization_history\".",
+        "importance": 5,
+        "reason": "Literal source references will prevent these models from executing if the contract names require adaptation to the available tables.",
+        "updates": null
+      },
+      {
+        "statement": "Every person record that should survive staging has a matching person_id in raw.worker_to_person.",
+        "about": "data",
+        "target": "stg_workday__personal_information; stg_workday__person_name; stg_workday__person_contact_email_address; stg_workday__personal_information_ethnicity; stg_workday__military_service",
+        "evidence_of_dependence": "JOIN raw.worker_to_person AS w ON r.person_id = w.person_id",
+        "alternative": null,
+        "importance": 5,
+        "reason": "An unmatched person record is silently removed from all five staging models.",
+        "updates": null
+      },
+      {
+        "statement": "Each person_id in raw.worker_to_person has at most one matching row.",
+        "about": "data",
+        "target": "stg_workday__personal_information; stg_workday__person_name; stg_workday__person_contact_email_address; stg_workday__personal_information_ethnicity; stg_workday__military_service",
+        "evidence_of_dependence": "JOIN raw.worker_to_person AS w ON r.person_id = w.person_id",
+        "alternative": null,
+        "importance": 5,
+        "reason": "Multiple mapping rows would multiply source records and could violate the intended staging grain.",
+        "updates": null
+      },
+      {
+        "statement": "The allowed non-null employee_type values are exactly Regular, Contingent, Intern, and Contractor.",
+        "about": "requirement",
+        "target": "stg_workday__position",
+        "evidence_of_dependence": "TRIM(r.employee_type) NOT IN ('Regular','Contingent','Intern','Contractor') THEN NULL",
+        "alternative": "The inspected position rows contain \"PartTime\" and \"Consultant\"; the provided contract excerpt does not establish whether those categories are invalid.",
+        "importance": 4,
+        "reason": "The whitelist can erase valid employment categories throughout downstream workforce analysis.",
+        "updates": null
+      },
+      {
+        "statement": "A missing is_hispanic_or_latino value must be interpreted as false rather than retained as unknown.",
+        "about": "requirement",
+        "target": "stg_workday__personal_information_ethnicity",
+        "evidence_of_dependence": "COALESCE(r.is_hispanic_or_latino, FALSE)",
+        "alternative": null,
+        "importance": 4,
+        "reason": "This turns missing demographic information into an affirmative classification and can change demographic metrics.",
+        "updates": null
+      },
+      {
+        "statement": "Worker history records with effective_start before 1950-01-01 or after the execution date must be deleted.",
+        "about": "requirement",
+        "target": "stg_workday__worker",
+        "evidence_of_dependence": "where+= [\"r.effective_start <= CURRENT_DATE\", \"r.effective_start >= DATE '1950-01-01'\"]",
+        "alternative": null,
+        "importance": 4,
+        "reason": "The chosen date window removes entire lifecycle events, including potentially legitimate future-effective events.",
+        "updates": null
+      },
+      {
+        "statement": "Worker history records whose effective_end is more than 30 days after execution must be deleted.",
+        "about": "requirement",
+        "target": "stg_workday__worker",
+        "evidence_of_dependence": "(r.effective_end IS NULL OR r.effective_end <= CURRENT_DATE + INTERVAL '30 days')",
+        "alternative": null,
+        "importance": 4,
+        "reason": "A future end date can describe a valid planned assignment, so this rule could remove otherwise usable history.",
+        "updates": null
+      },
+      {
+        "statement": "A non-null birth date before 1930-01-01 or indicating an age under 16 requires deleting the whole personal-information record.",
+        "about": "requirement",
+        "target": "stg_workday__personal_information",
+        "evidence_of_dependence": "r.date_of_birth IS NULL OR (r.date_of_birth >= DATE '1930-01-01' AND r.date_of_birth <= CURRENT_DATE - INTERVAL '16 years')",
+        "alternative": "The general contract distinguishes \"delete_row\" for severe unusable records from \"nullify_field\" for invalid non-critical values; the supplied excerpt does not establish which action applies to date_of_birth.",
+        "importance": 4,
+        "reason": "Both the age bounds and the whole-row deletion policy affect which people retain personal details.",
+        "updates": null
+      },
+      {
+        "statement": "None of the configured raw sources contains duplicate records that require removal before staging.",
+        "about": "data",
+        "target": "All 21 generated staging tables",
+        "evidence_of_dependence": "sql='SELECT\\n'+',\\n'.join(expressions)+f'\\nFROM raw.{raw} AS r{joins}'",
+        "alternative": "The staging quality policy lists \"Confirmed duplicates\" among records to remove, but the generated queries contain no deduplication step.",
+        "importance": 4,
+        "reason": "Unremoved duplicates can propagate through every downstream join and aggregation.",
+        "updates": null
+      },
+      {
+        "statement": "Checking only for the presence of an at-sign is sufficient to identify malformed email addresses that must be nullified.",
+        "about": "requirement",
+        "target": "stg_workday__person_contact_email_address",
+        "evidence_of_dependence": "CASE WHEN r.email_address IS NOT NULL AND r.email_address NOT LIKE '%@%' THEN NULL ELSE LOWER(TRIM(r.email_address)) END",
+        "alternative": null,
+        "importance": 3,
+        "reason": "Addresses with an at-sign but invalid local or domain components would pass through as valid contact data.",
+        "updates": null
+      },
+      {
+        "statement": "Every staging row should have the same source_relation value, workday, regardless of its raw source table.",
+        "about": "requirement",
+        "target": "All 21 generated staging tables",
+        "evidence_of_dependence": "if n=='source_relation': expr=\"'workday'::VARCHAR\"",
+        "alternative": null,
+        "importance": 3,
+        "reason": "A different required lineage convention would affect the source_relation field across the entire staging layer.",
+        "updates": null
+      },
+      {
+        "statement": "Text fields passed through with CAST require no additional whitespace or other deterministic format correction.",
+        "about": "data",
+        "target": "stg_workday__worker; stg_workday__organization; stg_workday__position; stg_workday__job_profile; stg_workday__job_family; stg_workday__job_family_group; stg_workday__job_family_job_family_group; stg_workday__job_family_job_profile; stg_workday__military_service; stg_workday__organization_job_family; stg_workday__organization_role; stg_workday__organization_role_worker; stg_workday__person_name; stg_workday__position_job_profile; stg_workday__position_organization; stg_workday__worker_leave_status; stg_workday__worker_position; stg_workday__worker_position_organization",
+        "evidence_of_dependence": "else: expr=f'CAST({expr} AS {typ})'",
+        "alternative": "The staging purpose calls for \"standardized formats\", and quality_actions.correct explicitly includes \"whitespace trimming\"; the generator trims only selected fields.",
+        "importance": 3,
+        "reason": "Uncorrected whitespace in identifiers or categories can prevent joins or split equivalent groups.",
+        "updates": null
+      }
+    ],
+    "fewer": [
+      {
+        "target": "stg_workday__organization",
+        "count": 3,
+        "reason": "Beyond the shared duplicate, lineage, and text-cleaning premises, the supplied evidence does not establish additional unsupported assumptions specific to this model."
+      },
+      {
+        "target": "stg_workday__position",
+        "count": 4,
+        "reason": "The employee-type whitelist adds one specific premise to the three shared staging premises; no fifth is supported by the visible materials."
+      },
+      {
+        "target": "stg_workday__job_profile",
+        "count": 3,
+        "reason": "Only the shared duplicate, lineage, and text-cleaning premises are identifiable without the omitted per-table contract."
+      },
+      {
+        "target": "stg_workday__job_family",
+        "count": 3,
+        "reason": "Only the shared duplicate, lineage, and text-cleaning premises are identifiable without the omitted per-table contract."
+      },
+      {
+        "target": "stg_workday__job_family_group",
+        "count": 3,
+        "reason": "Only the shared duplicate, lineage, and text-cleaning premises are identifiable without the omitted per-table contract."
+      },
+      {
+        "target": "stg_workday__job_family_job_family_group",
+        "count": 3,
+        "reason": "The contract explicitly selects this raw source, so the existence of another similarly named relationship table does not itself establish another unsupported premise."
+      },
+      {
+        "target": "stg_workday__job_family_job_profile",
+        "count": 3,
+        "reason": "The contract explicitly selects this raw source; only the three shared staging premises are otherwise identifiable."
+      },
+      {
+        "target": "stg_workday__organization_job_family",
+        "count": 3,
+        "reason": "Only the shared duplicate, lineage, and text-cleaning premises are identifiable from the visible transformation."
+      },
+      {
+        "target": "stg_workday__organization_role",
+        "count": 3,
+        "reason": "Additional claims about role semantics or key constraints would require the omitted per-table specification."
+      },
+      {
+        "target": "stg_workday__organization_role_worker",
+        "count": 3,
+        "reason": "Additional claims about the renamed worker field would require the omitted per-table specification."
+      },
+      {
+        "target": "stg_workday__position_job_profile",
+        "count": 3,
+        "reason": "Only the shared duplicate, lineage, and text-cleaning premises are identifiable from the visible transformation."
+      },
+      {
+        "target": "stg_workday__position_organization",
+        "count": 3,
+        "reason": "The visible materials do not establish further required temporal processing that the generator assumes unnecessary."
+      },
+      {
+        "target": "stg_workday__worker_leave_status",
+        "count": 3,
+        "reason": "The visible materials do not establish additional leave-specific validation requirements."
+      },
+      {
+        "target": "stg_workday__worker_position",
+        "count": 4,
+        "reason": "The unresolved source-table naming adds one premise to the three shared staging premises."
+      },
+      {
+        "target": "stg_workday__worker_position_organization",
+        "count": 4,
+        "reason": "The unresolved source-table naming adds one premise to the three shared staging premises."
+      }
+    ]
+  }
+}

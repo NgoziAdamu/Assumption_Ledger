@@ -1,0 +1,1152 @@
+{
+  "staging.stg_pendo__account_history": {
+    "items": [
+      {
+        "problem": "Rows with NULL account IDs are retained despite the required non-null account_id.",
+        "about": "requirement",
+        "evidence_in_work": "CAST(id AS VARCHAR) AS account_id ... FROM raw.account_history",
+        "source": "name: account_id; constraints: [not_null]",
+        "importance": 4,
+        "reason": "Invalid dimension keys would survive into latest-account selection and account marts."
+      }
+    ],
+    "fewer_reason": "No other concrete mismatch is evident in this table's mappings or timestamp conversions."
+  },
+  "staging.stg_pendo__application_history": {
+    "items": [],
+    "fewer_reason": "The mapping errors were corrected before the successful run, and no remaining concrete discrepancy is visible."
+  },
+  "staging.stg_pendo__event": {
+    "items": [
+      {
+        "problem": "Malformed nonempty account IDs are preserved instead of being nullified according to the account-ID pattern rule.",
+        "about": "requirement",
+        "evidence_in_work": "elif n=='account_id' and name=='stg_pendo__event': expr='CAST(account_id AS VARCHAR)'",
+        "source": "account_id ~ '^(ACC[0-9]+|[0-9]+)$'; on_failure: nullify_field",
+        "importance": 5,
+        "reason": "This changes account grouping, relationship checks, and every account-level event aggregate."
+      },
+      {
+        "problem": "IPv4 validation uses a dotted-address pattern rather than the literal pattern specified in the contract.",
+        "about": "requirement",
+        "evidence_in_work": "'^([0-9]{1,3}\\\\.){3}[0-9]{1,3}$'",
+        "source": "remote_ip ~ '^([0-9]{1,3}){3}[0-9]{1,3}$'",
+        "importance": 2,
+        "reason": "The contract pattern looks questionable, but the implementation nevertheless accepts a different set of values."
+      },
+      {
+        "problem": "The generated event key may collapse different source tuples because separator characters are not escaped.",
+        "about": "data",
+        "evidence_in_work": "md5(concat_ws('|', coalesce(CAST(visitor_id AS VARCHAR), ''), ...))",
+        "source": "Generated MD5 hash surrogate key based on visitor_id, timestamp, account_id, server_name, user_agent, and remote_ip",
+        "importance": 2,
+        "reason": "Embedded separators could create false duplicate-key findings even without an MD5 collision."
+      }
+    ],
+    "fewer_reason": "The required base filters, timestamp conversion, numeric ranges, and text cleanup are otherwise visible."
+  },
+  "staging.stg_pendo__feature_event": {
+    "items": [
+      {
+        "problem": "Required identifiers and parsed occurrence timestamps can remain NULL because no validity filter follows the casts.",
+        "about": "requirement",
+        "evidence_in_work": "if wh: sql+='\\nWHERE ' ...; no feature_event conditions are added",
+        "source": "account_id, feature_id, occurred_at, visitor_id, app_id: constraints: [not_null]",
+        "importance": 4,
+        "reason": "Invalid event rows can affect counts and downstream joins or disappear inconsistently in daily models."
+      },
+      {
+        "problem": "Server names and user agents are trimmed and blank-nullified without a corresponding correction rule for this table.",
+        "about": "requirement",
+        "evidence_in_work": "elif n in ('server_name','user_agent','url'): base=...NULLIF(TRIM(...), '')",
+        "source": "server_name: data_type: VARCHAR(255); user_agent: data_type: VARCHAR(255)",
+        "importance": 2,
+        "reason": "This changes source values that the event mart is expected to pass through."
+      },
+      {
+        "problem": "IPv4 acceptance differs from the contract's literal validation expression.",
+        "about": "requirement",
+        "evidence_in_work": "'^([0-9]{1,3}\\\\.){3}[0-9]{1,3}$'",
+        "source": "remote_ip ~ '^([0-9]{1,3}){3}[0-9]{1,3}$'",
+        "importance": 2,
+        "reason": "Optional IP values will be nullified differently, although the documented expression may itself contain a typo."
+      }
+    ],
+    "fewer_reason": "No further well-supported issue is visible; the surrogate-key inputs are not specified precisely enough to judge."
+  },
+  "staging.stg_pendo__feature_history": {
+    "items": [
+      {
+        "problem": "NULL feature IDs are retained despite the non-null feature_id requirement.",
+        "about": "requirement",
+        "evidence_in_work": "CAST(id AS VARCHAR) AS feature_id ... FROM raw.feature_history",
+        "source": "name: feature_id; constraints: [not_null]",
+        "importance": 4,
+        "reason": "Invalid feature keys would propagate into latest-feature metadata and analytical joins."
+      }
+    ],
+    "fewer_reason": "The remaining visible field mappings and safe type conversions follow the contract."
+  },
+  "staging.stg_pendo__group": {
+    "items": [
+      {
+        "problem": "NULL group IDs and NULL application IDs are retained without enforcing their required constraints.",
+        "about": "requirement",
+        "evidence_in_work": "raw_names={'stg_pendo__group':'group_data'}; no group WHERE conditions are generated",
+        "source": "group_id: constraints: [not_null]; app_id: constraints: [not_null]",
+        "importance": 3,
+        "reason": "Invalid product-area records can survive and fail to enrich feature and page dimensions."
+      },
+      {
+        "problem": "The substitution of raw.group_data for the documented raw.group assumes they represent the same entity and grain.",
+        "about": "data",
+        "evidence_in_work": "raw_names={'stg_pendo__group':'group_data'}",
+        "source": "source_table: raw.group; index lists raw.group_data with id, app_id, name",
+        "importance": 1,
+        "reason": "The available schema strongly supports the substitution, but its business equivalence was not independently checked."
+      }
+    ],
+    "fewer_reason": "Only the constraint omission and the documented-source substitution warrant checking."
+  },
+  "staging.stg_pendo__guide_event": {
+    "items": [
+      {
+        "problem": "URL validation trims blanks but never nullifies non-HTTP(S) URLs.",
+        "about": "requirement",
+        "evidence_in_work": "expr=...ELSE {base} END if n=='url'",
+        "source": "url IS NULL OR url ~ '^https?://'; on_failure: nullify_field",
+        "importance": 3,
+        "reason": "Malformed optional URLs remain in staging and the guide event mart."
+      },
+      {
+        "problem": "Rows with NULL required identifiers or unparseable occurrence timestamps are retained.",
+        "about": "requirement",
+        "evidence_in_work": "No guide_event WHERE conditions are added by the staging generator.",
+        "source": "account_id, guide_id, occurred_at, visitor_id, app_id: constraints: [not_null]",
+        "importance": 4,
+        "reason": "Invalid rows can distort guide metrics and violate downstream date and guide-key tests."
+      },
+      {
+        "problem": "Server names and user agents receive undocumented trimming and blank-to-NULL conversion.",
+        "about": "requirement",
+        "evidence_in_work": "base=f'NULLIF(TRIM(CAST({src} AS VARCHAR)), ...)'",
+        "source": "server_name: data_type: VARCHAR(255); user_agent: data_type: VARCHAR(255)",
+        "importance": 2,
+        "reason": "This changes event detail values rather than merely standardizing their declared types."
+      },
+      {
+        "problem": "The IPv4 validation pattern differs from the contract's literal pattern.",
+        "about": "requirement",
+        "evidence_in_work": "'^([0-9]{1,3}\\\\.){3}[0-9]{1,3}$'",
+        "source": "remote_ip ~ '^([0-9]{1,3}){3}[0-9]{1,3}$'",
+        "importance": 2,
+        "reason": "The mismatch affects optional IP preservation, though the documented pattern may be erroneous."
+      }
+    ],
+    "fewer_reason": "The longitude range check and timestamp conversion are implemented; no additional concrete discrepancy is supported."
+  },
+  "staging.stg_pendo__guide_history": {
+    "items": [
+      {
+        "problem": "Required guide, application, creator, and version identifiers can remain NULL after conversion.",
+        "about": "requirement",
+        "evidence_in_work": "TRY_CAST({src} AS {typ}); no guide_history validity conditions are generated",
+        "source": "guide_id, app_id, created_by_user_id, root_version_id, stable_version_id: constraints: [not_null]",
+        "importance": 4,
+        "reason": "Invalid guide configurations can enter the latest-guide dimension and fail metadata joins."
+      }
+    ],
+    "fewer_reason": "The remaining mappings, boolean casts, and timestamp conversions show no concrete issue."
+  },
+  "staging.stg_pendo__guide_step_history": {
+    "items": [
+      {
+        "problem": "The explicit deletion rule for NULL or empty guide IDs is not implemented.",
+        "about": "requirement",
+        "evidence_in_work": "'stg_pendo__guide_step_history':{}; no corresponding WHERE logic",
+        "source": "guide_id IS NOT NULL AND guide_id != ''; on_failure: delete_row",
+        "importance": 4,
+        "reason": "Unusable guide-step relationships remain in staging and latest-step selection."
+      },
+      {
+        "problem": "NULL step IDs are retained despite the staging not-null constraint.",
+        "about": "requirement",
+        "evidence_in_work": "CAST(step_id AS VARCHAR) AS step_id",
+        "source": "name: step_id; constraints: [not_null]",
+        "importance": 3,
+        "reason": "This violates the staging schema even though downstream distinct step counts ignore NULLs."
+      }
+    ],
+    "fewer_reason": "No other transformation discrepancy is visible."
+  },
+  "staging.stg_pendo__page_event": {
+    "items": [
+      {
+        "problem": "Required IDs and successfully parsed occurrence timestamps are not enforced.",
+        "about": "requirement",
+        "evidence_in_work": "No page_event WHERE conditions are added by the generator.",
+        "source": "account_id, page_id, occurred_at, visitor_id, app_id: constraints: [not_null]",
+        "importance": 4,
+        "reason": "Invalid page events can change counts, grouping, and which rows survive downstream joins."
+      },
+      {
+        "problem": "Server names and user agents are trimmed and blank-nullified beyond the stated rules.",
+        "about": "requirement",
+        "evidence_in_work": "elif n in ('server_name','user_agent','url')",
+        "source": "server_name: data_type: VARCHAR(255); user_agent: data_type: VARCHAR(255)",
+        "importance": 2,
+        "reason": "Source event details are altered without a table-specific correction requirement."
+      },
+      {
+        "problem": "IPv4 validation does not use the literal expression in the contract.",
+        "about": "requirement",
+        "evidence_in_work": "'^([0-9]{1,3}\\\\.){3}[0-9]{1,3}$'",
+        "source": "remote_ip ~ '^([0-9]{1,3}){3}[0-9]{1,3}$'",
+        "importance": 2,
+        "reason": "This changes optional IP nullification, although the documented pattern appears questionable."
+      }
+    ],
+    "fewer_reason": "No further issue is supported by the specified event fields or unspecified surrogate-key recipe."
+  },
+  "staging.stg_pendo__page_history": {
+    "items": [
+      {
+        "problem": "NULL required IDs and failed numeric conversions are retained rather than rejected.",
+        "about": "requirement",
+        "evidence_in_work": "TRY_CAST({src} AS {typ}); no page_history WHERE conditions",
+        "source": "page_id, app_id, created_by_user_id, group_id, root_version_id, stable_version_id: constraints: [not_null]",
+        "importance": 4,
+        "reason": "Invalid page configuration rows can become the selected latest page and contaminate downstream dimensions."
+      }
+    ],
+    "fewer_reason": "The declared field renames and timestamp conversions otherwise match the specification."
+  },
+  "staging.stg_pendo__page_rule_history": {
+    "items": [
+      {
+        "problem": "NULL page IDs are retained despite the required page_id constraint.",
+        "about": "requirement",
+        "evidence_in_work": "CAST(page_id AS VARCHAR) AS page_id ... FROM raw.page_rule_history",
+        "source": "name: page_id; constraints: [not_null]",
+        "importance": 3,
+        "reason": "Rules with unusable page references survive into latest-rule selection."
+      }
+    ],
+    "fewer_reason": "The remaining column conversions match the visible contract."
+  },
+  "staging.stg_pendo__poll": {
+    "items": [
+      {
+        "problem": "NULL poll IDs are not filtered or otherwise prevented.",
+        "about": "requirement",
+        "evidence_in_work": "CAST(id AS VARCHAR) AS poll_id ... FROM raw.poll",
+        "source": "name: poll_id; constraints: [not_null]",
+        "importance": 3,
+        "reason": "Invalid poll configurations remain available for downstream NPS processing."
+      }
+    ],
+    "fewer_reason": "The follow-up poll mapping and other field conversions are supported by the contract."
+  },
+  "staging.stg_pendo__poll_event": {
+    "items": [
+      {
+        "problem": "Rows with NULL required identifiers, failed numeric ID casts, or invalid occurrence timestamps are retained.",
+        "about": "requirement",
+        "evidence_in_work": "TRY_CAST(account_id AS BIGINT), TRY_CAST(app_id AS BIGINT); no poll_event filters",
+        "source": "account_id, guide_id, poll_id, occurred_at, visitor_id, app_id: constraints: [not_null]",
+        "importance": 4,
+        "reason": "Invalid responses can participate in latest-NPS selection or lose their account association."
+      },
+      {
+        "problem": "Non-HTTP(S) URLs are retained after whitespace cleanup.",
+        "about": "requirement",
+        "evidence_in_work": "CASE WHEN url IS NULL THEN NULL ELSE NULLIF(TRIM(...), '') END",
+        "source": "url IS NULL OR url ~ '^https?://'; on_failure: nullify_field",
+        "importance": 3,
+        "reason": "The required optional-field validation is missing."
+      },
+      {
+        "problem": "Server names and user agents are normalized without a specified correction rule.",
+        "about": "requirement",
+        "evidence_in_work": "elif n in ('server_name','user_agent','url')",
+        "source": "server_name: data_type: VARCHAR(255); user_agent: data_type: VARCHAR(255)",
+        "importance": 2,
+        "reason": "This can replace meaningful source formatting or empty values."
+      },
+      {
+        "problem": "IPv4 validation accepts a different set of strings from the contract expression.",
+        "about": "requirement",
+        "evidence_in_work": "'^([0-9]{1,3}\\\\.){3}[0-9]{1,3}$'",
+        "source": "remote_ip ~ '^([0-9]{1,3}){3}[0-9]{1,3}$'",
+        "importance": 2,
+        "reason": "Optional IP values will differ, even if the implementation's pattern is more conventional."
+      }
+    ],
+    "fewer_reason": "Latitude and longitude range checks are present, and no further concrete issue is visible."
+  },
+  "staging.stg_pendo__user": {
+    "items": [
+      {
+        "problem": "The allowed-role filter is applied to raw user_type before the required lowercase and trim correction.",
+        "about": "requirement",
+        "evidence_in_work": "WHERE user_type IN ('system','internal','api','external'); SELECT LOWER(TRIM(user_type))",
+        "source": "user_type = LOWER(TRIM(user_type)); on_failure: correct",
+        "importance": 4,
+        "reason": "Correctable values such as padded or uppercase roles would be deleted, removing user enrichment matches."
+      },
+      {
+        "problem": "NULL user IDs are retained despite the non-null user_id requirement.",
+        "about": "requirement",
+        "evidence_in_work": "CAST(id AS VARCHAR) ...; user filters check only role and username",
+        "source": "name: user_id; constraints: [not_null]",
+        "importance": 3,
+        "reason": "Invalid user records remain in the cleaned table."
+      },
+      {
+        "problem": "Deleted timestamps bypass the prescribed local-time substring conversion.",
+        "about": "requirement",
+        "evidence_in_work": "TRY_CAST(NULLIF(deleted_at, '') AS TIMESTAMP)",
+        "source": "TRY_CAST(SUBSTRING(timestamp_field, 1, 23) AS TIMESTAMP)",
+        "importance": 2,
+        "reason": "Timezone-suffixed strings may be parsed differently or fail instead of preserving their local timestamp."
+      }
+    ],
+    "fewer_reason": "Username cleanup and empty-username deletion are implemented."
+  },
+  "staging.stg_pendo__visitor_account_history": {
+    "items": [
+      {
+        "problem": "NULL visitor and account relationship keys are retained without enforcing their required constraints.",
+        "about": "requirement",
+        "evidence_in_work": "No visitor_account_history WHERE conditions are generated.",
+        "source": "account_id: constraints: [not_null]; visitor_id: constraints: [not_null]",
+        "importance": 4,
+        "reason": "Invalid mappings can affect associated-account counts and downstream relationship models."
+      }
+    ],
+    "fewer_reason": "The relationship timestamp conversion otherwise follows the contract."
+  },
+  "staging.stg_pendo__visitor_history": {
+    "items": [
+      {
+        "problem": "last_visit is copied as text instead of being converted to TIMESTAMP.",
+        "about": "requirement",
+        "evidence_in_work": "The timestamp-name list includes 'last_visit_at' but not 'last_visit'.",
+        "source": "name: last_visit; data_type: TIMESTAMP",
+        "importance": 4,
+        "reason": "This leaves an incorrect type and unstandardized timezone-suffixed values in staging and latest-visitor output."
+      },
+      {
+        "problem": "NULL visitor IDs and account IDs are retained despite both being required.",
+        "about": "requirement",
+        "evidence_in_work": "No visitor_history WHERE conditions are generated.",
+        "source": "visitor_id: constraints: [not_null]; account_id: constraints: [not_null]",
+        "importance": 4,
+        "reason": "Invalid profile keys can survive into visitor dimensions and relationship-based analytics."
+      }
+    ],
+    "fewer_reason": "The other visible mappings and casts are supported by the specification."
+  },
+  "intermediate.int_pendo__latest_account": {
+    "items": [],
+    "fewer_reason": "The row-number partition, descending timestamp order, retained index, and source pass-through match this model."
+  },
+  "intermediate.int_pendo__latest_application": {
+    "items": [
+      {
+        "problem": "NULL update timestamps are not explicitly placed first as the model documentation requires.",
+        "about": "requirement",
+        "evidence_in_work": "ORDER BY last_updated_at DESC",
+        "source": "NULL last_updated_at values are treated as newest in this sort and will come first.",
+        "importance": 3,
+        "reason": "DuckDB normally places NULLs last, so applications with mixed missing and valid timestamps can select a different profile."
+      }
+    ],
+    "fewer_reason": "Other latest-record logic matches the specification; the NULL-order statement is the specific ambiguity to verify."
+  },
+  "intermediate.int_pendo__latest_feature": {
+    "items": [],
+    "fewer_reason": "The implementation follows the required default NULL ordering, arbitrary ties, and one-based row selection."
+  },
+  "intermediate.int_pendo__latest_guide": {
+    "items": [],
+    "fewer_reason": "The visible latest-guide logic matches the model's ranking and pass-through rules."
+  },
+  "intermediate.int_pendo__latest_guide_step": {
+    "items": [
+      {
+        "problem": "NULL guide update timestamps are not explicitly sorted first as required.",
+        "about": "requirement",
+        "evidence_in_work": "PARTITION BY guide_id, step_id ORDER BY guide_last_updated_at DESC",
+        "source": "NULLs sort first for descending order, so a NULL timestamp can be chosen as most recent.",
+        "importance": 2,
+        "reason": "The selected timestamp can differ for mixed-NULL histories, although the guide-step membership is unchanged."
+      }
+    ],
+    "fewer_reason": "Partitioning, one-based indexing, and tie behavior otherwise match."
+  },
+  "intermediate.int_pendo__latest_nps_rating": {
+    "items": [
+      {
+        "problem": "Selected account IDs are converted to VARCHAR instead of being passed through from the numeric poll-event account field.",
+        "about": "requirement",
+        "evidence_in_work": "CAST(e.account_id AS VARCHAR) AS account_id",
+        "source": "account_id from the selected event",
+        "importance": 2,
+        "reason": "The contract leaves the account type implicit here, but this is an extra transformation that affects downstream join coercion."
+      },
+      {
+        "problem": "TRY_CAST silently turns malformed non-NULL poll responses into NULL rather than using the specified integer conversion semantics.",
+        "about": "requirement",
+        "evidence_in_work": "TRY_CAST(e.poll_response AS INTEGER) AS nps_rating",
+        "source": "nps_rating as the poll_response converted to integer (NULL if poll_response is NULL)",
+        "importance": 2,
+        "reason": "Invalid response handling was not specified as nullification and could conceal source-quality problems."
+      }
+    ],
+    "fewer_reason": "The NPS poll filter and latest-per-visitor selection match; zero output rows alone do not establish an error."
+  },
+  "intermediate.int_pendo__latest_page": {
+    "items": [],
+    "fewer_reason": "No discrepancy is visible in the required latest-page ranking or field pass-through."
+  },
+  "intermediate.int_pendo__latest_page_rule": {
+    "items": [],
+    "fewer_reason": "The partition keys, descending update order, arbitrary ties, and retained index match."
+  },
+  "intermediate.int_pendo__latest_visitor": {
+    "items": [
+      {
+        "problem": "The model inherits an unparsed VARCHAR last_visit from staging where its output requires TIMESTAMP.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT * FROM ranked WHERE latest_visitor_index = 1",
+        "source": "name: last_visit; data_type: TIMESTAMP",
+        "importance": 3,
+        "reason": "Latest-visitor output preserves the upstream timestamp type error."
+      }
+    ],
+    "fewer_reason": "The latest-record selection itself matches the specification."
+  },
+  "intermediate.int_pendo__latest_visitor_account": {
+    "items": [
+      {
+        "problem": "Missing relationship timestamps are not explicitly ordered first as the contract requires.",
+        "about": "requirement",
+        "evidence_in_work": "ORDER BY visitor_last_updated_at DESC",
+        "source": "NULL timestamps are treated as highest and come first.",
+        "importance": 2,
+        "reason": "The retained update timestamp can differ, though the visitor-account pair set remains the same."
+      }
+    ],
+    "fewer_reason": "Other partitioning and selection requirements are implemented."
+  },
+  "intermediate.int_pendo__calendar_spine": {
+    "items": [],
+    "fewer_reason": "The inclusive range, seven-day extension, date type, and empty-range handling match the model."
+  },
+  "intermediate.int_pendo__account_daily_metrics": {
+    "items": [
+      {
+        "problem": "Malformed account IDs preserved upstream can create account/day groups that should have a NULL account key under the staging contract.",
+        "about": "requirement",
+        "evidence_in_work": "FROM staging.stg_pendo__event GROUP BY 1,2",
+        "source": "account_id ~ '^(ACC[0-9]+|[0-9]+)$'; on_failure: nullify_field",
+        "importance": 4,
+        "reason": "Account totals and page/feature matching can differ because the base event account validation was omitted."
+      }
+    ],
+    "fewer_reason": "The model correctly uses the event base and even preserves the documented page-derived feature-clicking visitor convention."
+  },
+  "intermediate.int_pendo__feature_daily_metrics": {
+    "items": [
+      {
+        "problem": "The inner join to daily totals removes NULL-date groups that the grouping logic otherwise produces.",
+        "about": "requirement",
+        "evidence_in_work": "FROM agg a JOIN totals t USING(occurred_on)",
+        "source": "One row per feature_id per occurred_on",
+        "importance": 3,
+        "reason": "Staging does not enforce successful timestamp parsing, so these groups can exist and be silently lost."
+      }
+    ],
+    "fewer_reason": "First-use counts, returning counts, denominators, rounding, and daily share definitions otherwise match."
+  },
+  "intermediate.int_pendo__guide_daily_metrics": {
+    "items": [
+      {
+        "problem": "NULL-account events cannot match their account-first-date aggregate using ordinary equality.",
+        "about": "requirement",
+        "evidence_in_work": "LEFT JOIN a USING(guide_id,account_id)",
+        "source": "rows without account_id are treated as one null account",
+        "importance": 3,
+        "reason": "Their visitors are omitted from the deliberately visitor-based first-time-account metric."
+      },
+      {
+        "problem": "NULL-date groups are silently removed by the inner join to daily totals.",
+        "about": "requirement",
+        "evidence_in_work": "FROM g JOIN t USING(occurred_on)",
+        "source": "Output one row per (occurred_on, guide_id).",
+        "importance": 2,
+        "reason": "Invalid parsed timestamps survive staging rather than being rejected consistently."
+      }
+    ],
+    "fewer_reason": "The unusual visitor-based first-time-account count and potentially negative return count are otherwise implemented as documented."
+  },
+  "intermediate.int_pendo__page_daily_metrics": {
+    "items": [
+      {
+        "problem": "NULL-date page groups are dropped when aggregates are inner joined to their daily totals.",
+        "about": "requirement",
+        "evidence_in_work": "FROM agg a JOIN totals t USING(occurred_on)",
+        "source": "One row per occurred_on per page_id",
+        "importance": 3,
+        "reason": "The staging code permits failed timestamp parses, making this an inconsistent downstream row filter."
+      }
+    ],
+    "fewer_reason": "The remaining aggregate and percentage formulas follow the documented definitions."
+  },
+  "intermediate.int_pendo__visitor_daily_metrics": {
+    "items": [],
+    "fewer_reason": "The event-based grain, sums, distinct entity counts, left joins, and zero defaults match the specification."
+  },
+  "intermediate.int_pendo__feature_info": {
+    "items": [
+      {
+        "problem": "The star projection adds latest_feature_index even though it is absent from the feature_info output schema.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT f.*,p.page_name,... FROM intermediate.int_pendo__latest_feature f",
+        "source": "Start with all columns ... (feature_id, app_id, ... stable_version_id, valid_through)",
+        "importance": 2,
+        "reason": "The extra rank field propagates into the feature mart and changes the specified output shape."
+      },
+      {
+        "problem": "Correctable user-role variants deleted upstream can leave creator and updater enrichment unexpectedly missing.",
+        "about": "requirement",
+        "evidence_in_work": "LEFT JOIN staging.stg_pendo__user creator ... LEFT JOIN staging.stg_pendo__user updater",
+        "source": "user_type = LOWER(TRIM(user_type)); on_failure: correct",
+        "importance": 2,
+        "reason": "The joins are correct, but the staging filter can remove users that should have been normalized and retained."
+      }
+    ],
+    "fewer_reason": "The documented enrichment joins and NULL-preserving full-name construction are otherwise implemented."
+  },
+  "intermediate.int_pendo__guide_alltime_metrics": {
+    "items": [],
+    "fewer_reason": "The all-row count, distinct IDs, exact event-type comparisons, and first/last timestamps match."
+  },
+  "intermediate.int_pendo__guide_info": {
+    "items": [
+      {
+        "problem": "Creator and updater metadata can be missing because user staging rejects roles before normalizing them.",
+        "about": "requirement",
+        "evidence_in_work": "LEFT JOIN staging.stg_pendo__user c ... LEFT JOIN staging.stg_pendo__user u",
+        "source": "user_type = LOWER(TRIM(user_type)); on_failure: correct",
+        "importance": 2,
+        "reason": "Valid users with formatting differences may be lost before these otherwise correct joins."
+      }
+    ],
+    "fewer_reason": "Application/user string joins, distinct step counts, NULL counts for unmatched guides, and name construction match."
+  },
+  "intermediate.int_pendo__page_info": {
+    "items": [
+      {
+        "problem": "Creator and updater enrichment can lose users whose role values required normalization before filtering.",
+        "about": "requirement",
+        "evidence_in_work": "LEFT JOIN staging.stg_pendo__user c ... LEFT JOIN staging.stg_pendo__user u",
+        "source": "user_type = LOWER(TRIM(user_type)); on_failure: correct",
+        "importance": 2,
+        "reason": "The upstream filter can cause avoidable NULL user metadata."
+      }
+    ],
+    "fewer_reason": "Rule aggregation, active-feature time window, zero default, and metadata joins otherwise match."
+  },
+  "intermediate.int_pendo__user_lifecycle_segments": {
+    "items": [
+      {
+        "problem": "activity_density and user_value_score are emitted as DOUBLE rather than the required FLOAT.",
+        "about": "requirement",
+        "evidence_in_work": "count_active_days::DOUBLE/date_diff(...); least(100,activity_density*30+...)",
+        "source": "activity_density: data_type: FLOAT; user_value_score: data_type: FLOAT",
+        "importance": 2,
+        "reason": "The formulas match, but the physical output schema and numeric precision differ."
+      }
+    ],
+    "fewer_reason": "The account-scoped aggregation, ordered lifecycle rules, value formula, trends, risk rules, and flags are implemented."
+  },
+  "intermediate.int_pendo__conversion_funnel_analysis": {
+    "items": [
+      {
+        "problem": "Feature and deep-interaction activity are inferred from generic events instead of reading the feature-event and page-event sources.",
+        "about": "requirement",
+        "evidence_in_work": "FROM staging.stg_pendo__event GROUP BY 1,2,3",
+        "source": "daily_events (union all) ... feature_event ... page_event",
+        "importance": 5,
+        "reason": "Two required data sources are unused, changing the population and all funnel counts."
+      },
+      {
+        "problem": "Page-view presence is conditioned on non-NULL page_id even though any generic event should establish the page-view presence flag.",
+        "about": "requirement",
+        "evidence_in_work": "count(DISTINCT CASE WHEN page_id IS NOT NULL THEN visitor_id END)",
+        "source": "Page views: from staging.stg_pendo__event as event_type=page_view",
+        "importance": 4,
+        "reason": "This changes the denominator of page-to-feature and overall conversion rates."
+      },
+      {
+        "problem": "The required visitor/day aggregation, entity counts, and interaction totals are omitted.",
+        "about": "requirement",
+        "evidence_in_work": "WITH daily AS (SELECT account_id,app_id,... count(DISTINCT visitor_id) ...)",
+        "source": "user_daily_funnel (per visitor_id, account_id, app_id, event_date)",
+        "importance": 5,
+        "reason": "Without this stage the specified engagement and session-quality metrics cannot be computed."
+      },
+      {
+        "problem": "Engagement, per-visitor averages, and session-quality rates are NULL placeholders.",
+        "about": "requirement",
+        "evidence_in_work": "NULL::DOUBLE avg_engagement_score ... NULL::FLOAT high_quality_session_rate,NULL::FLOAT bounce_rate",
+        "source": "Averages ... avg_engagement_score ... Quality rates ... high_quality_session_rate ... bounce_rate",
+        "importance": 5,
+        "reason": "Several required business measures are never calculated for any row."
+      },
+      {
+        "problem": "The purported 30-day averages actually average every historical daily row.",
+        "about": "requirement",
+        "evidence_in_work": "avg(overall_conversion_rate) OVER(PARTITION BY account_id,app_id)",
+        "source": "dates on or after 30 days before today",
+        "importance": 5,
+        "reason": "Historical behavior replaces the required current-window cohort summary."
+      },
+      {
+        "problem": "Conversion trend is always NULL instead of comparing the two specified date windows.",
+        "about": "requirement",
+        "evidence_in_work": "NULL::DOUBLE conversion_rate_trend",
+        "source": "average ... on or after 7 days before today minus ... from 30 to 7 days before today",
+        "importance": 4,
+        "reason": "The requested directional signal is completely absent."
+      },
+      {
+        "problem": "Funnel health and optimization recommendations are constants rather than threshold-based classifications.",
+        "about": "requirement",
+        "evidence_in_work": "'Poor' funnel_health_rating,'Focus on feature discovery and onboarding' optimization_recommendation",
+        "source": "funnel_health_rating ... Excellent ... Good ... Fair ... Poor; optimization_recommendation (first matching rule)",
+        "importance": 4,
+        "reason": "Every account receives the same assessment regardless of its metrics."
+      }
+    ],
+    "fewer_reason": "These seven issues cover the visible source, processing, metric, time-window, and classification omissions without splitting them into repetitive field-level findings."
+  },
+  "intermediate.int_pendo__product_health_metrics": {
+    "items": [
+      {
+        "problem": "Overall health, grade, and risk are hardcoded instead of being calculated from component metrics.",
+        "about": "requirement",
+        "evidence_in_work": "0::FLOAT overall_health_score,'Critical' health_grade,'High Risk' risk_level",
+        "source": "overall_health_score is a 0–100 score ... Health categorization ... risk_level",
+        "importance": 5,
+        "reason": "Every output row is assigned the worst health assessment and downstream customer values are distorted."
+      },
+      {
+        "problem": "The latest-NPS source is unused and all NPS measures are placeholders.",
+        "about": "requirement",
+        "evidence_in_work": "NULL::DOUBLE avg_nps_score,NULL::FLOAT net_promoter_score ... 0::BIGINT total_nps_responses",
+        "source": "NPS metrics (by account_id from intermediate.int_pendo__latest_nps_rating)",
+        "importance": 5,
+        "reason": "Required satisfaction measures cannot reflect actual responses, including future nonempty NPS data."
+      },
+      {
+        "problem": "Visitor-level activity aggregation and account retention calculations are omitted.",
+        "about": "requirement",
+        "evidence_in_work": "NULL::FLOAT retention_7d,NULL::FLOAT retention_30d,NULL::FLOAT retention_90d",
+        "source": "Visitor aggregated metrics ... User retention metrics ... retention_7d/30d/90d",
+        "importance": 5,
+        "reason": "A major health-score component and all retention outputs are absent."
+      },
+      {
+        "problem": "Required lifetime activity and highly active user measures are never calculated.",
+        "about": "requirement",
+        "evidence_in_work": "NULL::DOUBLE avg_active_days_per_user,NULL::DOUBLE avg_lifetime_events ... NULL::FLOAT highly_active_user_rate",
+        "source": "highly_active_user_rate ... avg_lifetime_events ... avg_active_days_per_user",
+        "importance": 4,
+        "reason": "Account engagement depth is missing for every record."
+      },
+      {
+        "problem": "Feature depth adoption and average features per active feature user are NULL placeholders.",
+        "about": "requirement",
+        "evidence_in_work": "NULL::FLOAT feature_depth_adoption_rate ... NULL::FLOAT avg_features_per_user",
+        "source": "features_heavily_used ... feature_depth_adoption_rate ... avg_features_per_user",
+        "importance": 4,
+        "reason": "The source contains the necessary usage data, but two prescribed adoption measures are omitted."
+      },
+      {
+        "problem": "Deep-engagement session rate is not computed from session minutes and events.",
+        "about": "requirement",
+        "evidence_in_work": "NULL::FLOAT deep_engagement_session_rate",
+        "source": "share of sessions with ≥10 minutes or ≥20 events",
+        "importance": 4,
+        "reason": "This removes another required health-score component."
+      },
+      {
+        "problem": "The prescribed retention-based full-join structure is replaced by a direct feature-to-engagement join.",
+        "about": "requirement",
+        "evidence_in_work": "FROM f FULL OUTER JOIN e ON f.account_id=e.account_id AND f.app_id=e.app_id",
+        "source": "Join feature_adoption_metrics ... and user_retention_metrics ... full outer join on account_id",
+        "importance": 4,
+        "reason": "The row population and account-level retention attachment can differ from the specified grain."
+      },
+      {
+        "problem": "Primary improvement area is fixed rather than using the ordered missing-value-aware rules.",
+        "about": "requirement",
+        "evidence_in_work": "'Improve feature adoption' primary_improvement_area",
+        "source": "check in order: NPS < 0, adoption < 0.3, 30-day retention < 0.5, deep engagement < 0.2",
+        "importance": 4,
+        "reason": "The resulting guidance is unrelated to each account's actual weakest component."
+      },
+      {
+        "problem": "sessions_per_user guards zero denominators even though this model explicitly requires unguarded division.",
+        "about": "requirement",
+        "evidence_in_work": "e.total_sessions::FLOAT/NULLIF(e.unique_users,0)",
+        "source": "sessions_per_user = total_sessions ÷ unique_users (no explicit zero-division guard)",
+        "importance": 1,
+        "reason": "This changes the zero-user special case, which is unlikely when required visitor IDs are valid."
+      }
+    ],
+    "fewer_reason": "Nine distinct issues account for the visible omissions; further items would largely repeat the same placeholder calculations."
+  },
+  "intermediate.int_pendo__customer_rfm_analysis": {
+    "items": [
+      {
+        "problem": "All account-level counts, ratios, and average RFM scores are NULL placeholders.",
+        "about": "requirement",
+        "evidence_in_work": "CAST(NULL AS BIGINT) account_total_visitors ... CAST(NULL AS DOUBLE) account_avg_rfm_score",
+        "source": "Account-level aggregation ... Final output: Left join account metrics to each visitor–account row.",
+        "importance": 5,
+        "reason": "The entire account-health enrichment stage is omitted."
+      },
+      {
+        "problem": "Recommended strategies use abbreviated custom text instead of the prescribed segment-specific mapping.",
+        "about": "requirement",
+        "evidence_in_work": "'Reward loyalty and advocate' ... 'Re-engage customer' ... ELSE 'Standard engagement tactics'",
+        "source": "recommended_strategy: fixed text per rfm_segment",
+        "importance": 4,
+        "reason": "Most segments receive generic or substituted business recommendations."
+      },
+      {
+        "problem": "Action priorities collapse distinct win-back, reactivation, and re-engagement categories into simplified groups.",
+        "about": "requirement",
+        "evidence_in_work": "WHEN rfm_segment IN ('At Risk','Cannot Be Retrieved','Hibernating') THEN 'Re-engagement' ELSE 'Monitor'",
+        "source": "Retention & Advocacy, Growth & Upsell, Onboarding & Education, Re-engagement, Win-back or Deprioritize, Reactivation, or Monitor",
+        "importance": 4,
+        "reason": "Incorrect priorities also drive incorrect lifecycle-insight actions and labels."
+      },
+      {
+        "problem": "The CLV mapping may not match the required segment-specific mapping beyond the explicitly implemented top-tier lifetime rule.",
+        "about": "requirement",
+        "evidence_in_work": "WHEN rfm_segment IN ('Potential Loyalists','Promising') THEN 'Medium CLV' ELSE 'Low CLV'",
+        "source": "predicted_clv_tier: based on rfm_segment",
+        "importance": 3,
+        "reason": "The visible documentation does not fully enumerate the mapping, so the abbreviated implementation needs verification."
+      }
+    ],
+    "fewer_reason": "The event aggregation, score thresholds, segment order, weighted score, value tiers, and associated-account default otherwise match."
+  },
+  "intermediate.int_pendo__data_quality_checks": {
+    "items": [
+      {
+        "problem": "The output omits all completeness, consistency, and business-violation detail sections.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT 'Data Quality Summary'::VARCHAR report_section",
+        "source": "Build a four-section report ... UNION ALLing section-specific rows",
+        "importance": 5,
+        "reason": "The required report is reduced to one row instead of reporting table and check-level findings."
+      },
+      {
+        "problem": "Completeness, consistency, business-logic, and overall scores are never computed.",
+        "about": "requirement",
+        "evidence_in_work": "NULL::VARCHAR completeness_score,NULL::FLOAT consistency_score,NULL::FLOAT business_logic_score,NULL::FLOAT overall_quality_score",
+        "source": "Summary quality metrics ... completeness_score ... consistency_score ... business_logic_score",
+        "importance": 5,
+        "reason": "The only emitted report row contains none of its required quantitative assessments."
+      },
+      {
+        "problem": "None of the required staging sources are read for the quality checks.",
+        "about": "requirement",
+        "evidence_in_work": "The SQL is a constant SELECT with no FROM clause.",
+        "source": "source_models: account_history, visitor_history, event",
+        "importance": 5,
+        "reason": "Future dates, broken relationships, invalid metrics, duplicate keys, and inactive accounts are never evaluated."
+      },
+      {
+        "problem": "The quality grade is always Poor rather than following the overall-score thresholds.",
+        "about": "requirement",
+        "evidence_in_work": "'Poor'::VARCHAR quality_grade",
+        "source": "quality_grade is Excellent (>=95), Good (>=85), Fair (>=70), else Poor",
+        "importance": 4,
+        "reason": "The grade does not describe the data's measured quality."
+      }
+    ],
+    "fewer_reason": "The four findings cover the complete report omission without repeating every missing check as a separate issue."
+  },
+  "marts.pendo__account": {
+    "items": [
+      {
+        "problem": "The three profile timestamp columns remain TIMESTAMP even though the mart schema declares VARCHAR.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT a.* ... FROM intermediate.int_pendo__latest_account a",
+        "source": "last_updated_at, first_visit_at, last_visit_at: data_type: VARCHAR",
+        "importance": 2,
+        "reason": "There is a contract tension with unchanged pass-through, but physical output types do not match the listed mart schema."
+      },
+      {
+        "problem": "Usage aggregates inherit unvalidated generic-event account IDs.",
+        "about": "requirement",
+        "evidence_in_work": "FROM intermediate.int_pendo__account_daily_metrics GROUP BY 1",
+        "source": "account_id ~ '^(ACC[0-9]+|[0-9]+)$'; on_failure: nullify_field",
+        "importance": 3,
+        "reason": "If invalid IDs match dimension IDs, usage can be attached where the staging contract would have nullified the event account."
+      }
+    ],
+    "fewer_reason": "The mart's aggregation, date counts, averages, joins, and zero defaults otherwise match."
+  },
+  "marts.pendo__feature": {
+    "items": [
+      {
+        "problem": "The feature mart includes latest_feature_index through the inherited star projection although the output schema does not list it.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT f.* ... FROM intermediate.int_pendo__feature_info f",
+        "source": "Output one row per feature_id combining all feature attributes and computed metrics.",
+        "importance": 2,
+        "reason": "An upstream extra column changes the prescribed output shape."
+      },
+      {
+        "problem": "Timestamp attributes and click timestamps are emitted as TIMESTAMP instead of the declared VARCHAR types.",
+        "about": "requirement",
+        "evidence_in_work": "f.* ... m.first_click_at,m.last_click_at",
+        "source": "created_at, last_updated_at, valid_through, page_created_at, page_valid_through, first_click_at, last_click_at: data_type: VARCHAR",
+        "importance": 2,
+        "reason": "The calculations are appropriate, but the listed mart schema conflicts with the uncast pass-through types."
+      }
+    ],
+    "fewer_reason": "Usage counts, sums, visitor averages, rounding, retained features, and defaults match."
+  },
+  "marts.pendo__guide": {
+    "items": [
+      {
+        "problem": "Guide and metric timestamps retain TIMESTAMP types instead of the mart's declared VARCHAR types.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT g.*,...m.first_event_at,m.last_event_at",
+        "source": "created_at, last_updated_at, published_at, reset_at, first_event_at, last_event_at: data_type: VARCHAR",
+        "importance": 2,
+        "reason": "The pass-through rule creates a documentation tension, but the physical output does not match the listed types."
+      }
+    ],
+    "fewer_reason": "The left join, selected metrics, preserved duplicates, and absence of metric defaults follow the specification."
+  },
+  "marts.pendo__page": {
+    "items": [
+      {
+        "problem": "sum_pageviews is emitted as DOUBLE rather than the required BIGINT.",
+        "about": "requirement",
+        "evidence_in_work": "sum(num_events) sum_pageviews ... coalesce(m.sum_pageviews,0)",
+        "source": "name: sum_pageviews; data_type: BIGINT",
+        "importance": 2,
+        "reason": "The source uses DOUBLE counts, so the physical output schema differs and fractional inputs are not resolved as specified."
+      }
+    ],
+    "fewer_reason": "The dimension base, event aggregates, averages, timestamp handling, and defaults otherwise match."
+  },
+  "marts.pendo__visitor": {
+    "items": [
+      {
+        "problem": "last_browser_version remains VARCHAR rather than the mart's declared DOUBLE.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT l.* FROM intermediate.int_pendo__latest_visitor l",
+        "source": "name: last_browser_version; data_type: DOUBLE",
+        "importance": 2,
+        "reason": "The staging and mart schemas disagree, and the implementation does not reconcile them."
+      },
+      {
+        "problem": "Profile timestamps remain mixed TIMESTAMP and raw-text values rather than consistently satisfying the declared VARCHAR fields.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT l.*",
+        "source": "first_visit_at, last_updated_at, last_visit: data_type: VARCHAR",
+        "importance": 2,
+        "reason": "Upstream timestamp conversions and the missed last_visit conversion produce inconsistent physical types and formatting."
+      }
+    ],
+    "fewer_reason": "Associated-account counts, latest NPS join, engagement sums, day/month counts, averages, and defaults otherwise follow the model."
+  },
+  "marts.pendo__feature_event": {
+    "items": [
+      {
+        "problem": "The required left joins to latest visitor and latest account are omitted.",
+        "about": "requirement",
+        "evidence_in_work": "FROM w INNER JOIN ...feature_info f ... LEFT JOIN ...feature_info p",
+        "source": "Left join ... latest_visitor on visitor_id and ... latest_account on account_id; no columns are selected",
+        "importance": 2,
+        "reason": "The current unique latest models make the joins redundant, but the specified processing step is absent."
+      },
+      {
+        "problem": "Current and previous event timestamps remain TIMESTAMP instead of the declared VARCHAR fields.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT w.*; lag(occurred_at) ... previous_feature_event_at",
+        "source": "occurred_at: data_type: VARCHAR; previous_feature_event_at: data_type: VARCHAR",
+        "importance": 2,
+        "reason": "The pass-through instruction conflicts with the listed types, which should be checked explicitly."
+      }
+    ],
+    "fewer_reason": "The previous-event window is correctly computed before current-feature filtering and uses only occurred_at ordering."
+  },
+  "marts.pendo__guide_event": {
+    "items": [
+      {
+        "problem": "The required latest-visitor and latest-account left joins are absent.",
+        "about": "requirement",
+        "evidence_in_work": "FROM staging.stg_pendo__guide_event e INNER JOIN intermediate.int_pendo__guide_info g USING(guide_id)",
+        "source": "Left join ... latest_visitor ... and ... latest_account",
+        "importance": 2,
+        "reason": "Their current unique keys make row counts equivalent, but the prescribed joins were not implemented."
+      },
+      {
+        "problem": "occurred_at is TIMESTAMP rather than the specified VARCHAR event timestamp.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT e.*",
+        "source": "occurred_at: data_type: VARCHAR; original format preserved",
+        "importance": 2,
+        "reason": "The mart schema and original-format wording conflict with staging conversion, and no resolution is implemented."
+      }
+    ],
+    "fewer_reason": "The inner guide join and selected metadata otherwise match."
+  },
+  "marts.pendo__page_event": {
+    "items": [
+      {
+        "problem": "The specified latest-visitor and latest-account left joins are not performed.",
+        "about": "requirement",
+        "evidence_in_work": "FROM w INNER JOIN ...latest_page p ... LEFT JOIN ...latest_page pp",
+        "source": "Left joins to ... latest_visitor and ... latest_account are performed",
+        "importance": 2,
+        "reason": "These joins are currently row-preserving but are explicitly required steps."
+      }
+    ],
+    "fewer_reason": "The event window, current-page inner join, prior-page left join, and pass-through fields otherwise match."
+  },
+  "marts.pendo__visitor_feature": {
+    "items": [
+      {
+        "problem": "sum_clicks is DOUBLE instead of the required BIGINT.",
+        "about": "requirement",
+        "evidence_in_work": "sum(num_events) sum_clicks",
+        "source": "name: sum_clicks; data_type: BIGINT",
+        "importance": 2,
+        "reason": "The source is DOUBLE, so the specified output type is not achieved."
+      }
+    ],
+    "fewer_reason": "Grouping, row count, first/last activity, distinct active days, NULL sums, and rounded daily minutes match."
+  },
+  "marts.pendo__account_daily_metrics": {
+    "items": [],
+    "fewer_reason": "The account/date spine, current-date bound, left join, and preserved missing metrics match the specification."
+  },
+  "marts.pendo__feature_daily_metrics": {
+    "items": [],
+    "fewer_reason": "The inclusive active window, attributes, daily metric join, and numeric zero defaults match."
+  },
+  "marts.pendo__guide_daily_metrics": {
+    "items": [],
+    "fewer_reason": "The creation-to-current-date spine and unchanged nullable metrics match the model."
+  },
+  "marts.pendo__page_daily_metrics": {
+    "items": [],
+    "fewer_reason": "The page active-window spine and all required metric zero defaults are implemented."
+  },
+  "marts.pendo__visitor_daily_metrics": {
+    "items": [],
+    "fewer_reason": "The earliest dated event, inclusive visitor spine, left join, and NULL metrics on inactive dates match."
+  },
+  "marts.pendo__customer_lifecycle_insights": {
+    "items": [
+      {
+        "problem": "Joining account-scoped lifecycle and RFM rows by visitor alone and app-scoped health rows by account can violate the required one-row-per-visitor grain.",
+        "about": "data",
+        "evidence_in_work": "LEFT JOIN ...l USING(visitor_id) LEFT JOIN ...r USING(visitor_id) LEFT JOIN ...h ON v.account_id=h.account_id",
+        "source": "grain: One row per visitor_id; lifecycle may contain multiple account scopes; product health is per account and app",
+        "importance": 5,
+        "reason": "The documented join instructions conflict with the promised grain, and the 47,481 health rows make multiplication a substantial risk."
+      },
+      {
+        "problem": "Customer segmentation omits Rising Star, Save Immediately, Rescue Mission, and Lost Customer rules.",
+        "about": "requirement",
+        "evidence_in_work": "WHEN ... THEN 'Fresh Prospect' ELSE 'Standard Customer' END",
+        "source": "Customer segmentation label ... Rising Star ... Save Immediately ... Rescue Mission ... Lost Customer",
+        "importance": 5,
+        "reason": "Entire customer groups are incorrectly labeled Standard Customer."
+      },
+      {
+        "problem": "Recommended next action is always the fallback text.",
+        "about": "requirement",
+        "evidence_in_work": "'Standard nurturing; Regular check-ins; Content engagement' recommended_next_action",
+        "source": "Recommended next action ... evaluated in order",
+        "importance": 4,
+        "reason": "Advocacy, onboarding, intervention, adoption, and upsell recommendations are never produced."
+      },
+      {
+        "problem": "Journey stage and predicted LTV tier are constants instead of ordered classifications.",
+        "about": "requirement",
+        "evidence_in_work": "'Maintenance' customer_journey_stage,'Standard LTV' predicted_ltv_tier",
+        "source": "Customer journey stage ... Predicted LTV tier ... evaluated in order",
+        "importance": 5,
+        "reason": "Two central customer classifications are absent for every row."
+      },
+      {
+        "problem": "Engagement velocity and usage trend are hardcoded rather than derived from activity dates and usage.",
+        "about": "requirement",
+        "evidence_in_work": "0::FLOAT engagement_velocity,'Declining' usage_trend",
+        "source": "engagement_velocity: ratio of count_active_days to days since first event; usage_trend ... baseline average",
+        "importance": 4,
+        "reason": "Activity-based signals are replaced by uniformly inactive or declining assessments."
+      },
+      {
+        "problem": "Account influence is always Single Account User regardless of associated-account count.",
+        "about": "requirement",
+        "evidence_in_work": "'Single Account User' account_influence_level",
+        "source": ">3 Multi-Account Influencer; >1 Cross-Account User; else Single Account User",
+        "importance": 3,
+        "reason": "Cross-account users cannot be identified."
+      },
+      {
+        "problem": "Customer importance and investment expectation are fixed to fallback values.",
+        "about": "requirement",
+        "evidence_in_work": "'Standard' customer_importance_level,'Standard ROI - Maintenance' investment_expectation",
+        "source": "Final importance and investment expectation ... ordered rules",
+        "importance": 4,
+        "reason": "The requested prioritization and investment outputs never distinguish customer groups."
+      },
+      {
+        "problem": "Comprehensive value uses a hardcoded zero health score whenever the simplified health model produces a match.",
+        "about": "requirement",
+        "evidence_in_work": "coalesce(h.overall_health_score,50)*.3",
+        "source": "30% of overall_health_score ... defaults to 50 if missing",
+        "importance": 5,
+        "reason": "The formula is correct locally, but the upstream zero placeholder depresses values instead of supplying real health or the missing-health default."
+      },
+      {
+        "problem": "Several physical numeric types differ from the listed customer-insight schema.",
+        "about": "requirement",
+        "evidence_in_work": "v.sum_events,v.sum_minutes,l.user_value_score,l.activity_density,least(100,...)",
+        "source": "sum_events and sum_minutes: BIGINT; user_value_score, activity_density, comprehensive_customer_value: FLOAT",
+        "importance": 2,
+        "reason": "HUGEINT and DOUBLE pass-through expressions do not satisfy the required output types."
+      }
+    ],
+    "fewer_reason": "Nine distinct issues cover the visible grain, omitted classifications, placeholders, upstream dependency, and schema discrepancies."
+  },
+  "marts.pendo__product_adoption_analytics": {
+    "items": [
+      {
+        "problem": "Historical metadata duplicates are summed into each user-account total before averaging, inflating measures that should remain unchanged by duplicate metadata rows.",
+        "about": "requirement",
+        "evidence_in_work": "z AS (... sum(u.ev) ev,sum(u.mins) mins,sum(u.active_days) active_days ... GROUP BY ... visitor_id,account_id)",
+        "source": "Duplicate rows from feature_info replicate feature_usage_base rows evenly ... averages remain the same",
+        "importance": 5,
+        "reason": "Events, minutes, and active days can all be multiplied by matching history-row counts."
+      },
+      {
+        "problem": "Regular and casual user classifications use metadata-inflated active-day sums.",
+        "about": "requirement",
+        "evidence_in_work": "CASE WHEN active_days>=10 ... CASE WHEN active_days BETWEEN 1 AND 9",
+        "source": "regular_users ... user-account pair having 10 or more active days; casual_users ... 1 to 9 active days",
+        "importance": 4,
+        "reason": "A genuinely casual user can become regular solely because multiple historical metadata rows match."
+      },
+      {
+        "problem": "Unmatched usage features lose their feature ID because the output key is selected from the nullable history side.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT h.feature_id,... FROM u LEFT JOIN h USING(feature_id)",
+        "source": "Left join feature_usage_base to feature_info on feature_id; group by feature_id",
+        "importance": 4,
+        "reason": "Different unmatched event features can collapse into a NULL-feature group rather than retaining their source identity."
+      }
+    ],
+    "fewer_reason": "The remaining source aggregation and distinct-user grouping are supported; the three findings identify the substantive extra aggregation and key-selection risks."
+  },
+  "marts.pendo__product_adoption_summary": {
+    "items": [
+      {
+        "problem": "The capped health expression returns 100 when average event count is NULL instead of preserving NULL.",
+        "about": "requirement",
+        "evidence_in_work": "least(100,count(DISTINCT visitor_id)*2+avg(num_events)*5+count(DISTINCT CAST(occurred_at AS DATE))*3)",
+        "source": "if there are no non-NULL num_events the score is NULL",
+        "importance": 4,
+        "reason": "DuckDB LEAST ignores NULL arguments, so an all-missing event group can receive a perfect score."
+      }
+    ],
+    "fewer_reason": "The group grain, metrics, adoption thresholds, and timestamp otherwise match the model."
+  },
+  "marts.pendo__executive_dashboard_metrics": {
+    "items": [
+      {
+        "problem": "The required per-account product-health join and maximum aggregation are omitted.",
+        "about": "requirement",
+        "evidence_in_work": "a AS (SELECT count(DISTINCT account_id) ... FROM staging.stg_pendo__account_history)",
+        "source": "account_history left join ... product_health_metrics ... maximum values across joined product_health rows",
+        "importance": 5,
+        "reason": "The main health data source is unused and all platform health, NPS, adoption, and retention averages are NULL."
+      },
+      {
+        "problem": "Account risk, revenue-health, and growth-potential classifications are never derived.",
+        "about": "requirement",
+        "evidence_in_work": "0::BIGINT high_risk_accounts,0::BIGINT medium_risk_accounts,0::BIGINT low_risk_accounts",
+        "source": "Derive revenue_health_indicators ... account_risk_level ... growth_potential",
+        "importance": 5,
+        "reason": "Every risk bucket is zero even when accounts exist, invalidating platform risk and growth counts."
+      },
+      {
+        "problem": "Seven-day user growth is fixed at zero rather than calculated from recent and prior daily-active-user averages.",
+        "about": "requirement",
+        "evidence_in_work": "0::DOUBLE user_growth_rate_7d",
+        "source": "(average daily_active_users in the last 7 days minus average in the prior 7 days) divided by the prior 7-day average",
+        "importance": 5,
+        "reason": "Real growth and decline are completely hidden."
+      },
+      {
+        "problem": "Growth trend is always Concerning Decline rather than being classified from the raw growth rate.",
+        "about": "requirement",
+        "evidence_in_work": "'Concerning Decline' growth_trend_assessment",
+        "source": "growth_trend_assessment is based on the unfilled (raw) user_growth_rate_7d",
+        "importance": 4,
+        "reason": "The output signals decline even when recent activity would support another trend."
+      },
+      {
+        "problem": "Overall business health is a NULL placeholder instead of the weighted KPI and growth calculation.",
+        "about": "requirement",
+        "evidence_in_work": "NULL::DOUBLE overall_business_health_score",
+        "source": "overall_business_health_score: weighted composite capped at 100",
+        "importance": 5,
+        "reason": "The executive scorecard's primary composite measure is not implemented."
+      },
+      {
+        "problem": "Primary alert and strategic recommendation are fixed fallback strings.",
+        "about": "requirement",
+        "evidence_in_work": "'All Systems Normal' primary_alert_status,'Maintain current strategy with incremental improvements' strategic_recommendation",
+        "source": "primary_alert_status (first match wins) ... strategic_recommendation (first match wins)",
+        "importance": 5,
+        "reason": "The dashboard cannot surface account risk, satisfaction, retention, or growth alerts."
+      },
+      {
+        "problem": "Empty-platform handling differs because fixed zero sums and a fixed average value replace aggregates over the account population.",
+        "about": "requirement",
+        "evidence_in_work": "0::BIGINT platform_total_users ... 50::DOUBLE avg_customer_value",
+        "source": "Aggregate platform_wide_kpis across all accounts ... Sums ignore NULL inputs ... Averages (NULLs ignored)",
+        "importance": 2,
+        "reason": "These constants match populated-account defaults but would not preserve SQL aggregate NULL behavior with no accounts."
+      },
+      {
+        "problem": "The conversion-rate calculation adds a zero-denominator guard that the specification explicitly excludes.",
+        "about": "requirement",
+        "evidence_in_work": "a.paying_accounts::DOUBLE/NULLIF(a.total_accounts,0)",
+        "source": "conversion_rate = paying_accounts / total_accounts (no zero-denominator guard)",
+        "importance": 1,
+        "reason": "Only the empty-platform special case changes."
+      }
+    ],
+    "fewer_reason": "Eight distinct findings cover the omitted account processing, placeholder measures, missing trend logic, fixed decisions, and special cases."
+  }
+}

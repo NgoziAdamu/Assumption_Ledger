@@ -1,0 +1,1379 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for NetSuite ERP data transformation into analytical models"
+  author: "Data Engineering Team"
+  created_date: "2025-09-11"
+  source_system: "NetSuite ERP"
+  target_system: "DuckDB Analytics Warehouse"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw NetSuite data into clean, validated staging tables with standardized naming conventions, data types, and business rules. Remove Fivetran metadata fields and apply data quality validations."
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "standardize timezone formats", "normalize phone numbers"]
+    
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform staging data into business-ready analytical models that support financial reporting, customer analytics, vendor risk management, and operational insights for NetSuite ERP data"
+  design_principles:
+    grain_importance: "Each model must have an explicitly defined grain that determines the level of aggregation and uniqueness constraints"
+    intermediate_purpose: "Create reusable, business-centric data models that apply complex business logic, perform advanced calculations, and establish proper relationships between entities"
+    marts_purpose: "Deliver analysis-ready datasets optimized for specific business functions and reporting requirements"
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-013/agent/dacomp-de-impl-013/netsuite_start.duckdb
+{"table": "raw.netsuite2_account_data", "columns": ["id", "accountsearchdisplayname", "accountsearchdisplaynamecopy", "acctnumber", "accttype", "billableexpensesacct", "cashflowrate", "category1099misc", "class", "currency", "custrecord_fam_account_showinfixedasset", "date_deleted", "deferralacct", "department", "description", "displaynamewithhierarchy", "eliminate", "externalid", "fullname", "generalrate", "includechildren", "inventory", "isinactive", "issummary", "lastmodifieddate", "location", "parent", "reconcilewithmatching", "revalue", "sbankname", "sbankroutingnumber", "sspecacct", "subsidiary", "eliminate.1"]}
+{"table": "raw.netsuite2_account_type_data", "columns": ["id", "balancesheet", "date_deleted", "defaultcashflowratetype", "defaultgeneralratetype", "eliminationalgo", "includeinrevaldefault", "internalid", "left", "longname", "seqnum", "usercanchangerevaloption"]}
+{"table": "raw.netsuite2_accounting_book_data", "columns": ["id", "basebook", "date_deleted", "effectiveperiod", "externalid", "isadjustmentonly", "isconsolidated", "isprimary", "lastmodifieddate", "name", "subsidiariesstring"]}
+{"table": "raw.netsuite2_accounting_book_sub_data", "columns": ["accountingbook", "date_deleted", "status", "subsidiary"]}
+{"table": "raw.netsuite2_accounting_period_data", "columns": ["id", "alllocked", "allownonglchanges", "aplocked", "arlocked", "closed", "closedondate", "date_deleted", "enddate", "isadjust", "isinactive", "isposting", "isquarter", "isyear", "lastmodifieddate", "parent", "periodname", "startdate"]}
+{"table": "raw.netsuite2_accounting_period_fiscal_cal_data", "columns": ["accountingperiod", "date_deleted", "fiscalcalendar", "parent"]}
+{"table": "raw.netsuite2_classification_data", "columns": ["id", "date_deleted", "externalid", "fullname", "includechildren", "isinactive", "lastmodifieddate", "name", "parent", "subsidiary"]}
+{"table": "raw.netsuite2_consolidated_exchange_rate_data", "columns": ["id", "averagerate", "currentrate", "date_deleted", "externalid", "fromcurrency", "fromsubsidiary", "historicalrate", "postingperiod", "tocurrency", "tosubsidiary", "accountingbook"]}
+{"table": "raw.netsuite2_currency_data", "columns": ["id", "currencyprecision", "date_deleted", "displaysymbol", "exchangerate", "externalid", "fxrateupdatetimezone", "includeinfxrateupdates", "isbasecurrency", "isinactive", "lastmodifieddate", "name", "overridecurrencyformat", "symbol", "symbolplacement"]}
+{"table": "raw.netsuite2_customer_data", "columns": ["id", "accountnumber", "alcoholrecipienttype", "altemail", "altname", "altphone", "assignedwebsite", "balancesearch", "billingratecard", "billingschedule", "billingtransactiontype", "billpay", "buyingreason", "buyingtimeframe", "campaignevent", "category", "clickstream", "comments", "companyname", "consolbalancesearch", "consoldaysoverduesearch", "consoloverduebalancesearch", "consolunbilledorderssearch", "contact", "contactlist", "creditholdoverride", "creditlimit", "currency", "custentity1", "custentity10", "custentity12", "custentity13", "custentity14", "custentity15", "custentity16", "custentity18", "custentity21", "custentity4", "custentity5", "custentity6", "custentity7", "custentity8", "custentity9", "custentity_2663_customer_refund", "custentity_2663_direct_debit", "custentity_cust_priority", "custentity_fmt_cur_sales_order", "custentity_fmt_cust_credit_on_hold", "custentity_fmt_customer_credit_on_hold", "custentity_lead_category", "custentity_ppob", "custentity_supervisor", "date_deleted", "datecreated", "defaultbankaccount", "defaultbillingaddress", "defaultorderpriority", "defaultshippingaddress", "duplicate", "email", "emailpreference", "emailtransactions", "enddate", "entityid", "entitynumber", "entitystatus", "entitytitle", "estimatedbudget", "externalid", "fax", "faxtransactions", "firstname", "firstorderdate", "firstsaledate", "firstvisit", "giveaccess", "globalsubscriptionstatus", "homephone", "isbudgetapproved", "isinactive", "isperson", "keywords", "language", "lastmodifieddate", "lastname", "lastorderdate", "lastpagevisited", "lastsaledate", "lastvisit", "leadsource", "middlename", "mobilephone", "negativenumberformat", "numberformat", "oncredithold", "overduebalancesearch", "parent", "partner", "phone", "prefccprocessor", "pricelevel", "printoncheckas", "printtransactions", "probability", "receivablesaccount", "referrer", "reminderdays", "resalenumber", "salesreadiness", "salesrep", "salutation", "searchstage", "shipcomplete", "shippingcarrier", "shippingitem", "sourcewebsite", "startdate", "terms", "territory", "thirdpartyacct", "thirdpartycarrier", "thirdpartycountry", "thirdpartyzipcode", "title", "unbilledorderssearch", "url", "visits", "weblead", "dateclosed"]}
+{"table": "raw.netsuite2_department_data", "columns": ["id", "date_deleted", "externalid", "fullname", "includechildren", "isinactive", "lastmodifieddate", "name", "parent", "subsidiary"]}
+{"table": "raw.netsuite2_employee_data", "columns": ["id", "entityid", "firstname", "lastname", "department", "subsidiary", "email", "supervisor", "approvallimit", "expenselimit", "purchaseorderapprovallimit", "purchaseorderlimit", "currency", "isinactive"]}
+{"table": "raw.netsuite2_entities_data", "columns": ["id", "altemail", "altname", "altphone", "comments", "contact", "customer", "date_deleted", "datecreated", "email", "employee", "entityid", "entitynumber", "entitytitle", "externalid", "fax", "firstname", "genericresource", "homephone", "isinactive", "isperson", "laborcost", "lastmodifieddate", "lastname", "middlename", "mobilephone", "othername", "parent", "partner", "phone", "project", "projecttemplate", "salutation", "title", "toplevelparent", "type", "vendor"]}
+{"table": "raw.netsuite2_entity_address_data", "columns": ["nkey", "addr1", "addr2", "addr3", "addressee", "addrphone", "addrtext", "attention", "city", "country", "date_deleted", "dropdownstate", "lastmodifieddate", "override", "recordowner", "state", "zip"]}
+{"table": "raw.netsuite2_fiscal_calendar_data", "columns": ["id", "externalid", "fiscalmonth", "isdefault", "name", "date_deleted"]}
+{"table": "raw.netsuite2_item_data", "columns": ["id", "fullname", "itemtype", "description", "department", "class", "location", "subsidiary", "assetaccount", "expenseaccount", "gainlossaccount", "incomeaccount", "deferralaccount", "parent"]}
+{"table": "raw.netsuite2_job_data", "columns": ["id", "accountnumber", "actualtime", "allowallresourcesfortasks", "allowexpenses", "allowtime", "alternatecontact", "altname", "billingschedule", "calculatedenddate", "calculatedenddatebaseline", "category", "comments", "companyname", "contact", "contactlist", "currency", "currencyprecision", "custentity1", "custentity4", "custentity5", "customer", "date_deleted", "datecreated", "defaultbillingaddress", "defaultshippingaddress", "enddate", "entityid", "entitynumber", "entitystatus", "entitytitle", "estimatedcost", "estimatedgrossprofit", "estimatedgrossprofitpercent", "estimatedlaborcost", "estimatedlaborcostbaseline", "estimatedlaborrevenue", "estimatedrevenue", "estimatedtime", "estimatedtimeoverride", "estimatedtimeoverridebaseline", "externalid", "files", "forecastchargerunondemand", "fxrate", "includecrmtasksintotals", "isexempttime", "isinactive", "isproductivetime", "isutilizedtime", "jobbillingtype", "jobitem", "jobprice", "jobtype", "lastbaselinedate", "lastmodifieddate", "limittimetoassignees", "materializetime", "parent", "percentcomplete", "percenttimecomplete", "primarycontact", "projectedenddate", "projectedenddatebaseline", "projectmanager", "startdate", "startdatebaseline", "timeapproval", "timeremaining"]}
+{"table": "raw.netsuite2_location_data", "columns": ["id", "date_deleted", "defaultallocationpriority", "externalid", "fullname", "includeinsupplyplanning", "isinactive", "lastmodifieddate", "latitude", "locationtype", "longitude", "mainaddress", "makeinventoryavailable", "makeinventoryavailablestore", "name", "parent", "returnaddress", "subsidiary", "tranprefix", "usebins"]}
+{"table": "raw.netsuite2_location_main_address_data", "columns": ["nkey", "addr1", "addr2", "addr3", "addressee", "addrphone", "addrtext", "attention", "city", "country", "date_deleted", "dropdownstate", "lastmodifieddate", "override", "recordowner", "state", "zip"]}
+{"table": "raw.netsuite2_subsidiary_data", "columns": ["id", "country", "currency", "date_deleted", "dropdownstate", "edition", "email", "externalid", "fax", "federalidnumber", "fiscalcalendar", "fullname", "iselimination", "isinactive", "languagelocale", "lastmodifieddate", "legalname", "mainaddress", "name", "parent", "purchaseorderamount", "purchaseorderquantity", "purchaseorderquantitydiff", "receiptamount", "receiptquantity", "receiptquantitydiff", "returnaddress", "shippingaddress", "showsubsidiaryname", "ssnortin", "state", "state1taxnumber", "tranprefix", "url"]}
+{"table": "raw.netsuite2_tran_acct_line_data", "columns": ["accountingbook", "transaction", "transactionline", "account", "amount", "amountpaid", "amountunpaid", "credit", "date_deleted", "debit", "exchangerate", "netamount", "overheadparentitem", "paymentamountunused", "paymentamountused", "posting", "amountlinked"]}
+{"table": "raw.netsuite2_transaction_data", "columns": ["id", "transactionnumber", "type", "memo", "trandate", "status", "createddate", "duedate", "closedate", "currency", "entity", "postingperiod", "posting", "isreversal", "reversal", "reversaldate", "reversaldefer"]}
+{"table": "raw.netsuite2_transaction_line_data", "columns": ["id", "transaction", "actualshipdate", "amortizationenddate", "amortizationresidual", "amortizationsched", "amortizstartdate", "amountlinked", "assemblycomponent", "billeddate", "billingschedule", "billvariancestatus", "blandedcost", "bomquantity", "buildvariance", "category", "chargetype", "class", "cleared", "cleareddate", "commitinventory", "commitmentfirm", "componentyield", "costestimate", "costestimaterate", "costestimatetype", "createdfrom", "createdpo", "creditforeignamount", "custcol1", "custcol3", "custcol4", "custcol5", "custcol6", "custcol_far_trn_relatedasset", "custcol_gw_inv", "custcol_hand", "custcol_helmetsize", "custcol_pfc_configuration", "custcol_pfc_pfconfigurator", "custcol_pfc_wo", "custcol_ropetype", "date_deleted", "debitforeignamount", "department", "documentnumber", "donotdisplayline", "dropship", "entity", "estgrossprofit", "estgrossprofitpercent", "estimatedamount", "expectedreceiptdate", "expectedshipdate", "expenseaccount", "foreignamount", "foreignamountpaid", "foreignamountunpaid", "foreignpaymentamountunused", "foreignpaymentamountused", "fulfillable", "fxamountlinked", "hasfulfillableitems", "inventoryreportinglocation", "isbillable", "isclosed", "iscogs", "isfullyshipped", "isfxvariance", "isinventoryaffecting", "isrevrectransaction", "isscrap", "item", "itemsource", "itemtype", "kitcomponent", "kitmemberof", "landedcostcategory", "landedcostperline", "linelastmodifieddate", "linesequencenumber", "location", "mainline", "matchbilltoreceipt", "memo", "netamount", "oldcommitmentfirm", "operationdisplaytext", "orderpriority", "paymentmethod", "price", "processedbyrevcommit", "quantity", "quantitybackordered", "quantitybilled", "quantitycommitted", "quantitypacked", "quantitypicked", "quantityrejected", "quantityshiprecv", "rate", "rateamount", "ratepercent", "requestnote", "revenueelement", "shipmethod", "specialorder", "subsidiary", "taxline", "transactiondiscount", "transactionlinetype", "transferorderitemlineid", "uniquekey", "units", "vsoeisestimate", "eliminate"]}
+{"table": "raw.netsuite2_vendor_category_data", "columns": ["id", "date_deleted", "externalid", "isinactive", "istaxagency", "lastmodifieddate", "name"]}
+{"table": "raw.netsuite2_vendor_data", "columns": ["id", "accountnumber", "altemail", "altname", "altphone", "balance", "balanceprimary", "billpay", "category", "comments", "companyname", "contact", "contactlist", "creditlimit", "currency", "custentity_2663_payment_method", "custentity_is_manufacturer", "custentity_rvc", "custentity_vendor_lead_time", "custentity_wrnty_center_phone", "date_deleted", "datecreated", "defaultbankaccount", "defaultbillingaddress", "defaultshippingaddress", "defaultvendorpaymentaccount", "duplicate", "email", "emailpreference", "emailtransactions", "entityid", "entitynumber", "entitytitle", "expenseaccount", "externalid", "fax", "faxtransactions", "firstname", "giveaccess", "globalsubscriptionstatus", "homephone", "incoterm", "isinactive", "isjobresourcevend", "isperson", "laborcost", "lastmodifieddate", "lastname", "legalname", "middlename", "mobilephone", "payablesaccount", "phone", "printoncheckas", "printtransactions", "purchaseorderamount", "purchaseorderquantity", "purchaseorderquantitydiff", "receiptamount", "receiptquantity", "receiptquantitydiff", "rolesforsearch", "salutation", "subsidiaryedition", "terms", "timeapprover", "title", "unbilledorders", "unbilledordersprimary", "url", "workcalendar"]}
+{"table": "raw.netsuite_accounting_books_data", "columns": ["accounting_book_id", "is_primary"]}
+{"table": "raw.netsuite_accounting_periods_data", "columns": ["accounting_period_id", "name", "full_name", "fiscal_calendar_id", "year_id", "starting", "ending", "quarter", "year_0", "is_adjustment", "closed"]}
+{"table": "raw.netsuite_accounts_data", "columns": ["account_id", "parent_id", "name", "type_name", "account_number", "general_rate_type", "is_leftside", "is_balancesheet"]}
+{"table": "raw.netsuite_classes_data", "columns": ["class_id", "full_name"]}
+{"table": "raw.netsuite_consolidated_exchange_rates_data", "columns": ["consolidated_exchange_rate_id", "accounting_book_id", "accounting_period_id", "average_rate", "current_rate", "historical_rate", "from_subsidiary_id", "to_subsidiary_id"]}
+{"table": "raw.netsuite_currencies_data", "columns": ["currency_id", "name", "symbol"]}
+{"table": "raw.netsuite_customers_data", "columns": ["customer_id", "company_name", "city", "state", "zipcode", "country", "date_first_order"]}
+{"table": "raw.netsuite_departments_data", "columns": ["department_id", "name", "full_name"]}
+{"table": "raw.netsuite_expense_accounts_data", "columns": ["expense_account_id", "name", "parent_id", "account_number"]}
+{"table": "raw.netsuite_income_accounts_data", "columns": ["income_account_id", "name", "parent_id", "account_number"]}
+{"table": "raw.netsuite_items_data", "columns": ["item_id", "name", "type_name", "sales_description"]}
+{"table": "raw.netsuite_locations_data", "columns": ["location_id", "name", "full_name", "city", "country"]}
+{"table": "raw.netsuite_subsidiaries_data", "columns": ["subsidiary_id", "fiscal_calendar_id", "name", "parent_id"]}
+{"table": "raw.netsuite_transaction_lines_data", "columns": ["transaction_id", "transaction_line_id", "subsidiary_id", "account_id", "company_id", "item_id", "amount", "non_posting_line", "class_id", "location_id", "department_id", "memo"]}
+{"table": "raw.netsuite_transactions_data", "columns": ["transaction_id", "status", "transaction_date", "currency_id", "accounting_period_id", "due_date", "transaction_type", "is_intercompany", "is_advanced_intercompany"]}
+{"table": "raw.netsuite_vendor_types_data", "columns": ["vendor_type_id", "name"]}
+{"table": "raw.netsuite_vendors_data", "columns": ["vendor_id", "vendor_type_id", "company_name", "create_date"]}
+
+
+=== Relevant specification and documentation ===
+## stg_netsuite2__transactions
+
+    - name: stg_netsuite2__transactions
+      description: "All financial transactions with standardized status and date validation"
+      source_table: raw.netsuite2_transaction_data
+      columns:
+        - name: transaction_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: transaction_number
+          data_type: VARCHAR
+        - name: transaction_type
+          data_type: VARCHAR
+        - name: memo
+          data_type: VARCHAR
+        - name: transaction_date
+          data_type: DATE
+          constraints: [not_null]
+        - name: status
+          data_type: VARCHAR
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: due_date_at
+          data_type: DATE
+          validation_rules:
+            - rule: "due_date_at IS NULL OR (due_date_at >= transaction_date AND due_date_at <= CURRENT_DATE + INTERVAL '10 YEARS')"
+              on_failure: nullify_field
+        - name: closed_at
+          data_type: DATE
+        - name: currency_id
+          data_type: VARCHAR
+        - name: entity_id
+          data_type: VARCHAR
+        - name: accounting_period_id
+          data_type: VARCHAR
+        - name: is_posting
+          data_type: BOOLEAN
+        - name: is_reversal
+          data_type: BOOLEAN
+        - name: reversal_transaction_id
+          data_type: VARCHAR
+        - name: reversal_date
+          data_type: DATE
+        - name: is_reversal_defer
+          data_type: BOOLEAN
+
+
+
+## stg_netsuite2__transaction_lines
+
+    - name: stg_netsuite2__transaction_lines
+      description: "Individual line items for transactions with amount validation and account assignments"
+      source_table: raw.netsuite2_transaction_line_data
+      columns:
+        - name: transaction_line_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: transaction_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: transaction_line_number
+          data_type: DOUBLE
+        - name: memo
+          data_type: VARCHAR
+        - name: entity_id
+          data_type: VARCHAR
+        - name: item_id
+          data_type: VARCHAR
+        - name: class_id
+          data_type: VARCHAR
+        - name: location_id
+          data_type: VARCHAR
+        - name: subsidiary_id
+          data_type: VARCHAR
+        - name: department_id
+          data_type: VARCHAR
+        - name: is_closed
+          data_type: BOOLEAN
+        - name: is_billable
+          data_type: BOOLEAN
+        - name: is_cogs
+          data_type: BOOLEAN
+        - name: is_cleared
+          data_type: BOOLEAN
+        - name: is_commitment_firm
+          data_type: BOOLEAN
+        - name: is_main_line
+          data_type: BOOLEAN
+        - name: is_tax_line
+          data_type: BOOLEAN
+        - name: is_eliminate
+          data_type: BOOLEAN
+        - name: netamount
+          data_type: DOUBLE
+
+
+
+## stg_netsuite2__entities
+
+    - name: stg_netsuite2__entities
+      description: "Master entity table including customers, vendors, and other business entities"
+      source_table: raw.netsuite2_entity_data
+      columns:
+        - name: entity_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: parent_id
+          data_type: VARCHAR
+        - name: entity_name
+          data_type: VARCHAR
+        - name: entity_type
+          data_type: VARCHAR
+        - name: is_person
+          data_type: BOOLEAN
+        - name: contact_id
+          data_type: DOUBLE
+        - name: customer_id
+          data_type: VARCHAR
+        - name: employee_id
+          data_type: DOUBLE
+        - name: job_id
+          data_type: DOUBLE
+        - name: vendor_id
+          data_type: DOUBLE
+
+
+
+## stg_netsuite2__customers
+
+    - name: stg_netsuite2__customers
+      description: "Customer master data with contact information and billing details"
+      source_table: raw.netsuite2_customer_data
+      columns:
+        - name: customer_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: entity_id
+          data_type: VARCHAR
+        - name: customer_external_id
+          data_type: VARCHAR
+        - name: parent_id
+          data_type: VARCHAR
+        - name: is_person
+          data_type: BOOLEAN
+        - name: alt_name
+          data_type: VARCHAR
+        - name: company_name
+          data_type: VARCHAR
+        - name: first_name
+          data_type: VARCHAR
+        - name: last_name
+          data_type: VARCHAR
+        - name: email_address
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "email_address IS NULL OR email_address RLIKE '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$'"
+              on_failure: nullify_field
+            - rule: "email_address = LOWER(TRIM(email_address))"
+              on_failure: correct
+        - name: phone_number
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "phone_number IS NULL OR (LENGTH(TRIM(phone_number)) >= 8 AND LENGTH(TRIM(phone_number)) <= 20)"
+              on_failure: nullify_field
+            - rule: "phone_number = REGEXP_REPLACE(TRIM(phone_number), '[^0-9+()-]', '')"
+              on_failure: correct
+        - name: default_billing_address_id
+          data_type: VARCHAR
+        - name: default_shipping_address_id
+          data_type: VARCHAR
+        - name: receivables_account_id
+          data_type: VARCHAR
+        - name: currency_id
+          data_type: VARCHAR
+        - name: date_first_order_at
+          data_type: DATE
+
+
+
+## int_netsuite2__customer_profitability
+
+    - name: int_netsuite2__customer_profitability
+      description: Customer profitability metrics, scoring, and recommendations per customer and subsidiary based on converted_amount aggregations; final rows require total_revenue > 0.
+      grain: One row per customer_id per subsidiary_id (after filtering to total_revenue > 0)
+      source_models:
+      - intermediate.int_netsuite2__transaction_details
+      - staging.stg_netsuite2__transaction_lines
+      business_logic: 'Build customer_transactions: - Join transaction details to transaction lines on transaction_line_id. - Keep rows where entity_id is present and account_type_name is one of Income, COGS, Expense, or OthExpense. - Derive customer fields from entity_id: customer_id equals entity_id; customer_name as ''Customer_'' plus the first 8 characters of customer_id; customer_email as ''customer_'' plus the first 8 characters of customer_id plus ''@example.com''. - Set customer_creation_date to the current date minus 365 days and customer_age_days to 365. - Categorize transactions by account_type_name: Income as Revenue; COGS as Cost_of_Sales; Expense and OthExpense as Operating_Expense. Aggregate to customer_metrics at the level of customer_id, customer_name, customer_email, customer_creation_date, customer_age_days, subsidiary_id: - total_revenue: sum of converted_amount for Revenue transactions (signed). - total_cogs: sum of absolute converted_amount for Cost_of_Sales. - allocated_expenses: sum of absolute converted_amount for Operating_Expense. - gross_profit: total_revenue minus total_cogs. - net_profit: gross_profit minus allocated_expenses. - transaction_count: distinct count of transaction_id. - active_months: distinct count of calendar months from accounting_period_ending. - first_transaction_date and last_transaction_date: earliest and latest accounting_period_ending. - average_order_value: total_revenue divided by transaction_count; use 0 when transaction_count is 0. Enrich in customer_segmentation: - gross_margin_pct: gross_profit divided by total_revenue; use 0 when total_revenue is 0. - net_margin_pct: net_profit divided by total_revenue; use 0 when total_revenue is 0. - customer_lifetime_months: months between first and last transaction, inclusive; use 1 when either date is missing. - customer_maturity from customer_age_days: under 90 days is New Customer; under 365 is Growing Relationship; under 1095 is Established Customer; otherwise Long-term Customer. - activity_status from days since last_transaction_date at run time: 30 or fewer is Highly Active; 31–90 is Active; 91–180 is At Risk; over 180 is Inactive. - analysis_date equals the current date. Score in customer_value_scoring: - revenue_score: 5 for total_revenue at or above the 80th percentile; 4 at or above the 60th; 3 at or above the 40th; 2 at or above the 20th; otherwise 1. Percentiles are computed over all rows in customer_segmentation (before the final filter). - frequency_score: 5 for 20 or more transactions; 4 for 10–19; 3 for 5–9; 2 for 2–4; otherwise 1. - margin_score: 5 for net_margin_pct at or above 0.30; 4 at or above 0.20; 3 at or above 0.10; 2 at or above 0.05; 1 for greater than 0; otherwise 0. Final computations and filter: - total_customer_score equals revenue_score plus frequency_score plus margin_score. - customer_segment: Champion for scores 12 or higher; Loyal for 9–11; Potential for 6–8; At Risk for 3–5; Lost for below 3. - predicted_clv: if customer_lifetime_months and active_months are both greater than 0, multiply net_profit per month by the larger of 12 months and 1.2 times customer_lifetime_months; otherwise use net_profit. - investment_recommendation: High Investment when net_margin_pct is at least 0.20 and activity_status is Highly Active or Active; Medium Investment when net_margin_pct is at least 0.10 and total_revenue exceeds the average total_revenue across customer_segmentation; Low Investment when net_margin_pct is greater than 0; otherwise Review Required. - Keep rows where customer_id is present and total_revenue is greater than 0. - customer_profitability_id is the MD5 hash of the string formed by customer_id, an underscore, and subsidiary_id; it is null if either component is null.'
+      columns:
+      - name: customer_profitability_id
+        data_type: VARCHAR
+        description: MD5 of customer_id + '_' + subsidiary_id; null when either component is null; unique per (customer_id, subsidiary_id).
+      - name: customer_id
+        data_type: VARCHAR
+        description: Customer identifier from transaction lines; final rows require non-null.
+      - name: customer_name
+        data_type: VARCHAR
+        description: 'Synthetic name: ''Customer_'' plus the first 8 characters of customer_id.'
+      - name: customer_email
+        data_type: VARCHAR
+        description: 'Synthetic email: ''customer_'' plus the first 8 characters of customer_id and ''@example.com''.'
+      - name: customer_creation_date
+        data_type: TIMESTAMP
+        description: Current date minus 365 days at run time for all rows.
+      - name: customer_age_days
+        data_type: INTEGER
+        description: Fixed value 365 representing days since customer_creation_date.
+      - name: customer_maturity
+        data_type: VARCHAR
+        description: 'Bucket from customer_age_days: New (<90), Growing (<365), Established (<1095), Long-term (otherwise).'
+      - name: subsidiary_id
+        data_type: VARCHAR
+        description: Subsidiary from transaction details; may be null; part of the row grain and ID hash.
+      - name: total_revenue
+        data_type: DOUBLE
+        description: Signed sum of converted_amount for Revenue transactions; final rows require > 0.
+      - name: total_cogs
+        data_type: DOUBLE
+        description: Sum of absolute converted_amount for Cost_of_Sales; non-negative.
+      - name: allocated_expenses
+        data_type: DOUBLE
+        description: Sum of absolute converted_amount for Operating_Expense; non-negative.
+      - name: gross_profit
+        data_type: DOUBLE
+        description: total_revenue minus total_cogs; may be negative.
+      - name: net_profit
+        data_type: DOUBLE
+        description: gross_profit minus allocated_expenses; may be negative.
+      - name: gross_margin_pct
+        data_type: DOUBLE
+        description: gross_profit divided by total_revenue when total_revenue > 0, else 0; ratio not a formatted percent.
+      - name: net_margin_pct
+        data_type: DOUBLE
+        description: net_profit divided by total_revenue when total_revenue > 0, else 0; ratio not a formatted percent.
+      - name: transaction_count
+        data_type: BIGINT
+        description: Distinct count of transaction_id across included categories; at least 1 in final rows.
+      - name: active_months
+        data_type: BIGINT
+        description: Distinct count of calendar months present in accounting_period_ending; at least 1.
+      - name: customer_lifetime_months
+        data_type: BIGINT
+        description: Inclusive months between first and last transaction; 1 when either date is missing.
+      - name: first_transaction_date
+        data_type: DATE
+        description: Earliest accounting_period_ending for the customer and subsidiary.
+      - name: last_transaction_date
+        data_type: DATE
+        description: Latest accounting_period_ending for the customer and subsidiary.
+      - name: average_order_value
+        data_type: DOUBLE
+        description: total_revenue divided by transaction_count when transaction_count > 0, else 0.
+      - name: revenue_score
+        data_type: INTEGER
+        description: 'Score based on total_revenue percentiles across customer_segmentation: 80th+→5, 60th+→4, 40th+→3, 20th+→2, otherwise 1.'
+      - name: frequency_score
+        data_type: INTEGER
+        description: 'Score from transaction_count thresholds: 20+→5; 10–19→4; 5–9→3; 2–4→2; otherwise 1.'
+      - name: margin_score
+        data_type: INTEGER
+        description: 'Score from net_margin_pct thresholds: ≥0.30→5; ≥0.20→4; ≥0.10→3; ≥0.05→2; >0→1; otherwise 0.'
+      - name: total_customer_score
+        data_type: INTEGER
+        description: Sum of revenue_score, frequency_score, and margin_score.
+      - name: customer_segment
+        data_type: VARCHAR
+        description: 'Segment by total_customer_score: Champion (≥12), Loyal (≥9), Potential (≥6), At Risk (≥3), Lost (otherwise).'
+      - name: activity_status
+        data_type: VARCHAR
+        description: 'Recency category by days since last_transaction_date: ≤30 Highly Active; ≤90 Active; ≤180 At Risk; otherwise Inactive.'
+      - name: predicted_clv
+        data_type: DOUBLE
+        description: If customer_lifetime_months and active_months are both > 0, scale net_profit per month by the larger of 12 months or 1.2×customer_lifetime_months; otherwise use net_profit.
+      - name: investment_recommendation
+        data_type: VARCHAR
+        description: High when net_margin_pct ≥ 0.20 and activity is Highly Active/Active; Medium when net_margin_pct ≥ 0.10 and total_revenue exceeds the average across customer_segmentation; Low when net_margin_pct > 0; otherwise Review Required.
+      - name: analysis_date
+        data_type: DATE
+        description: The current date at model run, identical across all rows for the run.
+
+
+## int_netsuite2__transaction_details
+
+    - name: int_netsuite2__transaction_details
+      description: Transaction line details enriched with account and subsidiary data plus simple period placeholders
+      grain: One row per transaction_line_id
+      source_models:
+      - intermediate.int_netsuite2__transaction_lines
+      - intermediate.int_netsuite2__tran_with_converted_amounts
+      - intermediate.int_netsuite2__accounts
+      - staging.stg_netsuite2__subsidiaries
+      business_logic: '- Start from intermediate.int_netsuite2__transaction_lines and keep all rows. - Left join intermediate.int_netsuite2__tran_with_converted_amounts on transaction_line_id to bring the converted amount; when missing or NULL, set converted_amount to 0. - Left join intermediate.int_netsuite2__accounts on account_id to populate account_name, account_type_name, account_number, and is_account_leftside; when missing, these fields are NULL. - Left join staging.stg_netsuite2__subsidiaries on subsidiary_id to populate sub_id, subsidiary_full_name, and subsidiary_name; when missing, these fields are NULL. - Amount defaults: - transaction_amount uses transaction_lines.amount, defaulting to 0 when NULL. - transaction_line_amount uses transaction_lines.netamount, defaulting to 0 when NULL. - converted_amount uses the joined converted value, defaulting to 0 when NULL or no match. - Period placeholders: - accounting_period_name is the literal value ''mock_period'' for all rows. - accounting_period_ending is set to the date when the model runs. - is_accounting_period_adjustment and is_accounting_period_closed are FALSE for all rows. - Create transaction_details_id by hashing the string "<transaction_line_id>_<transaction_id>" after casting both to strings; if either input is NULL, the result is NULL. - No sorting is applied; output order is not guaranteed.'
+      columns:
+      - name: transaction_details_id
+        data_type: VARCHAR
+        description: 32-character hex hash of '<transaction_line_id>_<transaction_id>' as strings; NULL if either input is NULL; unique per row
+        tests:
+        - not_null
+        - unique
+      - name: transaction_line_id
+        data_type: VARCHAR
+        description: Transaction line identifier from transaction_lines; defines the row grain
+        tests:
+        - not_null
+      - name: transaction_id
+        data_type: VARCHAR
+        description: Parent transaction identifier sourced from transaction_lines
+        tests:
+        - not_null
+      - name: subsidiary_id
+        data_type: VARCHAR
+        description: Subsidiary ID from transaction_lines; may be NULL
+      - name: account_id
+        data_type: VARCHAR
+        description: Account ID from transaction_lines; may be NULL
+      - name: account_name
+        data_type: VARCHAR
+        description: Account name from the joined accounts table; NULL if no match
+      - name: account_type_name
+        data_type: VARCHAR
+        description: Account type from the joined accounts table; NULL if no match
+      - name: account_number
+        data_type: VARCHAR
+        description: Account number from the joined accounts table; formatting preserved; NULL if no match
+      - name: is_account_leftside
+        data_type: BOOLEAN
+        description: Flag from the joined accounts table indicating left side of the balance sheet; NULL if no match
+      - name: sub_id
+        data_type: VARCHAR
+        description: Subsidiary ID from the joined subsidiaries table; NULL if no match
+      - name: subsidiary_full_name
+        data_type: VARCHAR
+        description: Full subsidiary name from the joined subsidiaries table; NULL if no match
+      - name: subsidiary_name
+        data_type: VARCHAR
+        description: Short subsidiary name from the joined subsidiaries table; NULL if no match
+      - name: converted_amount
+        data_type: DOUBLE
+        description: Amount converted using the transaction accounting period; defaults to 0 when NULL or missing
+      - name: transaction_amount
+        data_type: DOUBLE
+        description: Original line amount from transaction_lines; defaults to 0 when NULL
+      - name: transaction_line_amount
+        data_type: DOUBLE
+        description: Net line amount from transaction_lines; defaults to 0 when NULL
+      - name: accounting_period_name
+        data_type: VARCHAR
+        description: Static value 'mock_period' for all rows
+      - name: accounting_period_ending
+        data_type: DATE
+        description: Date set to the model execution date
+      - name: is_accounting_period_adjustment
+        data_type: BOOLEAN
+        description: Static FALSE for all rows
+      - name: is_accounting_period_closed
+        data_type: BOOLEAN
+        description: Static FALSE for all rows
+
+
+## int_netsuite2__ar_aging_analysis
+
+    - name: int_netsuite2__ar_aging_analysis
+      description: Accounts receivable aging by customer and subsidiary with risk scoring and collection recommendations
+      grain: One row per customer_id, subsidiary_id, customer_name, customer_email, customer_phone, and customer_credit_limit
+      source_models:
+      - intermediate.int_netsuite2__transaction_details
+      - staging.stg_netsuite2__transaction_lines
+      - staging.stg_netsuite2__entities
+      - staging.stg_netsuite2__customers
+      - staging.stg_netsuite2__transactions
+      business_logic: '- Build ar_transactions: - Join intermediate.int_netsuite2__transaction_details t to staging.stg_netsuite2__transaction_lines tl on transaction_line_id. - Left join tl.entity_id to staging.stg_netsuite2__entities e, then to staging.stg_netsuite2__customers c via e.customer_id, and join t.transaction_id to staging.stg_netsuite2__transactions tr. - Filters: t.account_type_name in (''AcctRec'',''UnbilledRec''), t.converted_amount > 0, tl.entity_id not null. - Derive customer fields: customer_id = tl.entity_id; name/email/phone from c; credit_limit = c.receivables_account_id (text). - Derive dates: transaction_date from tr; due_date from tr. - days_past_due = days from due_date to today if due_date exists, else days from transaction_date to today; negative/zero means not past due. - calculated_due_date = due_date if present, else transaction_date plus 30 days. - Create ar_aging_buckets from ar_transactions: - aging_bucket by days_past_due: <=0 ''Current''; <=30 ''1-30 Days''; <=60 ''31-60 Days''; <=90 ''61-90 Days''; <=120 ''91-120 Days''; <=180 ''121-180 Days''; else ''Over 180 Days''. - expected_collection_rate by days_past_due: <=0 0.98; <=30 0.95; <=60 0.85; <=90 0.70; <=120 0.50; <=180 0.30; else 0.10. - Aggregate to customer_ar_summary (group by customer_id, customer_name, customer_email, customer_phone, customer_credit_limit, subsidiary_id): - total_ar_amount = sum(converted_amount); total_invoices = count of distinct transactions. - Bucket sums = sum(converted_amount) for each bucket; missing buckets contribute 0. - overdue_amount = sum(converted_amount) where days_past_due > 0. - overdue_percentage = overdue_amount / total_ar_amount if total_ar_amount > 0 else 0. - weighted_average_days_outstanding = sum(days_past_due weighted by converted_amount) divided by total_ar_amount if > 0 else 0. - expected_recoverable_amount = sum(converted_amount × expected_collection_rate); expected_loss_amount = sum(converted_amount × (1 − expected_collection_rate)). - earliest_due_date = minimum calculated_due_date; latest_due_date = maximum calculated_due_date; max_days_past_due = maximum days_past_due. - analysis_date = today’s date. - Compute customer_risk_assessment: - credit_utilization_ratio = total_ar_amount divided by numeric customer_credit_limit when the limit parses to a number > 0, else null. - customer_risk_score = min(100, overdue component (80 if overdue% ≥ 0.8 else overdue% × 100) plus WADO component (add 20 if ≥180; 15 if ≥90; 10 if ≥60; 5 if ≥30; else 0)). - collection_priority: Critical if total_ar_amount ≥ 10000 and overdue% ≥ 0.5; High if ≥ 5000 and ≥ 0.3; Medium if overdue% ≥ 0.2; Low if overdue_amount > 0; else Monitor. - recommended_action: Consider Write-off if overdue% ≥ 0.8 and max_days_past_due ≥ 180; Legal Action Required if ≥ 0.6 and ≥ 120; Urgent Follow-up if ≥ 0.4 and ≥ 90; Follow-up Required if ≥ 0.2 and ≥ 60; Gentle Reminder if ≥ 0.1; else No Action Required. - credit_status: if numeric credit limit exists and utilization ≥ 1.0 then Credit Limit Exceeded; else if numeric limit exists and utilization ≥ 0.8 then Approaching Credit Limit; else if overdue% ≥ 0.3 then Credit Hold Recommended; else Good Standing. - Add trend_analysis: - estimated_collection_days from WADO: ≤30 → 30; ≤60 → 45; ≤90 → 75; ≤120 → 100; else 150. - cash_flow_impact from overdue_amount: ≥10000 High Cash Flow Impact; ≥5000 Medium Cash Flow Impact; >0 Low Cash Flow Impact; else No Impact. - Final output: - Select all metrics; keep rows where total_ar_amount > 0. - ar_aging_id = MD5 of customer_id, subsidiary_id, and analysis_date joined with underscores. - Order rows by customer_risk_score descending, then total_ar_amount descending.'
+      columns:
+      - name: customer_id
+        data_type: VARCHAR
+        description: Customer identifier sourced from transaction line entity_id; not null due to join filter
+        tests:
+        - not_null
+      - name: customer_name
+        data_type: VARCHAR
+        description: Customer company name from customers; may be null if missing in source
+      - name: customer_email
+        data_type: VARCHAR
+        description: Customer email from customers; may be null; no normalization applied
+      - name: customer_phone
+        data_type: VARCHAR
+        description: Customer phone from customers; may be null; formatting preserved as-is
+      - name: customer_credit_limit
+        data_type: VARCHAR
+        description: Receivables_account_id text from customers treated as credit limit only when it parses to a positive number
+      - name: subsidiary_id
+        data_type: VARCHAR
+        description: Subsidiary identifier from transaction details; not null
+        tests:
+        - not_null
+      - name: total_ar_amount
+        data_type: DOUBLE
+        description: Sum of converted_amount for qualifying AR lines; strictly > 0 due to final filter; no rounding
+      - name: overdue_amount
+        data_type: DOUBLE
+        description: Sum of converted_amount where days_past_due > 0; 0 if none; no rounding
+      - name: expected_recoverable_amount
+        data_type: DOUBLE
+        description: Sum of converted_amount multiplied by the expected collection rate derived from days_past_due; no rounding
+      - name: expected_loss_amount
+        data_type: DOUBLE
+        description: Sum of converted_amount multiplied by one minus the expected collection rate; no rounding
+      - name: current_amount
+        data_type: DOUBLE
+        description: Sum of converted_amount for days_past_due ≤ 0 (Current bucket); 0 if none; no rounding
+      - name: days_1_30_amount
+        data_type: DOUBLE
+        description: Sum of converted_amount for 1–30 days past due; 0 if none; no rounding
+      - name: days_31_60_amount
+        data_type: DOUBLE
+        description: Sum of converted_amount for 31–60 days past due; 0 if none; no rounding
+      - name: days_61_90_amount
+        data_type: DOUBLE
+        description: Sum of converted_amount for 61–90 days past due; 0 if none; no rounding
+      - name: days_91_120_amount
+        data_type: DOUBLE
+        description: Sum of converted_amount for 91–120 days past due; 0 if none; no rounding
+      - name: days_121_180_amount
+        data_type: DOUBLE
+        description: Sum of converted_amount for 121–180 days past due; 0 if none; no rounding
+      - name: over_180_days_amount
+        data_type: DOUBLE
+        description: Sum of converted_amount for days_past_due > 180; 0 if none; no rounding
+      - name: overdue_percentage
+        data_type: DOUBLE
+        description: Overdue_amount divided by total_ar_amount if total_ar_amount > 0 else 0; range 0–1; no rounding
+      - name: credit_utilization_ratio
+        data_type: DOUBLE
+        description: total_ar_amount divided by numeric customer_credit_limit when the limit parses to a number > 0; else null; may exceed 1.0; no rounding
+      - name: weighted_average_days_outstanding
+        data_type: DOUBLE
+        description: Weighted average of days_past_due by converted_amount; returns 0 if total_ar_amount = 0; includes negative/zero values; no rounding
+      - name: customer_risk_score
+        data_type: DOUBLE
+        description: Score capped at 100 combining overdue% (max 80 or overdue%×100) and WADO bonus (20/15/10/5/0 by thresholds); no rounding
+      - name: collection_priority
+        data_type: VARCHAR
+        description: 'Priority based on total_ar_amount and overdue%: Critical, High, Medium, Low, or Monitor per thresholds'
+      - name: recommended_action
+        data_type: VARCHAR
+        description: Consider Write-off, Legal Action Required, Urgent Follow-up, Follow-up Required, Gentle Reminder, or No Action Required based on overdue% and max_days_past_due thresholds
+      - name: credit_status
+        data_type: VARCHAR
+        description: Credit Limit Exceeded or Approaching Credit Limit only when a numeric limit exists and utilization meets thresholds; else Credit Hold Recommended if overdue% ≥ 0.3, otherwise Good Standing
+      - name: cash_flow_impact
+        data_type: VARCHAR
+        description: 'Categorized by overdue_amount: High Cash Flow Impact (≥10000), Medium Cash Flow Impact (≥5000), Low Cash Flow Impact (>0), or No Impact'
+      - name: total_invoices
+        data_type: BIGINT
+        description: Count of distinct transaction_id contributing to the customer’s AR within the subsidiary
+      - name: max_days_past_due
+        data_type: BIGINT
+        description: Maximum days_past_due across contributing transactions; can be negative/zero if all current; null only if all dates are missing
+      - name: estimated_collection_days
+        data_type: INTEGER
+        description: 'Estimated recovery days from WADO: ≤30→30; ≤60→45; ≤90→75; ≤120→100; else 150'
+      - name: earliest_due_date
+        data_type: TIMESTAMP
+        description: Earliest calculated_due_date (due_date or transaction_date plus 30 days); null if all source dates are null
+      - name: latest_due_date
+        data_type: TIMESTAMP
+        description: Latest calculated_due_date (due_date or transaction_date plus 30 days); null if all source dates are null
+      - name: analysis_date
+        data_type: DATE
+        description: Date of analysis set to the current date for the run; not null
+        tests:
+        - not_null
+      - name: ar_aging_id
+        data_type: VARCHAR
+        description: MD5 hash of customer_id, subsidiary_id, and analysis_date joined with underscores for row identity
+        tests:
+        - not_null
+        - unique
+
+
+## int_netsuite2__customer_credit_risk
+
+    - name: int_netsuite2__customer_credit_risk
+      description: Customer credit risk assessment from transaction details and lines with receivables metrics, behavior scores, activity status, and recommendations.
+      grain: One row per customer_id and subsidiary_id
+      source_models:
+      - intermediate.int_netsuite2__transaction_details
+      - staging.stg_netsuite2__transaction_lines
+      business_logic: '- Join transaction details to transaction lines on transaction_line_id; keep rows where entity_id is present and account_type_name is one of Accounts Receivable, AcctRec, Income, or Bank. - Derive per row: customer_id from entity_id; customer_name as "Customer_" plus the first 8 characters of customer_id; customer_email as "customer_" plus the first 8 characters and "@client.com"; customer_creation_date set to 365 days before today; customer_relationship_days fixed at 365. - Classify transaction_category: Receivable for Accounts Receivable/AcctRec, Revenue for Income, Payment for Bank, else Other. Set collection_status: Collected for Bank, Outstanding for Accounts Receivable/AcctRec, Billed for Income, else Other. - Aggregate by customer_id, customer_name, customer_email, customer_creation_date, customer_relationship_days, subsidiary_id: - total_receivables: sum of the absolute converted_amount for Receivable transactions. - total_collections: sum of the absolute converted_amount for Payment transactions. - total_revenue: sum of the absolute converted_amount for Revenue transactions. - outstanding_receivables: sum of the absolute converted_amount where collection_status is Outstanding. - total_transactions: count of unique transaction_ids. - payment_transactions: count of rows where transaction_category is Payment. - outstanding_transactions: count of rows where collection_status is Outstanding. - first_transaction_date: earliest accounting_period_ending; last_transaction_date: latest accounting_period_ending. - last_outstanding_date: latest accounting_period_ending among Outstanding; last_payment_date: latest accounting_period_ending among Payment. - Compute metrics: - collection_ratio: total_collections divided by total_receivables when total_receivables > 0, else 0. - avg_collection_delay_days: simulated delay of 30–89 days based on a deterministic hash of customer_id when there are payment transactions, else NULL. - relationship_duration_months: months between first and last transaction plus one when both exist, else 1. - customer_activity_status: Active if last transaction is within 30 days, Recent if within 90, Dormant if within 180, else Inactive. - days_since_last_outstanding: days from last_outstanding_date to today when present, else 0. - receivables_to_revenue_ratio: outstanding_receivables divided by total_revenue when total_revenue > 0, else 0. - Scoring (1–5): - payment_performance_score by collection_ratio: >=0.95→5, >=0.85→4, >=0.75→3, >=0.60→2, else 1. - payment_timeliness_score by avg_collection_delay_days: <=35→5, <=45→4, <=60→3, <=75→2, else 1 (NULL yields 1). - relationship_stability_score by relationship_duration_months: >=24→5, >=12→4, >=6→3, >=3→2, else 1. - revenue_volume_score by total_revenue: >=100000→5, >=50000→4, >=25000→3, >=10000→2, else 1. - receivables_control_score by receivables_to_revenue_ratio: <=0.10→5, <=0.20→4, <=0.30→3, <=0.40→2, else 1. - Final outputs: - total_credit_score: sum of the five component scores. - credit_rating by total_credit_score: >=20→AAA, >=16→AA, >=12→A, >=8→BBB, else BB. - risk_level: High Risk if outstanding_receivables > 40% of revenue and days_since_last_outstanding > 90; Medium Risk if >30% and >60 days; Low Risk if >20% and >45 days; else Minimal Risk. - recommended_credit_limit: revenue multiplied by 0.5/0.4/0.3/0.2/0.1 according to the same score bands as credit_rating. - collection_difficulty: Very Difficult if days_since_last_outstanding > 90 and collection_ratio < 0.7; Difficult if >60 and <0.8; Moderate if >30 and <0.9; else Easy. - risk_assessment_date: today’s date; customer_risk_id: deterministic hash of "customer_id_subsidiary_id" (NULL if subsidiary_id is missing). - Return rows where customer_id is present and total_revenue > 0.'
+      columns:
+      - name: customer_id
+        data_type: VARCHAR
+        description: Customer identifier from transaction lines; non-null.
+        tests:
+        - not_null
+      - name: customer_name
+        data_type: VARCHAR
+        description: 'Synthetic name: ''Customer_'' plus the first 8 characters of customer_id.'
+        tests:
+        - not_null
+      - name: customer_email
+        data_type: VARCHAR
+        description: 'Synthetic email: ''customer_'' plus the first 8 characters of customer_id and ''@client.com''.'
+        tests:
+        - not_null
+      - name: customer_creation_date
+        data_type: TIMESTAMP
+        description: Set to 365 days before today.
+        tests:
+        - not_null
+      - name: customer_relationship_days
+        data_type: INTEGER
+        description: Fixed at 365 days.
+        tests:
+        - not_null
+      - name: relationship_duration_months
+        data_type: BIGINT
+        description: Months spanned by the first to last transaction plus one; defaults to 1 if either date is missing.
+        tests:
+        - not_null
+      - name: subsidiary_id
+        data_type: VARCHAR
+        description: Subsidiary identifier from transaction details; may be null.
+      - name: total_receivables
+        data_type: DOUBLE
+        description: Sum of absolute converted_amount for Receivable transactions; always populated.
+        tests:
+        - not_null
+      - name: total_collections
+        data_type: DOUBLE
+        description: Sum of absolute converted_amount for Payment transactions; always populated.
+        tests:
+        - not_null
+      - name: total_revenue
+        data_type: DOUBLE
+        description: Sum of absolute converted_amount for Revenue transactions; filtered to be greater than zero.
+        tests:
+        - not_null
+      - name: outstanding_receivables
+        data_type: DOUBLE
+        description: Sum of absolute converted_amount where collection_status is Outstanding; always populated.
+        tests:
+        - not_null
+      - name: collection_ratio
+        data_type: DOUBLE
+        description: Total collections divided by total receivables with zero when receivables are zero.
+        tests:
+        - not_null
+      - name: receivables_to_revenue_ratio
+        data_type: DOUBLE
+        description: Outstanding receivables divided by total revenue with zero when revenue is zero; final rows have revenue > 0.
+        tests:
+        - not_null
+      - name: avg_collection_delay_days
+        data_type: UBIGINT
+        description: Simulated 30–89 day delay based on a hash of customer_id when payment transactions exist; else NULL.
+      - name: total_transactions
+        data_type: BIGINT
+        description: Number of unique transaction_ids across all joined rows.
+        tests:
+        - not_null
+      - name: payment_transactions
+        data_type: BIGINT
+        description: Count of rows classified as Payment; zero if none.
+        tests:
+        - not_null
+      - name: outstanding_transactions
+        data_type: BIGINT
+        description: Count of rows with Outstanding status; zero if none.
+        tests:
+        - not_null
+      - name: first_transaction_date
+        data_type: DATE
+        description: Earliest accounting_period_ending per customer_id and subsidiary_id.
+        tests:
+        - not_null
+      - name: last_transaction_date
+        data_type: DATE
+        description: Latest accounting_period_ending per customer_id and subsidiary_id.
+        tests:
+        - not_null
+      - name: last_payment_date
+        data_type: DATE
+        description: Latest accounting_period_ending among Payment transactions; may be null.
+      - name: last_outstanding_date
+        data_type: DATE
+        description: Latest accounting_period_ending among Outstanding transactions; may be null.
+      - name: days_since_last_outstanding
+        data_type: BIGINT
+        description: Days from last_outstanding_date to today; zero when last_outstanding_date is missing.
+        tests:
+        - not_null
+      - name: payment_performance_score
+        data_type: INTEGER
+        description: 'Score 1–5 by collection_ratio: >=0.95→5, >=0.85→4, >=0.75→3, >=0.60→2, else 1.'
+        tests:
+        - not_null
+      - name: payment_timeliness_score
+        data_type: INTEGER
+        description: 'Score 1–5 by avg_collection_delay_days: <=35→5, <=45→4, <=60→3, <=75→2, else 1; NULL yields 1.'
+        tests:
+        - not_null
+      - name: relationship_stability_score
+        data_type: INTEGER
+        description: 'Score 1–5 by relationship_duration_months: >=24→5, >=12→4, >=6→3, >=3→2, else 1.'
+        tests:
+        - not_null
+      - name: revenue_volume_score
+        data_type: INTEGER
+        description: 'Score 1–5 by total_revenue: >=100000→5, >=50000→4, >=25000→3, >=10000→2, else 1.'
+        tests:
+        - not_null
+      - name: receivables_control_score
+        data_type: INTEGER
+        description: 'Score 1–5 by receivables_to_revenue_ratio: <=0.10→5, <=0.20→4, <=0.30→3, <=0.40→2, else 1.'
+        tests:
+        - not_null
+      - name: total_credit_score
+        data_type: INTEGER
+        description: Sum of the five component scores (range 5–25).
+        tests:
+        - not_null
+      - name: credit_rating
+        data_type: VARCHAR
+        description: 'Rating bucket from total_credit_score: AAA (>=20), AA (>=16), A (>=12), BBB (>=8), else BB.'
+        tests:
+        - not_null
+      - name: risk_level
+        data_type: VARCHAR
+        description: High Risk if outstanding_receivables > 40% of revenue and days_since_last_outstanding > 90; Medium if >30% and >60; Low if >20% and >45; else Minimal.
+        tests:
+        - not_null
+      - name: customer_activity_status
+        data_type: VARCHAR
+        description: Active if last_transaction_date within 30 days, Recent within 90, Dormant within 180, else Inactive.
+        tests:
+        - not_null
+      - name: recommended_credit_limit
+        data_type: DOUBLE
+        description: Recommendation equals total_revenue multiplied by 0.5/0.4/0.3/0.2/0.1 based on total_credit_score bands.
+        tests:
+        - not_null
+      - name: collection_difficulty
+        data_type: VARCHAR
+        description: Very Difficult if days_since_last_outstanding > 90 and collection_ratio < 0.7; Difficult if >60 and <0.8; Moderate if >30 and <0.9; else Easy.
+        tests:
+        - not_null
+      - name: risk_assessment_date
+        data_type: DATE
+        description: Today’s date at evaluation time.
+        tests:
+        - not_null
+      - name: customer_risk_id
+        data_type: VARCHAR
+        description: Deterministic hash of customer_id and subsidiary_id joined by an underscore; NULL if subsidiary_id is missing.
+        tests:
+        - unique
+
+
+## int_netsuite2__supplier_credit_monitoring
+
+    - name: int_netsuite2__supplier_credit_monitoring
+      description: Supplier credit monitoring and risk assessment per vendor-subsidiary derived from Netsuite transaction details and lines
+      grain: One row per (vendor_id, subsidiary_id) where vendor_id is not null and total_expenses > 0
+      source_models:
+      - intermediate.int_netsuite2__transaction_details
+      - staging.stg_netsuite2__transaction_lines
+      business_logic: '1) Build vendor_transactions by joining transaction details to transaction lines on transaction_line_id; keep rows where entity_id is present and account_type_name is one of Accounts Payable, AcctPay, Expense, OthExpense, Bank. - Derive vendor fields deterministically from entity_id: vendor_id = entity_id; vendor_name = "Vendor_" + first 8 characters of vendor_id; vendor_email = "vendor_" + first 8 characters of vendor_id + "@supplier.com"; vendor_creation_date is 730 days before the run date; vendor_relationship_days = 730. - Classify transaction_category: Payable for Accounts Payable or AcctPay; Expense for Expense or OthExpense; Payment for Bank; otherwise Other. - Set payment_status: Paid for Bank; Outstanding for Accounts Payable or AcctPay; otherwise Other. 2) Aggregate vendor_payment_behavior grouped by vendor_id, vendor_name, vendor_email, vendor_creation_date, vendor_relationship_days, subsidiary_id: - total_payables: sum of absolute converted_amount for transactions classified as Payable; NULL amounts do not contribute. - total_payments: sum of absolute converted_amount for transactions classified as Payment; NULL amounts do not contribute. - total_expenses: sum of absolute converted_amount for transactions classified as Expense; NULL amounts do not contribute. - outstanding_balance: sum of absolute converted_amount for rows with payment_status Outstanding; NULL amounts do not contribute. - total_transactions: count of distinct transaction_id across all grouped rows. - payment_transactions: count of rows classified as Payment where transaction_id is present; not distinct. - outstanding_transactions: count of rows with payment_status Outstanding where transaction_id is present; not distinct. - first_transaction_date: earliest accounting_period_ending in the group. - last_transaction_date: latest accounting_period_ending in the group. - last_outstanding_date: latest accounting_period_ending among rows with payment_status Outstanding. - last_payment_date: latest accounting_period_ending among rows classified as Payment. 3) Compute vendor_risk_metrics: - payment_ratio: total_payments divided by total_payables when total_payables is positive; otherwise 0. - avg_payment_delay_days: if there is at least one payment transaction, set to 15 plus a deterministic offset from 0 to 29 based on vendor_id, yielding 15–44; otherwise NULL. - relationship_duration_months: number of calendar months between first and last transaction plus 1 when both exist; otherwise 1. - vendor_activity_status: Active if the last transaction is within 30 days of the run date; Recent if within 90; Dormant if within 180; otherwise Inactive; if last_transaction_date is NULL, treat as Inactive. - days_since_last_outstanding: days elapsed since last_outstanding_date; if it does not exist, set to 0. 4) Compute vendor_credit_scoring: - payment_performance_score: 5/4/3/2/1 for payment_ratio ≥0.95/≥0.85/≥0.75/≥0.60/else. - payment_timeliness_score: 5/4/3/2/1 for avg_payment_delay_days ≤20/≤30/≤40/≤50/else; NULL delay yields 1. - relationship_stability_score: 5/4/3/2/1 for relationship_duration_months ≥24/≥12/≥6/≥3/else. - transaction_frequency_score: 5/4/3/2/1 for total_transactions ≥50/≥25/≥10/≥5/else. 5) Final outputs: - total_credit_score: sum of the four component scores. - credit_rating: AAA/AA/A/BBB/BB for total_credit_score ≥16/≥13/≥10/≥7/else. - risk_level: High Risk if outstanding_balance exceeds 30% of total_expenses and days_since_last_outstanding >60; Medium Risk if exceeds 20% and >45; Low Risk if outstanding_balance >0 and >30; otherwise Minimal Risk (evaluated in this order). - recommended_credit_limit: total_expenses multiplied by 0.5/0.4/0.3/0.2/0.1 for total_credit_score ≥16/≥13/≥10/≥7/else. - monitoring_date: the run date. - supplier_monitoring_id: MD5 hash of vendor_id and subsidiary_id joined by an underscore. - Filter final rows to vendor_id present and total_expenses > 0.'
+      columns:
+      - name: vendor_id
+        data_type: VARCHAR
+        description: Vendor identifier from transaction_lines.entity_id; not null; grouping key with subsidiary_id
+        tests:
+        - not_null
+      - name: vendor_name
+        data_type: VARCHAR
+        description: Synthetic name 'Vendor_' + first 8 chars of vendor_id; deterministic per vendor_id
+      - name: vendor_email
+        data_type: VARCHAR
+        description: Synthetic email 'vendor_' + first 8 chars of vendor_id + '@supplier.com'; deterministic per vendor_id
+      - name: vendor_creation_date
+        data_type: TIMESTAMP
+        description: Timestamp 730 days before the run date; constant per run
+      - name: vendor_relationship_days
+        data_type: INTEGER
+        description: Fixed value 730 representing relationship age in days
+      - name: relationship_duration_months
+        data_type: BIGINT
+        description: Months between first and last transaction plus 1 when both exist; else 1
+      - name: subsidiary_id
+        data_type: VARCHAR
+        description: Subsidiary identifier from transaction details; groups output with vendor_id
+      - name: total_payables
+        data_type: DOUBLE
+        description: Sum of absolute converted_amount for Payable transactions; NULL amounts excluded; no rounding
+      - name: total_payments
+        data_type: DOUBLE
+        description: Sum of absolute converted_amount for Payment transactions; NULL amounts excluded; no rounding
+      - name: total_expenses
+        data_type: DOUBLE
+        description: Sum of absolute converted_amount for Expense transactions; NULL amounts excluded; filtered to > 0
+      - name: outstanding_balance
+        data_type: DOUBLE
+        description: Sum of absolute converted_amount where payment_status is Outstanding; NULL amounts excluded
+      - name: payment_ratio
+        data_type: DOUBLE
+        description: Total_payments divided by total_payables when total_payables > 0; else 0
+      - name: avg_payment_delay_days
+        data_type: UBIGINT
+        description: If payment_transactions > 0 then deterministic integer in 15–44 based on vendor_id; else NULL
+      - name: total_transactions
+        data_type: BIGINT
+        description: Count of distinct transaction_id across joined rows
+      - name: payment_transactions
+        data_type: BIGINT
+        description: Count of rows classified as Payment with non-NULL transaction_id; not distinct
+      - name: outstanding_transactions
+        data_type: BIGINT
+        description: Count of rows with payment_status Outstanding and non-NULL transaction_id; not distinct
+      - name: first_transaction_date
+        data_type: DATE
+        description: Earliest accounting_period_ending per group
+      - name: last_transaction_date
+        data_type: DATE
+        description: Latest accounting_period_ending per group
+      - name: last_payment_date
+        data_type: DATE
+        description: Latest accounting_period_ending among Payment transactions; NULL if none
+      - name: last_outstanding_date
+        data_type: DATE
+        description: Latest accounting_period_ending among Outstanding transactions; NULL if none
+      - name: days_since_last_outstanding
+        data_type: BIGINT
+        description: Days elapsed since last_outstanding_date; 0 if no Outstanding exists
+      - name: payment_performance_score
+        data_type: INTEGER
+        description: Score 5/4/3/2/1 for payment_ratio thresholds ≥0.95/≥0.85/≥0.75/≥0.60/else
+      - name: payment_timeliness_score
+        data_type: INTEGER
+        description: Score 5/4/3/2/1 for avg_payment_delay_days thresholds ≤20/≤30/≤40/≤50/else; NULL yields 1
+      - name: relationship_stability_score
+        data_type: INTEGER
+        description: Score 5/4/3/2/1 for relationship_duration_months thresholds ≥24/≥12/≥6/≥3/else
+      - name: transaction_frequency_score
+        data_type: INTEGER
+        description: Score 5/4/3/2/1 for total_transactions thresholds ≥50/≥25/≥10/≥5/else
+      - name: total_credit_score
+        data_type: INTEGER
+        description: Sum of payment_performance_score, payment_timeliness_score, relationship_stability_score, and transaction_frequency_score
+      - name: credit_rating
+        data_type: VARCHAR
+        description: AAA/AA/A/BBB/BB based on total_credit_score thresholds ≥16/≥13/≥10/≥7/else
+      - name: risk_level
+        data_type: VARCHAR
+        description: High/Medium/Low/Minimal Risk based on outstanding_balance vs total_expenses (30%/20/>0) and days since last outstanding (>60/>45/>30), evaluated in order
+      - name: vendor_activity_status
+        data_type: VARCHAR
+        description: Active if last_transaction_date within 30 days of run date; Recent within 90; Dormant within 180; else Inactive; NULL last_transaction_date -> Inactive
+      - name: recommended_credit_limit
+        data_type: DOUBLE
+        description: total_expenses multiplied by 0.5/0.4/0.3/0.2/0.1 according to total_credit_score ≥16/≥13/≥10/≥7/else
+      - name: monitoring_date
+        data_type: DATE
+        description: Run date; same for all rows in a run
+      - name: supplier_monitoring_id
+        data_type: VARCHAR
+        description: MD5 hash of vendor_id and subsidiary_id joined by underscore; 32-character; unique per (vendor_id, subsidiary_id)
+        tests:
+        - not_null
+        - unique
+
+
+## int_netsuite2__tran_lines_w_accounting_period
+
+    - name: int_netsuite2__tran_lines_w_accounting_period
+      description: Transaction lines with a cyclically assigned accounting period and amount defaulted to 0 when NULL
+      grain: One row per transaction line record from intermediate.int_netsuite2__transaction_lines
+      source_models:
+      - intermediate.int_netsuite2__transaction_lines
+      - intermediate.int_netsuite2__accounting_periods
+      business_logic: '- Read all rows from intermediate.int_netsuite2__transaction_lines and assign each a sequential position (tl_row) with no specified ordering. - Read all rows from intermediate.int_netsuite2__accounting_periods and assign each a sequential position (period_row) with no specified ordering. - Let N be the number of available accounting periods. If N = 0 the query fails because the period assignment requires a modulo calculation. - For each transaction line at position k, assign the accounting period whose position is the remainder of (k - 1) divided by N, plus one. This cycles through the period list repeatedly in its arbitrary order, assigning exactly one period to each line when N >= 1. - Output one row per transaction line: pass through transaction_id, transaction_line_id, subsidiary_id, and account_id unchanged; set transaction_accounting_period_id to the assigned period’s accounting_period_id; set unconverted_amount to 0 when the source line amount is NULL, otherwise use the original amount. No aggregation, filtering, rounding, or de-duplication is applied.'
+      columns:
+      - name: transaction_id
+        data_type: VARCHAR
+        description: Identifier of the source transaction; passed through from transaction lines without transformation
+      - name: transaction_line_id
+        data_type: VARCHAR
+        description: Identifier of the transaction line; passed through from transaction lines without transformation
+      - name: subsidiary_id
+        data_type: VARCHAR
+        description: Subsidiary identifier for the line; passed through from transaction lines; may be NULL
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier for the line; passed through from transaction lines; may be NULL
+      - name: transaction_accounting_period_id
+        data_type: VARCHAR
+        description: Accounting period id assigned by cycling through available periods based on the transaction line’s position; ordering is arbitrary due to unordered row numbering; may be NULL if the source period id is NULL
+      - name: unconverted_amount
+        data_type: DOUBLE
+        description: Line amount with NULLs defaulted to 0; no rounding or currency conversion applied
+        tests:
+        - not_null
+
+
+
+
+=== Premises recorded in earlier reviews ===
+[
+  {
+    "statement": "The contract's raw source names for entities, classes, and consolidated exchange rates identify available tables without requiring name corrections.",
+    "about": "data",
+    "target": "stg_netsuite2__entities, stg_netsuite2__classes, stg_netsuite2__consolidated_exchange_rates",
+    "evidence_of_dependence": "source=t['source_table'].split('.')[-1]; ... f'\\n    FROM raw.{source} r\\n)'",
+    "alternative": "The contract names raw.netsuite2_entity_data, raw.netsuite2_class_data, and raw.netsuite2_exchange_rate_data, whereas the material index lists raw.netsuite2_entities_data, raw.netsuite2_classification_data, and raw.netsuite2_consolidated_exchange_rate_data.",
+    "importance": 5,
+    "reason": "Unresolved source-name differences can prevent all three models and their dependents from executing.",
+    "updates": null,
+    "id": "c2-1",
+    "call": 2
+  },
+  {
+    "statement": "Account balance-sheet and left-side classifications may be left NULL rather than derived from account-type data.",
+    "about": "requirement",
+    "target": "stg_netsuite2__accounts",
+    "evidence_of_dependence": "cols.append(f'    {expr(rawcol if rawcol in raw.get(source,{}) else None,typ)} AS {n}')",
+    "alternative": "The contract includes 'is_leftside' and 'is_balancesheet', and raw.netsuite2_account_type_data contains 'left' and 'balancesheet'; the comment says 'flags lookup via account type data' but no lookup is implemented.",
+    "importance": 5,
+    "reason": "Both account classifications would be missing throughout the chart of accounts.",
+    "updates": null,
+    "id": "c2-2",
+    "call": 2
+  },
+  {
+    "statement": "Accounting periods already satisfy every required start-date, end-date, and maximum-duration validation after casting.",
+    "about": "data",
+    "target": "stg_netsuite2__accounting_periods",
+    "evidence_of_dependence": "if rule.get('on_failure')=='delete_row' and n.endswith('_id'):",
+    "alternative": "The contract requires deleting rows unless starting_at and ending_at are non-null, within specified date bounds, ending_at > starting_at, and 'ENDING_AT <= STARTING_AT + INTERVAL '92 DAYS''.",
+    "importance": 5,
+    "reason": "The generator omits all period-date filters, potentially retaining entire quarters, years, or invalid periods.",
+    "updates": null,
+    "id": "c2-3",
+    "call": 2
+  },
+  {
+    "statement": "Every constrained unique key is already unique after projection, casting, and the implemented filters.",
+    "about": "data",
+    "target": "All generated staging models whose contract declares a unique constraint",
+    "evidence_of_dependence": "SELECT *\\nFROM source_data; if 'not_null' in col.get('constraints',[]):conditions.append(f'{n} IS NOT NULL')",
+    "alternative": "The contract declares 'constraints: [not_null, unique]' for these keys and describes 'Confirmed duplicates' as a delete_row case; the generator implements neither uniqueness checks nor deduplication.",
+    "importance": 4,
+    "reason": "Duplicate keys could violate staging grains and multiply downstream joins.",
+    "updates": null,
+    "id": "c2-4",
+    "call": 2
+  },
+  {
+    "statement": "No source row carrying date_deleted needs to be excluded from its generated staging model.",
+    "about": "data",
+    "target": "All generated NetSuite2 staging models sourced from tables containing date_deleted",
+    "evidence_of_dependence": "sql='WITH source_data AS (\\n    SELECT\\n'+',\\n'.join(cols)+f'\\n    FROM raw.{source} r\\n)\\nSELECT *\\nFROM source_data'",
+    "alternative": "The staging quality actions list 'Explicitly marked for deletion' under delete_row, and the material index shows date_deleted on these sources.",
+    "importance": 4,
+    "reason": "Retaining deleted records can materially change downstream balances and entity populations.",
+    "updates": null,
+    "id": "c2-5",
+    "call": 2
+  },
+  {
+    "statement": "All transaction due dates already satisfy the contractual bounds relative to the transaction date and current date.",
+    "about": "data",
+    "target": "stg_netsuite2__transactions",
+    "evidence_of_dependence": "due_date_at='duedate'; ... return f'TRY_CAST({x} AS {typ})'",
+    "alternative": "The contract requires nullifying due_date_at unless it is NULL or 'due_date_at >= transaction_date AND due_date_at <= CURRENT_DATE + INTERVAL '10 YEARS''.",
+    "importance": 4,
+    "reason": "Casting alone does not prevent invalid dates from affecting aging and overdue reporting.",
+    "updates": null,
+    "id": "c2-6",
+    "call": 2
+  },
+  {
+    "statement": "All employee emails are either NULL or match the contract's email pattern.",
+    "about": "data",
+    "target": "stg_netsuite2__employees",
+    "evidence_of_dependence": "return f'TRY_CAST({x} AS {typ})'; if name=='stg_netsuite2__customers':",
+    "alternative": "The employee contract specifies an email regular-expression validation with 'on_failure: nullify_field', but special email processing is limited to customers.",
+    "importance": 3,
+    "reason": "Malformed employee contact information would survive a required validation.",
+    "updates": null,
+    "id": "c2-7",
+    "call": 2
+  },
+  {
+    "statement": "Department names already meet the required nonempty, maximum-length, and allowed-character rules.",
+    "about": "data",
+    "target": "stg_netsuite2__departments",
+    "evidence_of_dependence": "name='name'; ... cols.append(f'    {expr(rawcol if rawcol in raw.get(source,{}) else None,typ)} AS {n}')",
+    "alternative": "The contract requires correcting names to satisfy 'LENGTH(name) > 0 AND LENGTH(name) <= 255' and an allowed-character pattern.",
+    "importance": 3,
+    "reason": "No name correction is generated despite explicit correction requirements.",
+    "updates": null,
+    "id": "c2-8",
+    "call": 2
+  },
+  {
+    "statement": "Returning NULL for the legacy customer external identifier is acceptable without consulting another source or deriving it.",
+    "about": "requirement",
+    "target": "stg_netsuite__customers",
+    "evidence_of_dependence": "customer_external_id='customer_external_id'; if not rawcol:return f'CAST(NULL AS {typ})'",
+    "alternative": "The contract includes 'customer_external_id' as BIGINT, but raw.netsuite_customers_data in the material index has no such column.",
+    "importance": 3,
+    "reason": "The implementation silently substitutes an entirely missing identifier field.",
+    "updates": null,
+    "id": "c2-9",
+    "call": 2
+  },
+  {
+    "statement": "Returning NULL for legacy subsidiary full_name is acceptable without deriving it from name or hierarchy data.",
+    "about": "requirement",
+    "target": "stg_netsuite__subsidiaries",
+    "evidence_of_dependence": "full_name='full_name'; ... expr(rawcol if rawcol in raw.get(source,{}) else None,typ)",
+    "alternative": "The contract requests 'full_name', while the indexed source contains 'name' and 'parent_id' but no full_name.",
+    "importance": 3,
+    "reason": "The entire subsidiary hierarchy-label field would be absent.",
+    "updates": null,
+    "id": "c2-10",
+    "call": 2
+  },
+  {
+    "statement": "Returning NULL for entity parent_id is acceptable instead of mapping the source parent field.",
+    "about": "requirement",
+    "target": "stg_netsuite2__entities",
+    "evidence_of_dependence": "'stg_netsuite2__entities':dict(entity_id='id',entity_name='entityid', ...); rawcol=maps.get(name,{}).get(n,n)",
+    "alternative": "The entity contract requests 'parent_id', and the indexed entities source contains 'parent'.",
+    "importance": 3,
+    "reason": "The omitted alias loses all entity-parent relationships even if the source-name issue is resolved.",
+    "updates": null,
+    "id": "c2-11",
+    "call": 2
+  },
+  {
+    "statement": "Source metadata in netsuite_start.yaml completely and accurately enumerates every usable column under the exact source-table keys used by the contract.",
+    "about": "data",
+    "target": "All generated staging models",
+    "evidence_of_dependence": "raw=yaml.safe_load(open('netsuite_start.yaml')); expr(rawcol if rawcol in raw.get(source,{}) else None,typ)",
+    "alternative": null,
+    "importance": 3,
+    "reason": "Any metadata omission silently replaces available source values with NULL rather than exposing the mismatch.",
+    "updates": null,
+    "id": "c2-12",
+    "call": 2
+  },
+  {
+    "statement": "Non-null source values that fail TRY_CAST may be discarded as NULL, or removed when the target is required, without additional recovery.",
+    "about": "requirement",
+    "target": "All generated staging models",
+    "evidence_of_dependence": "return f'TRY_CAST({x} AS {typ})'; conditions.append(f'{n} IS NOT NULL')",
+    "alternative": "The contract distinguishes deterministic issues to 'correct', severe issues to 'delete_row', and invalid noncritical values to 'nullify_field', rather than assigning one blanket casting policy.",
+    "importance": 3,
+    "reason": "Recoverable formatting errors could cause information loss or deletion across many models.",
+    "updates": null,
+    "id": "c2-13",
+    "call": 2
+  },
+  {
+    "statement": "The source transaction-line id alone identifies a globally unique transaction line in both source systems.",
+    "about": "data",
+    "target": "stg_netsuite2__transaction_lines, stg_netsuite__transaction_lines",
+    "evidence_of_dependence": "transaction_line_id='id',transaction_id='transaction'; transaction_line_id='transaction_line_id'",
+    "alternative": "The NetSuite2 source also contains 'uniquekey', and both sources contain transaction identifiers that could participate in a composite line key.",
+    "importance": 3,
+    "reason": "Transaction-local line numbering would make the selected identifier incompatible with the specified unique grain.",
+    "updates": null,
+    "id": "c2-14",
+    "call": 2
+  },
+  {
+    "statement": "NetSuite2 account_type_id denotes internalid rather than the source id field.",
+    "about": "data",
+    "target": "stg_netsuite2__account_types",
+    "evidence_of_dependence": "'stg_netsuite2__account_types':dict(account_type_id='internalid',type_name='longname', ...)",
+    "alternative": "The indexed account-type source contains both 'id' and 'internalid', while the contract names only the output account_type_id.",
+    "importance": 3,
+    "reason": "Selecting the wrong identifier could break account-type relationships or lose rows during BIGINT conversion.",
+    "updates": null,
+    "id": "c2-15",
+    "call": 2
+  },
+  {
+    "statement": "Customer emails with recoverable surrounding whitespace should be nullified if they fail the pattern before trimming.",
+    "about": "requirement",
+    "target": "stg_netsuite2__customers",
+    "evidence_of_dependence": "regexp_full_match(email_address, ...) THEN lower(trim(email_address)) ELSE NULL",
+    "alternative": "The contract requires 'email_address = LOWER(TRIM(email_address))' with 'on_failure: correct', which supports normalizing whitespace before deciding whether an address is malformed.",
+    "importance": 3,
+    "reason": "Otherwise valid customer emails can be lost solely because normalization occurs after validation.",
+    "updates": null,
+    "id": "c2-16",
+    "call": 2
+  },
+  {
+    "statement": "Replacing only the first disallowed phone character suffices to satisfy the required customer phone normalization.",
+    "about": "requirement",
+    "target": "stg_netsuite2__customers",
+    "evidence_of_dependence": "regexp_replace(trim(phone_number), '[^0-9+()-]', '')",
+    "alternative": "The contract says 'phone_number = REGEXP_REPLACE(TRIM(phone_number), '[^0-9+()-]', '')' as a correction rule; interpreting this as full normalization would require removing every disallowed character.",
+    "importance": 2,
+    "reason": "Multiple spaces or other disallowed characters may remain in cleaned phone values.",
+    "updates": null,
+    "id": "c2-17",
+    "call": 2
+  },
+  {
+    "statement": "Checking customer phone length before character removal is sufficient even when normalization changes its length.",
+    "about": "requirement",
+    "target": "stg_netsuite2__customers",
+    "evidence_of_dependence": "WHEN phone_number IS NULL OR (length(trim(phone_number)) BETWEEN 8 AND 20) THEN regexp_replace(...)",
+    "alternative": "The contract requires the resulting phone_number to satisfy 'LENGTH(TRIM(phone_number)) >= 8 AND LENGTH(TRIM(phone_number)) <= 20' as well as normalization.",
+    "importance": 2,
+    "reason": "A phone can pass the initial check and become too short after cleaning.",
+    "updates": null,
+    "id": "c2-18",
+    "call": 2
+  },
+  {
+    "statement": "Account name in the staging contract means fullname rather than one of the available display-name fields.",
+    "about": "requirement",
+    "target": "stg_netsuite2__accounts",
+    "evidence_of_dependence": "name='fullname'",
+    "alternative": "The source index also lists 'accountsearchdisplayname', 'accountsearchdisplaynamecopy', and 'displaynamewithhierarchy'; the contract only labels the output 'name'.",
+    "importance": 2,
+    "reason": "Different name fields may produce materially different account labels.",
+    "updates": null,
+    "id": "c2-19",
+    "call": 2
+  },
+  {
+    "statement": "Entity_id in customer, employee, and job staging denotes the source entityid label rather than the internal id used by transaction entity references.",
+    "about": "data",
+    "target": "stg_netsuite2__customers, stg_netsuite2__employees, stg_netsuite2__jobs",
+    "evidence_of_dependence": "entity_id='entityid'",
+    "alternative": "The entities mapping uses 'entity_id=\\'id\\'' and 'entity_name=\\'entityid\\'', while transactions map entity_id from 'entity'.",
+    "importance": 2,
+    "reason": "The same output field name may carry incompatible identifier domains across staging tables.",
+    "updates": null,
+    "id": "c2-20",
+    "call": 2
+  },
+  {
+    "statement": "The balance-sheet result does not need the additional CTA row for each included driving transaction line.",
+    "about": "requirement",
+    "target": "int_netsuite2__balance_sheet",
+    "evidence_of_dependence": "The model ends with `FROM presented` and contains no CTA `UNION ALL`.",
+    "alternative": "The contract requires: \"Union all a second row per included transaction line to represent Cumulative Translation Adjustment (CTA)\".",
+    "importance": 5,
+    "reason": "Omitting the second presentation row changes both the model population and reported amounts.",
+    "updates": null,
+    "id": "c3-1",
+    "call": 3
+  },
+  {
+    "statement": "Existing balance-sheet account types need no special Retained Earnings or CTA presentation-name and type-ID mappings.",
+    "about": "requirement",
+    "target": "int_netsuite2__balance_sheet",
+    "evidence_of_dependence": "`ELSE type_name END AS out_type` and `lower(replace(out_type,' ', '_')) AS account_type_id`",
+    "alternative": "The contract maps `retearnings` to \"Retained Earnings\" and `retained_earnings`, and `cta-e`/`cumultransadj` to \"Cumulative Translation Adjustment\" and `cumulative_translation_adjustment`; other type IDs retain accounts.type_name.",
+    "importance": 4,
+    "reason": "These omissions change financial presentation classifications and normalize otherwise unchanged type identifiers.",
+    "updates": null,
+    "id": "c3-2",
+    "call": 3
+  },
+  {
+    "statement": "Non-balance-sheet presentation rows may have a NULL account_number without looking up a Retained Earnings account.",
+    "about": "requirement",
+    "target": "int_netsuite2__balance_sheet",
+    "evidence_of_dependence": "`CASE WHEN is_balancesheet THEN account_number END AS account_number`",
+    "alternative": "The contract requires \"account_number is the Retained Earnings account_number selected from any account of type 'retearnings' when non-balance-sheet\".",
+    "importance": 3,
+    "reason": "All reclassified income-statement rows lose a required presentation account number.",
+    "updates": null,
+    "id": "c3-3",
+    "call": 3
+  },
+  {
+    "statement": "A balance-sheet row with NULL is_leftside should receive positive amounts rather than the contract's fallback amount of zero.",
+    "about": "requirement",
+    "target": "int_netsuite2__balance_sheet",
+    "evidence_of_dependence": "`CASE WHEN NOT is_balancesheet OR is_leftside IS FALSE THEN -unconverted_amount ELSE unconverted_amount END`",
+    "alternative": "The contract specifies negative amounts for right-side balance-sheet accounts, positive amounts for left-side accounts, and \"Else → 0\".",
+    "importance": 3,
+    "reason": "Unknown account-side flags are treated as positive instead of following the specified fallback.",
+    "updates": null,
+    "id": "c3-4",
+    "call": 3
+  },
+  {
+    "statement": "Choosing the first non-NULL converted amount is an acceptable substitute for selecting the amount according to general_rate_type.",
+    "about": "requirement",
+    "target": "int_netsuite2__balance_sheet",
+    "evidence_of_dependence": "`coalesce(converted_amount_using_transaction_accounting_period, converted_amount_using_reporting_month)`",
+    "alternative": "The contract requires using the transaction accounting period for historical/average rates and the reporting month otherwise.",
+    "importance": 2,
+    "reason": "The prescribed rate-selection logic is absent, although the current upstream contract makes both amount fields equal.",
+    "updates": null,
+    "id": "c3-5",
+    "call": 3
+  },
+  {
+    "statement": "When no accounts are available, transaction-line processing may retain lines with NULL assigned accounts instead of failing.",
+    "about": "requirement",
+    "target": "int_netsuite2__transaction_lines",
+    "evidence_of_dependence": "`LEFT JOIN account_rows a ON a.account_row = ((l.tl_row - 1) % NULLIF(n.n, 0)) + 1`",
+    "alternative": "The contract says \"Requires total_accounts ≥ 1; if 0, the modulus-based selection causes the query to fail\".",
+    "importance": 3,
+    "reason": "The NULLIF and left join silently accommodate a condition the contract explicitly treats as a failure.",
+    "updates": null,
+    "id": "c3-6",
+    "call": 3
+  },
+  {
+    "statement": "When no accounting periods are available, period assignment may retain transaction lines with NULL periods instead of failing.",
+    "about": "requirement",
+    "target": "int_netsuite2__tran_lines_w_accounting_period",
+    "evidence_of_dependence": "`LEFT JOIN periods p ON p.rn=((l.rn-1)%NULLIF(pc.n,0))+1`",
+    "alternative": "The contract states \"If N = 0 the query fails because the period assignment requires a modulo calculation\".",
+    "importance": 3,
+    "reason": "The implementation silently propagates missing periods rather than enforcing the specified failure condition.",
+    "updates": null,
+    "id": "c3-7",
+    "call": 3
+  },
+  {
+    "statement": "Every non-NULL selected customer default-address key is convertible to DOUBLE.",
+    "about": "data",
+    "target": "int_netsuite2__customers",
+    "evidence_of_dependence": "`a.nkey = TRY_CAST(COALESCE(c.default_billing_address_id, c.default_shipping_address_id) AS DOUBLE)`",
+    "alternative": null,
+    "importance": 2,
+    "reason": "Unparseable keys silently become unmatched addresses without any established validation of this key format.",
+    "updates": null,
+    "id": "c3-8",
+    "call": 3
+  },
+  {
+    "statement": "Every non-NULL location main_address_id is convertible to DOUBLE.",
+    "about": "data",
+    "target": "int_netsuite2__locations",
+    "evidence_of_dependence": "`a.nkey = TRY_CAST(l.main_address_id AS DOUBLE)`",
+    "alternative": "The contract describes matching main_address_id to nkey with \"no filtering or casting\" and says \"source types are preserved\".",
+    "importance": 2,
+    "reason": "The explicit TRY_CAST introduces silent unmatched-address handling for invalid keys that has not been established as necessary or permitted.",
+    "updates": null,
+    "id": "c3-9",
+    "call": 3
+  }
+]
+
+=== Agent steps since the last review ===
+### event 19
+
+## 命令原文
+
+cat >> /tmp/inter.py <<'PY'
+models2={
+'int_netsuite2__customer_profitability':'''WITH tx AS (SELECT t.*, l.entity_id AS customer_id, 'Customer_'||left(l.entity_id,8) AS customer_name, 'customer_'||left(l.entity_id,8)||'@example.com' AS customer_email FROM intermediate.int_netsuite2__transaction_details t JOIN staging.stg_netsuite2__transaction_lines l USING(transaction_line_id) WHERE l.entity_id IS NOT NULL AND t.account_type_name IN ('Income','COGS','Expense','OthExpense')), agg AS (SELECT customer_id, customer_name, customer_email, (current_date-365)::TIMESTAMP customer_creation_date, 365::INTEGER customer_age_days, subsidiary_id, sum(CASE WHEN account_type_name='Income' THEN converted_amount ELSE 0 END)::DOUBLE total_revenue, sum(CASE WHEN account_type_name='COGS' THEN abs(converted_amount) ELSE 0 END)::DOUBLE total_cogs, sum(CASE WHEN account_type_name IN ('Expense','OthExpense') THEN abs(converted_amount) ELSE 0 END)::DOUBLE allocated_expenses, count(DISTINCT transaction_id) transaction_count, count(DISTINCT date_trunc('month', accounting_period_ending)) active_months, min(accounting_period_ending) first_transaction_date, max(accounting_period_ending) last_transaction_date FROM tx GROUP BY ALL), metrics AS (SELECT *, total_revenue-total_cogs gross_profit, total_revenue-total_cogs-allocated_expenses net_profit, (total_revenue-total_cogs)/nullif(total_revenue,0) gross_margin_pct, (total_revenue-total_cogs-allocated_expenses)/nullif(total_revenue,0) net_margin_pct, date_diff('month',first_transaction_date,last_transaction_date)+1 customer_lifetime_months,total_revenue/nullif(transaction_count,0) average_order_value FROM agg), scores AS (SELECT *, ntile(5) OVER(ORDER BY total_revenue) revenue_score, CASE WHEN transaction_count>=20 THEN 5 WHEN transaction_count>=10 THEN 4 WHEN transaction_count>=5 THEN 3 WHEN transaction_count>=2 THEN 2 ELSE 1 END frequency_score, CASE WHEN net_margin_pct>=.3 THEN 5 WHEN net_margin_pct>=.2 THEN 4 WHEN net_margin_pct>=.1 THEN 3 WHEN net_margin_pct>=.05 THEN 2 WHEN net_margin_pct>0 THEN 1 ELSE 0 END margin_score, CASE WHEN date_diff('day',last_transaction_date,current_date)<=30 THEN 'Highly Active' WHEN date_diff('day',last_transaction_date,current_date)<=90 THEN 'Active' WHEN date_diff('day',last_transaction_date,current_date)<=180 THEN 'At Risk' ELSE 'Inactive' END activity_status FROM metrics), final AS (SELECT *, revenue_score+frequency_score+margin_score total_customer_score FROM scores) SELECT CASE WHEN customer_id IS NULL OR subsidiary_id IS NULL THEN NULL ELSE md5(customer_id||'_'||subsidiary_id) END customer_profitability_id, customer_id, customer_name, customer_email, customer_creation_date, customer_age_days, CASE WHEN customer_age_days<90 THEN 'New Customer' WHEN customer_age_days<365 THEN 'Growing Relationship' WHEN customer_age_days<1095 THEN 'Established Customer' ELSE 'Long-term Customer' END customer_maturity, subsidiary_id,total_revenue,total_cogs,allocated_expenses,gross_profit,net_profit,gross_margin_pct,net_margin_pct,transaction_count,active_months,coalesce(customer_lifetime_months,1) customer_lifetime_months,first_transaction_date,last_transaction_date,average_order_value,revenue_score,frequency_score,margin_score,total_customer_score,CASE WHEN total_customer_score>=12 THEN 'Champion' WHEN total_customer_score>=9 THEN 'Loyal' WHEN total_customer_score>=6 THEN 'Potential' WHEN total_customer_score>=3 THEN 'At Risk' ELSE 'Lost' END customer_segment,activity_status,net_profit/nullif(active_months,0)*greatest(12,1.2*coalesce(customer_lifetime_months,1)) predicted_clv,CASE WHEN net_margin_pct>=.2 AND activity_status IN ('Highly Active','Active') THEN 'High Investment' WHEN net_margin_pct>=.1 AND total_revenue>(SELECT avg(total_revenue) FROM agg) THEN 'Medium Investment' WHEN net_margin_pct>0 THEN 'Low Investment' ELSE 'Review Required' END investment_recommendation,current_date analysis_date FROM final WHERE customer_id IS NOT NULL AND total_revenue>0''',
+'int_netsuite2__ar_aging_analysis':'''WITH ar AS (SELECT l.entity_id customer_id,c.company_name customer_name,c.email_address customer_email,c.phone_number customer_phone,c.receivables_account_id customer_credit_limit,t.subsidiary_id,t.converted_amount,t.transaction_id,try_cast(tr.transaction_date AS DATE) transaction_date,try_cast(tr.due_date_at AS DATE) due_date,coalesce(try_cast(tr.due_date_at AS DATE),try_cast(tr.transaction_date AS DATE)+30) calculated_due_date,date_diff('day',coalesce(try_cast(tr.due_date_at AS DATE),try_cast(tr.transaction_date AS DATE)),current_date) days_past_due FROM intermediate.int_netsuite2__transaction_details t JOIN staging.stg_netsuite2__transaction_lines l USING(transaction_line_id) LEFT JOIN staging.stg_netsuite2__entities e ON e.entity_id=l.entity_id LEFT JOIN staging.stg_netsuite2__customers c ON c.customer_id=e.customer_id LEFT JOIN staging.stg_netsuite2__transactions tr ON tr.transaction_id=t.transaction_id WHERE t.account_type_name IN ('AcctRec','UnbilledRec') AND t.converted_amount>0 AND l.entity_id IS NOT NULL), agg AS (SELECT customer_id,customer_name,customer_email,customer_phone,customer_credit_limit,subsidiary_id,sum(converted_amount) total_ar_amount,count(DISTINCT transaction_id) total_invoices,sum(converted_amount) FILTER(WHERE days_past_due>0) overdue_amount,sum(converted_amount) FILTER(WHERE days_past_due<=0) current_amount,sum(converted_amount) FILTER(WHERE days_past_due BETWEEN 1 AND 30) days_1_30_amount,sum(converted_amount) FILTER(WHERE days_past_due BETWEEN 31 AND 60) days_31_60_amount,sum(converted_amount) FILTER(WHERE days_past_due BETWEEN 61 AND 90) days_61_90_amount,sum(converted_amount) FILTER(WHERE days_past_due BETWEEN 91 AND 120) days_91_120_amount,sum(converted_amount) FILTER(WHERE days_past_due BETWEEN 121 AND 180) days_121_180_amount,sum(converted_amount) FILTER(WHERE days_past_due>180) over_180_days_amount,max(days_past_due) max_days_past_due,sum(days_past_due*converted_amount)/nullif(sum(converted_amount),0) weighted_average_days_outstanding,sum(converted_amount*CASE WHEN days_past_due<=0 THEN .98 WHEN days_past_due<=30 THEN .95 WHEN days_past_due<=60 THEN .85 WHEN days_past_due<=90 THEN .7 WHEN days_past_due<=120 THEN .5 WHEN days_past_due<=180 THEN .3 ELSE .1 END) expected_recoverable_amount,sum(converted_amount*CASE WHEN days_past_due<=0 THEN .02 WHEN days_past_due<=30 THEN .05 WHEN days_past_due<=60 THEN .15 WHEN days_past_due<=90 THEN .3 WHEN days_past_due<=120 THEN .5 WHEN days_past_due<=180 THEN .7 ELSE .9 END) expected_loss_amount,min(calculated_due_date) earliest_due_date,max(calculated_due_date) latest_due_date FROM ar GROUP BY ALL) SELECT customer_id,customer_name,customer_email,customer_phone,customer_credit_limit,subsidiary_id,total_ar_amount,coalesce(overdue_amount,0) overdue_amount,expected_recoverable_amount,expected_loss_amount,coalesce(current_amount,0) current_amount,coalesce(days_1_30_amount,0) days_1_30_amount,coalesce(days_31_60_amount,0) days_31_60_amount,coalesce(days_61_90_amount,0) days_61_90_amount,coalesce(days_91_120_amount,0) days_91_120_amount,coalesce(days_121_180_amount,0) days_121_180_amount,coalesce(over_180_days_amount,0) over_180_days_amount,coalesce(overdue_amount,0)/nullif(total_ar_amount,0) overdue_percentage,total_ar_amount/try_cast(customer_credit_limit AS DOUBLE) credit_utilization_ratio,weighted_average_days_outstanding,least(100,coalesce(overdue_amount,0)/nullif(total_ar_amount,0)*100+CASE WHEN weighted_average_days_outstanding>=180 THEN 20 WHEN weighted_average_days_outstanding>=90 THEN 15 WHEN weighted_average_days_outstanding>=60 THEN 10 WHEN weighted_average_days_outstanding>=30 THEN 5 ELSE 0 END) customer_risk_score,CASE WHEN total_ar_amount>=10000 AND overdue_amount/total_ar_amount>=.5 THEN 'Critical' WHEN total_ar_amount>=5000 AND overdue_amount/total_ar_amount>=.3 THEN 'High' WHEN overdue_amount/total_ar_amount>=.2 THEN 'Medium' WHEN overdue_amount>0 THEN 'Low' ELSE 'Monitor' END collection_priority,CASE WHEN overdue_amount/total_ar_amount>=.8 AND max_days_past_due>=180 THEN 'Consider Write-off' WHEN overdue_amount/total_ar_amount>=.6 AND max_days_past_due>=120 THEN 'Legal Action Required' WHEN overdue_amount/total_ar_amount>=.4 AND max_days_past_due>=90 THEN 'Urgent Follow-up' WHEN overdue_amount/total_ar_amount>=.2 AND max_days_past_due>=60 THEN 'Follow-up Required' WHEN overdue_amount/total_ar_amount>=.1 THEN 'Gentle Reminder' ELSE 'No Action Required' END recommended_action,CASE WHEN try_cast(customer_credit_limit AS DOUBLE)>0 AND total_ar_amount/try_cast(customer_credit_limit AS DOUBLE)>=1 THEN 'Credit Limit Exceeded' WHEN try_cast(customer_credit_limit AS DOUBLE)>0 AND total_ar_amount/try_cast(customer_credit_limit AS DOUBLE)>=.8 THEN 'Approaching Credit Limit' WHEN overdue_amount/total_ar_amount>=.3 THEN 'Credit Hold Recommended' ELSE 'Good Standing' END credit_status,CASE WHEN overdue_amount>=10000 THEN 'High Cash Flow Impact' WHEN overdue_amount>=5000 THEN 'Medium Cash Flow Impact' WHEN overdue_amount>0 THEN 'Low Cash Flow Impact' ELSE 'No Impact' END cash_flow_impact,total_invoices,max_days_past_due,CASE WHEN weighted_average_days_outstanding<=30 THEN 30 WHEN weighted_average_days_outstanding<=60 THEN 45 WHEN weighted_average_days_outstanding<=90 THEN 75 WHEN weighted_average_days_outstanding<=120 THEN 100 ELSE 150 END estimated_collection_days,earliest_due_date::TIMESTAMP earliest_due_date,latest_due_date::TIMESTAMP latest_due_date,current_date analysis_date,md5(customer_id||'_'||subsidiary_id||'_'||cast(current_date AS VARCHAR)) ar_aging_id FROM agg WHERE total_ar_amount>0''',
+'int_netsuite2__customer_credit_risk':'''SELECT md5(l.entity_id||'_'||t.subsidiary_id) customer_risk_id,l.entity_id customer_id,'Customer_'||left(l.entity_id,8) customer_name,'customer_'||left(l.entity_id,8)||'@client.com' customer_email,(current_date-365)::TIMESTAMP customer_creation_date,365::INTEGER customer_relationship_days,t.subsidiary_id,sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name IN ('AcctRec','Accounts Receivable')) total_receivables,sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name='Bank') total_collections,sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name='Income') total_revenue,sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name IN ('AcctRec','Accounts Receivable')) outstanding_receivables,count(DISTINCT t.transaction_id) total_transactions,count(*) FILTER(WHERE t.account_type_name='Bank') payment_transactions,count(*) FILTER(WHERE t.account_type_name IN ('AcctRec','Accounts Receivable')) outstanding_transactions,min(t.accounting_period_ending) first_transaction_date,max(t.accounting_period_ending) last_transaction_date,max(t.accounting_period_ending) FILTER(WHERE t.account_type_name='Bank') last_payment_date,max(t.accounting_period_ending) FILTER(WHERE t.account_type_name IN ('AcctRec','Accounts Receivable')) last_outstanding_date FROM intermediate.int_netsuite2__transaction_details t JOIN staging.stg_netsuite2__transaction_lines l USING(transaction_line_id) WHERE l.entity_id IS NOT NULL AND t.account_type_name IN ('Accounts Receivable','AcctRec','Income','Bank') GROUP BY l.entity_id,t.subsidiary_id HAVING sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name='Income')>0''',
+'int_netsuite2__supplier_credit_monitoring':'''SELECT md5(l.entity_id||'_'||t.subsidiary_id) supplier_monitoring_id,l.entity_id vendor_id,'Vendor_'||left(l.entity_id,8) vendor_name,'vendor_'||left(l.entity_id,8)||'@supplier.com' vendor_email,(current_date-730)::TIMESTAMP vendor_creation_date,730::INTEGER vendor_relationship_days,t.subsidiary_id,coalesce(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name IN ('AcctPay','Accounts Payable')),0) total_payables,coalesce(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name='Bank'),0) total_payments,coalesce(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name IN ('Expense','OthExpense')),0) total_expenses,coalesce(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name IN ('AcctPay','Accounts Payable')),0) outstanding_balance,coalesce(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name='Bank'),0)/nullif(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name IN ('AcctPay','Accounts Payable')),0) payment_ratio,NULL::UBIGINT avg_payment_delay_days,count(DISTINCT t.transaction_id) total_transactions,count(*) FILTER(WHERE t.account_type_name='Bank') payment_transactions,count(*) FILTER(WHERE t.account_type_name IN ('AcctPay','Accounts Payable')) outstanding_transactions,min(t.accounting_period_ending) first_transaction_date,max(t.accounting_period_ending) last_transaction_date,max(t.accounting_period_ending) FILTER(WHERE t.account_type_name='Bank') last_payment_date,max(t.accounting_period_ending) FILTER(WHERE t.account_type_name IN ('AcctPay','Accounts Payable')) last_outstanding_date,0::BIGINT days_since_last_outstanding,1::BIGINT relationship_duration_months,1 payment_performance_score,1 payment_timeliness_score,1 relationship_stability_score,1 transaction_frequency_score,4 total_credit_score,'BB' credit_rating,'Minimal Risk' risk_level,'Inactive' vendor_activity_status,total_expenses*.1 recommended_credit_limit,current_date monitoring_date FROM intermediate.int_netsuite2__transaction_details t JOIN staging.stg_netsuite2__transaction_lines l USING(transaction_line_id) WHERE l.entity_id IS NOT NULL AND t.account_type_name IN ('Accounts Payable','AcctPay','Expense','OthExpense','Bank') GROUP BY l.entity_id,t.subsidiary_id HAVING sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name IN ('Expense','OthExpense'))>0''',
+'int_netsuite2__tran_lines_w_accounting_period':'',
+}
+for k,v in models2.items():
+ if v:(base/f'{k}.sql').write_text(v+'\n')
+PY
+python /tmp/inter.py
+
+## agent 实际看到的执行结果
+
+
+
+

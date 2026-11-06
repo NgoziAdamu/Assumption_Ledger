@@ -1,0 +1,226 @@
+{
+  "premises": [
+    {
+      "statement": "Customer lifecycle frequency scoring does not need to distinguish recently active customers who qualify for scores 4 or 5.",
+      "about": "requirement",
+      "target": "intermediate.int_customer360__customer_lifecycle_metrics.frequency_score",
+      "evidence_of_dependence": "case when platform_sum>=2 and active_90_days=1 then 3 when active_180_days=1 then 2 else 1 end as frequency_score",
+      "alternative": "The contract requires \"5 if platform_consistency_score = 3 and active_30_days = 1; 4 if platform_consistency_score ≥ 2 and active_60_days = 1\" before evaluating the score-3 condition.",
+      "importance": 5,
+      "reason": "Omitting the highest frequency scores can change LTV, tiers, strategic-account flags, and downstream recommendations.",
+      "updates": null
+    },
+    {
+      "statement": "Zendesk organization timestamps are eligible inputs to the overall customer updated_at and created_at extrema.",
+      "about": "requirement",
+      "target": "intermediate.int_customer360__source_matches.marketo_updated_at and marketo_created_at",
+      "evidence_of_dependence": "greatest(ms_m_updated, ms_s_updated, mz_m_updated, mz_z_updated, mz_zo_updated, sz_s_updated, sz_z_updated, sz_zo_updated)",
+      "alternative": "The contract specifies extrema among \"the Marketo, Stripe, and Zendesk updated_at values\" and separately specifies Zendesk organization timestamp outputs.",
+      "importance": 4,
+      "reason": "Organization creation or update dates can move the overall customer timestamps beyond the platform record timestamps.",
+      "updates": null
+    },
+    {
+      "statement": "An empty Stripe customer ID can be treated as equal to a missing Marketo–Stripe customer ID when merging pairwise matches.",
+      "about": "requirement",
+      "target": "intermediate.int_customer360__source_matches.merged_market",
+      "evidence_of_dependence": "coalesce(ms.stripe_id, '') = sz.stripe_id",
+      "alternative": "The contract says to join \"when either Stripe customer ID matches or Zendesk user ID matches\" and does not prescribe replacing NULL IDs with empty strings.",
+      "importance": 4,
+      "reason": "This substitution can link otherwise unrelated matches and multiply output rows if empty customer IDs occur.",
+      "updates": null
+    },
+    {
+      "statement": "Every Stripe–Zendesk pairwise row with a NULL customer ID or user ID already attached to merged_market is absent from the input.",
+      "about": "data",
+      "target": "intermediate.int_customer360__source_matches.all_matches",
+      "evidence_of_dependence": "where not exists (select 1 from merged_market mm where mm.sz_stripe_id = sz.stripe_id and mm.sz_zendesk_id = sz.zendesk_id)",
+      "alternative": "The contract permits NULL Stripe customer IDs and Zendesk user IDs and requires a full outer join that retains all resulting rows.",
+      "importance": 4,
+      "reason": "Ordinary equality cannot recognize an attached pair with a NULL ID, so the unmatched-row emulation can append that pair again.",
+      "updates": null
+    },
+    {
+      "statement": "When multiple valid country records normalize to the same alpha-2 code, retaining the first record ordered by country name and alpha-3 code is the required conflict-resolution policy.",
+      "about": "requirement",
+      "target": "staging.stg_customer360__country_codes",
+      "evidence_of_dependence": "row_number() over (partition by country_code_alpha_2 order by country_name, country_code_alpha_3) as _row_num",
+      "alternative": "The contract declares country_code_alpha_2 \"[not_null, unique]\" but does not specify which conflicting record should survive.",
+      "importance": 3,
+      "reason": "The selection policy determines which country names and codes become authoritative reference data.",
+      "updates": null
+    },
+    {
+      "statement": "The required ordering of customer behavior results may be omitted.",
+      "about": "requirement",
+      "target": "intermediate.int_customer360__customer_behavior_analysis",
+      "evidence_of_dependence": "from labels\nwhere primary_email is not null",
+      "alternative": "The contract requires \"Order rows by composite_engagement_score descending, then account_age_days descending\".",
+      "importance": 3,
+      "reason": "The generated query does not enforce the explicitly requested result ordering.",
+      "updates": null
+    },
+    {
+      "statement": "The required ordering of customer lifecycle results may be omitted.",
+      "about": "requirement",
+      "target": "intermediate.int_customer360__customer_lifecycle_metrics",
+      "evidence_of_dependence": "growth_potential, action_priority\nfrom completed",
+      "alternative": "The contract requires sorting by \"is_strategic_account (true first), then action_priority descending, then estimated_customer_ltv descending, then customer_health_score descending\".",
+      "importance": 3,
+      "reason": "Consumers cannot rely on the prescribed prioritization order without an explicit ordering step.",
+      "updates": null
+    },
+    {
+      "statement": "Activity windows measured relative to today should use the execution-time instant rather than the start of the current date.",
+      "about": "requirement",
+      "target": "intermediate.int_customer360__customer_lifecycle_metrics.active_30_days through active_365_days",
+      "evidence_of_dependence": "customer_last_activity >= current_timestamp - interval '30 days'",
+      "alternative": "The contract describes activity as occurring \"within X days of today\" and defines recency in days relative to today, which also supports a current_date-based boundary.",
+      "importance": 3,
+      "reason": "Different boundary conventions can change activity flags, lifecycle stages, frequency scores, and LTV.",
+      "updates": null
+    },
+    {
+      "statement": "A customer becomes Dormant only after the day difference from last activity to current_date exceeds 180.",
+      "about": "requirement",
+      "target": "intermediate.int_customer360__customer_lifecycle_metrics.lifecycle_stage",
+      "evidence_of_dependence": "when days_since_last_activity > 180 then 'Dormant'",
+      "alternative": "The contract says \"Dormant if last_activity older than 180 days\", which can instead mean an elapsed-time comparison consistent with the timestamp-based activity windows.",
+      "importance": 2,
+      "reason": "Customers near the 180-day boundary can receive different lifecycle stages and associated enrichments.",
+      "updates": null
+    },
+    {
+      "statement": "The customer behavior churn-risk cutoff of more than 90 days ago should be measured from the execution-time instant.",
+      "about": "requirement",
+      "target": "intermediate.int_customer360__customer_behavior_analysis.churn_risk_level",
+      "evidence_of_dependence": "when last_activity < current_timestamp - interval '90 days' then 'Medium Risk'",
+      "alternative": "The contract says \"customer_last_activity is more than 90 days ago\" without specifying whether the boundary is elapsed time or calendar days.",
+      "importance": 2,
+      "reason": "The interpretation changes risk labels for customers near the cutoff.",
+      "updates": null
+    },
+    {
+      "statement": "Nickname rows whose canonical name or nickname becomes empty after trimming must be deleted.",
+      "about": "requirement",
+      "target": "staging.stg_customer360__nicknames",
+      "evidence_of_dependence": "where canonical_name is not null and trim(canonical_name) <> '' and nickname is not null and trim(nickname) <> ''",
+      "alternative": "The contract specifies not_null constraints and trimming corrections for both fields, but no non-empty validation or deletion rule.",
+      "importance": 2,
+      "reason": "The extra filters can remove mappings that satisfy the documented constraints.",
+      "updates": null
+    },
+    {
+      "statement": "State and territory rows with a non-NULL but whitespace-only state_territory value must be deleted.",
+      "about": "requirement",
+      "target": "staging.stg_customer360__state_territory_codes",
+      "evidence_of_dependence": "where state_territory is not null and trim(state_territory) <> ''",
+      "alternative": "The contract gives state_territory only a \"[not_null]\" constraint, without a non-empty validation rule.",
+      "importance": 2,
+      "reason": "This additional deletion condition changes reference-table membership.",
+      "updates": null
+    },
+    {
+      "statement": "Country-code whitespace corrections should be applied before evaluating the code-length deletion rules.",
+      "about": "requirement",
+      "target": "staging.stg_customer360__country_codes",
+      "evidence_of_dependence": "length(trim(country_code_alpha_2)) = 2",
+      "alternative": "The contract's deletion rules use \"LENGTH(country_code_alpha_2) = 2\" and \"LENGTH(country_code_alpha_3) = 3\", while trimming is listed separately as a correction.",
+      "importance": 2,
+      "reason": "Validation order determines whether padded codes are repaired or deleted.",
+      "updates": null
+    },
+    {
+      "statement": "Country-code whitespace corrections should precede the country-code length deletion rule for state and territory records.",
+      "about": "requirement",
+      "target": "staging.stg_customer360__state_territory_codes.alpha2_country_code",
+      "evidence_of_dependence": "length(trim(alpha2_country_code)) = 2",
+      "alternative": "The contract specifies \"LENGTH(alpha2_country_code) = 2\" as a deletion rule and separately specifies uppercase-and-trim correction.",
+      "importance": 2,
+      "reason": "Padded country codes can survive this implementation even under a validate-before-correct interpretation.",
+      "updates": null
+    },
+    {
+      "statement": "Blank alternative country names should become NULL rather than remain empty or whitespace-only strings.",
+      "about": "requirement",
+      "target": "staging.stg_customer360__country_codes.alternative_country_name",
+      "evidence_of_dependence": "nullif(trim(alternative_country_name), '') as alternative_country_name",
+      "alternative": "The contract lists alternative_country_name as VARCHAR(255) without a nullification rule.",
+      "importance": 1,
+      "reason": "This changes optional reference values and their downstream NULL behavior.",
+      "updates": null
+    },
+    {
+      "statement": "Leading and trailing whitespace in state and territory names should be removed.",
+      "about": "requirement",
+      "target": "staging.stg_customer360__state_territory_codes.state_territory",
+      "evidence_of_dependence": "nullif(trim(state_territory), '') as state_territory",
+      "alternative": "The contract specifies explicit trimming corrections for state_code and alpha2_country_code but not for state_territory.",
+      "importance": 1,
+      "reason": "This alters reference labels beyond their explicitly listed validation rules.",
+      "updates": null
+    }
+  ],
+  "fewer": [
+    {
+      "target": "staging.stg_customer360__country_codes",
+      "count": 3,
+      "reason": "The other validations and numeric conversion are supported by the contract; no further material unsupported premises were identified."
+    },
+    {
+      "target": "staging.stg_customer360__state_territory_codes",
+      "count": 3,
+      "reason": "Country membership checking and code normalization are explicitly required, and the upstream query enforces country-code uniqueness."
+    },
+    {
+      "target": "staging.stg_customer360__nicknames",
+      "count": 1,
+      "reason": "Apart from the additional empty-value deletion, trimming and NULL exclusion are supported by the contract."
+    },
+    {
+      "target": "intermediate.int_customer360__marketo",
+      "count": 0,
+      "reason": "The projection, filters, duplicate preservation, and timestamp casts are specified, and source types were inspected."
+    },
+    {
+      "target": "intermediate.int_customer360__stripe",
+      "count": 0,
+      "reason": "The projection, email and deletion filters, and timestamp casts directly follow the specification."
+    },
+    {
+      "target": "intermediate.int_customer360__zendesk",
+      "count": 0,
+      "reason": "The projection, filters, and timestamp casts are explicitly specified and supported by inspected source types."
+    },
+    {
+      "target": "intermediate.int_customer360__marketo_for_matching",
+      "count": 0,
+      "reason": "The pass-through fields and constant placeholder are explicitly prescribed."
+    },
+    {
+      "target": "intermediate.int_customer360__stripe_for_matching",
+      "count": 0,
+      "reason": "The pass-through projection and constant placeholder require no additional unestablished data assumptions."
+    },
+    {
+      "target": "intermediate.int_customer360__zendesk_for_matching",
+      "count": 0,
+      "reason": "The selected fields, absence of filtering, and placeholder follow the contract directly."
+    },
+    {
+      "target": "intermediate.int_customer360__source_matches",
+      "count": 3,
+      "reason": "The remaining exact-email pairings, ID precedence, and duplicate-preserving transformations are specified."
+    },
+    {
+      "target": "intermediate.int_customer360__customer_behavior_analysis",
+      "count": 2,
+      "reason": "Other business rules are explicit; SQL alias-resolution issues are implementation defects rather than premises about data or requirements."
+    },
+    {
+      "target": "intermediate.int_customer360__customer_lifecycle_metrics",
+      "count": 4,
+      "reason": "Other scoring and enrichment rules are specified, and upstream behavior logic already guarantees non-NULL presence flags."
+    }
+  ]
+}

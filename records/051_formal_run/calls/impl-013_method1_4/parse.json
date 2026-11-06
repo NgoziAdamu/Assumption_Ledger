@@ -1,0 +1,185 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "premises": [
+      {
+        "statement": "Assigning revenue scores with NTILE(5) is equivalent to applying the specified revenue-percentile thresholds.",
+        "about": "requirement",
+        "target": "int_netsuite2__customer_profitability",
+        "evidence_of_dependence": "ntile(5) OVER(ORDER BY total_revenue) revenue_score",
+        "alternative": "The contract requires '5 for total_revenue at or above the 80th percentile; 4 at or above the 60th; 3 at or above the 40th; 2 at or above the 20th; otherwise 1.'",
+        "importance": 5,
+        "reason": "Row-count buckets can assign different scores to equal revenues and small populations, changing customer segments.",
+        "updates": null
+      },
+      {
+        "statement": "The profitability result may expose revenue_score as BIGINT rather than the specified INTEGER.",
+        "about": "requirement",
+        "target": "int_netsuite2__customer_profitability.revenue_score",
+        "evidence_of_dependence": "ntile(5) OVER(ORDER BY total_revenue) revenue_score",
+        "alternative": "The contract declares revenue_score with 'data_type: INTEGER'.",
+        "importance": 2,
+        "reason": "The uncast window-function result can violate the declared output schema.",
+        "updates": null
+      },
+      {
+        "statement": "The AR overdue component may remain overdue_percentage times 100 when overdue_percentage exceeds 0.8.",
+        "about": "requirement",
+        "target": "int_netsuite2__ar_aging_analysis.customer_risk_score",
+        "evidence_of_dependence": "least(100,coalesce(overdue_amount,0)/nullif(total_ar_amount,0)*100+CASE",
+        "alternative": "The contract specifies 'overdue component (80 if overdue% ≥ 0.8 else overdue% × 100)' before adding the WADO component.",
+        "importance": 5,
+        "reason": "Highly overdue customers can receive inflated risk scores.",
+        "updates": null
+      },
+      {
+        "statement": "Every parseable customer_credit_limit used in AR analysis is strictly positive.",
+        "about": "data",
+        "target": "int_netsuite2__ar_aging_analysis.credit_utilization_ratio",
+        "evidence_of_dependence": "total_ar_amount/try_cast(customer_credit_limit AS DOUBLE) credit_utilization_ratio",
+        "alternative": "The contract requires division only 'when the limit parses to a number > 0, else null'.",
+        "importance": 4,
+        "reason": "Zero or negative values produce noncontractual utilization ratios instead of NULL.",
+        "updates": null
+      },
+      {
+        "statement": "AR analysis does not need to order its final rows by risk score and AR amount.",
+        "about": "requirement",
+        "target": "int_netsuite2__ar_aging_analysis",
+        "evidence_of_dependence": "FROM agg WHERE total_ar_amount>0",
+        "alternative": "The contract says 'Order rows by customer_risk_score descending, then total_ar_amount descending.'",
+        "importance": 3,
+        "reason": "The required risk-prioritized output ordering is omitted.",
+        "updates": null
+      },
+      {
+        "statement": "Every qualifying AR transaction detail has a non-null subsidiary_id.",
+        "about": "data",
+        "target": "int_netsuite2__ar_aging_analysis.subsidiary_id and ar_aging_id",
+        "evidence_of_dependence": "md5(customer_id||'_'||subsidiary_id||'_'||cast(current_date AS VARCHAR)) ar_aging_id",
+        "alternative": "Transaction details describe subsidiary_id as 'may be NULL', while the AR contract tests both subsidiary_id and ar_aging_id as not_null.",
+        "importance": 3,
+        "reason": "Missing subsidiaries propagate into both grouping keys and NULL row identifiers.",
+        "updates": null
+      },
+      {
+        "statement": "Each transaction_id matches at most one row in staging.stg_netsuite2__transactions.",
+        "about": "data",
+        "target": "int_netsuite2__ar_aging_analysis",
+        "evidence_of_dependence": "LEFT JOIN staging.stg_netsuite2__transactions tr ON tr.transaction_id=t.transaction_id",
+        "alternative": "The transactions contract declares transaction_id with 'constraints: [not_null]' but does not declare uniqueness.",
+        "importance": 3,
+        "reason": "Multiple header matches multiply AR amounts and can distribute them across different aging buckets.",
+        "updates": null
+      },
+      {
+        "statement": "Customer credit risk may omit the derived collection, receivables-to-revenue, and relationship metrics.",
+        "about": "requirement",
+        "target": "int_netsuite2__customer_credit_risk",
+        "evidence_of_dependence": "The SELECT ends its metrics with 'last_outstanding_date FROM intermediate.int_netsuite2__transaction_details'.",
+        "alternative": "The contract requires 'collection_ratio', 'receivables_to_revenue_ratio', 'relationship_duration_months', 'days_since_last_outstanding', and 'avg_collection_delay_days'.",
+        "importance": 5,
+        "reason": "The result stops at aggregation and lacks the required inputs to credit scoring.",
+        "updates": null
+      },
+      {
+        "statement": "Customer credit risk may omit all five component scores and total_credit_score.",
+        "about": "requirement",
+        "target": "int_netsuite2__customer_credit_risk",
+        "evidence_of_dependence": "SELECT md5(l.entity_id||'_'||t.subsidiary_id) customer_risk_id ... GROUP BY l.entity_id,t.subsidiary_id HAVING",
+        "alternative": "The contract requires payment_performance_score, payment_timeliness_score, relationship_stability_score, revenue_volume_score, receivables_control_score, and their sum.",
+        "importance": 5,
+        "reason": "The principal credit-scoring outputs are absent.",
+        "updates": null
+      },
+      {
+        "statement": "Customer credit risk may omit credit_rating, risk_level, recommended_credit_limit, and collection_difficulty.",
+        "about": "requirement",
+        "target": "int_netsuite2__customer_credit_risk",
+        "evidence_of_dependence": "The model returns aggregates directly with 'HAVING sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name=\\'Income\\')>0'.",
+        "alternative": "The contract's 'Final outputs' explicitly defines each of these four decision fields.",
+        "importance": 5,
+        "reason": "The model lacks its required risk classifications and credit recommendations.",
+        "updates": null
+      },
+      {
+        "statement": "Every retained customer-subsidiary group contains both a receivable row and a Bank row.",
+        "about": "data",
+        "target": "int_netsuite2__customer_credit_risk.total_receivables, total_collections, outstanding_receivables",
+        "evidence_of_dependence": "sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name='Bank') total_collections",
+        "alternative": "The contract describes these sums as 'always populated' and attaches not_null tests, but the code uses filtered sums without zero defaults.",
+        "importance": 4,
+        "reason": "Groups lacking either category yield NULL monetary metrics.",
+        "updates": null
+      },
+      {
+        "statement": "Customer credit risk may omit customer_activity_status and risk_assessment_date.",
+        "about": "requirement",
+        "target": "int_netsuite2__customer_credit_risk",
+        "evidence_of_dependence": "max(t.accounting_period_ending) last_transaction_date ... last_outstanding_date FROM",
+        "alternative": "The contract requires customer_activity_status from transaction recency and 'risk_assessment_date: today’s date', both with not_null tests.",
+        "importance": 4,
+        "reason": "Required activity and evaluation-date fields are missing from every output row.",
+        "updates": null
+      },
+      {
+        "statement": "Supplier payment-performance, timeliness, and transaction-frequency scores may all be fixed at 1 instead of calculated from vendor behavior.",
+        "about": "requirement",
+        "target": "int_netsuite2__supplier_credit_monitoring",
+        "evidence_of_dependence": "1 payment_performance_score,1 payment_timeliness_score ... 1 transaction_frequency_score",
+        "alternative": "The contract specifies threshold-based scores from payment_ratio, avg_payment_delay_days, and total_transactions.",
+        "importance": 5,
+        "reason": "Hardcoded scores suppress behavioral variation across all vendors.",
+        "updates": null
+      },
+      {
+        "statement": "Every supplier may receive total_credit_score 4, credit_rating BB, and a recommended credit limit of 10% of expenses.",
+        "about": "requirement",
+        "target": "int_netsuite2__supplier_credit_monitoring",
+        "evidence_of_dependence": "4 total_credit_score,'BB' credit_rating ... total_expenses*.1 recommended_credit_limit",
+        "alternative": "The contract requires summing the component scores and choosing rating and limit multipliers using score bands '≥16/≥13/≥10/≥7/else'.",
+        "importance": 5,
+        "reason": "All vendor credit recommendations are forced into the lowest band.",
+        "updates": null
+      },
+      {
+        "statement": "All suppliers may be labeled Inactive regardless of their last_transaction_date.",
+        "about": "requirement",
+        "target": "int_netsuite2__supplier_credit_monitoring.vendor_activity_status",
+        "evidence_of_dependence": "'Inactive' vendor_activity_status",
+        "alternative": "The contract specifies 'Active if the last transaction is within 30 days of the run date; Recent if within 90; Dormant if within 180; otherwise Inactive'.",
+        "importance": 5,
+        "reason": "The upstream transaction-details contract sets accounting_period_ending to the run date, making this hardcoded status particularly consequential.",
+        "updates": null
+      },
+      {
+        "statement": "Supplier avg_payment_delay_days may always be NULL even when payment transactions exist.",
+        "about": "requirement",
+        "target": "int_netsuite2__supplier_credit_monitoring.avg_payment_delay_days",
+        "evidence_of_dependence": "NULL::UBIGINT avg_payment_delay_days",
+        "alternative": "The contract requires '15 plus a deterministic offset from 0 to 29 based on vendor_id' when there is at least one payment transaction.",
+        "importance": 4,
+        "reason": "The required simulated delay and its influence on timeliness scoring are omitted.",
+        "updates": null
+      },
+      {
+        "statement": "Every retained supplier-subsidiary group has strictly positive total_payables.",
+        "about": "data",
+        "target": "int_netsuite2__supplier_credit_monitoring.payment_ratio",
+        "evidence_of_dependence": "coalesce(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name='Bank'),0)/nullif(sum(abs(t.converted_amount)) FILTER(WHERE t.account_type_name IN ('AcctPay','Accounts Payable')),0) payment_ratio",
+        "alternative": "The contract specifies 'total_payments divided by total_payables when total_payables is positive; otherwise 0'.",
+        "importance": 4,
+        "reason": "Expense-bearing groups without positive payables receive NULL rather than the required zero ratio.",
+        "updates": null
+      }
+    ],
+    "fewer": [
+      {
+        "target": "int_netsuite2__customer_profitability",
+        "count": 2,
+        "reason": "Other visible transformations follow the contract or depend on upstream guarantees; key-uniqueness assumptions were already recorded, and the current-date period placeholder prevents the apparent missing-date and zero-active-month edge cases."
+      }
+    ]
+  }
+}

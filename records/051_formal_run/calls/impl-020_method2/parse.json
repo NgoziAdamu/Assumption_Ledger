@@ -1,0 +1,865 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "stg_intercom__company_history": {
+      "items": [
+        {
+          "problem": "The selected company_id may be the external company identifier rather than the identifier used by company-tag and contact-company relationships.",
+          "about": "data",
+          "evidence_in_work": "try_cast(company_id as varchar) as company_id",
+          "source": "\"main.company_history_data\", \"columns\": [\"id\", \"updated_at\", \"_fivetran_synced\", \"company_id\"",
+          "importance": 5,
+          "reason": "The inspected company_id and relationship identifiers have visibly different formats, potentially breaking company enrichment and attribution."
+        },
+        {
+          "problem": "Missing or unparseable user_count and session_count values are converted to zero even though the documentation only specifies coercing negative values to zero.",
+          "about": "requirement",
+          "evidence_in_work": "greatest(coalesce(try_cast(user_count as bigint), 0), 0)",
+          "source": "User count metric derived from the source; negatives coerced to zero upstream.",
+          "importance": 2,
+          "reason": "This makes unknown measurements indistinguishable from genuine zero activity."
+        }
+      ],
+      "fewer_reason": "Only two concrete concerns were found in this model's typing, filtering, and identifier selection."
+    },
+    "stg_intercom__company_tag_history": {
+      "items": [
+        {
+          "problem": "The company identifiers in this mapping may not use the same identifier namespace as the staged company dimension.",
+          "about": "data",
+          "evidence_in_work": "company_id::varchar as company_id",
+          "source": "\"main.company_history_data\", \"columns\": [\"id\", \"updated_at\", \"_fivetran_synced\", \"company_id\"",
+          "importance": 4,
+          "reason": "Inspected mapping IDs resemble company-history id rather than its company_id, which could leave most company tags unmatched."
+        }
+      ],
+      "fewer_reason": "The remaining projection and activity filter follow the supplied table contract."
+    },
+    "stg_intercom__contact_company_history": {
+      "items": [
+        {
+          "problem": "Activity filtering is applied to a timestamp-valued, apparently misaligned column, so inactive relationships may all be retained.",
+          "about": "data",
+          "evidence_in_work": "where coalesce(try_cast(_fivetran_active as boolean), true)",
+          "source": "\"raw.contact_company_history_data\", \"columns\": [\"contact_id\", \"company_id\", \"company_updated_at\", \"_fivetran_active\"",
+          "importance": 5,
+          "reason": "The inspected main-table _fivetran_active contains timestamps while _fivetran_synced contains true, directly indicating a layout mismatch."
+        },
+        {
+          "problem": "The pipeline imports the main source table without checking the separately available raw-schema version that includes the missing company_updated_at column.",
+          "about": "data",
+          "evidence_in_work": "tables = [r[0] for r in src.execute(\"SHOW TABLES\").fetchall()]",
+          "source": "\"raw.contact_company_history_data\", \"columns\": [\"contact_id\", \"company_id\", \"company_updated_at\", \"_fivetran_active\", \"_fivetran_synced\", \"_fivetran_start\", \"_fivetran_end\"]",
+          "importance": 4,
+          "reason": "An unused source representation could resolve the observed misalignment before it contaminates downstream company metrics."
+        },
+        {
+          "problem": "Relationship company_id values may not match the company_id selected from company history.",
+          "about": "data",
+          "evidence_in_work": "company_id::varchar as company_id, contact_id::varchar as contact_id",
+          "source": "History of contact-to-company relationships with activity filtering.",
+          "importance": 4,
+          "reason": "Identifier mismatches would disconnect contacts and conversations from their companies."
+        }
+      ],
+      "fewer_reason": "Three evidence-backed concerns were found; additional issues would be speculative."
+    },
+    "stg_intercom__contact_history": {
+      "items": [
+        {
+          "problem": "Phone normalization strips arbitrary letters and other characters, potentially converting malformed text into a plausible but incorrect phone number.",
+          "about": "requirement",
+          "evidence_in_work": "regexp_replace(trim(try_cast(phone as varchar)), '[^0-9+]', '', 'g')",
+          "source": "Normalize to E.164 where deterministically possible",
+          "importance": 3,
+          "reason": "Passing the final regex does not establish that removing meaningful characters preserves the intended number."
+        },
+        {
+          "problem": "Deterministically recoverable international dialing-prefix formats may be nullified rather than normalized.",
+          "about": "requirement",
+          "evidence_in_work": "when regexp_matches(normalized_phone, '^\\+[1-9][0-9]{1,14}$') then normalized_phone",
+          "source": "Normalize to E.164 where deterministically possible",
+          "importance": 2,
+          "reason": "The final implementation only preserves numbers that already have a plus-prefixed form after punctuation removal."
+        },
+        {
+          "problem": "Missing or malformed unsubscribe values are turned into false without a documented default.",
+          "about": "requirement",
+          "evidence_in_work": "coalesce(try_cast(unsubscribed_from_emails as boolean), false)",
+          "source": "is_unsubscribed_from_emails; data_type: BOOLEAN",
+          "importance": 2,
+          "reason": "Unknown subscription status becomes an affirmative claim that the contact has not unsubscribed."
+        }
+      ],
+      "fewer_reason": "Only three specific departures or normalization risks were supported by the visible implementation."
+    },
+    "stg_intercom__contact_tag_history": {
+      "items": [
+        {
+          "problem": "The activity filter reads a timestamp-valued misaligned column and therefore appears to retain inactive contact-tag mappings.",
+          "about": "data",
+          "evidence_in_work": "built staging.stg_intercom__contact_tag_history: 2945 rows",
+          "source": "\"raw.contact_tag_history_data\", \"columns\": [\"contact_id\", \"contact_updated_at\", \"tag_id\", \"_fivetran_synced\", \"_fivetran_start\", \"_fivetran_end\", \"_fivetran_active\"]",
+          "importance": 5,
+          "reason": "The inspected main row places true/false in _fivetran_end while its named _fivetran_active contains a timestamp."
+        },
+        {
+          "problem": "The separately indexed raw-schema table with a different activity-column position was not inspected before choosing the source layout.",
+          "about": "data",
+          "evidence_in_work": "from raw.contact_tag_history_data",
+          "source": "\"main.contact_tag_history_data\", \"columns\": [\"contact_id\", \"contact_updated_at\", \"tag_id\", \"_fivetran_active\", \"_fivetran_synced\", \"_fivetran_start\", \"_fivetran_end\"]",
+          "importance": 4,
+          "reason": "The pipeline's raw table is reimported from main, so its schema name does not guarantee use of the better-aligned indexed raw source."
+        }
+      ],
+      "fewer_reason": "The observable problems concern source alignment and its activity-filter consequence."
+    },
+    "stg_intercom__conversation_contact_history": {
+      "items": [
+        {
+          "problem": "The unconditional reversal of contact_id and conversation_id assumes every source row has the same swapped layout.",
+          "about": "data",
+          "evidence_in_work": "try_cast(conversation_id as varchar) as contact_id, try_cast(contact_id as bigint) as conversation_id",
+          "source": "contact_id; data_type: VARCHAR; conversation_id; data_type: BIGINT",
+          "importance": 4,
+          "reason": "The inspected examples support a swap, but correctly aligned or mixed-layout rows would be corrupted."
+        },
+        {
+          "problem": "Activity filtering still uses a timestamp-valued field after repairing the identifier swap.",
+          "about": "data",
+          "evidence_in_work": "where coalesce(try_cast(_fivetran_active as boolean), true)",
+          "source": "coalesce(try_cast(_fivetran_active as BOOLEAN), true)",
+          "importance": 4,
+          "reason": "Observed timestamps fail boolean conversion and default to active, so the source-layout problem is only partially repaired."
+        },
+        {
+          "problem": "The separately available raw-schema mapping with conversation_updated_at and full history metadata was not examined.",
+          "about": "data",
+          "evidence_in_work": "built staging.stg_intercom__conversation_contact_history: 4033 rows",
+          "source": "\"raw.conversation_contact_history_data\", \"columns\": [\"contact_id\", \"conversation_id\", \"conversation_updated_at\", \"_fivetran_synced\", \"_fivetran_start\", \"_fivetran_end\", \"_fivetran_active\"]",
+          "importance": 3,
+          "reason": "That unused representation may provide reliable identifiers and activity metadata without heuristic reversal."
+        }
+      ],
+      "fewer_reason": "Three concrete source-layout concerns were identified; this mapping is not used by the specified downstream models."
+    },
+    "stg_intercom__conversation_history": {
+      "items": [
+        {
+          "problem": "State values are lowercased and trimmed before validation even though the contract specifies deleting values outside the exact allowed domain.",
+          "about": "requirement",
+          "evidence_in_work": "lower(trim(try_cast(state as varchar))) as state",
+          "source": "state IN ('open', 'closed'); on_failure: delete_row",
+          "importance": 2,
+          "reason": "Noncanonical states could be retained rather than rejected, although the inspected state values were already canonical."
+        },
+        {
+          "problem": "The intermediate nonnegative-rating requirement is not enforced on conversation ratings.",
+          "about": "requirement",
+          "evidence_in_work": "try_cast(conversation_rating_value as double)::bigint as conversation_rating_value",
+          "source": "conversation_rating; tests: [\"conversation_rating >= 0\"]",
+          "importance": 2,
+          "reason": "Negative source ratings would flow into multiple marts and company averages."
+        },
+        {
+          "problem": "The outer BIGINT cast is not protected by try_cast and could fail for values such as infinity or out-of-range numeric strings.",
+          "about": "data",
+          "evidence_in_work": "try_cast(conversation_rating_value as double)::bigint",
+          "source": "All SQL code must be compatible with DuckDB.",
+          "importance": 1,
+          "reason": "The current run succeeds, but this expression is less robust than the surrounding safe conversions."
+        }
+      ],
+      "fewer_reason": "Temporal and activity guards are implemented; only three narrower concerns were found."
+    },
+    "stg_intercom__conversation_part_history": {
+      "items": [
+        {
+          "problem": "Conversation IDs are inferred from the part-id prefix rather than read from the declared conversation_id field, without verifying the inferred key against the alternative source representation.",
+          "about": "data",
+          "evidence_in_work": "try_cast(split_part(id, '_', 1) as bigint) as conversation_id",
+          "source": "\"raw.conversation_part_history_data\", \"columns\": [\"id\", \"updated_at\", \"_fivetran_synced\", \"author_id\", \"author_type\", \"body\", \"created_at\", \"conversation_id\"",
+          "importance": 5,
+          "reason": "All part joins and downstream metrics depend on an undocumented encoding assumption."
+        },
+        {
+          "problem": "The implementation does not use the explicitly required created_at source expression and substitutes a different field or updated_at.",
+          "about": "requirement",
+          "evidence_in_work": "coalesce(try_cast(raw_part_time as timestamp), try_cast(updated_at as timestamp)) as created_at",
+          "source": "source_expression: \"try_cast(created_at as timestamp)\"",
+          "importance": 5,
+          "reason": "Every event timestamp can change, and an update time is not necessarily the event creation time."
+        },
+        {
+          "problem": "The event-type repair gives precedence to a field that visibly contains encoded rating remarks instead of event categories.",
+          "about": "data",
+          "evidence_in_work": "coalesce(try_cast(part_type as varchar), try_cast(subject as varchar)) as part_type",
+          "source": "Conversation part events with typing and activity filtering.",
+          "importance": 4,
+          "reason": "The agent observed 48 encoded non-null part_type values, which will override otherwise usable fallback categories."
+        },
+        {
+          "problem": "The fallback event category is taken from subject without checking external_id, whose inspected values appear to occupy the original part_type position.",
+          "about": "data",
+          "evidence_in_work": "'external_id': 'comment', 'part_type': None, ... 'subject': 'comment'",
+          "source": "\"raw.conversation_part_history_data\", \"columns\": [\"created_at\", \"conversation_id\", \"external_id\", \"part_type\", \"rating_remark\"",
+          "importance": 4,
+          "reason": "Using a generic type rather than the actual part subtype may hide close, reopen, or other meaningful events."
+        },
+        {
+          "problem": "The activity filter treats the observed timestamp-valued _fivetran_active field as active instead of resolving its misalignment.",
+          "about": "data",
+          "evidence_in_work": "'_fivetran_active': '2020-08-16 07:35:34'",
+          "source": "coalesce(try_cast(_fivetran_active as BOOLEAN), true)",
+          "importance": 4,
+          "reason": "All 7,524 rows survive, potentially including inactive historical versions that inflate event counts."
+        },
+        {
+          "problem": "The indexed raw-schema source with a materially different and potentially correct column layout was not used or compared before applying ad hoc repairs.",
+          "about": "data",
+          "evidence_in_work": "select *, try_cast(conversation_id as timestamp) as raw_part_time from raw.conversation_part_history_data",
+          "source": "\"raw.conversation_part_history_data\", \"columns\": [\"rating_value\", \"redacted\", \"social_respond\", \"type\", \"updated_at_from_parts\", \"url\"",
+          "importance": 4,
+          "reason": "The ignored source representation could resolve several simultaneous identifier, timestamp, category, and activity errors."
+        }
+      ],
+      "fewer_reason": "Six distinct, evidence-backed source and contract problems were found; additional items would repeat these."
+    },
+    "stg_intercom__conversation_tag_history": {
+      "items": [],
+      "fewer_reason": "The visible typing and activity filter match the table contract, and no specific source-layout problem was demonstrated for this table."
+    },
+    "stg_intercom__tag": {
+      "items": [],
+      "fewer_reason": "The model implements identifier typing, non-null filtering, name trimming, and deletion filtering as specified."
+    },
+    "stg_intercom__team": {
+      "items": [
+        {
+          "problem": "This model is created during the manual test but is not materialized by the final configured run.py execution.",
+          "about": "requirement",
+          "evidence_in_work": "stg_intercom__team 51",
+          "source": "Team dimension with deletion filtering.",
+          "importance": 3,
+          "reason": "The contract defines the output, but the execution configuration omits it and the final full run drops non-raw schemas."
+        }
+      ],
+      "fewer_reason": "The SQL itself matches the supplied contract; the only supported concern is the contract/configuration execution gap."
+    },
+    "stg_intercom__team_admin": {
+      "items": [
+        {
+          "problem": "The selected admin_id and team_id appear reversed in the imported main source.",
+          "about": "data",
+          "evidence_in_work": "select try_cast(admin_id as varchar) as admin_id, try_cast(team_id as varchar) as team_id",
+          "source": "\"raw.team_admin_data\", \"columns\": [\"team_id\", \"admin_id\", \"team_updated_at\", \"_fivetran_active\"",
+          "importance": 4,
+          "reason": "The inspected admin_id resembles a team identifier and team_id resembles an admin identifier, potentially invalidating every relationship."
+        },
+        {
+          "problem": "Deletion filtering is applied to timestamps in a column that appears to represent team update time rather than deletion status.",
+          "about": "data",
+          "evidence_in_work": "where coalesce(try_cast(_fivetran_deleted as boolean), false) is not true",
+          "source": "\"raw.team_admin_data\", \"columns\": [\"team_id\", \"admin_id\", \"team_updated_at\", \"_fivetran_active\", \"_fivetran_synced\", \"_fivetran_start\", \"_fivetran_end\"]",
+          "importance": 3,
+          "reason": "Invalid boolean conversions default to not deleted, retaining all 145 mappings regardless of their real status."
+        },
+        {
+          "problem": "The final configured pipeline does not materialize this contract-defined table despite the successful manual build.",
+          "about": "requirement",
+          "evidence_in_work": "stg_intercom__team_admin 145",
+          "source": "Mapping of admins to teams with deletion filtering.",
+          "importance": 3,
+          "reason": "The final full run drops the manually created table and does not rebuild it."
+        }
+      ],
+      "fewer_reason": "Three concrete issues arise from the source layout and the execution configuration."
+    },
+    "stg_intercom__admin": {
+      "items": [
+        {
+          "problem": "The final configured pipeline does not materialize the contract-defined admin table.",
+          "about": "requirement",
+          "evidence_in_work": "stg_intercom__admin 9",
+          "source": "Admin dimension with email-based inclusion checks and deletion filtering; outputs admin_id, name, job_title.",
+          "importance": 3,
+          "reason": "The manual result is removed by the later full run because admin is absent from execution_order."
+        },
+        {
+          "problem": "The email inclusion check uses trimmed values for length and regex validation although the contract specifies dropping records whose email fails those checks.",
+          "about": "requirement",
+          "evidence_in_work": "length(trim(email)) <= 255 and regexp_matches(trim(email)",
+          "source": "Email must be present, length <= 255, and match RFC-like regex ... otherwise drop the record",
+          "importance": 2,
+          "reason": "Overlength or whitespace-containing raw emails can be admitted after an unspecified correction."
+        }
+      ],
+      "fewer_reason": "Only the materialization gap and a narrow validation interpretation were supported."
+    },
+    "int_intercom__company_history": {
+      "items": [
+        {
+          "problem": "The company identifier carried forward may not match the namespace used by company relationships.",
+          "about": "data",
+          "evidence_in_work": "select company_id, company_name, website",
+          "source": "Company identifier.",
+          "importance": 5,
+          "reason": "A mismatched identifier propagates into both company marts and contact-company name resolution."
+        },
+        {
+          "problem": "The regex approximates hostname extraction and can return incorrect results for protocol-relative URLs, IPv6 addresses, or whitespace-padded website values.",
+          "about": "requirement",
+          "evidence_in_work": "lower(regexp_extract(website, '^(?:[A-Za-z][A-Za-z0-9+.-]*://)?(?:[^/@]+@)?([^/:?#]+)', 1))",
+          "source": "Extract website_domain from the website URL using hostname extraction and lowercase normalization.",
+          "importance": 3,
+          "reason": "A string prefix match is not equivalent to URL hostname parsing for several valid URL forms."
+        },
+        {
+          "problem": "Missing updated_at is replaced with created_at, producing a zero-day age even when the required last-update endpoint is unavailable.",
+          "about": "requirement",
+          "evidence_in_work": "date_diff('day', created_at, coalesce(updated_at, created_at))",
+          "source": "Age in days between creation and last update, when computable.",
+          "importance": 2,
+          "reason": "Unknown ages become zero rather than remaining uncomputable."
+        },
+        {
+          "problem": "Unknown company activity counts have already been converted to zero upstream.",
+          "about": "requirement",
+          "evidence_in_work": "user_count, session_count, monthly_spend",
+          "source": "negatives coerced to zero upstream",
+          "importance": 2,
+          "reason": "The intermediate output cannot distinguish missing counts from genuine zero measurements."
+        }
+      ],
+      "fewer_reason": "Four distinct concerns were found in the inherited identifiers and derived helper fields."
+    },
+    "int_intercom__company_tags_aggregate": {
+      "items": [
+        {
+          "problem": "Aggregated company IDs may not join to the staged company-history identifier namespace.",
+          "about": "data",
+          "evidence_in_work": "select mapping.company_id",
+          "source": "Join the company history snapshots with the aggregated tag names per company.",
+          "importance": 4,
+          "reason": "The aggregate can look valid in isolation while company marts receive no matching tags."
+        }
+      ],
+      "fewer_reason": "Distinctness, alphabetical ordering, tag resolution, and output grain otherwise follow the specification."
+    },
+    "int_intercom__contact_company_history": {
+      "items": [
+        {
+          "problem": "Inactive contact-company relationships may survive because upstream activity filtering reads a misaligned timestamp column.",
+          "about": "data",
+          "evidence_in_work": "select distinct contact_id, company_id from staging.stg_intercom__contact_company_history",
+          "source": "activity filtering already applied",
+          "importance": 4,
+          "reason": "Distinct pairs do not remove stale relationships and can cause incorrect company attribution and contact counts."
+        },
+        {
+          "problem": "Relationship company IDs may be incompatible with the company-history identifier chosen elsewhere.",
+          "about": "data",
+          "evidence_in_work": "select distinct contact_id, company_id",
+          "source": "Provide the relationship between a contact and a company",
+          "importance": 4,
+          "reason": "These IDs are used to assign conversations and contacts to company metrics."
+        }
+      ],
+      "fewer_reason": "The model correctly enforces pair grain and non-null keys; the remaining concerns are inherited source semantics."
+    },
+    "int_intercom__contact_company_names": {
+      "items": [
+        {
+          "problem": "Company-name resolution may join incompatible company identifier namespaces.",
+          "about": "data",
+          "evidence_in_work": "on rel.company_id = comp.company_id",
+          "source": "Map the contact-to-company relationships to company names",
+          "importance": 4,
+          "reason": "Unmatched relationships are silently dropped by the inner join, removing company context from contact and conversation marts."
+        },
+        {
+          "problem": "Names may include companies from inactive relationships because upstream activity metadata is misaligned.",
+          "about": "data",
+          "evidence_in_work": "from staging.stg_intercom__contact_company_history as rel",
+          "source": "History of contact-to-company relationships with activity filtering.",
+          "importance": 3,
+          "reason": "Alphabetical distinct aggregation hides whether a company association is stale."
+        }
+      ],
+      "fewer_reason": "Only identifier compatibility and inherited relationship activity were supported as concerns."
+    },
+    "int_intercom__contact_tags_aggregate": {
+      "items": [
+        {
+          "problem": "Inactive contact tags may be included because the staging activity filter uses the wrong physical source position.",
+          "about": "data",
+          "evidence_in_work": "from staging.stg_intercom__contact_tag_history as mapping",
+          "source": "Mapping of contacts to tags with activity filtering.",
+          "importance": 4,
+          "reason": "The observed timestamp-valued activity column defaults every mapping to active, contaminating the aggregate."
+        }
+      ],
+      "fewer_reason": "The distinct sorted string aggregation itself matches the specification."
+    },
+    "int_intercom__contact_latest": {
+      "items": [
+        {
+          "problem": "A negative or malformed email address can produce a misleading email_domain because extraction is not validated beyond taking the second split segment.",
+          "about": "data",
+          "evidence_in_work": "coalesce(lower(nullif(split_part(contact_email,'@',2),'')), 'unknown')",
+          "source": "Extract the email_domain by taking the substring after '@' from the lowercase email, defaulting to a placeholder when missing.",
+          "importance": 2,
+          "reason": "The inspected emails are often encoded strings rather than addresses, so domain availability and validity need explicit interpretation."
+        },
+        {
+          "problem": "Snapshot selection is nondeterministic when two rows have identical update and creation timestamps but different attributes.",
+          "about": "data",
+          "evidence_in_work": "order by coalesce(updated_at,created_at) desc nulls last, created_at desc",
+          "source": "One row per contact_id (latest snapshot)",
+          "importance": 1,
+          "reason": "No duplicates were found in the current output, but tied source snapshots could change contact attributes and retention flags between runs."
+        }
+      ],
+      "fewer_reason": "Activity and retention calculations follow the contract; only two narrower data assumptions warrant checking."
+    },
+    "int_intercom__latest_conversation": {
+      "items": [
+        {
+          "problem": "Negative conversation ratings are carried forward despite the model's nonnegative-rating test.",
+          "about": "requirement",
+          "evidence_in_work": "try_cast(conversation_rating_value as double) as conversation_rating",
+          "source": "tests: [\"conversation_rating >= 0\"]",
+          "importance": 3,
+          "reason": "Invalid ratings would affect conversation reporting and company averages."
+        },
+        {
+          "problem": "An empty or whitespace-only assignee_type is not treated as missing.",
+          "about": "requirement",
+          "evidence_in_work": "coalesce(assignee_type, 'unassigned')",
+          "source": "Assignee category for the conversation; defaults to unassigned if missing.",
+          "importance": 2,
+          "reason": "Blank source values would create extra categories instead of the required default."
+        },
+        {
+          "problem": "Latest-snapshot selection has no deterministic tie-breaker beyond timestamps.",
+          "about": "data",
+          "evidence_in_work": "order by coalesce(updated_at, created_at) desc nulls last, created_at desc",
+          "source": "One row per conversation_id (latest snapshot)",
+          "importance": 1,
+          "reason": "Tied snapshots could change state, rating, or attribution nondeterministically, although current staged IDs were unique."
+        }
+      ],
+      "fewer_reason": "Three specific edge cases were found; the latest-timestamp rule and canonical aliases otherwise match."
+    },
+    "int_intercom__conversation_part_aggregates": {
+      "items": [
+        {
+          "problem": "All event aggregates inherit unverified part identifier, timestamp, category, and activity repairs.",
+          "about": "data",
+          "evidence_in_work": "from staging.stg_intercom__conversation_part_history",
+          "source": "Per-conversation aggregates and key event timestamps derived from conversation parts.",
+          "importance": 5,
+          "reason": "The source layout is visibly misaligned, so correct SQL aggregation can still produce systematically wrong counts and timestamps."
+        },
+        {
+          "problem": "The result omits valid conversations with no parts instead of producing their zero-count aggregates.",
+          "about": "requirement",
+          "evidence_in_work": "from rollup r join staging.stg_intercom__conversation_history c",
+          "source": "For each conversation, compute counts of parts, assignments, and reopen events.",
+          "importance": 4,
+          "reason": "Only 977 rows are produced for 6,703 staged conversations, making absence ambiguous at this layer."
+        },
+        {
+          "problem": "Contact reply timestamps are selected from every user- or lead-authored part rather than specifically reply events.",
+          "about": "requirement",
+          "evidence_in_work": "min(created_at) filter (where author_type in ('user', 'lead'))",
+          "source": "Timestamp of the first reply authored by a contact (user or lead).",
+          "importance": 3,
+          "reason": "Contact-authored non-reply events could shift all downstream time-to-close baselines."
+        },
+        {
+          "problem": "First admin response accepts message and reply categories in addition to the explicitly described comment category.",
+          "about": "requirement",
+          "evidence_in_work": "event_type in ('comment','message','reply')",
+          "source": "Timestamp of the first admin-authored comment with body content.",
+          "importance": 3,
+          "reason": "Additional categories can yield an earlier first response than the contract permits."
+        },
+        {
+          "problem": "Substring event matching may count non-assignment or non-reopen categories that happen to contain the searched text.",
+          "about": "data",
+          "evidence_in_work": "event_type like '%assign%'",
+          "source": "Number of assignment-related parts.",
+          "importance": 2,
+          "reason": "The event taxonomy was not validated against these broad matching rules."
+        },
+        {
+          "problem": "Repeated active versions of the same conversation part would be counted as separate events.",
+          "about": "data",
+          "evidence_in_work": "count(*)::bigint as count_total_parts",
+          "source": "Total number of parts associated with the conversation.",
+          "importance": 2,
+          "reason": "No part-id uniqueness check was shown, and the broken activity metadata increases the risk of retained historical duplicates."
+        }
+      ],
+      "fewer_reason": "Six distinct concerns were supported without inventing additional event rules."
+    },
+    "int_intercom__conversation_part_events": {
+      "items": [
+        {
+          "problem": "Close and contact attribution depend on unverified repairs of the misaligned part source.",
+          "about": "data",
+          "evidence_in_work": "from staging.stg_intercom__conversation_part_history",
+          "source": "Identify the first and last close events ... Also derive the first and last contact author_id",
+          "importance": 5,
+          "reason": "Wrong categories or authors can remove all close events and prevent every conversation-to-company attribution."
+        },
+        {
+          "problem": "The observed absence of user and lead authors is not investigated before relying on those authors for company mapping.",
+          "about": "data",
+          "evidence_in_work": "author_type [('admin', 7524)]",
+          "source": "Map conversations to companies via the first contact author and contact-to-company history.",
+          "importance": 5,
+          "reason": "The filter cannot produce a first_contact_author_id for any observed part, leaving downstream company conversation measures empty."
+        },
+        {
+          "problem": "arg_min and arg_max skip null author IDs, so the chosen author can belong to a different event than the corresponding minimum or maximum timestamp.",
+          "about": "data",
+          "evidence_in_work": "arg_min(author_id, created_at) ... min(created_at)",
+          "source": "capture both the author_id and the timestamps",
+          "importance": 3,
+          "reason": "Attribution can falsely name a later actor when the actual first event has an unknown author."
+        },
+        {
+          "problem": "Broad close-event substring matching may include categories that are not actual close actions.",
+          "about": "data",
+          "evidence_in_work": "event_type like '%clos%'",
+          "source": "Identify the first and last close events",
+          "importance": 2,
+          "reason": "No event-domain check establishes that every matching label means a close."
+        },
+        {
+          "problem": "Authors of simultaneous events are selected without a deterministic tie-breaker.",
+          "about": "data",
+          "evidence_in_work": "arg_min(author_id, created_at)",
+          "source": "First author_id from a contact (user or lead).",
+          "importance": 2,
+          "reason": "A tied first-contact event can change company attribution as well as displayed actor IDs."
+        }
+      ],
+      "fewer_reason": "Five distinct attribution and source-data risks were identified."
+    },
+    "int_intercom__conversation_string_aggregates": {
+      "items": [
+        {
+          "problem": "Conversation grouping inherits an undocumented assumption that every part ID embeds its conversation ID.",
+          "about": "data",
+          "evidence_in_work": "group by conversation_id",
+          "source": "One row per conversation_id",
+          "importance": 4,
+          "reason": "Misparsed prefixes would attribute all participating actors to the wrong conversation or drop them."
+        },
+        {
+          "problem": "The all-admin author distribution is accepted without checking whether contact participation is missing from the selected source.",
+          "about": "data",
+          "evidence_in_work": "filter (where author_type in ('user','lead') and author_id is not null)",
+          "source": "collect distinct admin author_ids and distinct contact author_ids (users and leads)",
+          "importance": 3,
+          "reason": "Every contact string will be null on the inspected data, which may signal incomplete or misinterpreted source coverage."
+        },
+        {
+          "problem": "Inactive part versions may contribute actors because upstream activity filtering operates on timestamp values.",
+          "about": "data",
+          "evidence_in_work": "from staging.stg_intercom__conversation_part_history",
+          "source": "Conversation part events with typing and activity filtering.",
+          "importance": 3,
+          "reason": "Distinct aggregation removes duplicate IDs but does not remove actors appearing only in inactive records."
+        }
+      ],
+      "fewer_reason": "The string aggregation is otherwise distinct and identifier-ordered as specified."
+    },
+    "int_intercom__conversation_tags_aggregate": {
+      "items": [],
+      "fewer_reason": "The visible join, non-null grouping key, distinctness, and alphabetical ordering match the specification."
+    },
+    "intercom__company_enhanced": {
+      "items": [
+        {
+          "problem": "Company tags may fail to attach because company snapshots and tag mappings use different company identifier namespaces.",
+          "about": "data",
+          "evidence_in_work": "on h.company_id=t.company_id",
+          "source": "Join the company history snapshots with the aggregated tag names per company.",
+          "importance": 5,
+          "reason": "The left join preserves row counts even if all tag enrichment is lost, and no match-rate check was shown."
+        },
+        {
+          "problem": "website_domain inherits regex extraction that is not equivalent to hostname parsing for all supported URL forms.",
+          "about": "requirement",
+          "evidence_in_work": "h.website_domain",
+          "source": "Extracted and normalized website domain.",
+          "importance": 3,
+          "reason": "Malformed domain helpers can affect company segmentation despite successful materialization."
+        },
+        {
+          "problem": "company_age_days may report zero when updated_at is missing rather than an unknown age.",
+          "about": "requirement",
+          "evidence_in_work": "h.company_age_days",
+          "source": "Age in days derived from timestamps.",
+          "importance": 2,
+          "reason": "The upstream fallback fabricates a complete age measurement."
+        },
+        {
+          "problem": "Unknown user and session counts are exposed as zeros due to upstream defaulting.",
+          "about": "data",
+          "evidence_in_work": "h.user_count, h.session_count",
+          "source": "User count (non-negative).",
+          "importance": 2,
+          "reason": "Consumers cannot distinguish absent source measurements from actual inactivity."
+        }
+      ],
+      "fewer_reason": "The mart's projection and snapshot grain are otherwise implemented directly from its declared sources."
+    },
+    "intercom__contact_enhanced": {
+      "items": [
+        {
+          "problem": "Contact tag strings may contain inactive mappings because the source activity column is misaligned.",
+          "about": "data",
+          "evidence_in_work": "t.all_contact_tags",
+          "source": "Contact latest snapshot enriched with aggregated tags and company names.",
+          "importance": 4,
+          "reason": "This affects the principal enrichment field even though row counts and contact uniqueness remain valid."
+        },
+        {
+          "problem": "Company-name context may include inactive associations or lose associations through incompatible company keys.",
+          "about": "data",
+          "evidence_in_work": "n.all_contact_company_names",
+          "source": "Aggregated company names linked to the contact.",
+          "importance": 4,
+          "reason": "Both relationship filtering and company identifier semantics are unresolved upstream."
+        },
+        {
+          "problem": "Missing unsubscribe status is presented as false through upstream defaulting.",
+          "about": "requirement",
+          "evidence_in_work": "c.is_unsubscribed_from_emails",
+          "source": "Whether the contact unsubscribed from emails.",
+          "importance": 2,
+          "reason": "The output can imply known subscription status when the source value was absent or invalid."
+        }
+      ],
+      "fewer_reason": "Three concrete inherited enrichment and missing-value concerns were found; the joins preserve the requested contact grain."
+    },
+    "intercom__conversation_enhanced": {
+      "items": [
+        {
+          "problem": "All contact actors and first-contact company names may be absent because the inspected parts contain only admin authors.",
+          "about": "data",
+          "evidence_in_work": "left join intermediate.int_intercom__contact_company_names n on e.first_contact_author_id=n.contact_id",
+          "source": "company names linked to the first contacting author",
+          "importance": 5,
+          "reason": "The required contact and company context is structurally unavailable under the observed author distribution."
+        },
+        {
+          "problem": "Close timestamps and closing actors may be missing because event categories were recovered from unverified physical columns.",
+          "about": "data",
+          "evidence_in_work": "e.first_close_at, e.last_close_at, e.first_admin_close_at, e.last_admin_close_at",
+          "source": "event timestamps for first/last close and admin close",
+          "importance": 4,
+          "reason": "The agent concluded there were no recognizable close events without checking all relevant source representations."
+        },
+        {
+          "problem": "Aggregated actors may include inactive part records due to the unresolved source activity layout.",
+          "about": "data",
+          "evidence_in_work": "s.conversation_admins as all_conversation_admins",
+          "source": "aggregated admin and contact actors",
+          "importance": 3,
+          "reason": "Distinct actor lists can remain incorrect even when repeated historical rows are deduplicated by author ID."
+        },
+        {
+          "problem": "Event actor IDs may not correspond to the displayed event timestamps when first or last events have null authors.",
+          "about": "data",
+          "evidence_in_work": "e.first_close_by_author_id, e.last_close_by_author_id",
+          "source": "Identifier of the first closing author.",
+          "importance": 3,
+          "reason": "Upstream arg_min/arg_max null skipping can silently misattribute actions."
+        }
+      ],
+      "fewer_reason": "Four distinct inherited attribution and source-coverage problems were supported."
+    },
+    "intercom__conversation_metrics": {
+      "items": [
+        {
+          "problem": "Close durations may all be unavailable because no observed part has a contact author and the required first-contact-reply baseline is therefore null.",
+          "about": "data",
+          "evidence_in_work": "case when first_close_at >= first_contact_reply_at then",
+          "source": "time-to-close metrics relative to the first contact reply",
+          "importance": 5,
+          "reason": "This disables a central family of KPIs rather than affecting a small edge case."
+        },
+        {
+          "problem": "Missing part aggregates are converted to zero, concealing source-repair and join failures as conversations with no activity.",
+          "about": "data",
+          "evidence_in_work": "coalesce(count_total_parts,0)::bigint as count_total_parts",
+          "source": "Total number of parts in the conversation.",
+          "importance": 4,
+          "reason": "The part aggregate covers only 977 of 6,703 conversations, and zero counts do not distinguish genuine absence from failed recovery."
+        },
+        {
+          "problem": "Assignment and response durations inherit event creation times synthesized from misaligned fields or updated_at.",
+          "about": "data",
+          "evidence_in_work": "date_diff('second',conversation_created_at,first_admin_response_at)/60.0",
+          "source": "Minutes from creation to the first admin response, when computable.",
+          "importance": 4,
+          "reason": "Nonnegative guards do not establish that the endpoints represent the correct events."
+        },
+        {
+          "problem": "Zero reopen counts and missing close durations may reflect incorrect event-category recovery rather than true event absence.",
+          "about": "data",
+          "evidence_in_work": "coalesce(count_reopens,0)::bigint as count_reopens",
+          "source": "Number of reopen events.",
+          "importance": 4,
+          "reason": "The source category repair prioritizes encoded remarks and was not checked against the alternative part-type-bearing fields."
+        },
+        {
+          "problem": "First admin response can include non-comment categories beyond the explicitly described definition.",
+          "about": "requirement",
+          "evidence_in_work": "first_admin_response_at, time_to_first_response_minutes",
+          "source": "Timestamp of the first admin-authored comment with body content.",
+          "importance": 3,
+          "reason": "An expanded upstream response definition can systematically shorten response-time KPIs."
+        },
+        {
+          "problem": "Closing actor IDs can be inconsistent with the event endpoints used for duration calculations.",
+          "about": "data",
+          "evidence_in_work": "first_close_by_author_id, last_close_by_author_id",
+          "source": "Author_id for the first close event.",
+          "importance": 3,
+          "reason": "Null-skipping event attribution can attach a different actor to a correctly selected timestamp."
+        }
+      ],
+      "fewer_reason": "Six distinct concerns were found; the explicit duration arithmetic and negative-duration guards otherwise follow the contract."
+    },
+    "intercom__company_metrics": {
+      "items": [
+        {
+          "problem": "The conversation-to-company mapping appears empty because first_contact_author_id is derived only from user or lead parts while every inspected part author is admin.",
+          "about": "data",
+          "evidence_in_work": "join intermediate.int_intercom__contact_company_history rel on e.first_contact_author_id=rel.contact_id",
+          "source": "Map conversations to companies via the first contact author and contact-to-company history.",
+          "importance": 5,
+          "reason": "This can turn all conversation totals into zero and all ratings, timing medians, and channel rates into null despite a successful run."
+        },
+        {
+          "problem": "Company metrics may fail to join their contact and conversation rollups because company history may expose an external company identifier instead of the relationship identifier.",
+          "about": "data",
+          "evidence_in_work": "left join contact_rollup co on d.company_id=co.company_id",
+          "source": "Company-level support and engagement KPIs aggregated across conversations and contacts.",
+          "importance": 5,
+          "reason": "A namespace mismatch would erase most company engagement measures while preserving the company dimension row count."
+        },
+        {
+          "problem": "Inactive contact-company relationships may inflate contact counts and assign conversations to stale companies.",
+          "about": "data",
+          "evidence_in_work": "from intermediate.int_intercom__contact_company_history rel",
+          "source": "contact-to-company history",
+          "importance": 4,
+          "reason": "The upstream activity filter operates on observed timestamp values rather than reliable activity flags."
+        },
+        {
+          "problem": "Companies with contacts but no mapped conversations receive null conversion rates instead of the computable zero-over-positive-denominator result.",
+          "about": "requirement",
+          "evidence_in_work": "case when co.contacts_total>0 then cr.total_conversations::double/co.contacts_total end",
+          "source": "guarded conversion rates by dividing by the total number of contacts only when the denominator is positive",
+          "importance": 4,
+          "reason": "The displayed total_conversations is coalesced to zero, but the rate numerator is not, making related output fields inconsistent."
+        },
+        {
+          "problem": "contacts_total excludes relationship-linked contacts that do not survive into contact_latest even though the definition refers to all contacts associated with the company.",
+          "about": "requirement",
+          "evidence_in_work": "join intermediate.int_intercom__contact_latest ct on rel.contact_id=ct.contact_id",
+          "source": "Total number of contacts associated with the company.",
+          "importance": 3,
+          "reason": "Missing or filtered contact snapshots reduce the denominator and can inflate conversations-per-contact rates."
+        },
+        {
+          "problem": "Average parts and median reopens exclude conversations lacking a part aggregate rather than accounting for genuine zero-part conversations.",
+          "about": "requirement",
+          "evidence_in_work": "avg(count_total_parts)::double ... median(count_reopens)::double",
+          "source": "Average number of parts per conversation.",
+          "importance": 3,
+          "reason": "SQL aggregates ignore nulls, potentially overstating activity among the company's conversations."
+        },
+        {
+          "problem": "The prose-required conversion-by-channel counts and retained-contact counts are calculated internally or omitted but not exposed in the result.",
+          "about": "requirement",
+          "evidence_in_work": "email_conversations ... registered_retained_7d ... select d.company_id",
+          "source": "Derive conversion-by-channel counts ... Provide active and retained contact counts",
+          "importance": 3,
+          "reason": "The prose and enumerated column list differ, so the intended output surface needs checking rather than assuming ratios alone suffice."
+        },
+        {
+          "problem": "Timing medians inherit unverified event timestamps and missing close/reply categories from the repaired part source.",
+          "about": "data",
+          "evidence_in_work": "median(case when e.first_close_at >= a.first_contact_reply_at",
+          "source": "Compute median time metrics per company based on per-conversation minutes",
+          "importance": 3,
+          "reason": "Valid-looking nonnegative medians can still use wrong endpoints or omit most conversations."
+        },
+        {
+          "problem": "Null or unexpected channel values are all counted as other without validating whether source_type represents the intended reporting channel.",
+          "about": "data",
+          "evidence_in_work": "lower(coalesce(conversation_type,'')) not in ('email','messenger')",
+          "source": "Conversations per contact via other channels.",
+          "importance": 2,
+          "reason": "The inspected source_type includes conversation, so the channel split may collapse into other rather than meaningful email and messenger counts."
+        },
+        {
+          "problem": "A company with no mapped conversations is assigned missing_days equal to zero even though its observed date range is undefined.",
+          "about": "requirement",
+          "evidence_in_work": "else 0::bigint end as missing_days",
+          "source": "Count of missing active days within the min..max range of conversation days.",
+          "importance": 2,
+          "reason": "Zero gaps can be mistaken for verified date coverage when no date coverage exists."
+        }
+      ],
+      "fewer_reason": null
+    },
+    "result.md": {
+      "items": [
+        {
+          "problem": "The reported validation does not detect empty or null KPI families because bounds checks ignore null values.",
+          "about": "data",
+          "evidence_in_work": "company metric bounds 0",
+          "source": "produce high-quality data results that meet business requirements",
+          "importance": 4,
+          "reason": "An entirely unmapped company conversation population can pass every shown nonnegative and range check."
+        },
+        {
+          "problem": "The report attributes missing close and reopen events to source information insufficiency without examining the separately indexed raw-schema part table or the apparent original event-type position.",
+          "about": "data",
+          "evidence_in_work": "没有可识别的 close/reopen part 事件",
+          "source": "\"raw.conversation_part_history_data\", \"columns\": [\"external_id\", \"part_type\", \"rating_remark\", \"rating_value\", \"redacted\", \"social_respond\", \"type\"]",
+          "importance": 4,
+          "reason": "Prematurely classifying a layout-recovery failure as missing source data can leave major KPI omissions unresolved."
+        },
+        {
+          "problem": "The claimed automated contract-model coverage validation did not complete because parsing the contract raised a ScannerError.",
+          "about": "data",
+          "evidence_in_work": "yaml.scanner.ScannerError: while scanning a double-quoted scalar",
+          "source": "You MUST carefully review the content of docs/data_contract.yaml.",
+          "importance": 2,
+          "reason": "Manual review occurred, but the failed automated check does not substantiate the report's stronger validation claim."
+        },
+        {
+          "problem": "The report's mention of admin and team outputs does not distinguish SQL files from tables actually present after the final configured run.",
+          "about": "requirement",
+          "evidence_in_work": "包括契约定义但未列入执行序列的 stg_intercom__admin、stg_intercom__team 和 stg_intercom__team_admin",
+          "source": "running python run.py ... outputs xxxx.duckdb",
+          "importance": 2,
+          "reason": "Those tables were built manually but removed and not rebuilt by the final full pipeline execution."
+        }
+      ],
+      "fewer_reason": "Four specific validation and output-coverage concerns were found; the report was not judged as a whole."
+    }
+  }
+}

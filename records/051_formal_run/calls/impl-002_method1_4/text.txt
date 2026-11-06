@@ -1,0 +1,116 @@
+{
+  "premises": [
+    {
+      "statement": "The RFM output may leave all five account-level metrics NULL instead of computing and joining account aggregates.",
+      "about": "requirement",
+      "target": "intermediate.int_pendo__customer_rfm_analysis",
+      "evidence_of_dependence": "CAST(NULL AS BIGINT) account_total_visitors,CAST(NULL AS FLOAT) account_high_value_ratio,CAST(NULL AS FLOAT) account_top_segment_ratio,CAST(NULL AS FLOAT) account_at_risk_ratio,CAST(NULL AS DOUBLE) account_avg_rfm_score",
+      "alternative": "The contract requires \"Account-level aggregation (per account across all visitor rows)\" and \"Left join account metrics to each visitor–account row.\"",
+      "importance": 5,
+      "reason": "Every output row lacks the required account health metrics regardless of source data quality.",
+      "updates": null
+    },
+    {
+      "statement": "The implemented action-priority mapping is the required fixed mapping for every RFM segment.",
+      "about": "requirement",
+      "target": "intermediate.int_pendo__customer_rfm_analysis.action_priority",
+      "evidence_of_dependence": "WHEN rfm_segment IN ('At Risk','Cannot Be Retrieved','Hibernating') THEN 'Re-engagement' ELSE 'Monitor'",
+      "alternative": "The contract lists priorities including \"Win-back or Deprioritize\" and \"Reactivation\", neither of which the implementation can emit.",
+      "importance": 4,
+      "reason": "Grouping several segments under one priority can change the intended operational response.",
+      "updates": null
+    },
+    {
+      "statement": "The three recommendation texts and segment groupings chosen by the code constitute the required recommended-strategy mapping.",
+      "about": "requirement",
+      "target": "intermediate.int_pendo__customer_rfm_analysis.recommended_strategy",
+      "evidence_of_dependence": "THEN 'Reward loyalty and advocate' ... THEN 'Re-engage customer' ELSE 'Standard engagement tactics'",
+      "alternative": "The contract requires \"recommended_strategy: fixed text per rfm_segment\" but does not establish these chosen texts or groupings.",
+      "importance": 3,
+      "reason": "The implementation supplies business recommendations without evidence establishing the prescribed mapping.",
+      "updates": null
+    },
+    {
+      "statement": "The chosen High, Medium, and Low CLV assignments are the required assignments for all segments not qualifying for Very High CLV.",
+      "about": "requirement",
+      "target": "intermediate.int_pendo__customer_rfm_analysis.predicted_clv_tier",
+      "evidence_of_dependence": "WHEN rfm_segment IN ('Champions','Loyal Customers') THEN 'High CLV' WHEN rfm_segment IN ('Potential Loyalists','Promising') THEN 'Medium CLV' ELSE 'Low CLV'",
+      "alternative": "The contract establishes that \"Very High CLV\" requires Champions or Loyal Customers with lifetime over 180 days, but does not specify the remaining assignments.",
+      "importance": 3,
+      "reason": "Most segment-to-CLV assignments are supplied without an established business rule.",
+      "updates": null
+    },
+    {
+      "statement": "Every visitor–account event group has at least one non-null num_minutes value.",
+      "about": "data",
+      "target": "intermediate.int_pendo__customer_rfm_analysis.total_minutes",
+      "evidence_of_dependence": "sum(num_minutes) total_minutes",
+      "alternative": "The contract describes total_minutes as \"non-null as only event-bearing pairs are included\", while staging permits invalid num_minutes values to be nullified.",
+      "importance": 3,
+      "reason": "An event-bearing group with only null minute values produces a null total rather than the documented non-null result.",
+      "updates": null
+    },
+    {
+      "statement": "The staging user table contains at most one matching row per user_id for the creator and updater joins.",
+      "about": "data",
+      "target": "intermediate.int_pendo__guide_info, intermediate.int_pendo__page_info",
+      "evidence_of_dependence": "LEFT JOIN staging.stg_pendo__user c ... LEFT JOIN staging.stg_pendo__user u",
+      "alternative": "Both output contracts specify one row per guide_id or page_id, whereas the user staging contract declares user_id not null but does not declare it unique.",
+      "importance": 3,
+      "reason": "Duplicate user keys multiply guide and page rows and violate their required grains.",
+      "updates": null
+    },
+    {
+      "statement": "The staging group table contains at most one row for each group_id after conversion to text.",
+      "about": "data",
+      "target": "intermediate.int_pendo__page_info",
+      "evidence_of_dependence": "LEFT JOIN staging.stg_pendo__group g ON CAST(p.group_id AS VARCHAR)=CAST(g.group_id AS VARCHAR)",
+      "alternative": "The page-info contract requires \"one row per page_id\", but the group staging contract specifies no uniqueness constraint on group_id.",
+      "importance": 3,
+      "reason": "Multiple matching product-area records multiply page rows.",
+      "updates": null
+    },
+    {
+      "statement": "No retained lifecycle event group has a first or last activity date later than the query's current date.",
+      "about": "data",
+      "target": "intermediate.int_pendo__user_lifecycle_segments.user_age_days, intermediate.int_pendo__user_lifecycle_segments.days_since_last_active",
+      "evidence_of_dependence": "date_diff('day',first_event_on,current_date) user_age_days,date_diff('day',last_event_on,current_date) days_since_last_active",
+      "alternative": "The column descriptions require both day measures to be \"non-negative\"; the code neither rejects future dates nor bounds the results.",
+      "importance": 2,
+      "reason": "Future activity dates produce negative ages and recencies and can affect lifecycle classification.",
+      "updates": null
+    },
+    {
+      "statement": "DOUBLE results are acceptable for lifecycle activity_density and user_value_score despite their declared FLOAT output types.",
+      "about": "requirement",
+      "target": "intermediate.int_pendo__user_lifecycle_segments.activity_density, intermediate.int_pendo__user_lifecycle_segments.user_value_score",
+      "evidence_of_dependence": "count_active_days::DOUBLE/date_diff(...) ... activity_density; least(100,activity_density*30+...) user_value_score",
+      "alternative": "The contract declares \"data_type: FLOAT\" for both columns.",
+      "importance": 2,
+      "reason": "Without final casts, the generated output schema differs from the specified types.",
+      "updates": null
+    }
+  ],
+  "fewer": [
+    {
+      "target": "intermediate.int_pendo__feature_info",
+      "count": 0,
+      "reason": "The visible joins, null-propagating name construction, and duplicate-preserving behavior are explicitly supported by its contract; no additional unsupported premise was identified."
+    },
+    {
+      "target": "intermediate.int_pendo__guide_info",
+      "count": 1,
+      "reason": "Apart from user-key multiplicity affecting the required grain, the step aggregation, string comparisons, and null handling follow the documented rules."
+    },
+    {
+      "target": "intermediate.int_pendo__page_info",
+      "count": 2,
+      "reason": "User and group join multiplicity remain unverified; the rule aggregation, active-feature window, and other enrichment logic are established by the contract."
+    },
+    {
+      "target": "intermediate.int_pendo__user_lifecycle_segments",
+      "count": 2,
+      "reason": "Future-date handling and output numeric types remain unsupported; the aggregation scope, ordered classifications, score formula, and flags otherwise follow explicit requirements."
+    }
+  ]
+}

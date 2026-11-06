@@ -1,0 +1,965 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Lever ATS recruitment platform data transformation"
+  author: "Data Engineering Team"
+  created_date: "2025-09-08"
+  domain: "Applicant Tracking System (ATS)"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw ATS data into clean, validated staging tables with standardized formats, proper data types, and comprehensive quality checks"
+  
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "standardize timezone formats", "normalize phone numbers"]
+    
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform staging data into business-ready models that support recruitment analytics, performance measurement, and operational reporting"
+  
+  design_principles:
+    intermediate_purpose: "Create reusable, business-centric data models that combine multiple staging sources and apply consistent business logic"
+    mart_purpose: "Provide analysis-ready fact and dimension tables optimized for specific business use cases and reporting requirements"
+    grain_importance: "Every model must have an explicitly defined grain to ensure consistent interpretation and prevent aggregation errors"
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-001/agent/dacomp-de-impl-001/lever_start.duckdb
+{"table": "raw.application", "columns": ["id", "archived_at", "archived_reason_id", "candidate_id", "comments", "company", "created_at", "posting_hiring_manager_id", "posting_id", "posting_owner_id", "referrer_id", "requisition_for_hire_id", "type", "opportunity_id"]}
+{"table": "raw.archive_reason", "columns": ["id", "text"]}
+{"table": "raw.contact_email", "columns": ["contact_id", "email"]}
+{"table": "raw.contact_link", "columns": ["contact_id", "link"]}
+{"table": "raw.contact_phone", "columns": ["contact_id", "value", "type"]}
+{"table": "raw.feedback_form", "columns": ["id", "created_at", "creator_id", "instructions", "text", "type"]}
+{"table": "raw.feedback_form_field", "columns": ["id", "feedback_form_id", "field_index", "value_text", "value_index"]}
+{"table": "raw.interview", "columns": ["id", "canceled_at", "candidate_id", "created_at", "creator_id", "date", "duration", "feedback_reminder", "gcal_event_url", "location", "note", "panel_id", "stage_id", "subject", "timezone", "opportunity_id"]}
+{"table": "raw.interview_feedback", "columns": ["id", "completed_at", "created_at", "interview_id", "interviewer_id", "overall_recommendation", "text", "updated_at", "feedback_form_id"]}
+{"table": "raw.interview_user", "columns": ["interview_id", "user_id"]}
+{"table": "raw.interviewer_user", "columns": ["interview_id", "user_id"]}
+{"table": "raw.offer", "columns": ["id", "created_at", "creator_id", "opportunity_id", "candidate_id", "status"]}
+{"table": "raw.opportunity", "columns": ["id", "archived_at", "archived_reason_id", "contact", "created_at", "data_protection_contact_allowed", "data_protection_contact_expires_at", "data_protection_store_allowed", "data_protection_store_expires_at", "headline", "is_anonymized", "last_advanced_at", "last_interaction_at", "location", "name", "origin", "owner_id", "snoozed_until", "stage_id", "updated_at"]}
+{"table": "raw.opportunity_source", "columns": ["opportunity_id", "source"]}
+{"table": "raw.opportunity_stage_history", "columns": ["id", "opportunity_id", "stage_id", "updated_at", "updater_id", "to_stage_index"]}
+{"table": "raw.opportunity_tag", "columns": ["opportunity_id", "tag"]}
+{"table": "raw.posting", "columns": ["id", "categories_commitment", "categories_department", "categories_level", "categories_location", "categories_team", "content_closing", "content_closing_html", "content_description", "content_description_html", "created_at", "creator_id", "owner_id", "requisition_code", "state", "text", "updated_at"]}
+{"table": "raw.posting_interview", "columns": ["posting_id", "interview_id"]}
+{"table": "raw.posting_tag", "columns": ["posting_id", "tag"]}
+{"table": "raw.requisition", "columns": ["id", "backfill", "compensation_band_currency", "compensation_band_interval", "compensation_band_max", "compensation_band_min", "created_at", "creator_id", "employment_status", "headcount_hired", "headcount_infinite", "headcount_total", "hiring_manager_id", "internal_notes", "location", "name", "owner_id", "requisition_code", "status", "team"]}
+{"table": "raw.requisition_offer", "columns": ["requisition_id", "offer_id"]}
+{"table": "raw.requisition_posting", "columns": ["requisition_id", "posting_id"]}
+{"table": "raw.resume", "columns": ["id", "opportunity_id", "created_at", "file_download_url", "file_ext", "file_name", "file_uploaded_at"]}
+{"table": "raw.stage", "columns": ["id", "text"]}
+{"table": "raw.user", "columns": ["id", "access_role", "created_at", "deactivated_at", "email", "external_directory_id", "name", "photo", "username"]}
+{"table": "raw.users", "columns": ["id", "access_role", "created_at", "deactivated_at", "email", "external_directory_id", "name", "photo", "username"]}
+
+
+=== Relevant specification and documentation ===
+## stg_lever__contact_email
+
+    - name: stg_lever__contact_email
+      description: "Contact email addresses"
+      source_table: "raw.contact_email"
+      columns:
+        - name: contact_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: email
+          data_type: VARCHAR(255)
+          validation_rules:
+            - rule: "email = LOWER(TRIM(email))"
+              on_failure: correct
+            - rule: "email RLIKE '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+.[A-Za-z]{2,}$'"
+              on_failure: nullify_field
+
+
+
+
+
+=== Premises recorded in earlier reviews ===
+[
+  {
+    "statement": "The contract's row-deletion and field-nullification requirements are fully covered by the generator's hard-coded checks, with no additional validation rules needing implementation.",
+    "about": "requirement",
+    "target": "All generated staging tables",
+    "evidence_of_dependence": "The generator reads validation_rules only to test whether selected columns have a rule starting with 'LENGTH'; its other checks are hard-coded.",
+    "alternative": "The general contract calls for \"clean, validated staging tables\" with \"comprehensive quality checks\" and distinguishes correct, delete_row, and nullify_field actions.",
+    "importance": 5,
+    "reason": "Unimplemented contract rules could leave invalid records throughout the staging layer.",
+    "updates": null,
+    "id": "c2-1",
+    "call": 2
+  },
+  {
+    "statement": "Every staging table containing a status column uses only open, closed, cancelled, draft, and pending as its acceptable statuses.",
+    "about": "requirement",
+    "target": "Generated staging tables containing status, including offer and requisition if selected by the contract",
+    "evidence_of_dependence": "'status':\"status IN ('open','closed','cancelled','draft','pending')\"",
+    "alternative": null,
+    "importance": 5,
+    "reason": "Applying a shared status vocabulary to different business entities could delete large portions of otherwise valid data.",
+    "updates": null,
+    "id": "c2-2",
+    "call": 2
+  },
+  {
+    "statement": "The hard-coded raw-to-staging column mappings preserve the meanings of the corresponding contract fields.",
+    "about": "data",
+    "target": "Generated staging projections using rawmaps",
+    "evidence_of_dependence": "'feedback_form_field':{'field_text':'value_text','field_type':'value_index'}, 'opportunity':{'contact_id':'contact', ...}",
+    "alternative": null,
+    "importance": 4,
+    "reason": "A mistaken semantic mapping can populate an entire output column with plausible but incorrect values.",
+    "updates": null,
+    "id": "c2-3",
+    "call": 2
+  },
+  {
+    "statement": "Every contract column absent from its source's explicit mapping has an identically named raw source column with the intended meaning.",
+    "about": "data",
+    "target": "All generated staging projections",
+    "evidence_of_dependence": "source=rawmaps.get(src,{}).get(col,col)",
+    "alternative": null,
+    "importance": 4,
+    "reason": "An unmatched name can prevent execution, while a coincidentally matching name can silently select the wrong field.",
+    "updates": null,
+    "id": "c2-4",
+    "call": 2
+  },
+  {
+    "statement": "When multiple columns have individual unique constraints, enforcing uniqueness on their combined tuple satisfies the contract.",
+    "about": "requirement",
+    "target": "Generated staging tables with multiple columns marked unique",
+    "evidence_of_dependence": "unique=[c['name'] for c in t['columns'] if 'unique' in c.get('constraints',[])]; PARTITION BY {', '.join(unique)}",
+    "alternative": null,
+    "importance": 4,
+    "reason": "Composite deduplication can retain violations of individually unique columns.",
+    "updates": null,
+    "id": "c2-5",
+    "call": 2
+  },
+  {
+    "statement": "Rows sharing a declared unique key are interchangeable, so retaining an arbitrary one satisfies the duplicate-resolution requirement.",
+    "about": "data",
+    "target": "Generated staging tables using the ranked CTE",
+    "evidence_of_dependence": "row_number() OVER (PARTITION BY {', '.join(unique)} ORDER BY {', '.join(unique)}) AS _row_num",
+    "alternative": null,
+    "importance": 4,
+    "reason": "Conflicting duplicate records could lose the current or otherwise authoritative version.",
+    "updates": null,
+    "id": "c2-6",
+    "call": 2
+  },
+  {
+    "statement": "For tables without a column explicitly marked unique, retaining all otherwise accepted rows requires no further duplicate removal.",
+    "about": "requirement",
+    "target": "Generated staging tables taking the generator's non-unique branch",
+    "evidence_of_dependence": "q=... if unique else f\"\"\"SELECT ... FROM raw.{src} AS r ...\"\"\"",
+    "alternative": "The general contract lists \"Confirmed duplicates\" among records requiring delete_row.",
+    "importance": 4,
+    "reason": "Duplicate bridge or attribute rows can multiply downstream joins and aggregations.",
+    "updates": null,
+    "id": "c2-7",
+    "call": 2
+  },
+  {
+    "statement": "Failed casts may be handled solely by returning NULL and then applying any declared not_null filter, without further repair or rejection.",
+    "about": "requirement",
+    "target": "All generated staging tables",
+    "evidence_of_dependence": "expr=f'try_cast(r.\"{source}\" AS {typ})'; if 'not_null' in constraints: where.append(f'        {col} IS NOT NULL')",
+    "alternative": "The contract distinguishes deterministic issues to \"Automatically fix\" from severe issues requiring removal and non-critical issues suitable for nullification.",
+    "importance": 4,
+    "reason": "This generic policy can discard repairable records or retain unusable records with newly missing fields.",
+    "updates": null,
+    "id": "c2-8",
+    "call": 2
+  },
+  {
+    "statement": "The generator's selected trimming, lowercasing, and casting operations cover all required deterministic format corrections.",
+    "about": "requirement",
+    "target": "All generated staging tables",
+    "evidence_of_dependence": "Formatting is limited to selected column-name lists, while phone_number is assigned try_cast(... AS VARCHAR).",
+    "alternative": "The contract's correct action includes \"whitespace trimming\", \"standardize timezone formats\", and \"normalize phone numbers\".",
+    "importance": 4,
+    "reason": "Uncorrected formatting differences can cause inconsistent values and missed downstream matches.",
+    "updates": null,
+    "id": "c2-9",
+    "call": 2
+  },
+  {
+    "statement": "Values tested against hard-coded enumerations and the requisition-code prefix are already in canonical case and whitespace form.",
+    "about": "data",
+    "target": "Generated staging tables filtered on access_role, status, employment_status, state, or requisition_code",
+    "evidence_of_dependence": "where.append(f'        {condition}'); where.append(\"        requisition_code LIKE 'REQ-%'\")",
+    "alternative": "The contract calls for automatic correction of deterministic formatting issues, including \"whitespace trimming\".",
+    "importance": 3,
+    "reason": "Otherwise repairable values would be deleted rather than normalized.",
+    "updates": null,
+    "id": "c2-10",
+    "call": 2
+  },
+  {
+    "statement": "Direct casting to the contract timestamp type produces the required time interpretation without source-specific timezone or epoch conversion.",
+    "about": "data",
+    "target": "Timestamp columns in generated staging tables",
+    "evidence_of_dependence": "expr=f'try_cast(r.\"{source}\" AS {typ})' if typ in ('TIMESTAMP','DOUBLE','INT','BIGINT','BOOLEAN') else ...",
+    "alternative": null,
+    "importance": 3,
+    "reason": "Incorrect time interpretation can affect ordering, durations, and date-based reporting across many models.",
+    "updates": null,
+    "id": "c2-11",
+    "call": 2
+  },
+  {
+    "statement": "Contacts whose staging email rows all have NULL emails may be omitted from contact_info.",
+    "about": "requirement",
+    "target": "int_lever__contact_info",
+    "evidence_of_dependence": "FROM staging.stg_lever__contact_email WHERE email IS NOT NULL GROUP BY contact_id",
+    "alternative": "The contract says \"output includes only contact_ids present in staging.stg_lever__contact_email\" and explicitly requires a NULL email aggregate \"if a contact_id has no non-NULL emails.\"",
+    "importance": 4,
+    "reason": "Filtering before grouping removes required contacts and can also hide their valid phone and profile information downstream.",
+    "updates": null,
+    "id": "c3-1",
+    "call": 3
+  },
+  {
+    "statement": "The candidate_insights result need not be explicitly ordered by candidate_quality_score descending and total_lifecycle_days ascending.",
+    "about": "requirement",
+    "target": "int_lever__candidate_insights",
+    "evidence_of_dependence": "current_timestamp AS calculated_at FROM scored",
+    "alternative": "The contract states \"Output rows are ordered by candidate_quality_score descending, then total_lifecycle_days ascending.\"",
+    "importance": 3,
+    "reason": "The SQL omits an explicitly required output ordering.",
+    "updates": null,
+    "id": "c3-2",
+    "call": 3
+  },
+  {
+    "statement": "The inferred DECIMAL types for feedback_completion_rate and positive_feedback_rate satisfy the candidate_insights contract's DOUBLE requirements.",
+    "about": "requirement",
+    "target": "int_lever__candidate_insights",
+    "evidence_of_dependence": "CASE WHEN tf=0 THEN 0 ELSE 100.0 END fcr; fcr AS feedback_completion_rate,0.0 AS positive_feedback_rate",
+    "alternative": "The contract declares both \"feedback_completion_rate\" and \"positive_feedback_rate\" as \"data_type: DOUBLE\".",
+    "importance": 3,
+    "reason": "Numerically equivalent values can still violate the required output schema.",
+    "updates": null,
+    "id": "c3-3",
+    "call": 3
+  },
+  {
+    "statement": "BIGINT counts satisfy the HUGEINT type requirements for the three application-type counts.",
+    "about": "requirement",
+    "target": "int_lever__posting_applications",
+    "evidence_of_dependence": "count(*) FILTER (WHERE type='referral') AS count_referred_applications",
+    "alternative": "The contract specifies \"data_type: HUGEINT\" for count_referred_applications, count_posting_applications, and count_manual_user_applications.",
+    "importance": 3,
+    "reason": "DuckDB COUNT returns BIGINT rather than the explicitly specified output type.",
+    "updates": null,
+    "id": "c3-4",
+    "call": 3
+  },
+  {
+    "statement": "The requisition_users pass-through requirement takes precedence over its BOOLEAN declarations for headcount_hired and headcount_total.",
+    "about": "requirement",
+    "target": "int_lever__requisition_users",
+    "evidence_of_dependence": "SELECT r.*, o.user_name AS owner_name, c.user_name AS creator_name",
+    "alternative": "The intermediate column definitions declare headcount_hired and headcount_total as BOOLEAN, whereas staging declares them INT and the intermediate business logic says \"all base values and types are preserved.\"",
+    "importance": 3,
+    "reason": "The documentation contains conflicting type requirements that the implementation resolves without establishing precedence.",
+    "updates": null,
+    "id": "c3-5",
+    "call": 3
+  },
+  {
+    "statement": "Counting second boundaries before dividing by 86400 preserves the precision required for candidate lifecycle durations.",
+    "about": "requirement",
+    "target": "int_lever__candidate_lifecycle",
+    "evidence_of_dependence": "date_diff('second', o.created_at, coalesce(o.archived_at, current_timestamp)) / 86400.0",
+    "alternative": "The contract describes durations as \"seconds difference divided by 86,400 with no rounding\" and calls the resulting days \"Unrounded.\"",
+    "importance": 2,
+    "reason": "If fractional seconds must be preserved, boundary counting changes all three duration metrics slightly.",
+    "updates": null,
+    "id": "c3-6",
+    "call": 3
+  },
+  {
+    "statement": "Advancement rates may be returned as NULL for every interviewer without evaluating opportunity advancement timestamps.",
+    "about": "requirement",
+    "target": "int_lever__interviewer_performance",
+    "evidence_of_dependence": "NULL::DOUBLE advancement_rate",
+    "alternative": "The contract requires the \"percentage of distinct opportunities where last_advanced_at is after the interview_date\" and permits NULL when total_outcomes is zero.",
+    "importance": 5,
+    "reason": "The implementation omits an explicitly required outcome metric for all interviewers.",
+    "updates": null,
+    "id": "c4-1",
+    "call": 4
+  },
+  {
+    "statement": "Every interviewer may be assigned the Insufficient Data tier regardless of interview volume and outcome metrics.",
+    "about": "requirement",
+    "target": "int_lever__interviewer_performance",
+    "evidence_of_dependence": "'Insufficient Data' performance_tier",
+    "alternative": "The contract specifies \"Insufficient Data if total_interviews < 5\" and otherwise applies Excellent, Good, Average, or Needs Improvement thresholds.",
+    "importance": 5,
+    "reason": "A constant tier bypasses all required classifications for interviewers with sufficient activity.",
+    "updates": null,
+    "id": "c4-2",
+    "call": 4
+  },
+  {
+    "statement": "Overall performance scores may be NULL for all interviewers without checking score eligibility or calculating the weighted components.",
+    "about": "requirement",
+    "target": "int_lever__interviewer_performance",
+    "evidence_of_dependence": "NULL::DOUBLE overall_performance_score",
+    "alternative": "The contract requires a weighted score when \"total_interviews >= 10 and feedback_completion_rate >= 80,\" subject to component nullability.",
+    "importance": 5,
+    "reason": "Eligible interviewers can lose a required performance measure.",
+    "updates": null,
+    "id": "c4-3",
+    "call": 4
+  },
+  {
+    "statement": "The interview's stage_id is the appropriate stage key for determining positive opportunity outcomes.",
+    "about": "requirement",
+    "target": "int_lever__interviewer_performance",
+    "evidence_of_dependence": "LEFT JOIN staging.stg_lever__opportunity o USING(opportunity_id) LEFT JOIN staging.stg_lever__stage s USING(stage_id)",
+    "alternative": "The contract describes \"opportunities where stage_name ... contains 'hire', 'accept', or 'offer',\" supporting use of the opportunity's stage rather than the interview's stage.",
+    "importance": 4,
+    "reason": "Using interview stages can change positive outcome counts, rates, and score inputs.",
+    "updates": null,
+    "id": "c4-4",
+    "call": 4
+  },
+  {
+    "statement": "The last-365-days interview window requires only a lower bound and may include future-dated interviews.",
+    "about": "requirement",
+    "target": "int_lever__interviewer_performance",
+    "evidence_of_dependence": "WHERE i.interview_date>=current_timestamp-INTERVAL '365 days'",
+    "alternative": "The contract says \"Only include interviews dated within the last 365 days,\" which can mean a window ending at query time.",
+    "importance": 3,
+    "reason": "Future scheduled interviews could alter activity, feedback, and outcome metrics.",
+    "updates": null,
+    "id": "c4-5",
+    "call": 4
+  },
+  {
+    "statement": "Posting analytics interview metrics may all be set to zero without consulting interviews or interviewer mappings.",
+    "about": "requirement",
+    "target": "int_lever__posting_analytics",
+    "evidence_of_dependence": "0::BIGINT total_interviews_scheduled,0::BIGINT completed_interviews,0::BIGINT canceled_interviews,0::BIGINT unique_interviewers",
+    "alternative": "The contract requires joining applications to interviews on opportunity_id and left joining interviewer users to calculate interview counts and duration metrics.",
+    "importance": 5,
+    "reason": "Unused interview sources underpin several required activity and efficiency measures.",
+    "updates": null,
+    "id": "c4-6",
+    "call": 4
+  },
+  {
+    "statement": "Posting analytics hiring outcome metrics may all be zero without consulting opportunities and stages.",
+    "about": "requirement",
+    "target": "int_lever__posting_analytics",
+    "evidence_of_dependence": "0::BIGINT candidates_hired,0::BIGINT offers_extended,0::BIGINT candidates_rejected",
+    "alternative": "The contract requires joining applications to opportunities and stages to count hired, offered, and archived opportunities.",
+    "importance": 5,
+    "reason": "Omitting these sources removes required business outcomes and their conversion rates.",
+    "updates": null,
+    "id": "c4-7",
+    "call": 4
+  },
+  {
+    "statement": "Posting analytics scores, tiers, and bottleneck labels may be fixed constants rather than derived from posting metrics.",
+    "about": "requirement",
+    "target": "int_lever__posting_analytics",
+    "evidence_of_dependence": "0::BIGINT posting_effectiveness_score,'No Applications' performance_tier,'No Major Issues' primary_bottleneck",
+    "alternative": "The contract defines a composite \"posting_effectiveness_score (0–100)\" and ordered threshold rules for performance_tier and primary_bottleneck.",
+    "importance": 5,
+    "reason": "Constant outputs bypass the model's principal evaluative business logic.",
+    "updates": null,
+    "id": "c4-8",
+    "call": 4
+  },
+  {
+    "statement": "Referral and internal application percentages may remain zero irrespective of the application counts calculated for each posting.",
+    "about": "requirement",
+    "target": "int_lever__posting_analytics",
+    "evidence_of_dependence": "0.0 referral_rate_pct,0.0 internal_application_rate_pct",
+    "alternative": "The contract requires referred_applications and internal_applications divided by total_applications times 100, rounded to one decimal.",
+    "importance": 4,
+    "reason": "Even the populated application counts are not used to calculate their required rates.",
+    "updates": null,
+    "id": "c4-9",
+    "call": 4
+  },
+  {
+    "statement": "Posting analytics timing metrics require no timestamp calculations and may always use zero or NULL placeholders.",
+    "about": "requirement",
+    "target": "int_lever__posting_analytics",
+    "evidence_of_dependence": "0.0 avg_days_to_advancement,0.0 avg_days_to_last_contact,0.0 median_days_to_advancement,NULL::DOUBLE days_to_first_application",
+    "alternative": "The contract requires advancement and contact day differences over qualifying application–opportunity rows and days_to_first_application when both timestamps exist.",
+    "importance": 4,
+    "reason": "The omitted calculations suppress recruitment speed and attraction timing measures.",
+    "updates": null,
+    "id": "c4-10",
+    "call": 4
+  },
+  {
+    "statement": "Posting performance stage, activity, and archive candidate counts may all be zero without consulting opportunities and stages.",
+    "about": "requirement",
+    "target": "int_lever__posting_performance",
+    "evidence_of_dependence": "0::BIGINT candidates_reached_interview,0::BIGINT candidates_reached_offer,0::BIGINT candidates_hired,0::BIGINT active_candidates_30d,0::BIGINT archived_candidates",
+    "alternative": "The contract requires stage-keyword counts, recent-interaction counts, and archived opportunity counts through application–opportunity joins.",
+    "importance": 5,
+    "reason": "These unused sources determine the model's pipeline and hiring outcomes.",
+    "updates": null,
+    "id": "c4-11",
+    "call": 4
+  },
+  {
+    "statement": "Posting performance interview counts and efficiency metrics may all be zero without reading interviews.",
+    "about": "requirement",
+    "target": "int_lever__posting_performance",
+    "evidence_of_dependence": "0::BIGINT total_interviews_scheduled,0::BIGINT completed_interviews,0::BIGINT canceled_interviews,0.0 interview_completion_rate,0.0 avg_interviews_per_candidate",
+    "alternative": "The contract requires unique interview counts through opportunity_id and ratios based on those counts.",
+    "importance": 5,
+    "reason": "The implementation omits the entire required interview-efficiency calculation.",
+    "updates": null,
+    "id": "c4-12",
+    "call": 4
+  },
+  {
+    "statement": "Posting performance scores, tiers, and status analyses may use fixed placeholders for every posting.",
+    "about": "requirement",
+    "target": "int_lever__posting_performance",
+    "evidence_of_dependence": "NULL::DOUBLE posting_performance_score,'No Applications' performance_tier,'Unknown Status' posting_status_analysis",
+    "alternative": "The contract requires a score for postings with at least five applications and conditional tiers and statuses based on volume, outcomes, posting state, and recent activity.",
+    "importance": 5,
+    "reason": "The placeholders bypass the primary performance and operational classifications.",
+    "updates": null,
+    "id": "c4-13",
+    "call": 4
+  },
+  {
+    "statement": "Candidate contact and resume coverage counts may be zero without using contact_email, contact_phone, or resume.",
+    "about": "requirement",
+    "target": "int_lever__posting_performance",
+    "evidence_of_dependence": "0::BIGINT candidates_with_email,0::BIGINT candidates_with_phone,0::BIGINT candidates_with_resume",
+    "alternative": "The contract requires left joins to contact_email/phone and resume and unique opportunity counts where those linked attributes exist.",
+    "importance": 4,
+    "reason": "Three explicitly relevant unused sources supply required candidate coverage measures.",
+    "updates": null,
+    "id": "c4-14",
+    "call": 4
+  },
+  {
+    "statement": "Posting performance referral rates and first-application delays need not be derived from the application counts and timestamps already selected.",
+    "about": "requirement",
+    "target": "int_lever__posting_performance",
+    "evidence_of_dependence": "0.0 referral_rate,NULL::DOUBLE days_to_first_application",
+    "alternative": "The contract defines referral_rate as referred applications divided by total applications and days_to_first_application as fractional days between posting creation and first application.",
+    "importance": 4,
+    "reason": "Available application data is not used for two explicitly required derivations.",
+    "updates": null,
+    "id": "c4-15",
+    "call": 4
+  },
+  {
+    "statement": "Matching any stage name containing screen is equivalent to the contract's screening-stage normalization.",
+    "about": "requirement",
+    "target": "int_lever__hiring_funnel_metrics",
+    "evidence_of_dependence": "WHEN lower(stage_name) LIKE '%screen%' OR lower(stage_name) LIKE '%phone%' THEN 2",
+    "alternative": "The contract specifies Initial Screening for \"'phone' or 'screening',\" rather than the broader substring screen.",
+    "importance": 3,
+    "reason": "A broader match can change normalized progression, reached counts, and conversion rates.",
+    "updates": null,
+    "id": "c4-16",
+    "call": 4
+  },
+  {
+    "statement": "Averaging funnel durations over application rows gives the required per-opportunity duration average for each posting.",
+    "about": "data",
+    "target": "int_lever__hiring_funnel_metrics",
+    "evidence_of_dependence": "avg(date_diff('microsecond',oh.t1,oh.t2)/86400000000.0) dscreen ... FROM staging.stg_lever__application a",
+    "alternative": "The contract requires averaging \"the per-opportunity durations\" for each posting.",
+    "importance": 3,
+    "reason": "Multiple applications for the same posting and opportunity would weight that opportunity repeatedly despite distinct opportunity counts.",
+    "updates": null,
+    "id": "c4-17",
+    "call": 4
+  },
+  {
+    "statement": "The hiring funnel result need not be explicitly ordered by application volume and application-to-hired rate.",
+    "about": "requirement",
+    "target": "int_lever__hiring_funnel_metrics",
+    "evidence_of_dependence": "FROM rates WHERE total_applications>=3",
+    "alternative": "The contract states \"The final result is ordered by total_applications descending, then application_to_hired_rate descending.\"",
+    "importance": 3,
+    "reason": "The generated SQL omits a prescribed final ordering.",
+    "updates": null,
+    "id": "c4-18",
+    "call": 4
+  },
+  {
+    "statement": "Hiring efficiency grade values should include parenthetical percentage ranges in their stored labels.",
+    "about": "requirement",
+    "target": "int_lever__hiring_funnel_metrics",
+    "evidence_of_dependence": "THEN 'High Efficiency (≥10%)' ... ELSE 'Very Low Efficiency (<2%)'",
+    "alternative": "The contract describes grades as \"High Efficiency (≥10%), Medium Efficiency (5–10%), Low Efficiency (2–5%), Very Low Efficiency (<2%),\" which can instead denote plain labels with explanatory thresholds.",
+    "importance": 2,
+    "reason": "The interpretation affects categorical values used by downstream filters and reporting.",
+    "updates": null,
+    "id": "c4-19",
+    "call": 4
+  },
+  {
+    "statement": "The timeline component of the overall candidate experience score may use a value of 3 even though timeline_experience_score is 1.",
+    "about": "requirement",
+    "target": "lever__candidate_experience_insights",
+    "evidence_of_dependence": "1::INTEGER timeline_experience_score ... +coalesce(outcome_fairness_score,3)*.2+3*.2",
+    "alternative": "The contract requires a weighted average including \"timeline 20%\", with only missing subscores defaulting to 3.",
+    "importance": 5,
+    "reason": "This changes every overall score and can change its associated experience grade.",
+    "updates": null,
+    "id": "c5-1",
+    "call": 5
+  },
+  {
+    "statement": "Improvement recommendations may be empty for every candidate rather than being derived from the specified conditions.",
+    "about": "requirement",
+    "target": "lever__candidate_experience_insights",
+    "evidence_of_dependence": "'' improvement_recommendations",
+    "alternative": "The contract requires conditional fragments including \"Accelerate decision timeline; \" when timeline_experience_score is at most 2.",
+    "importance": 5,
+    "reason": "The constant removes required recommendations, including a timeline recommendation applicable to every row.",
+    "updates": null,
+    "id": "c5-2",
+    "call": 5
+  },
+  {
+    "statement": "Most recent offers should be selected separately for each opportunity rather than separately for each candidate.",
+    "about": "requirement",
+    "target": "lever__opportunity_enhanced",
+    "evidence_of_dependence": "row_number() OVER(PARTITION BY opportunity_id ORDER BY created_at DESC)",
+    "alternative": "The contract says \"Determine the most recent offer per candidate\" and then join that selected offer on opportunity_id.",
+    "importance": 5,
+    "reason": "Candidates with offers across multiple opportunities can receive different offer flags and statuses.",
+    "updates": null,
+    "id": "c5-3",
+    "call": 5
+  },
+  {
+    "statement": "Candidate experience rows without a matching stage may be retained.",
+    "about": "requirement",
+    "target": "lever__candidate_experience_insights",
+    "evidence_of_dependence": "LEFT JOIN staging.stg_lever__stage s ON o.stage_id=s.stage_id",
+    "alternative": "The contract specifies \"join staging.stg_lever__stage (s) on o.stage_id\" rather than a left join.",
+    "importance": 4,
+    "reason": "Retaining unmatched stages changes the population and produces scores for otherwise excluded opportunities.",
+    "updates": null,
+    "id": "c5-4",
+    "call": 5
+  },
+  {
+    "statement": "Omitting the contact_info join does not change the candidate experience result.",
+    "about": "data",
+    "target": "lever__candidate_experience_insights",
+    "evidence_of_dependence": "FROM intermediate.int_lever__candidate_lifecycle cl JOIN staging.stg_lever__opportunity o USING(opportunity_id)",
+    "alternative": "The contract explicitly requires a \"left join intermediate.int_lever__contact_info (c) on contact_id\".",
+    "importance": 3,
+    "reason": "Multiple matching contact rows would multiply results under the specified join but not under this implementation.",
+    "updates": null,
+    "id": "c5-5",
+    "call": 5
+  },
+  {
+    "statement": "A zero interview denominator should produce NULL rather than DuckDB's unguarded division result.",
+    "about": "requirement",
+    "target": "lever__candidate_experience_insights",
+    "evidence_of_dependence": "round(cl.completed_interviews*100.0/nullif(cl.total_interviews,0),1) completion_rate",
+    "alternative": "The contract explicitly states \"no explicit zero-division guard\", while lifecycle defines both interview counts as zero.",
+    "importance": 3,
+    "reason": "The guard changes the completion-rate value for all rows produced by the specified lifecycle model.",
+    "updates": null,
+    "id": "c5-6",
+    "call": 5
+  },
+  {
+    "statement": "The opportunity_contact_info base contains at most one row per opportunity_id surviving the stage join.",
+    "about": "data",
+    "target": "lever__opportunity_enhanced",
+    "evidence_of_dependence": "SELECT b.* ... FROM intermediate.int_lever__opportunity_contact_info b JOIN staging.stg_lever__stage s USING(stage_id)",
+    "alternative": "The base contract allows application rows to repeat for each contact match, whereas the mart declares \"exactly one output row per\" opportunity_id.",
+    "importance": 4,
+    "reason": "Without this property the mart cannot meet its declared unique opportunity grain.",
+    "updates": null,
+    "id": "c5-7",
+    "call": 5
+  },
+  {
+    "statement": "Every base opportunity surviving the stage join has a non-null contact_id.",
+    "about": "data",
+    "target": "lever__opportunity_enhanced",
+    "evidence_of_dependence": "SELECT b.* ... JOIN staging.stg_lever__stage s USING(stage_id)",
+    "alternative": "The mart tests contact_id as not_null, but staging.stg_lever__opportunity declares contact_id without a not_null constraint.",
+    "importance": 3,
+    "reason": "No implemented filter or repair ensures this required output constraint.",
+    "updates": null,
+    "id": "c5-8",
+    "call": 5
+  },
+  {
+    "statement": "Every base opportunity surviving the stage join has a non-null created_at.",
+    "about": "data",
+    "target": "lever__opportunity_enhanced",
+    "evidence_of_dependence": "SELECT b.* ... JOIN staging.stg_lever__stage s USING(stage_id)",
+    "alternative": "The mart tests created_at as not_null, while the staging contract permits a nullable created_at.",
+    "importance": 3,
+    "reason": "Passing through missing creation timestamps violates an explicit mart constraint.",
+    "updates": null,
+    "id": "c5-9",
+    "call": 5
+  },
+  {
+    "statement": "Every stage-history event surviving the inner joins has a non-null updated_at.",
+    "about": "data",
+    "target": "lever__opportunity_stage_history",
+    "evidence_of_dependence": "h.updated_at valid_from ... FROM timeline t JOIN staging.stg_lever__stage s USING(stage_id)",
+    "alternative": "The mart requires valid_from to be not_null, but the staging history contract does not require updated_at to be non-null.",
+    "importance": 3,
+    "reason": "Neither inner join nor the timeline calculation removes events with missing start timestamps.",
+    "updates": null,
+    "id": "c5-10",
+    "call": 5
+  },
+  {
+    "statement": "Candidate insights without matching applications, and applications without matching postings, must remain in the candidate quality summary.",
+    "about": "requirement",
+    "target": "marts.lever__candidate_quality_insights",
+    "evidence_of_dependence": "FROM intermediate.int_lever__candidate_insights ci LEFT JOIN staging.stg_lever__application a USING(opportunity_id) LEFT JOIN staging.stg_lever__posting p USING(posting_id)",
+    "alternative": "The contract says \"Join candidate insights to applications on opportunity_id, then to postings on posting_id\" without specifying left joins; inner joins would exclude unmatched records.",
+    "importance": 4,
+    "reason": "Retaining unmatched records changes the analyzed population, source classification, distributions, and recommendations.",
+    "updates": null,
+    "id": "c6-1",
+    "call": 6
+  },
+  {
+    "statement": "Applications created after the execution date must be excluded from the hiring dashboard's application and candidate counts.",
+    "about": "requirement",
+    "target": "marts.lever__hiring_dashboard",
+    "evidence_of_dependence": "WHERE created_at>=current_date-INTERVAL '30 days' AND created_at<current_date+INTERVAL '1 day'",
+    "alternative": "The contract defines the window as \"on or after 30 calendar days before report_date, inclusive\" and does not specify an upper bound.",
+    "importance": 3,
+    "reason": "The extra upper bound changes both counts if future-dated applications exist.",
+    "updates": null,
+    "id": "c6-2",
+    "call": 6
+  },
+  {
+    "statement": "Each factor's qualifying groups have a unique highest average quality score.",
+    "about": "data",
+    "target": "marts.lever__candidate_quality_insights",
+    "evidence_of_dependence": "row_number() OVER(ORDER BY avg(candidate_quality_score) DESC) rn ... WHERE rn=1",
+    "alternative": "The contract warns \"If multiple groups tie for top rank, selecting a single best group is ambiguous and may fail\" and describes ties as unresolved.",
+    "importance": 3,
+    "reason": "Unverified ties make best-factor selections arbitrary and can change the primary recommendation.",
+    "updates": null,
+    "id": "c6-3",
+    "call": 6
+  },
+  {
+    "statement": "Departmental application metrics may be aggregated only by department and team and attached once to each posting, without retaining application-volume slices or their row multiplication.",
+    "about": "requirement",
+    "target": "marts.lever__departmental_hiring_trends",
+    "evidence_of_dependence": "GROUP BY b.department, b.team ... FROM base b LEFT JOIN metrics m USING (department, team)",
+    "alternative": "The contract specifies application_volume grouped by \"dept+team+location+level+commitment_type+month+quarter\" and a grain of one posting multiplied by the number of matching application_volume rows.",
+    "importance": 5,
+    "reason": "This changes both the output row count and the application metrics replicated across those rows.",
+    "updates": null,
+    "id": "c8-1",
+    "call": 8
+  },
+  {
+    "statement": "Departmental hiring outcomes and hiring-speed metrics may be zero without consulting opportunities, stages, or candidate lifecycle data.",
+    "about": "requirement",
+    "target": "marts.lever__departmental_hiring_trends",
+    "evidence_of_dependence": "0::BIGINT AS candidates_hired, 0::BIGINT AS offers_extended, 0.0 AS hire_conversion_rate ... 0.0 AS avg_time_to_hire_days",
+    "alternative": "The contract requires distinct hired and offered opportunities based on stage keywords and lifecycle averages for hired or accepted candidates.",
+    "importance": 5,
+    "reason": "These omitted sources determine hiring outcomes, conversion rates, scores, and ranks.",
+    "updates": null,
+    "id": "c8-2",
+    "call": 8
+  },
+  {
+    "statement": "Departmental interview activity and interview-based cost efficiency need not be calculated from interview, interviewer, and feedback records.",
+    "about": "requirement",
+    "target": "marts.lever__departmental_hiring_trends",
+    "evidence_of_dependence": "0::BIGINT AS total_interviews_conducted ... 0.0 AS interview_hours_per_hire ... 'No Data' AS cost_efficiency_tier",
+    "alternative": "The contract requires interview counts, durations, feedback completion, and cost_efficiency calculated through department-and-team joins with repeated sums.",
+    "importance": 5,
+    "reason": "The constants bypass both operational interview measures and the specified cost-efficiency aggregation.",
+    "updates": null,
+    "id": "c8-3",
+    "call": 8
+  },
+  {
+    "statement": "Departmental candidate-experience and screening-quality metrics may be zero without using candidate experience insights or hiring funnel metrics.",
+    "about": "requirement",
+    "target": "marts.lever__departmental_hiring_trends",
+    "evidence_of_dependence": "0.0 AS avg_candidate_experience_score, 0.0 AS positive_experience_rate, 0.0 AS avg_screening_pass_rate, 0::BIGINT AS high_efficiency_postings",
+    "alternative": "The contract requires averages from candidate experience and hiring funnel models, positive-experience opportunity counts, and distinct high-efficiency postings.",
+    "importance": 5,
+    "reason": "Unused models supply required quality measures that also influence departmental evaluation.",
+    "updates": null,
+    "id": "c8-4",
+    "call": 8
+  },
+  {
+    "statement": "The number of distinct referrers is equivalent to the number of distinct referred applications within each posting.",
+    "about": "data",
+    "target": "marts.lever__departmental_hiring_trends.referral_rate",
+    "evidence_of_dependence": "count(DISTINCT referrer_user_id) AS referred",
+    "alternative": "The contract defines referred applications as distinct applications \"where referrer_user_id is present.\"",
+    "importance": 4,
+    "reason": "A referrer associated with multiple applications would cause referral rates to be understated.",
+    "updates": null,
+    "id": "c8-5",
+    "call": 8
+  },
+  {
+    "statement": "Hiring-manager candidate-management metrics may be zero without consulting applications by posting_hiring_manager_user_id and their opportunity, lifecycle, and experience records.",
+    "about": "requirement",
+    "target": "marts.lever__hiring_manager_scorecard",
+    "evidence_of_dependence": "0.0 candidate_hire_rate,0::BIGINT total_candidates_hired,0.0 avg_candidate_lifecycle_days,0.0 avg_candidate_experience_score",
+    "alternative": "The contract requires candidate management \"per posting_hiring_manager_user_id\" with outcome counts and averages from lifecycle and candidate experience models.",
+    "importance": 5,
+    "reason": "The omitted joins remove the required candidate-management measures and their distinct manager attribution.",
+    "updates": null,
+    "id": "c8-6",
+    "call": 8
+  },
+  {
+    "statement": "Hiring-manager interview coordination metrics may be zero without consulting interviews, interviewer mappings, or interview feedback.",
+    "about": "requirement",
+    "target": "marts.lever__hiring_manager_scorecard",
+    "evidence_of_dependence": "0.0 interview_success_rate,0.0 feedback_completion_rate_managed,0::BIGINT interviewer_network_size,0::BIGINT total_interviews_coordinated",
+    "alternative": "The contract requires distinct coordinated interviews, successful interviews, interviewer users, and feedback forms per posting_hiring_manager_user_id.",
+    "importance": 5,
+    "reason": "An entire required operational component is replaced by constants despite explicitly relevant source models.",
+    "updates": null,
+    "id": "c8-7",
+    "call": 8
+  },
+  {
+    "statement": "Hiring-manager time-efficiency metrics may use zero and Unknown without joining hiring funnel metrics through applications.",
+    "about": "requirement",
+    "target": "marts.lever__hiring_manager_scorecard",
+    "evidence_of_dependence": "0.0 avg_total_days_to_hire,'Unknown' decision_speed_category,0::BIGINT high_efficiency_postings",
+    "alternative": "The contract requires application-volume-weighted funnel averages, distinct high-efficiency postings, and decision-speed thresholds.",
+    "importance": 5,
+    "reason": "The omitted source determines speed classifications and eligibility for the overall performance score.",
+    "updates": null,
+    "id": "c8-8",
+    "call": 8
+  },
+  {
+    "statement": "Hiring-manager evaluation and recommendation fields may be fixed placeholders instead of being derived from the specified metric thresholds.",
+    "about": "requirement",
+    "target": "marts.lever__hiring_manager_scorecard",
+    "evidence_of_dependence": "NULL::DOUBLE overall_performance_score,'New/Limited Experience' performance_tier,'Generalist' hiring_specialization,'' development_recommendations",
+    "alternative": "The contract defines a weighted overall score, threshold-based tiers, first-match specialization, and ordered conditional recommendation fragments.",
+    "importance": 5,
+    "reason": "These constants bypass the scorecard's principal business evaluations and recommendations.",
+    "updates": null,
+    "id": "c8-9",
+    "call": 8
+  },
+  {
+    "statement": "Weighting each posting's performance metrics by its number of joined application rows produces the required simple mean across a manager's postings.",
+    "about": "data",
+    "target": "marts.lever__hiring_manager_scorecard.post",
+    "evidence_of_dependence": "avg(pp.total_applications) ... FROM staging.stg_lever__posting p LEFT JOIN staging.stg_lever__application a USING(posting_id)",
+    "alternative": "The contract describes avg_applications_per_posting as a \"simple mean across the manager’s postings\" and the other posting averages as averages across postings.",
+    "importance": 4,
+    "reason": "Unequal application volumes cause high-volume postings to receive disproportionate weight in all three posting averages.",
+    "updates": null,
+    "id": "c8-10",
+    "call": 8
+  }
+]
+
+=== Agent steps since the last review ===
+### event 39
+
+## 命令原文
+
+head -4 sql/staging/stg_lever__contact_email.sql;
+
+## agent 实际看到的执行结果
+
+SELECT
+        try_cast(r."contact_id" AS VARCHAR(50)) AS contact_id,
+        CASE WHEN regexp_matches(trim(cast(r.\"email\" AS VARCHAR)), '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$', 'i') THEN lower(trim(cast(r."email" AS VARCHAR))) ELSE NULL END AS email
+FROM raw.contact_email AS r
+
+
+### event 41
+
+## 命令原文
+
+sed -i 's/r\\."/r."/g' sql/staging/*.sql; python run.py >/tmp/run3.log 2>&1; grep 'ERROR -' /tmp/run3.log
+
+## agent 实际看到的执行结果
+
+2026-10-25 00:39:59,571 - ERROR - ✗ staging.stg_lever__contact_email: Parser Error: syntax error at or near "\"
+2026-10-25 00:39:59,571 - ERROR - ✗ staging.stg_lever__contact_link: Parser Error: syntax error at or near "\"
+2026-10-25 00:39:59,595 - ERROR - ✗ staging.stg_lever__interview: Parser Error: syntax error at or near "\"
+2026-10-25 00:39:59,750 - ERROR - ✗ staging.stg_lever__resume: Parser Error: syntax error at or near "\"
+2026-10-25 00:39:59,759 - ERROR - ✗ staging.stg_lever__user: Parser Error: syntax error at or near "\"
+2026-10-25 00:39:59,761 - ERROR - ✗ intermediate.int_lever__contact_info: Catalog Error: Table with name stg_lever__contact_email does not exist!
+2026-10-25 00:39:59,784 - ERROR - ✗ intermediate.int_lever__opportunity_contact_info: Catalog Error: Table with name int_lever__contact_info does not exist!
+2026-10-25 00:39:59,785 - ERROR - ✗ intermediate.int_lever__interview_feedback: Catalog Error: Table with name stg_lever__interview does not exist!
+2026-10-25 00:39:59,786 - ERROR - ✗ intermediate.int_lever__interview_users: Catalog Error: Table with name stg_lever__interview does not exist!
+2026-10-25 00:39:59,786 - ERROR - ✗ intermediate.int_lever__opportunity_users: Catalog Error: Table with name stg_lever__user does not exist!
+2026-10-25 00:39:59,793 - ERROR - ✗ intermediate.int_lever__posting_interviews: Catalog Error: Table with name stg_lever__interview does not exist!
+2026-10-25 00:39:59,801 - ERROR - ✗ intermediate.int_lever__requisition_users: Catalog Error: Table with name stg_lever__user does not exist!
+2026-10-25 00:39:59,802 - ERROR - ✗ intermediate.int_lever__candidate_insights: Catalog Error: Table with name stg_lever__interview does not exist!
+2026-10-25 00:39:59,834 - ERROR - ✗ intermediate.int_lever__interviewer_performance: Catalog Error: Table with name stg_lever__user does not exist!
+2026-10-25 00:39:59,881 - ERROR - ✗ marts.lever__interview_enhanced: Catalog Error: Table with name int_lever__interview_users does not exist!
+2026-10-25 00:39:59,882 - ERROR - ✗ marts.lever__posting_enhanced: Catalog Error: Table with name int_lever__posting_interviews does not exist!
+2026-10-25 00:39:59,882 - ERROR - ✗ marts.lever__opportunity_enhanced: Catalog Error: Table with name int_lever__opportunity_contact_info does not exist!
+2026-10-25 00:39:59,883 - ERROR - ✗ marts.lever__opportunity_stage_history: Catalog Error: Table with name lever__opportunity_enhanced does not exist!
+2026-10-25 00:39:59,883 - ERROR - ✗ marts.lever__requisition_enhanced: Catalog Error: Table with name int_lever__requisition_users does not exist!
+2026-10-25 00:39:59,884 - ERROR - ✗ marts.lever__candidate_quality_insights: Catalog Error: Table with name int_lever__candidate_insights does not exist!
+2026-10-25 00:39:59,931 - ERROR - ✗ marts.lever__hiring_manager_scorecard: Catalog Error: Table with name stg_lever__user does not exist!
+2026-10-25 00:39:59,958 - ERROR - 
+
+
+

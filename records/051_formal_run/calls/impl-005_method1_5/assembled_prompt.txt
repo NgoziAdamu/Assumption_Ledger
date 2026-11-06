@@ -1,0 +1,1637 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+
+
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Google Ads advertising data transformations"
+  author: "Data Engineering Team"
+  created_date: "2025-09-08"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+  source_system: "Google Ads API"
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw Google Ads data into clean, validated, and standardized staging tables suitable for analytical processing. This phase handles data quality issues, standardizes formats, and ensures referential integrity across the hierarchical Google Ads data structure."
+
+  # IMPLEMENTATION NOTES:
+  # Due to raw data source limitations and complexity, tables are implemented using two approaches:
+  # 1. SIMPLIFIED 2-CTE structure: base -> validated (for basic config tables and performance metrics with limited source columns)
+  # 2. FULL 3-CTE structure: base -> validated -> metrics_calculated (for advanced analytics with comprehensive performance data)
+  #
+  # SIMPLIFIED Tables (2-CTE): account_history, campaign_history, campaign_stats, ad_history, ad_group_stats, ad_stats, ad_group_criterion_history, search_term_keyword_stats
+  # FULL Tables (3-CTE): account_stats, keyword_stats (these include complex calculated performance metrics)
+
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "CAST(date_field AS DATE)", "normalize phone numbers"]
+
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+    filter_row:
+      description: "Filter entire row when fields don't meet validation criteria, mainly used in simplified 2-CTE tables"
+      examples: ["WHERE ad_network_type IS NULL OR ad_network_type IN (...)"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform clean staging data into business-ready analytical models that support Google Ads performance analysis, optimization decisions, and executive reporting. This phase applies business logic to create reusable intermediate models and final analytical marts."
+  
+  design_principles:
+    intermediate_purpose: "Create reusable, business-centric data models that implement complex business logic and serve as building blocks for multiple marts."
+    mart_purpose: "Provide analysis-ready models optimized for specific business questions and reporting requirements."
+    grain_importance: "Every model must have an explicitly defined grain to ensure data consumers understand the level of aggregation and prevent misinterpretation."
+    performance_optimization: "Models should be designed for efficient querying with appropriate pre-aggregations and denormalization where beneficial."
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-005/agent/dacomp-de-impl-005/google_ads_start.duckdb
+{"table": "raw.account_history_data", "columns": ["id", "updated_at", "auto_tagging_enabled", "currency_code", "descriptive_name", "final_url_suffix", "hidden", "manager", "manager_customer_id", "optimization_score", "pay_per_conversion_eligibility_failure_reasons", "test_account", "time_zone", "tracking_url_template"]}
+{"table": "raw.account_stats_data", "columns": ["customer_id", "date", "active_view_impressions", "active_view_measurability", "active_view_measurable_cost_micros", "active_view_measurable_impressions", "active_view_viewability", "ad_network_type", "clicks", "conversions", "conversions_value", "cost_micros", "device", "impressions", "interaction_event_types", "interactions", "view_through_conversions"]}
+{"table": "raw.ad_group_criterion_history_data", "columns": ["id", "ad_group_id", "base_campaign_id", "updated_at", "type", "status", "keyword_match_type", "keyword_text"]}
+{"table": "raw.ad_group_history_data", "columns": ["id", "updated_at", "type", "campaign_id", "campaign_name", "name", "status"]}
+{"table": "raw.ad_group_stats_data", "columns": ["customer_id", "date", "active_view_impressions", "active_view_measurability", "active_view_measurable_cost_micros", "active_view_measurable_impressions", "active_view_viewability", "ad_network_type", "base_ad_group", "campaign_base_campaign", "campaign_id", "clicks", "conversions", "conversions_value", "cost_micros", "device", "id", "impressions", "interaction_event_types", "interactions", "view_through_conversions"]}
+{"table": "raw.ad_history_data", "columns": ["ad_group_id", "id", "name", "updated_at", "type", "status", "display_url", "final_urls"]}
+{"table": "raw.ad_stats_data", "columns": ["customer_id", "date", "ad_group_id", "ad_group", "keyword_ad_group_criterion", "ad_network_type", "device", "ad_id", "campaign_id", "clicks", "cost_micros", "impressions"]}
+{"table": "raw.campaign_history_data", "columns": ["id", "updated_at", "name", "customer_id", "advertising_channel_type", "advertising_channel_subtype", "start_date", "end_date", "serving_status", "status", "tracking_url_template"]}
+{"table": "raw.campaign_stats_data", "columns": ["customer_id", "date", "active_view_impressions", "active_view_measurability", "active_view_measurable_cost_micros", "active_view_measurable_impressions", "active_view_viewability", "ad_network_type", "base_campaign", "clicks", "conversions", "conversions_value", "cost_micros", "device", "id", "impressions", "interaction_event_types", "interactions", "view_through_conversions"]}
+{"table": "raw.keyword_stats_data", "columns": ["customer_id", "date", "active_view_impressions", "active_view_measurability", "active_view_measurable_cost_micros", "active_view_measurable_impressions", "active_view_viewability", "ad_group_base_ad_group", "ad_group_criterion_criterion_id", "ad_group_id", "ad_network_type", "campaign_base_campaign", "campaign_id", "clicks", "conversions", "conversions_value", "cost_micros", "device", "impressions", "interaction_event_types", "interactions", "view_through_conversions"]}
+{"table": "raw.search_term_keyword_stats_data", "columns": ["ad_group_id", "campaign_id", "clicks", "conversions", "conversions_value", "cost_micros", "customer_id", "date", "impressions", "info_text", "keyword_ad_group_criterion", "search_term", "search_term_match_type", "status", "view_through_conversions"]}
+
+
+=== Relevant specification and documentation ===
+## stg_google_ads__account_history
+
+    - name: stg_google_ads__account_history
+      description: "Cleaned and validated Google Ads account configuration data with current state tracking"
+      source_table: "raw.account_history_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: updated_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+          validation_rules:
+            - rule: "updated_at <= CURRENT_TIMESTAMP"
+              on_failure: delete_row
+        - name: currency_code
+          data_type: VARCHAR(3)
+          constraints: [not_null]
+        - name: auto_tagging_enabled
+          data_type: BOOLEAN
+        - name: time_zone
+          data_type: VARCHAR(50)
+        - name: account_name
+          data_type: VARCHAR(255)
+          constraints: [not_null]
+        - name: is_most_recent_record
+          data_type: BOOLEAN
+          constraints: [not_null]
+
+
+
+## stg_google_ads__campaign_history
+
+    - name: stg_google_ads__campaign_history
+      description: "Cleaned and validated Google Ads campaign configuration data with hierarchical relationships"
+      source_table: "raw.campaign_history_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: campaign_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: updated_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: campaign_name
+          data_type: VARCHAR(255)
+          constraints: [not_null]
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: advertising_channel_type
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "advertising_channel_type IN ('SEARCH', 'DISPLAY', 'SHOPPING', 'VIDEO', 'MULTI_CHANNEL')"
+              on_failure: nullify_field
+        - name: advertising_channel_subtype
+          data_type: VARCHAR(100)
+        - name: start_date
+          data_type: DATE
+          validation_rules:
+            - rule: "start_date <= CURRENT_DATE"
+              on_failure: delete_row
+        - name: end_date
+          data_type: DATE
+          validation_rules:
+            - rule: "end_date IS NULL OR end_date >= start_date"
+              on_failure: delete_row
+        - name: serving_status
+          data_type: VARCHAR(20)
+        - name: status
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: tracking_url_template
+          data_type: VARCHAR(500)
+        - name: is_most_recent_record
+          data_type: BOOLEAN
+          constraints: [not_null]
+
+
+
+## stg_google_ads__campaign_stats
+
+    - name: stg_google_ads__campaign_stats
+      description: "Cleaned and validated daily campaign performance metrics with computed cost conversions"
+      source_table: "raw.campaign_stats_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+          validation_rules:
+            - rule: "date_day <= CURRENT_DATE"
+              on_failure: delete_row
+            - rule: "date_day >= '2020-01-01'"
+              on_failure: delete_row
+        - name: campaign_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: ad_network_type
+          data_type: VARCHAR(20)
+        - name: device
+          data_type: VARCHAR(20)
+        - name: clicks
+          data_type: BIGINT
+        - name: spend
+          data_type: DECIMAL(15,2)
+        - name: impressions
+          data_type: BIGINT
+        - name: conversions
+          data_type: DECIMAL(10,2)
+        - name: conversions_value
+          data_type: DECIMAL(15,2)
+        - name: view_through_conversions
+          data_type: BIGINT
+
+
+
+## stg_google_ads__ad_group_history
+
+    - name: stg_google_ads__ad_group_history
+      description: "Cleaned and validated ad group configuration data maintaining campaign hierarchy"
+      source_table: "raw.ad_group_history_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: ad_group_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: updated_at
+          data_type: TIMESTAMP
+        - name: ad_group_name
+          data_type: VARCHAR(255)
+        - name: campaign_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: ad_group_type
+          data_type: VARCHAR(50)
+        - name: status
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: is_most_recent_record
+          data_type: BOOLEAN
+          constraints: [not_null]
+
+
+
+## stg_google_ads__keyword_stats
+
+    - name: stg_google_ads__keyword_stats
+      description: "Cleaned and validated keyword-level performance metrics with match type standardization"
+      source_table: "raw.keyword_stats_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+          validation_rules:
+            - rule: "date_day <= CURRENT_DATE"
+              on_failure: delete_row
+            - rule: "date_day >= '2020-01-01'"
+              on_failure: delete_row
+        - name: ad_group_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: campaign_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: criterion_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: ad_network_type
+          data_type: VARCHAR(20)
+        - name: device
+          data_type: VARCHAR(20)
+        - name: clicks
+          data_type: BIGINT
+        - name: spend
+          data_type: DECIMAL(15,2)
+        - name: impressions
+          data_type: BIGINT
+        - name: conversions
+          data_type: DECIMAL(10,2)
+        - name: conversions_value
+          data_type: DECIMAL(15,2)
+        - name: view_through_conversions
+          data_type: BIGINT
+
+
+
+## stg_google_ads__search_term_keyword_stats
+
+    - name: stg_google_ads__search_term_keyword_stats
+      description: "Cleaned and validated search term performance data with query-keyword matching using 2-CTE structure with field validations"
+      source_table: "raw.search_term_keyword_stats_data"
+      implementation: "2-CTE structure: base -> validated (with field-level CASE validations)"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+          generation: "source_relation || '-' || platform final concatenation"
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "customer_id"
+          casting: "CAST(customer_id AS VARCHAR(20))"
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+          source: "date"
+          casting: "CAST(date AS DATE)"
+        - name: ad_group_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "ad_group_id"
+          casting: "CAST(ad_group_id AS VARCHAR(20))"
+        - name: campaign_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "campaign_id"
+          casting: "CAST(campaign_id AS VARCHAR(20))"
+        - name: criterion_id
+          data_type: VARCHAR(20)
+          source: "keyword_ad_group_criterion"
+          casting: "CASE WHEN keyword_ad_group_criterion IS NOT NULL AND keyword_ad_group_criterion != '' THEN CAST(keyword_ad_group_criterion AS VARCHAR(20)) ELSE NULL END"
+        - name: search_term_match_type
+          data_type: VARCHAR(30)
+          source: "search_term_match_type"
+          validation_rules:
+            - rule: "search_term_match_type IN ('EXACT', 'PHRASE', 'BROAD', 'NEAR_EXACT', 'NEAR_PHRASE')"
+              implementation: "CASE WHEN search_term_match_type IN (...) THEN search_term_match_type ELSE NULL END"
+        - name: search_term
+          data_type: VARCHAR(500)
+          source: "search_term"
+          validation: "CASE WHEN search_term != '' THEN search_term ELSE NULL END"
+        - name: ad_network_type
+          data_type: VARCHAR(20)
+          source: "ad_network_type"
+          default: "'SEARCH' (forced for search term data)"
+          validation_rules:
+            - rule: "ad_network_type IN ('SEARCH', 'DISPLAY', 'MIXED', 'YOUTUBE')"
+              implementation: "CASE WHEN ad_network_type IN (...) THEN ad_network_type ELSE 'SEARCH' END"
+        - name: device
+          data_type: VARCHAR(20)
+          source: "device"
+          default: "'UNKNOWN' (default due to missing raw data)"
+          validation: "CASE WHEN device IN ('DESKTOP', 'MOBILE', 'TABLET') THEN device ELSE 'UNKNOWN' END"
+        - name: clicks
+          data_type: BIGINT
+          source: "clicks"
+          quality_action: "coalesce(try_cast(clicks AS BIGINT), 0)"
+        - name: spend
+          data_type: DECIMAL(15,2)
+          source: "cost_micros"
+          calculation: "cost_micros / 1000000.0"
+        - name: impressions
+          data_type: BIGINT
+          source: "impressions"
+          quality_action: "coalesce(try_cast(impressions AS BIGINT), 0)"
+        - name: conversions
+          data_type: DECIMAL(10,2)
+          source: "conversions"
+          quality_action: "coalesce(try_cast(conversions AS DOUBLE), 0.0)"
+        - name: conversions_value
+          data_type: DECIMAL(15,2)
+          source: "conversions_value"
+          quality_action: "coalesce(try_cast(conversions_value AS DOUBLE), 0.0)"
+        - name: view_through_conversions
+          data_type: BIGINT
+          source: "view_through_conversions"
+          quality_action: "coalesce(try_cast(view_through_conversions AS BIGINT), 0)"
+
+
+
+## stg_google_ads__account_stats
+
+    - name: stg_google_ads__account_stats
+      description: "Cleaned and validated account-level performance statistics"
+      source_table: "raw.account_stats_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: ad_network_type
+          data_type: VARCHAR(20)
+        - name: device
+          data_type: VARCHAR(20)
+        - name: clicks
+          data_type: BIGINT
+        - name: spend
+          data_type: DECIMAL(15,2)
+        - name: impressions
+          data_type: BIGINT
+        - name: conversions
+          data_type: DECIMAL(10,2)
+        - name: conversions_value
+          data_type: DECIMAL(15,2)
+        - name: view_through_conversions
+          data_type: BIGINT
+
+
+
+## stg_google_ads__ad_history
+
+    - name: stg_google_ads__ad_history
+      description: "Cleaned and validated ad configuration data"
+      source_table: "raw.ad_history_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: ad_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: updated_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+          validation_rules:
+            - rule: "updated_at <= CURRENT_TIMESTAMP"
+              on_failure: delete_row
+        - name: ad_group_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: ad_name
+          data_type: VARCHAR(255)
+        - name: status
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "status IN ('ENABLED', 'PAUSED', 'REMOVED')"
+              on_failure: nullify_field
+        - name: ad_type
+          data_type: VARCHAR(50)
+        - name: display_url
+          data_type: VARCHAR(500)
+        - name: final_urls
+          data_type: VARCHAR(1000)
+        - name: is_most_recent_record
+          data_type: BOOLEAN
+          constraints: [not_null]
+
+
+
+## stg_google_ads__ad_stats
+
+    - name: stg_google_ads__ad_stats
+      description: "Cleaned and validated ad-level performance statistics using simplified 2-CTE structure due to limited raw data columns"
+      source_table: "raw.ad_stats_data"
+      implementation: "2-CTE structure: base -> validated (no metrics_calculated due to limited source columns)"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+          generation: "'google_ads' as platform and source_relation"
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "customer_id"
+          casting: "CAST(customer_id AS VARCHAR(20))"
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+          source: "date"
+          casting: "CAST(date AS DATE)"
+          validation_rules:
+            - rule: "date_day <= CURRENT_DATE"
+              on_failure: delete_row
+            - rule: "date_day >= '2020-01-01'"
+              on_failure: delete_row
+        - name: ad_group_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "ad_group_id"
+          casting: "CAST(ad_group_id AS VARCHAR(20))"
+        - name: ad_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "ad_id"
+          casting: "CAST(ad_id AS VARCHAR(20))"
+        - name: campaign_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "campaign_id"
+          casting: "CAST(campaign_id AS VARCHAR(20))"
+        - name: ad_network_type
+          data_type: VARCHAR(20)
+          validation_rules:
+            - rule: "ad_network_type IN ('SEARCH', 'DISPLAY', 'MIXED', 'YOUTUBE') OR ad_network_type IS NULL"
+              on_failure: delete_row  # Current implementation uses WHERE clause filtering
+        - name: device
+          data_type: VARCHAR(20)
+          source: "device"
+          casting: "CAST(device AS VARCHAR(20))"
+          default: "from validated: no transformation"
+        - name: clicks
+          data_type: BIGINT
+          source: "clicks"
+          quality_action: "coalesce(try_cast(clicks AS BIGINT), 0)"
+        - name: spend
+          data_type: DECIMAL(15,2)
+          source: "cost_micros"
+          calculation: "cost_micros / 1000000.0"
+          casting: "CAST(cost AS DECIMAL(15,2))"
+        - name: impressions
+          data_type: BIGINT
+          source: "impressions"
+          quality_action: "coalesce(try_cast(impressions AS BIGINT), 0)"
+        - name: conversions
+          data_type: DECIMAL(10,2)
+          notes: "Missing from source data - generated as NULL/0.0"
+          default: "CAST(0.0 AS DECIMAL(10,2)) as conversions"
+        - name: conversions_value
+          data_type: DECIMAL(15,2)
+          notes: "Missing from source data - generated as NULL/0.0"
+          default: "CAST(0.0 AS DECIMAL(15,2)) as conversions_value"
+        - name: view_through_conversions
+          data_type: BIGINT
+          notes: "Missing from source data - generated as NULL/0"
+          default: "CAST(0 AS BIGINT) as view_through_conversions"
+
+
+
+## stg_google_ads__ad_group_stats
+
+    - name: stg_google_ads__ad_group_stats
+      description: "Cleaned and validated ad group performance statistics"
+      source_table: "raw.ad_group_stats_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+        - name: ad_group_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: campaign_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: ad_network_type
+          data_type: VARCHAR(20)
+          validation_rules:
+            - rule: "ad_network_type IN ('SEARCH', 'DISPLAY', 'MIXED', 'YOUTUBE')"
+              on_failure: nullify_field
+        - name: device
+          data_type: VARCHAR(20)
+        - name: clicks
+          data_type: BIGINT
+        - name: spend
+          data_type: DECIMAL(15,2)
+        - name: impressions
+          data_type: BIGINT
+        - name: conversions
+          data_type: DECIMAL(10,2)
+        - name: conversions_value
+          data_type: DECIMAL(15,2)
+        - name: view_through_conversions
+          data_type: BIGINT
+
+
+
+## stg_google_ads__ad_group_criterion_history
+
+    - name: stg_google_ads__ad_group_criterion_history
+      description: "Cleaned and validated ad group criterion configuration data"
+      source_table: "raw.ad_group_criterion_history_data"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+        - name: criterion_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: updated_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: ad_group_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: type
+          data_type: VARCHAR(50)
+        - name: status
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+        - name: keyword_match_type
+          data_type: VARCHAR(30)
+        - name: keyword_text
+          data_type: VARCHAR(500)
+        - name: is_most_recent_record
+          data_type: BOOLEAN
+          constraints: [not_null]
+
+  
+# --------------------------------------------------------------------------- #
+# PHASE 2: Defines the business logic from staging tables to analytical models. #
+# --------------------------------------------------------------------------- #
+
+
+## google_ads__account_report
+
+    - name: google_ads__account_report
+      description: Daily account-level aggregation of Google Ads stats joined to the most recent account attributes with summed performance metrics
+      grain: One row per distinct combination of source_relation, date_day, account_id, account_name, currency_code, auto_tagging_enabled, time_zone
+      source_models:
+      - staging.stg_google_ads__account_stats
+      - staging.stg_google_ads__account_history
+      business_logic: '- Load all rows from staging.stg_google_ads__account_stats (stats). - Load rows from staging.stg_google_ads__account_history (accounts) flagged as the most recent record. - Left join stats to accounts by matching account_id and source_relation. - Group by source_relation, date_day, account_name, account_id, currency_code, auto_tagging_enabled, and time_zone. - For each group, sum spend, clicks, impressions, conversions, conversions_value, and view_through_conversions from stats. - Aggregation behavior: - Sums ignore NULL inputs; if all inputs for a metric in a group are NULL, the result is NULL. - No additional filters, rounding, casting, or currency conversion are applied; numeric types follow engine defaults (DOUBLE for monetary/fractional metrics, HUGEINT for count metrics). - If multiple “most recent” account rows exist for the same account_id and source_relation, the join duplicates stats rows and those duplicates are included in the sums. - Account attributes (account_name, currency_code, auto_tagging_enabled, time_zone) come from the joined accounts record and are NULL when no match exists; values are preserved as stored.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source relation identifier from stats; part of the grouping key; preserved as stored
+      - name: date_day
+        data_type: DATE
+        description: Calendar date from stats; part of the grouping key; no timezone transformation
+      - name: account_name
+        data_type: VARCHAR
+        description: Account name from the most recent accounts record; may be NULL if no match
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier from stats; part of the join and grouping key; preserved as stored
+      - name: currency_code
+        data_type: VARCHAR
+        description: Account currency code from accounts; may be NULL; spend and conversions_value are reported in this currency when present
+      - name: auto_tagging_enabled
+        data_type: BOOLEAN
+        description: Boolean flag from accounts indicating auto-tagging; may be NULL if no match
+      - name: time_zone
+        data_type: VARCHAR
+        description: Account time zone from accounts; may be NULL; value preserved as stored
+      - name: spend
+        data_type: DOUBLE
+        description: Sum of spend per group from stats; unit is account currency; NULLs ignored; result is NULL if all inputs are NULL; no rounding
+      - name: clicks
+        data_type: HUGEINT
+        description: Sum of clicks per group from stats; NULLs ignored; result is NULL if all inputs are NULL
+      - name: impressions
+        data_type: HUGEINT
+        description: Sum of impressions per group from stats; NULLs ignored; result is NULL if all inputs are NULL
+      - name: conversions
+        data_type: DOUBLE
+        description: Sum of conversions per group from stats (fractional supported); NULLs ignored; result is NULL if all inputs are NULL
+      - name: conversions_value
+        data_type: DOUBLE
+        description: Sum of conversions_value per group from stats; unit is account currency; NULLs ignored; result is NULL if all inputs are NULL
+      - name: view_through_conversions
+        data_type: HUGEINT
+        description: Sum of view_through_conversions per group from stats; NULLs ignored; result is NULL if all inputs are NULL
+
+
+## google_ads__campaign_report
+
+    - name: google_ads__campaign_report
+      description: Daily campaign performance aggregated from stats with current campaign/account attributes
+      grain: One row per combination of source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, advertising_channel_type, advertising_channel_subtype, status
+      source_models:
+      - staging.stg_google_ads__campaign_stats
+      - staging.stg_google_ads__campaign_history
+      - staging.stg_google_ads__account_history
+      business_logic: '- Base: use all rows from staging.stg_google_ads__campaign_stats as the fact table (stats). - Dimension scoping: use only records flagged as most recent in staging.stg_google_ads__campaign_history and staging.stg_google_ads__account_history. - Joins: - Left join campaigns by matching source_relation and campaign_id to bring in campaign attributes. - Left join accounts by matching the joined campaign''s source_relation and account_id to bring in account attributes. - Account attributes populate only when a campaign match exists and that campaign links to a matching most recent account; otherwise they remain NULL. - No deduplication beyond the most-recent filters; if multiple "most recent" rows exist per key, stats rows will repeat per join semantics. - Grouping: group by these 10 fields to form the row grain: source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, advertising_channel_type, advertising_channel_subtype, status. - Aggregations over stats: - For each group, spend, clicks, impressions, conversions, conversion value, and view-through conversions are calculated by adding values from all contributing stats rows; rows are not deduplicated; NULL inputs are ignored, and if all inputs are NULL the result is NULL; no rounding is applied. - Currency: spend and conversion value are expressed in the account currency_code; no currency conversion is performed. - Output: return exactly the grouped dimensions and aggregated measures, one row per group.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source system identifier carried through from stats and used for joins and grouping
+        tests:
+        - not_null
+      - name: date_day
+        data_type: DATE
+        description: Date of performance attribution from stats
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Account name from the most recent account linked via the joined campaign; NULL if no matching campaign or account
+      - name: account_id
+        data_type: VARCHAR
+        description: Account ID from the most recent account linked via the joined campaign; NULL if no matching campaign or account
+      - name: currency_code
+        data_type: VARCHAR
+        description: ISO-4217 currency code from the most recent account linked via the joined campaign; units for spend and conversions_value; NULL if no matching campaign or account
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign name from the most recent campaign record; NULL if no matching campaign
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier from stats used for joins and grouping
+        tests:
+        - not_null
+      - name: advertising_channel_type
+        data_type: VARCHAR
+        description: Advertising channel type from the most recent campaign record; NULL if no matching campaign
+      - name: advertising_channel_subtype
+        data_type: VARCHAR
+        description: Advertising channel subtype from the most recent campaign record; NULL if no matching campaign
+      - name: status
+        data_type: VARCHAR
+        description: Campaign status from the most recent campaign record; NULL if no matching campaign
+      - name: spend
+        data_type: DOUBLE
+        description: Total spend for the group from stats; NULLs ignored; returns NULL if all NULL; units in currency_code; no rounding
+      - name: clicks
+        data_type: HUGEINT
+        description: Total clicks for the group from stats; NULLs ignored; returns NULL if all NULL
+      - name: impressions
+        data_type: HUGEINT
+        description: Total impressions for the group from stats; NULLs ignored; returns NULL if all NULL
+      - name: conversions
+        data_type: DOUBLE
+        description: Total conversions for the group from stats; NULLs ignored; returns NULL if all NULL
+      - name: conversions_value
+        data_type: DOUBLE
+        description: Total conversion value for the group from stats; NULLs ignored; returns NULL if all NULL; units in currency_code; no rounding
+      - name: view_through_conversions
+        data_type: HUGEINT
+        description: Total view-through conversions for the group from stats; NULLs ignored; returns NULL if all NULL
+
+
+## google_ads__ad_group_report
+
+    - name: google_ads__ad_group_report
+      description: Daily ad group performance aggregated with the latest account, campaign, and ad group attributes
+      grain: One row per unique combination of source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, ad_group_name, ad_group_id, ad_group_type, status
+      source_models:
+      - staging.stg_google_ads__ad_group_stats
+      - staging.stg_google_ads__account_history
+      - staging.stg_google_ads__campaign_history
+      - staging.stg_google_ads__ad_group_history
+      business_logic: '- Use daily ad group metrics from staging.stg_google_ads__ad_group_stats. - From each history table, keep only rows flagged as the most recent (is_most_recent_record = true). - Left join stats to: • Ad group history by matching ad_group_id and source_relation. • Campaign history by matching campaign_id and source_relation. • Account history by matching account_id and source_relation. If a match is missing, the joined attributes remain NULL; no defaults are applied. - Group by these 11 dimensions: source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, ad_group_name, ad_group_id, ad_group_type, status. - For each group, sum spend, clicks, impressions, conversions, conversions_value, and view_through_conversions across all rows in stats; NULL inputs are ignored, and an all-NULL group yields NULL. No rounding or currency conversion is performed. - Duplicates in stats contribute to the sums. If a history table has multiple "most recent" rows for the same ID and source, joins may fan out and inflate aggregates; no deduplication is performed.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source identifier used for joins; part of the grain
+        tests:
+        - not_null
+      - name: date_day
+        data_type: DATE
+        description: Stats date for daily aggregation; part of the grain
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Latest account name; NULL if no account match
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier from stats; part of the grain
+        tests:
+        - not_null
+      - name: currency_code
+        data_type: VARCHAR
+        description: Latest account currency; sets currency for spend and conversions_value; NULL if no account match
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Latest campaign name; NULL if no campaign match
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier from stats; part of the grain
+        tests:
+        - not_null
+      - name: ad_group_name
+        data_type: VARCHAR
+        description: Latest ad group name; NULL if no ad group match
+      - name: ad_group_id
+        data_type: VARCHAR
+        description: Ad group identifier from stats; part of the grain
+        tests:
+        - not_null
+      - name: ad_group_type
+        data_type: VARCHAR
+        description: Latest ad group type; NULL if no ad group match
+      - name: status
+        data_type: VARCHAR
+        description: Latest ad group status; NULL if no ad group match
+      - name: spend
+        data_type: DOUBLE
+        description: Sum of spend over grouped rows; NULLs ignored; currency is currency_code; no rounding
+      - name: clicks
+        data_type: HUGEINT
+        description: Sum of clicks over grouped rows; NULLs ignored; integer count
+      - name: impressions
+        data_type: HUGEINT
+        description: Sum of impressions over grouped rows; NULLs ignored; integer count
+      - name: conversions
+        data_type: DOUBLE
+        description: Sum of conversions over grouped rows; NULLs ignored; no rounding
+      - name: conversions_value
+        data_type: DOUBLE
+        description: Sum of conversion value over grouped rows; NULLs ignored; currency is currency_code; no rounding
+      - name: view_through_conversions
+        data_type: HUGEINT
+        description: Sum of view-through conversions over grouped rows; NULLs ignored; integer count
+
+
+## google_ads__ad_report
+
+    - name: google_ads__ad_report
+      description: Ad-level daily performance with latest creative and hierarchy attributes
+      grain: One row per source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, ad_group_name, ad_group_id, ad_name, ad_id, ad_type, status, display_url
+      source_models:
+      - staging.stg_google_ads__ad_stats
+      - staging.stg_google_ads__account_history
+      - staging.stg_google_ads__campaign_history
+      - staging.stg_google_ads__ad_group_history
+      - staging.stg_google_ads__ad_history
+      business_logic: '- Read ad performance from staging.stg_google_ads__ad_stats (stats). - From each history table (accounts, campaigns, ad_groups, ads), restrict to is_most_recent_record = TRUE. - Left join stats to: - ads on (ad_id, source_relation) - ad_groups on (ad_group_id, source_relation) - campaigns on (campaign_id, source_relation) - accounts on (account_id, source_relation) - Group by source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, ad_group_name, ad_group_id, ad_name, ad_id, ad_type, status, display_url. - Aggregate metrics as SUM over grouped rows: spend, clicks, impressions, conversions, conversions_value, view_through_conversions. - SUM skips NULL inputs; if all inputs are NULL, the result is NULL; no defaulting to zero. - Descriptive attributes (names, ad_type, status, display_url, currency_code) are taken from the most recent history record and remain NULL if no match exists. - Monetary fields (spend, conversions_value) are in the account currency indicated by currency_code and retain scale 2. - Assumes each history table returns a single most recent row per (source_relation, entity_id); otherwise, joins may duplicate stats prior to aggregation.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source relation identifier used to disambiguate records across sources; propagated from stats
+      - name: date_day
+        data_type: DATE
+        description: Calendar date of the performance metrics from stats
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Account name from the most recent account_history; NULL if no match
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier from stats used for joining to account attributes
+      - name: currency_code
+        data_type: VARCHAR
+        description: Account currency from the most recent account_history; used for spend and value; may be NULL
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign name from the most recent campaign_history; NULL if no match
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier from stats used for joining to campaign attributes
+      - name: ad_group_name
+        data_type: VARCHAR
+        description: Ad group name from the most recent ad_group_history; NULL if no match
+      - name: ad_group_id
+        data_type: VARCHAR
+        description: Ad group identifier from stats used for joining to ad group attributes
+      - name: ad_name
+        data_type: VARCHAR
+        description: Ad name from the most recent ad_history; NULL if no match
+      - name: ad_id
+        data_type: VARCHAR
+        description: Ad identifier from stats; primary ad key within the grain
+        tests:
+        - not_null
+      - name: ad_type
+        data_type: VARCHAR
+        description: Ad type from the most recent ad_history; NULL if no match
+      - name: status
+        data_type: VARCHAR
+        description: Ad status from the most recent ad_history; NULL if no match
+      - name: display_url
+        data_type: VARCHAR
+        description: Display URL from the most recent ad_history; NULL if no match
+      - name: spend
+        data_type: DECIMAL(38,2)
+        description: Sum of spend across grouped stats rows in account currency; NULL if all inputs are NULL
+      - name: clicks
+        data_type: HUGEINT
+        description: Sum of clicks across grouped stats rows; NULL if all inputs are NULL
+      - name: impressions
+        data_type: HUGEINT
+        description: Sum of impressions across grouped stats rows; NULL if all inputs are NULL
+      - name: conversions
+        data_type: DECIMAL(38,2)
+        description: Sum of conversions across grouped stats rows; may be fractional; NULL if all inputs are NULL
+      - name: conversions_value
+        data_type: DECIMAL(38,2)
+        description: Sum of conversion value across grouped stats rows in account currency; NULL if all inputs are NULL
+      - name: view_through_conversions
+        data_type: HUGEINT
+        description: Sum of view-through conversions across grouped stats rows; NULL if all inputs are NULL
+
+
+## google_ads__keyword_report
+
+    - name: google_ads__keyword_report
+      description: Daily keyword performance aggregated and enriched with most-recent account, campaign, ad group, and keyword attributes
+      grain: One row per unique combination of source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, ad_group_name, ad_group_id, criterion_id, type, status, keyword_match_type, keyword_text
+      source_models:
+      - staging.stg_google_ads__keyword_stats
+      - staging.stg_google_ads__account_history
+      - staging.stg_google_ads__campaign_history
+      - staging.stg_google_ads__ad_group_history
+      - staging.stg_google_ads__ad_group_criterion_history
+      business_logic: '- Load stats from staging.stg_google_ads__keyword_stats (no filters). - Restrict each history table to is_most_recent_record = true to represent current attributes. - Left join stats to: - criterions on (criterion_id, source_relation), - ad_groups on (ad_group_id, source_relation), - campaigns on (campaign_id, source_relation), - accounts on (account_id, source_relation). - Group by the 14 attribute columns: source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, ad_group_name, ad_group_id, criterion_id, type, status, keyword_match_type, keyword_text. - Aggregate metrics with SUM: spend, clicks, impressions, conversions, conversions_value, view_through_conversions. Determinism: - SUM ignores NULL inputs; if all inputs in a group are NULL the result is NULL. - If a history table has multiple most-recent rows for the same id and source_relation, joins will duplicate stats rows and sums will inflate accordingly. - Attributes (names, status, match type, text, currency) come from the most recent history records; if a join does not find a match, those attributes are NULL but the stats group remains. - No ordering is applied in the final output; one row is returned per grouped attribute set with summed metrics; original casing and spacing are preserved.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Upstream source relation identifier used to disambiguate IDs across sources
+        tests:
+        - not_null
+      - name: date_day
+        data_type: DATE
+        description: Statistical date for the keyword performance (UTC day)
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Most-recent account name from account_history joined by account_id and source_relation; NULL if no match
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier from stats used to join to the most-recent account record
+        tests:
+        - not_null
+      - name: currency_code
+        data_type: VARCHAR
+        description: Account currency code from the most-recent account record; NULL if no match
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Most-recent campaign name from campaign_history joined by campaign_id and source_relation; NULL if no match
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign identifier from stats used to join to the most-recent campaign record
+        tests:
+        - not_null
+      - name: ad_group_name
+        data_type: VARCHAR
+        description: Most-recent ad group name from ad_group_history joined by ad_group_id and source_relation; NULL if no match
+      - name: ad_group_id
+        data_type: VARCHAR
+        description: Ad group identifier from stats used to join to the most-recent ad group record
+        tests:
+        - not_null
+      - name: criterion_id
+        data_type: VARCHAR
+        description: Keyword criterion identifier from stats used to join to the most-recent criterion record
+        tests:
+        - not_null
+      - name: type
+        data_type: VARCHAR
+        description: Most-recent criterion type from ad_group_criterion_history; NULL if no match
+      - name: status
+        data_type: VARCHAR
+        description: Most-recent keyword status from ad_group_criterion_history; NULL if no match
+      - name: keyword_match_type
+        data_type: VARCHAR
+        description: Most-recent keyword match type from ad_group_criterion_history; NULL if no match
+      - name: keyword_text
+        data_type: VARCHAR
+        description: Most-recent keyword text from ad_group_criterion_history; original casing and spacing; NULL if no match
+      - name: spend
+        data_type: DOUBLE
+        description: Sum of spend for the group in account currency; NULL if all inputs are NULL
+        tests:
+        - spend >= 0
+      - name: clicks
+        data_type: HUGEINT
+        description: Sum of clicks for the group; NULL if all inputs are NULL
+        tests:
+        - clicks >= 0
+      - name: impressions
+        data_type: HUGEINT
+        description: Sum of impressions for the group; NULL if all inputs are NULL
+        tests:
+        - impressions >= 0
+      - name: conversions
+        data_type: DOUBLE
+        description: Sum of conversions for the group; NULL if all inputs are NULL
+        tests:
+        - conversions >= 0
+      - name: conversions_value
+        data_type: DOUBLE
+        description: Sum of conversion value for the group in account currency; NULL if all inputs are NULL
+        tests:
+        - conversions_value >= 0
+      - name: view_through_conversions
+        data_type: HUGEINT
+        description: Sum of view-through conversions for the group; NULL if all inputs are NULL
+        tests:
+        - view_through_conversions >= 0
+
+
+## google_ads__search_term_report
+
+    - name: google_ads__search_term_report
+      description: Search term performance aggregated by day with latest entity attributes joined.
+      grain: One row per unique combination of source_relation, date_day, account_id, campaign_id, ad_group_id, criterion_id, search_term, search_term_match_type, account_name, currency_code, campaign_name, ad_group_name, keyword_text, keyword_match_type
+      source_models:
+      - staging.stg_google_ads__search_term_keyword_stats
+      - staging.stg_google_ads__account_history
+      - staging.stg_google_ads__campaign_history
+      - staging.stg_google_ads__ad_group_history
+      - staging.stg_google_ads__ad_group_criterion_history
+      business_logic: '- Read daily search term keyword stats. - From each history table (accounts, campaigns, ad_groups, criterions), keep only rows marked as the most recent snapshot. - Left join stats to the latest snapshots using source_relation plus the respective IDs: - criterion_id to load keyword_text and keyword_match_type, - ad_group_id to load ad_group_name, - campaign_id to load campaign_name, - account_id to load account_name and currency_code. - Aggregate by the full combination of: source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, ad_group_name, ad_group_id, criterion_id, keyword_text, keyword_match_type, search_term, search_term_match_type. - For each group, add up spend, clicks, impressions, conversions, conversion value, and view-through conversions. Null inputs are ignored; if all values are null the result is null. Decimal scales are preserved per column definitions. No additional deduplication beyond the aggregation keys.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source system identifier used to scope joins and aggregation.
+      - name: date_day
+        data_type: DATE
+        description: Calendar date of the stats; used as part of the aggregation key.
+      - name: account_name
+        data_type: VARCHAR
+        description: Latest account name from the accounts snapshot; may be null if no match.
+      - name: account_id
+        data_type: VARCHAR
+        description: Account ID from stats; join key to the accounts snapshot and part of the aggregation key.
+      - name: currency_code
+        data_type: VARCHAR
+        description: Latest account currency code from the accounts snapshot; may be null if no match.
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Latest campaign name from the campaigns snapshot; may be null if no match.
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign ID from stats; join key to the campaigns snapshot and part of the aggregation key.
+      - name: ad_group_name
+        data_type: VARCHAR
+        description: Latest ad group name from the ad_groups snapshot; may be null if no match.
+      - name: ad_group_id
+        data_type: VARCHAR
+        description: Ad group ID from stats; join key to the ad_groups snapshot and part of the aggregation key.
+      - name: criterion_id
+        data_type: VARCHAR
+        description: Keyword criterion ID from stats; join key to the criterions snapshot and part of the aggregation key.
+      - name: keyword_text
+        data_type: VARCHAR
+        description: Latest keyword text from the criterions snapshot; may be null if no match.
+      - name: keyword_match_type
+        data_type: VARCHAR
+        description: Latest keyword match type from the criterions snapshot; may be null if no match.
+      - name: search_term
+        data_type: VARCHAR
+        description: User query string from stats; part of the aggregation key; value preserved as provided.
+      - name: search_term_match_type
+        data_type: VARCHAR
+        description: Search term match type from stats; part of the aggregation key; value preserved as provided.
+      - name: spend
+        data_type: DECIMAL(38,2)
+        description: Total spend per group; null inputs ignored; null if all inputs are null; denominated by currency_code.
+      - name: clicks
+        data_type: HUGEINT
+        description: Total clicks per group; null inputs ignored; null if all inputs are null.
+      - name: impressions
+        data_type: HUGEINT
+        description: Total impressions per group; null inputs ignored; null if all inputs are null.
+      - name: conversions
+        data_type: DECIMAL(38,2)
+        description: Total conversions per group; null inputs ignored; null if all inputs are null.
+      - name: conversions_value
+        data_type: DECIMAL(38,2)
+        description: Total conversion value per group; null inputs ignored; null if all inputs are null; denominated by currency_code.
+      - name: view_through_conversions
+        data_type: HUGEINT
+        description: Total view-through conversions per group; null inputs ignored; null if all inputs are null.
+
+
+## google_ads__url_report
+
+    - name: google_ads__url_report
+      description: Daily URL performance aggregated from ad stats with denormalized account, campaign, and ad group context.
+      grain: One row per source_relation, date_day, account_name, account_id, currency_code, campaign_name, campaign_id, ad_group_name, ad_group_id, ad_id, base_url, url_host, url_path, utm_source, utm_medium, utm_campaign, utm_content, utm_term
+      source_models:
+      - staging.stg_google_ads__ad_stats
+      - staging.stg_google_ads__ad_history (is_most_recent_record = true)
+      - staging.stg_google_ads__ad_group_history (is_most_recent_record = true)
+      - staging.stg_google_ads__campaign_history (is_most_recent_record = true)
+      - staging.stg_google_ads__account_history (is_most_recent_record = true)
+      business_logic: '- Use ad stats as the base. - Limit each history table (ads, ad groups, campaigns, accounts) to its most recent record. - Join ads to stats on matching ad_id, ad_group_id, and source_relation from stats. - Join ad groups to ads on matching ad_group_id and source_relation. - Join campaigns to ad groups on matching campaign_id and source_relation. - Join accounts to campaigns on matching account_id and source_relation. - Keep only rows where the joined ad has a non-null final URL. - Set dimensions: - base_url from the ad’s final_urls; url_host and url_path as the literal "unknown". - utm_source = "google"; utm_medium = "cpc"; utm_term = "unknown". - utm_campaign from campaign_name; utm_content from ad_group_name. - For each unique combination of the listed grain fields, aggregate metrics by summing spend, clicks, impressions, conversions, conversions_value, and view_through_conversions from ad stats. - Summations skip null inputs and return null if all inputs in the group are null; no ordering or de-duplication beyond the grouping keys; numeric precision follows the column types.'
+      columns:
+      - name: source_relation
+        data_type: VARCHAR
+        description: Source identifier from ad stats used to align joins across tables.
+      - name: date_day
+        data_type: DATE
+        description: Stats date that defines the daily grouping key.
+        tests:
+        - not_null
+      - name: account_name
+        data_type: VARCHAR
+        description: Account name from the most recent account record; may be NULL if the join does not match.
+      - name: account_id
+        data_type: VARCHAR
+        description: Account ID from the most recent account record; may be NULL if the join does not match.
+      - name: currency_code
+        data_type: VARCHAR
+        description: Account currency code from the most recent account record; may be NULL if the join does not match.
+      - name: campaign_name
+        data_type: VARCHAR
+        description: Campaign name from the most recent campaign record; may be NULL if the join does not match.
+      - name: campaign_id
+        data_type: VARCHAR
+        description: Campaign ID from the most recent campaign record; may be NULL if the join does not match.
+      - name: ad_group_name
+        data_type: VARCHAR
+        description: Ad group name from the most recent ad group record; may be NULL if the join does not match.
+      - name: ad_group_id
+        data_type: VARCHAR
+        description: Ad group ID from ad stats used in joins and as a grouping key.
+      - name: ad_id
+        data_type: VARCHAR
+        description: Ad ID from ad stats used in joins and as a grouping key.
+      - name: base_url
+        data_type: VARCHAR
+        description: Final URL from the most recent ad record; always non-NULL due to the filter.
+        tests:
+        - not_null
+      - name: url_host
+        data_type: VARCHAR
+        description: Static placeholder set to 'unknown'.
+      - name: url_path
+        data_type: VARCHAR
+        description: Static placeholder set to 'unknown'.
+      - name: utm_source
+        data_type: VARCHAR
+        description: Static UTM source set to 'google'.
+      - name: utm_medium
+        data_type: VARCHAR
+        description: Static UTM medium set to 'cpc'.
+      - name: utm_campaign
+        data_type: VARCHAR
+        description: UTM campaign mirrored from campaign_name; may be NULL.
+      - name: utm_content
+        data_type: VARCHAR
+        description: UTM content mirrored from ad_group_name; may be NULL.
+      - name: utm_term
+        data_type: VARCHAR
+        description: Static UTM term set to 'unknown'.
+      - name: spend
+        data_type: DECIMAL(38,2)
+        description: Total spend summed across stats rows within the grouping keys.
+      - name: clicks
+        data_type: HUGEINT
+        description: Total clicks summed across stats rows within the grouping keys.
+      - name: impressions
+        data_type: HUGEINT
+        description: Total impressions summed across stats rows within the grouping keys.
+      - name: conversions
+        data_type: DECIMAL(38,2)
+        description: Total conversions summed across stats rows within the grouping keys.
+      - name: conversions_value
+        data_type: DECIMAL(38,2)
+        description: Total conversion value summed across stats rows within the grouping keys.
+      - name: view_through_conversions
+        data_type: HUGEINT
+        description: Total view-through conversions summed across stats rows within the grouping keys.
+
+
+
+
+=== Premises recorded in earlier reviews ===
+[
+  {
+    "statement": "Campaign records whose advertising channel is outside the allowed set should be deleted rather than retained with a null channel.",
+    "about": "requirement",
+    "target": "stg_google_ads__campaign_history",
+    "evidence_of_dependence": "case when advertising_channel_type in (...) then advertising_channel_type end advertising_channel_type ... and advertising_channel_type is not null",
+    "alternative": "The channel validation explicitly specifies \"on_failure: nullify_field\", although the column also has a not_null constraint.",
+    "importance": 5,
+    "reason": "The implementation resolves conflicting instructions by removing entire records.",
+    "updates": null,
+    "id": "c2-1",
+    "call": 2
+  },
+  {
+    "statement": "Ad records with unrecognized statuses should be deleted rather than retained with a null status.",
+    "about": "requirement",
+    "target": "stg_google_ads__ad_history",
+    "evidence_of_dependence": "case when status in ('ENABLED','PAUSED','REMOVED') then status end status ... and status is not null",
+    "alternative": "The status validation specifies \"on_failure: nullify_field\", although status also has a not_null constraint.",
+    "importance": 5,
+    "reason": "This choice changes which ads survive staging.",
+    "updates": null,
+    "id": "c2-2",
+    "call": 2
+  },
+  {
+    "statement": "Replacing an invalid ad network with null before filtering is equivalent to deleting the invalid-network row.",
+    "about": "requirement",
+    "target": "stg_google_ads__ad_stats",
+    "evidence_of_dependence": "case when ad_network_type in ('SEARCH','DISPLAY','MIXED','YOUTUBE') or ad_network_type is null then ad_network_type end ad_network_type",
+    "alternative": "The contract requires \"on_failure: delete_row\" for invalid ad networks.",
+    "importance": 5,
+    "reason": "Invalid networks become null and pass the final null-network condition.",
+    "updates": null,
+    "id": "c2-3",
+    "call": 2
+  },
+  {
+    "statement": "Every ad-statistics record whose validated network is null already satisfies all required identifier and date checks.",
+    "about": "data",
+    "target": "stg_google_ads__ad_stats",
+    "evidence_of_dependence": "WHERE account_id is not null and date_day between DATE '2020-01-01' and current_date ... and ad_network_type in (...) or ad_network_type is null",
+    "alternative": "The contract requires non-null identifiers and date bounds independently of the network value.",
+    "importance": 5,
+    "reason": "The unparenthesized OR permits null-network records to bypass every preceding check.",
+    "updates": null,
+    "id": "c2-4",
+    "call": 2
+  },
+  {
+    "statement": "The campaign identifier required in campaign statistics is base_campaign rather than id.",
+    "about": "data",
+    "target": "stg_google_ads__campaign_stats",
+    "evidence_of_dependence": "CAST(base_campaign AS VARCHAR(20)) campaign_id",
+    "alternative": "The raw-table index also lists an \"id\" column, but the supplied specification does not resolve the mapping.",
+    "importance": 4,
+    "reason": "The choice determines campaign attribution for every performance record.",
+    "updates": null,
+    "id": "c2-5",
+    "call": 2
+  },
+  {
+    "statement": "The ad-group identifier required in ad-group statistics is base_ad_group rather than id.",
+    "about": "data",
+    "target": "stg_google_ads__ad_group_stats",
+    "evidence_of_dependence": "CAST(base_ad_group AS VARCHAR(20)) ad_group_id",
+    "alternative": "The raw-table index also lists \"id\" without documenting its relationship to base_ad_group.",
+    "importance": 4,
+    "reason": "A different identifier meaning would change hierarchical attribution throughout this table.",
+    "updates": null,
+    "id": "c2-6",
+    "call": 2
+  },
+  {
+    "statement": "The campaign identifier required in ad-group statistics is campaign_base_campaign rather than campaign_id.",
+    "about": "data",
+    "target": "stg_google_ads__ad_group_stats",
+    "evidence_of_dependence": "CAST(campaign_base_campaign AS VARCHAR(20)) campaign_id",
+    "alternative": "The raw-table index separately lists \"campaign_id\", which is not used.",
+    "importance": 4,
+    "reason": "The unused direct campaign field could associate records with different campaigns.",
+    "updates": null,
+    "id": "c2-7",
+    "call": 2
+  },
+  {
+    "statement": "A single raw id identifies an entity across all ad groups and other parent contexts when computing the most recent history record.",
+    "about": "data",
+    "target": "stg_google_ads__account_history; stg_google_ads__campaign_history; stg_google_ads__ad_group_history; stg_google_ads__ad_history; stg_google_ads__ad_group_criterion_history",
+    "evidence_of_dependence": "row_number() over(partition by id order by try_cast(updated_at AS TIMESTAMPTZ) desc nulls last)=1",
+    "alternative": null,
+    "importance": 4,
+    "reason": "If IDs are scoped to parents, unrelated entities compete for one current-record flag.",
+    "updates": null,
+    "id": "c2-8",
+    "call": 2
+  },
+  {
+    "statement": "The most recent history flag should be computed before validation even when the latest raw record is subsequently deleted.",
+    "about": "requirement",
+    "target": "stg_google_ads__account_history; stg_google_ads__campaign_history; stg_google_ads__ad_history; stg_google_ads__ad_group_criterion_history",
+    "evidence_of_dependence": "row_number() ... =1 is_most_recent_record ... SELECT * FROM validated WHERE",
+    "alternative": "The account-history description calls for \"current state tracking\", which could require marking the latest surviving valid record instead.",
+    "importance": 4,
+    "reason": "An entity can retain history without any row marked current.",
+    "updates": null,
+    "id": "c2-9",
+    "call": 2
+  },
+  {
+    "statement": "Equal latest timestamps do not require a deterministic tie-breaker or multiple current-record flags.",
+    "about": "requirement",
+    "target": "stg_google_ads__account_history; stg_google_ads__campaign_history; stg_google_ads__ad_group_history; stg_google_ads__ad_history; stg_google_ads__ad_group_criterion_history",
+    "evidence_of_dependence": "row_number() over(partition by id order by try_cast(updated_at AS TIMESTAMPTZ) desc nulls last)=1",
+    "alternative": null,
+    "importance": 3,
+    "reason": "Tied timestamps can produce an arbitrary current version.",
+    "updates": null,
+    "id": "c2-10",
+    "call": 2
+  },
+  {
+    "statement": "Converting raw temporal values through TIMESTAMPTZ and then to DATE or TIMESTAMP preserves the business date and update time intended by the contract.",
+    "about": "data",
+    "target": "All eleven generated staging tables",
+    "evidence_of_dependence": "try_cast(date AS TIMESTAMPTZ)::DATE; try_cast(updated_at AS TIMESTAMPTZ)::TIMESTAMP",
+    "alternative": "The search-term and ad-statistics specifications explicitly prescribe \"CAST(date AS DATE)\" rather than conversion through TIMESTAMPTZ.",
+    "importance": 4,
+    "reason": "Timezone interpretation can shift daily metrics and history ordering.",
+    "updates": null,
+    "id": "c2-11",
+    "call": 2
+  },
+  {
+    "statement": "Malformed temporal values should be treated as null and handled by the final filters rather than causing a cast failure or receiving other remediation.",
+    "about": "requirement",
+    "target": "All eleven generated staging tables",
+    "evidence_of_dependence": "try_cast(date AS TIMESTAMPTZ); try_cast(updated_at AS TIMESTAMPTZ); try_cast(start_date AS TIMESTAMPTZ)",
+    "alternative": null,
+    "importance": 3,
+    "reason": "The chosen fallback can silently remove records or erase optional dates.",
+    "updates": null,
+    "id": "c2-12",
+    "call": 2
+  },
+  {
+    "statement": "The required source_relation value is the constant google_ads without a platform suffix.",
+    "about": "requirement",
+    "target": "All eleven generated staging tables",
+    "evidence_of_dependence": "SELECT 'google_ads'::VARCHAR AS source_relation, *",
+    "alternative": "The search-term specification says \"source_relation || '-' || platform final concatenation\".",
+    "importance": 4,
+    "reason": "A different provenance convention changes an output field across every record.",
+    "updates": null,
+    "id": "c2-13",
+    "call": 2
+  },
+  {
+    "statement": "All pass-through string values already satisfy the contract's declared maximum lengths.",
+    "about": "data",
+    "target": "All eleven generated staging tables",
+    "evidence_of_dependence": "currency_code, auto_tagging_enabled, time_zone, descriptive_name account_name; name campaign_name; display_url, final_urls",
+    "alternative": null,
+    "importance": 2,
+    "reason": "Neither pass-through selection nor DuckDB VARCHAR length annotations establish the specified bounds.",
+    "updates": null,
+    "id": "c2-14",
+    "call": 2
+  },
+  {
+    "statement": "The retained raw clicks, impressions, and view-through conversion columns already have the required BIGINT representation.",
+    "about": "data",
+    "target": "stg_google_ads__campaign_stats; stg_google_ads__keyword_stats; stg_google_ads__account_stats; stg_google_ads__ad_group_stats",
+    "evidence_of_dependence": "device, clicks, ... impressions, ... view_through_conversions",
+    "alternative": null,
+    "importance": 3,
+    "reason": "The output types depend on raw schemas that are not established by the column index.",
+    "updates": null,
+    "id": "c2-15",
+    "call": 2
+  },
+  {
+    "statement": "All retained raw cost and conversion values are numerically usable and fit the target decimal ranges.",
+    "about": "data",
+    "target": "stg_google_ads__campaign_stats; stg_google_ads__keyword_stats; stg_google_ads__account_stats; stg_google_ads__ad_group_stats",
+    "evidence_of_dependence": "CAST(cost_micros / 1000000.0 AS DECIMAL(15,2)); CAST(conversions AS DECIMAL(10,2)); CAST(conversions_value AS DECIMAL(15,2))",
+    "alternative": null,
+    "importance": 3,
+    "reason": "Unusable or overflowing values can prevent pipeline execution.",
+    "updates": null,
+    "id": "c2-16",
+    "call": 2
+  },
+  {
+    "statement": "No metrics_calculated processing is needed for account statistics or keyword statistics.",
+    "about": "requirement",
+    "target": "stg_google_ads__account_stats; stg_google_ads__keyword_stats",
+    "evidence_of_dependence": "WITH base AS (...) , validated AS (...) SELECT * FROM validated",
+    "alternative": "The implementation notes specify \"FULL Tables (3-CTE): account_stats, keyword_stats\" and describe complex calculated performance metrics.",
+    "importance": 4,
+    "reason": "The implementation omits a processing phase explicitly called out for these tables.",
+    "updates": null,
+    "id": "c2-17",
+    "call": 2
+  },
+  {
+    "statement": "A campaign with a non-null end date but null start date should be retained.",
+    "about": "requirement",
+    "target": "stg_google_ads__campaign_history",
+    "evidence_of_dependence": "(end_date is null or start_date is null or end_date >= start_date)",
+    "alternative": "The contract's validation is \"end_date IS NULL OR end_date >= start_date\" and does not include the extra start_date-null exception.",
+    "importance": 3,
+    "reason": "The additional exception changes which incomplete campaign histories pass validation.",
+    "updates": null,
+    "id": "c2-18",
+    "call": 2
+  },
+  {
+    "statement": "Unusable or missing cost_micros should produce zero spend rather than null spend.",
+    "about": "requirement",
+    "target": "stg_google_ads__ad_stats; stg_google_ads__search_term_keyword_stats",
+    "evidence_of_dependence": "CAST(coalesce(try_cast(cost_micros AS DOUBLE),0)/1000000.0 AS DECIMAL(15,2))",
+    "alternative": "Both specifications give \"cost_micros / 1000000.0\" without prescribing a zero fallback for spend.",
+    "importance": 3,
+    "reason": "This conflates unknown spend with genuinely free activity.",
+    "updates": null,
+    "id": "c2-19",
+    "call": 2
+  },
+  {
+    "statement": "The latest ad-group history row should remain eligible for the current-record flag even if its update timestamp is missing.",
+    "about": "requirement",
+    "target": "stg_google_ads__ad_group_history",
+    "evidence_of_dependence": "order by try_cast(updated_at AS TIMESTAMPTZ) desc nulls last ... WHERE ad_group_id is not null and campaign_id is not null and status is not null",
+    "alternative": null,
+    "importance": 2,
+    "reason": "An entity with only undated history can be labeled current without a known update time.",
+    "updates": null,
+    "id": "c2-20",
+    "call": 2
+  },
+  {
+    "statement": "Null checks alone are sufficient to identify usable required IDs and required business strings.",
+    "about": "data",
+    "target": "All eleven generated staging tables",
+    "evidence_of_dependence": "account_id is not null; campaign_name is not null; status is not null",
+    "alternative": "The quality-action guidance identifies \"Invalid primary keys\" and irrecoverable essential attributes as grounds for deletion.",
+    "importance": 3,
+    "reason": "Empty or otherwise invalid non-null identifiers can survive all implemented checks.",
+    "updates": null,
+    "id": "c2-21",
+    "call": 2
+  },
+  {
+    "statement": "Account statistics contain at most one row per account_id, source_relation, and date_day, without additional device or ad-network segmentation.",
+    "about": "data",
+    "target": "int_google_ads__account_performance_metrics",
+    "evidence_of_dependence": "SELECT * FROM staging.stg_google_ads__account_stats",
+    "alternative": "The staging schema includes \"ad_network_type\" and \"device\", while the intermediate contract declares \"One row per account_id, source_relation, date_day\"; segmented statistics could require daily aggregation.",
+    "importance": 5,
+    "reason": "Multiple daily rows would violate the declared grain and make rolling averages and lags operate over segments rather than days.",
+    "updates": null,
+    "id": "c3-1",
+    "call": 3
+  },
+  {
+    "statement": "Each account_id and source_relation partition has consecutive daily observations, so row offsets correspond to calendar-day offsets.",
+    "about": "data",
+    "target": "int_google_ads__account_performance_metrics",
+    "evidence_of_dependence": "ROWS BETWEEN 6 PRECEDING AND CURRENT ROW; lag(spend, 30) OVER (PARTITION BY account_id, source_relation ORDER BY date_day)",
+    "alternative": "The contract describes \"7-day rolling averages\" and \"prior 30th-day values\"; missing dates would distinguish calendar-day windows and comparisons from seven observations and thirty-row offsets.",
+    "importance": 4,
+    "reason": "Date gaps would change both rolling-window coverage and the baseline used for month-over-month comparisons.",
+    "updates": null,
+    "id": "c3-2",
+    "call": 3
+  },
+  {
+    "statement": "Retaining staging decimal types for spend, conversions, and conversions_value is acceptable despite the intermediate contract declaring these outputs as DOUBLE.",
+    "about": "requirement",
+    "target": "int_google_ads__account_performance_metrics",
+    "evidence_of_dependence": "s.spend, s.clicks, s.impressions, s.conversions, s.conversions_value",
+    "alternative": "The staging contract declares DECIMAL types for these fields, whereas the intermediate column specifications declare \"data_type: DOUBLE\".",
+    "importance": 3,
+    "reason": "Without explicit conversion, the produced schema retains upstream types rather than the specified intermediate types.",
+    "updates": null,
+    "id": "c3-3",
+    "call": 3
+  },
+  {
+    "statement": "Campaign statistics contain at most one row per source_relation, campaign_id, and date_day.",
+    "about": "data",
+    "target": "int_google_ads__campaign_cohort_analysis",
+    "evidence_of_dependence": "SELECT * FROM staging.stg_google_ads__campaign_stats; FROM stats s INNER JOIN history h USING (campaign_id, source_relation)",
+    "alternative": "The staging schema includes \"ad_network_type\" and \"device\", which could distinguish multiple daily records, while the intermediate grain is \"One row per source_relation, campaign_id, and date_day\".",
+    "importance": 5,
+    "reason": "Multiple daily segments would change the output grain, cumulative totals per row, cohort averages, and tier assignments.",
+    "updates": null,
+    "id": "c4-1",
+    "call": 4
+  },
+  {
+    "statement": "ROAS values do not tie within any campaign launch cohort and lifecycle stage.",
+    "about": "data",
+    "target": "int_google_ads__campaign_cohort_analysis.roas_rank_in_cohort",
+    "evidence_of_dependence": "rank() OVER (PARTITION BY campaign_launch_cohort, lifecycle_stage ORDER BY roas DESC NULLS LAST) AS roas_rank_in_cohort",
+    "alternative": "The contract specifies a row's \"position\" and says \"ties are resolved arbitrarily\", whereas rank() gives tied rows the same rank and skips subsequent positions.",
+    "importance": 4,
+    "reason": "Ties would affect both the required ranks and the performance tiers derived from them.",
+    "updates": null,
+    "id": "c4-2",
+    "call": 4
+  },
+  {
+    "statement": "Every retained campaign row with positive spend and zero conversions has a non-null days_since_launch.",
+    "about": "data",
+    "target": "int_google_ads__campaign_cohort_analysis.underperforming_flag",
+    "evidence_of_dependence": "(spend > 0 AND conversions = 0 AND days_since_launch > 30) AS underperforming_flag",
+    "alternative": "The contract says \"NULL days_since_launch evaluates to false\" and requires underperforming_flag to be non-null.",
+    "importance": 4,
+    "reason": "A missing launch date for such a row would produce a null flag rather than false.",
+    "updates": null,
+    "id": "c4-3",
+    "call": 4
+  },
+  {
+    "statement": "The cost-per-conversion contribution to campaign_health_score decreases by 0.2 points per unit above 100.",
+    "about": "requirement",
+    "target": "int_google_ads__campaign_cohort_analysis.campaign_health_score",
+    "evidence_of_dependence": "greatest(0,20 - greatest(cost_per_conversion-100,0)*0.2)",
+    "alternative": "The contract says the contribution \"decreases linearly and does not go below 0\" but does not specify the slope.",
+    "importance": 3,
+    "reason": "The selected slope determines health scores for campaigns with cost per conversion above 100.",
+    "updates": null,
+    "id": "c4-4",
+    "call": 4
+  },
+  {
+    "statement": "Keyword statistics contain at most one row per source_relation, criterion_id, ad_group_id, campaign_id, and date_day.",
+    "about": "data",
+    "target": "int_google_ads__keyword_performance_segmentation",
+    "evidence_of_dependence": "SELECT * FROM staging.stg_google_ads__keyword_stats; ks.criterion_id AS keyword_id",
+    "alternative": "The staging schema includes \"ad_network_type\" and \"device\", which could distinguish multiple records at the declared intermediate grain; the contract also explicitly requires \"no de-duplication beyond the final filter\".",
+    "importance": 4,
+    "reason": "Additional segments would prevent the stated output grain even though retaining them follows the explicit row-preservation instruction.",
+    "updates": null,
+    "id": "c4-5",
+    "call": 4
+  }
+]
+
+=== Agent steps since the last review ===
+### event 21
+
+## 命令原文
+
+cat > /tmp/marts.py <<'PY'
+from pathlib import Path
+M=Path('sql/marts')
+# common basic report templates
+
+def write(name,sql): (M/f'{name}.sql').write_text(sql)
+write('google_ads__account_report',"""WITH stats AS (SELECT * FROM staging.stg_google_ads__account_stats), accounts AS (SELECT * FROM staging.stg_google_ads__account_history WHERE is_most_recent_record)
+SELECT s.source_relation,s.date_day,a.account_name,s.account_id,a.currency_code,a.auto_tagging_enabled,a.time_zone,
+ sum(s.spend) spend,sum(s.clicks) clicks,sum(s.impressions) impressions,sum(s.conversions) conversions,sum(s.conversions_value) conversions_value,sum(s.view_through_conversions) view_through_conversions
+FROM stats s LEFT JOIN accounts a USING(account_id,source_relation)
+GROUP BY ALL""")
+write('google_ads__campaign_report',"""WITH stats AS (SELECT * FROM staging.stg_google_ads__campaign_stats), c AS (SELECT * FROM staging.stg_google_ads__campaign_history WHERE is_most_recent_record), a AS (SELECT * FROM staging.stg_google_ads__account_history WHERE is_most_recent_record)
+SELECT s.source_relation,s.date_day,a.account_name,c.account_id,a.currency_code,c.campaign_name,s.campaign_id,c.advertising_channel_type,c.advertising_channel_subtype,c.status,
+ sum(s.spend) spend,sum(s.clicks) clicks,sum(s.impressions) impressions,sum(s.conversions) conversions,sum(s.conversions_value) conversions_value,sum(s.view_through_conversions) view_through_conversions
+FROM stats s LEFT JOIN c USING(source_relation,campaign_id) LEFT JOIN a ON c.source_relation=a.source_relation AND c.account_id=a.account_id
+GROUP BY ALL""")
+write('google_ads__ad_group_report',"""WITH s AS (SELECT * FROM staging.stg_google_ads__ad_group_stats), ag AS (SELECT * FROM staging.stg_google_ads__ad_group_history WHERE is_most_recent_record), c AS (SELECT * FROM staging.stg_google_ads__campaign_history WHERE is_most_recent_record), a AS (SELECT * FROM staging.stg_google_ads__account_history WHERE is_most_recent_record)
+SELECT s.source_relation,s.date_day,a.account_name,s.account_id,a.currency_code,c.campaign_name,s.campaign_id,ag.ad_group_name,s.ad_group_id,ag.ad_group_type,ag.status,
+ sum(s.spend) spend,sum(s.clicks) clicks,sum(s.impressions) impressions,sum(s.conversions) conversions,sum(s.conversions_value) conversions_value,sum(s.view_through_conversions) view_through_conversions
+FROM s LEFT JOIN ag USING(source_relation,ad_group_id) LEFT JOIN c USING(source_relation,campaign_id) LEFT JOIN a USING(source_relation,account_id) GROUP BY ALL""")
+write('google_ads__ad_report',"""WITH s AS (SELECT * FROM staging.stg_google_ads__ad_stats), ad AS (SELECT * FROM staging.stg_google_ads__ad_history WHERE is_most_recent_record), ag AS (SELECT * FROM staging.stg_google_ads__ad_group_history WHERE is_most_recent_record), c AS (SELECT * FROM staging.stg_google_ads__campaign_history WHERE is_most_recent_record), a AS (SELECT * FROM staging.stg_google_ads__account_history WHERE is_most_recent_record)
+SELECT s.source_relation,s.date_day,a.account_name,s.account_id,a.currency_code,c.campaign_name,s.campaign_id,ag.ad_group_name,s.ad_group_id,ad.ad_name,s.ad_id,ad.ad_type,ad.status,ad.display_url,
+ sum(s.spend) spend,sum(s.clicks) clicks,sum(s.impressions) impressions,sum(s.conversions) conversions,sum(s.conversions_value) conversions_value,sum(s.view_through_conversions) view_through_conversions
+FROM s LEFT JOIN ad USING(source_relation,ad_id) LEFT JOIN ag USING(source_relation,ad_group_id) LEFT JOIN c USING(source_relation,campaign_id) LEFT JOIN a USING(source_relation,account_id) GROUP BY ALL""")
+write('google_ads__keyword_report',"""WITH s AS (SELECT * FROM staging.stg_google_ads__keyword_stats), cr AS (SELECT * FROM staging.stg_google_ads__ad_group_criterion_history WHERE is_most_recent_record), ag AS (SELECT * FROM staging.stg_google_ads__ad_group_history WHERE is_most_recent_record), c AS (SELECT * FROM staging.stg_google_ads__campaign_history WHERE is_most_recent_record), a AS (SELECT * FROM staging.stg_google_ads__account_history WHERE is_most_recent_record)
+SELECT s.source_relation,s.date_day,a.account_name,s.account_id,a.currency_code,c.campaign_name,s.campaign_id,ag.ad_group_name,s.ad_group_id,s.criterion_id,cr.type,cr.status,cr.keyword_match_type,cr.keyword_text,
+ sum(s.spend) spend,sum(s.clicks) clicks,sum(s.impressions) impressions,sum(s.conversions) conversions,sum(s.conversions_value) conversions_value,sum(s.view_through_conversions) view_through_conversions
+FROM s LEFT JOIN cr ON s.source_relation=cr.source_relation AND s.criterion_id=cr.criterion_id LEFT JOIN ag USING(source_relation,ad_group_id) LEFT JOIN c USING(source_relation,campaign_id) LEFT JOIN a USING(source_relation,account_id) GROUP BY ALL""")
+write('google_ads__search_term_report',"""WITH s AS (SELECT * FROM staging.stg_google_ads__search_term_keyword_stats), cr AS (SELECT * FROM staging.stg_google_ads__ad_group_criterion_history WHERE is_most_recent_record), ag AS (SELECT * FROM staging.stg_google_ads__ad_group_history WHERE is_most_recent_record), c AS (SELECT * FROM staging.stg_google_ads__campaign_history WHERE is_most_recent_record), a AS (SELECT * FROM staging.stg_google_ads__account_history WHERE is_most_recent_record)
+SELECT s.source_relation,s.date_day,a.account_name,s.account_id,a.currency_code,c.campaign_name,s.campaign_id,ag.ad_group_name,s.ad_group_id,s.criterion_id,cr.keyword_text,cr.keyword_match_type,s.search_term,s.search_term_match_type,
+ sum(s.spend) spend,sum(s.clicks) clicks,sum(s.impressions) impressions,sum(s.conversions) conversions,sum(s.conversions_value) conversions_value,sum(s.view_through_conversions) view_through_conversions
+FROM s LEFT JOIN cr ON s.source_relation=cr.source_relation AND s.criterion_id=cr.criterion_id LEFT JOIN ag USING(source_relation,ad_group_id) LEFT JOIN c USING(source_relation,campaign_id) LEFT JOIN a USING(source_relation,account_id) GROUP BY ALL""")
+write('google_ads__url_report',"""WITH s AS (SELECT * FROM staging.stg_google_ads__ad_stats), ad AS (SELECT * FROM staging.stg_google_ads__ad_history WHERE is_most_recent_record), ag AS (SELECT * FROM staging.stg_google_ads__ad_group_history WHERE is_most_recent_record), c AS (SELECT * FROM staging.stg_google_ads__campaign_history WHERE is_most_recent_record), a AS (SELECT * FROM staging.stg_google_ads__account_history WHERE is_most_recent_record), enriched AS (
+ SELECT s.*,a.account_name,a.account_id account_join_id,a.currency_code,c.campaign_name,c.campaign_id campaign_join_id,ag.ad_group_name,ad.final_urls base_url FROM s LEFT JOIN ad USING(source_relation,ad_id) LEFT JOIN ag USING(source_relation,ad_group_id) LEFT JOIN c USING(source_relation,campaign_id) LEFT JOIN a ON c.source_relation=a.source_relation AND c.account_id=a.account_id WHERE ad.final_urls IS NOT NULL)
+SELECT source_relation,date_day,account_name,account_join_id AS account_id,currency_code,campaign_name,campaign_join_id AS campaign_id,ad_group_name,ad_group_id,ad_id,base_url,'unknown'::VARCHAR url_host,'unknown'::VARCHAR url_path,'google'::VARCHAR utm_source,'cpc'::VARCHAR utm_medium,campaign_name utm_campaign,ad_group_name utm_content,'unknown'::VARCHAR utm_term,
+sum(spend) spend,sum(clicks) clicks,sum(impressions) impressions,sum(conversions) conversions,sum(conversions_value) conversions_value,sum(view_through_conversions) view_through_conversions FROM enriched GROUP BY ALL""")
+PY
+python /tmp/marts.py
+
+## agent 实际看到的执行结果
+
+
+
+

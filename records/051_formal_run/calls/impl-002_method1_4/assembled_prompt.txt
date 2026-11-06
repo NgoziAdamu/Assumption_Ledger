@@ -1,0 +1,1783 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Pendo analytics data transformation"
+  author: "Data Engineering Team"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+  source_system: "Pendo Analytics Platform"
+  last_updated: "2025-09-08"
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw Pendo data into clean, validated staging tables with standardized data types, consistent formatting, and comprehensive data quality checks. This phase ensures data integrity before business logic application."
+
+  # Technical Implementation Notes
+  implementation_notes:
+    duckdb_compatibility: 
+      - This specification is implemented using DuckDB-compatible SQL syntax.
+      - Data type casting uses CAST() and TRY_CAST() functions for safe conversion.
+      - String functions like SUBSTRING(), TRIM(), LOWER() are used consistently.
+    timezone_handling: 
+      - Raw data contains timestamps in format 'YYYY-MM-DD HH:MM:SS.sss +0800' (China Standard Time).
+      - The timezone suffix is handled using simple string truncation, TRY_CAST(SUBSTRING(timestamp_field, 1, 23) AS TIMESTAMP).
+      - This extracts the first 23 characters ('YYYY-MM-DD HH:MM:SS.sss') and converts to TIMESTAMP,
+      - completely ignoring the timezone part since the business operates locally.
+    constraint_implementation: 
+      - Physical UNIQUE constraints are not enforced in staging tables.
+      - Deduplication is achieved through filtering logic in WHERE clauses and generated surrogate keys.
+      - Unique business keys are maintained through application logic and data quality checks.
+
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "TRY_CAST(SUBSTRING(timestamp_field, 1, 23) AS TIMESTAMP)", "normalize phone numbers"]
+
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform clean staging data into business-ready analytical models that support user behavior analysis, feature adoption tracking, and application performance monitoring. This phase applies business logic to create actionable insights for product teams and stakeholders."
+  
+  design_principles:
+    intermediate_purpose: "Create reusable, business-centric data models that abstract complex joins and calculations from end users"
+    marts_purpose: "Deliver analysis-ready fact and dimension tables optimized for BI tools and data science workflows"
+    grain_importance: "Every model must have a clearly defined grain to ensure consistent aggregation and prevent double-counting"
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-002/agent/dacomp-de-impl-002/pendo_start.duckdb
+{"table": "raw.account_history", "columns": ["id", "last_updated_at", "agent_creationdate", "agent_group_id", "agent_is_paying", "agent_name", "agent_planlevel", "first_visit", "id_hash", "last_visit", "salesforce_status_c", "agent_salesforceaccountid", "salesforce_customer_health_engagement_score_c", "salesforce_employee_range_c", "salesforce_platform_level_c", "salesforce_segment_c", "salesforce_name", "salesforce_account_owner_email_c", "salesforce_pbf_account_c", "salesforce_region_c"]}
+{"table": "raw.application_history", "columns": ["id", "last_updated_at", "agent_policy_prod", "agent_policy_staging", "agent_version_prod", "agent_version_staging", "application_flags_cname", "application_flags_disabled", "application_flags_guide_localization", "application_flags_guide_widget", "application_flags_onboarding", "application_flags_prevent_code_injection", "application_flags_show_guides_to_anon", "application_flags_xhr_timings", "created_at", "created_by_user_id", "description", "disabled_at", "display_name", "event_count", "event_rate", "first_event_time", "guide_css_url", "icon_url", "integrated", "is_deleted", "last_updated_by_user_id", "marked_for_deletion_at", "name", "platform", "push_application_id", "record_until", "sampling_rate", "starting_event_time", "store_url", "subscription_id"]}
+{"table": "raw.event", "columns": ["account_id", "remote_ip", "server_name", "timestamp", "user_agent", "visitor_id", "app_id", "num_events", "num_minutes", "page_id"]}
+{"table": "raw.feature_event", "columns": ["account_id", "feature_id", "remote_ip", "server_name", "timestamp", "user_agent", "visitor_id", "app_id", "num_events", "num_minutes", "param_parameter"]}
+{"table": "raw.feature_history", "columns": ["id", "last_updated_at", "app_id", "color", "created_at", "created_by_user_id", "dirty", "group_id", "last_updated_by_user_id", "name", "page_id", "root_version_id", "stable_version_id", "valid_through", "is_core_event"]}
+{"table": "raw.group_data", "columns": ["id", "app_id", "color", "created_at", "created_by_user_id", "description", "last_updated_at", "last_updated_by_user_id", "length", "name"]}
+{"table": "raw.guide_event", "columns": ["account_id", "guide_id", "remote_ip", "server_name", "timestamp", "user_agent", "visitor_id", "app_id", "country", "element_path", "event_id", "guide_step_id", "latitude", "load_time", "longitude", "region", "type", "url"]}
+{"table": "raw.guide_history", "columns": ["id", "last_updated_at", "app_id", "attribute_badge_can_change_badge_color", "attribute_badge_color", "attribute_badge_height", "attribute_badge_image_url", "attribute_badge_is_only_show_once", "attribute_badge_name", "attribute_badge_offset_left", "attribute_badge_offset_right", "attribute_badge_offset_top", "attribute_badge_position", "attribute_badge_show_on_event", "attribute_badge_use_hover", "attribute_badge_width", "attribute_device_type", "attribute_priority", "attribute_type", "created_at", "created_by_user_id", "email_state", "is_multi_step", "is_training", "last_updated_by_user_id", "launch_method", "name", "published_at", "recurrence", "recurrence_eligibility_window", "reset_at", "root_version_id", "stable_version_id", "state"]}
+{"table": "raw.guide_step_history", "columns": ["guide_id", "guide_last_updated_at", "step_id"]}
+{"table": "raw.page_event", "columns": ["account_id", "page_id", "remote_ip", "server_name", "timestamp", "user_agent", "visitor_id", "app_id", "num_events", "num_minutes", "param_parameter"]}
+{"table": "raw.page_history", "columns": ["id", "last_updated_at", "app_id", "color", "created_at", "created_by_user_id", "dirty", "group_id", "last_updated_by_user_id", "name", "root_version_id", "stable_version_id", "valid_through"]}
+{"table": "raw.page_rule_history", "columns": ["page_id", "page_last_updated_at", "rule", "designer_hint", "parsed_rule"]}
+{"table": "raw.poll", "columns": ["id", "attribute_display", "attribute_follow_up", "attribute_max_length", "attribute_placeholder", "attribute_type", "question", "reset_at"]}
+{"table": "raw.poll_event", "columns": ["account_id", "guide_id", "poll_id", "remote_ip", "server_name", "timestamp", "user_agent", "visitor_id", "app_id", "country", "element_path", "event_id", "guide_step_id", "latitude", "load_time", "longitude", "poll_response", "region", "type", "url"]}
+{"table": "raw.user", "columns": ["id", "deleted_at", "first_name", "last_name", "user_type", "username"]}
+{"table": "raw.visitor_account_history", "columns": ["account_id", "visitor_id", "visitor_last_updated_at"]}
+{"table": "raw.visitor_history", "columns": ["id", "last_updated_at", "account_id", "agent_email", "agent_full_name", "agent_group_role", "agent_name", "agent_role", "first_visit", "id_hash", "last_browser_name", "last_browser_version", "last_operating_system", "last_server_name", "last_user_agent", "last_visit", "n_id", "salesforce_country_c", "salesforce_job_function_c", "salesforce_job_level_c", "salesforce_name", "agent_language", "pendo_lastemail", "pendo_lastemailstatus"]}
+{"table": "staging.stg_pendo__user", "columns": ["user_id", "deleted_at", "first_name", "last_name", "user_type", "username"]}
+
+
+=== Relevant specification and documentation ===
+## stg_pendo__user
+
+    - name: stg_pendo__user
+      description: "Cleaned and validated user data with standardized names and roles"
+      source_table: "raw.user"
+      columns:
+        - name: user_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: deleted_at
+          data_type: TIMESTAMP
+          validation_rules:
+            - rule: "deleted_at = CASE WHEN deleted_at = '' THEN NULL ELSE deleted_at END"
+              on_failure: nullify_field
+        - name: first_name
+          data_type: VARCHAR(100)
+        - name: last_name
+          data_type: VARCHAR(100)
+        - name: user_type
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "user_type IN ('system', 'internal', 'api', 'external')"
+              on_failure: delete_row
+            - rule: "user_type = LOWER(TRIM(user_type))"
+              on_failure: correct
+        - name: username
+          data_type: VARCHAR(100)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "username = LOWER(TRIM(username))"
+              on_failure: correct
+            - rule: "LENGTH(username) > 0"
+              on_failure: delete_row
+
+
+
+## stg_pendo__event
+
+    - name: stg_pendo__event
+      description: "Cleaned user interaction events with validated IDs and standardized timestamps"
+      source_table: "raw.event"
+      where_conditions:
+        - "visitor_id IS NOT NULL"
+        - "visitor_id != ''"
+        - "account_id IS NOT NULL"
+        - "account_id != ''"
+        - "app_id IS NOT NULL"
+        - "app_id != ''"
+        - "timestamp IS NOT NULL"
+      columns:
+        - name: visitor_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: account_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "account_id IS NOT NULL AND account_id != ''"
+              on_failure: delete_row
+            - rule: "account_id ~ '^(ACC[0-9]+|[0-9]+)$'"
+              on_failure: nullify_field
+        - name: app_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: page_id
+          data_type: VARCHAR(50)
+        - name: remote_ip
+          data_type: VARCHAR(255)
+          validation_rules:
+            - rule: "remote_ip IS NULL OR remote_ip ~ '^([0-9]{1,3}){3}[0-9]{1,3}$' OR remote_ip ~ '^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$'"
+              on_failure: nullify_field
+        - name: server_name
+          data_type: VARCHAR(255)
+          validation_rules:
+            - rule: "server_name = NULLIF(TRIM(server_name), '')"
+              on_failure: correct
+        - name: occurred_at
+          data_type: TIMESTAMP
+        - name: user_agent
+          data_type: VARCHAR(255)
+          validation_rules:
+            - rule: "user_agent = NULLIF(TRIM(user_agent), '')"
+              on_failure: correct
+        - name: num_events
+          data_type: BIGINT
+          validation_rules:
+            - rule: "num_events >= 0 AND num_events <= 10000"
+              on_failure: nullify_field
+        - name: num_minutes
+          data_type: BIGINT
+          validation_rules:
+            - rule: "num_minutes >= 0 AND num_minutes <= 1440"
+              on_failure: nullify_field
+        - name: event_key
+          data_type: VARCHAR(255)
+          description: "Generated MD5 hash surrogate key based on visitor_id, timestamp, account_id, server_name, user_agent, and remote_ip"
+
+
+
+## stg_pendo__group
+
+    - name: stg_pendo__group
+      description: "Cleaned group configuration data with validated settings"
+      source_table: "raw.group"
+      columns:
+        - name: group_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: group_name
+          data_type: VARCHAR(255)
+        - name: app_id
+          data_type: BIGINT
+          constraints: [not_null]
+
+
+
+## int_pendo__customer_rfm_analysis
+
+    - name: int_pendo__customer_rfm_analysis
+      description: Visitor–account level RFM segmentation with strategies and account-level health metrics
+      grain: One row per visitor_id + account_id
+      source_models:
+      - staging.stg_pendo__event
+      - intermediate.int_pendo__latest_visitor_account
+      business_logic: '1) Aggregate events by visitor_id + account_id: - Active days: number of distinct calendar days with any event (based on occurred_at). - Active months: number of distinct calendar months with any event. - Total usage: sum of num_events and sum of num_minutes. - Average per record: mean of num_events (also compute mean of num_minutes for internal use). - Event records: number of event rows contributing to the group. - First/last activity dates: earliest and latest calendar day with any event. 2) For each visitor, count distinct associated accounts from the latest mapping; if missing, default the count to 1. 3) Keep only visitor–account pairs with at least one event. Compute: - recency_days: days from the last activity date to today. - customer_lifetime_days: days from the first activity date to today. 4) RFM scoring (1–5): - recency_score: 5 (≤7 days), 4 (≤30), 3 (≤90), 2 (≤180), else 1. - frequency_score from active days: 5 (≥50), 4 (≥25), 3 (≥10), 2 (≥5), else 1. - magnitude_score from total events and total minutes: 5 (≥1000 and ≥500), 4 (≥500 and ≥200), 3 (≥200 and ≥100), 2 (≥50 and ≥30), else 1. 5) Derive segment and value metrics: - rfm_composite_score: 0.3*recency + 0.4*frequency + 0.3*magnitude (stored with one decimal). - rfm_segment (first matching rule wins): • Champions: recency ≥4 and frequency ≥4 and magnitude ≥4 • Loyal Customers: frequency ≥4 and magnitude ≥4 • Potential Loyalists: recency ≥4 and frequency ≥3 and magnitude ≤3 • New Customers: recency ≥4 and frequency ≤2 and lifetime ≤60 days • Promising: magnitude ≥4 and frequency ≤3 • Customers Needing Attention: recency ≤2 and frequency ≥3 and magnitude ≥3 • About to Sleep: recency = 3 and frequency ≤3 and magnitude ≤3 • At Risk: recency ≤2 and frequency ≤2 and magnitude ≤3 • Cannot Be Retrieved: recency = 1 and frequency ≤2 • Hibernating: recency ≤2 and magnitude ≥4 • Others: otherwise - customer_value_tier from the product of the three scores: High Value (≥60), Medium Value (≥24), Low Value (≥8), else Minimal Value. - recommended_strategy: fixed text per rfm_segment. - predicted_clv_tier: based on rfm_segment; Very High CLV only for Champions or Loyal Customers with lifetime >180 days. - action_priority: fixed text per rfm_segment. 6) Account-level aggregation (per account across all visitor rows): - total_visitors. - Segment counts: Champions, Loyal Customers, Potential Loyalists, New Customers, and At Risk (At Risk + Cannot Be Retrieved). - Ratios (floating-point): • high_value_ratio = number of High Value visitors divided by total_visitors, • top_segment_ratio = number of Champions or Loyal Customers divided by total_visitors, • at_risk_ratio = number of At Risk or Cannot Be Retrieved divided by total_visitors. - Averages: mean composite score and means of the three scores. 7) Final output: - Left join account metrics to each visitor–account row. - calculated_at = the query execution timestamp. - Grain: one row per visitor_id + account_id.'
+      columns:
+      - name: visitor_id
+        data_type: VARCHAR
+        description: Visitor identifier paired with account_id; non-null key.
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier paired with visitor_id; used to attach account metrics.
+      - name: recency_days
+        data_type: BIGINT
+        description: Days since the most recent activity date to today.
+      - name: count_active_days
+        data_type: BIGINT
+        description: Distinct calendar days with at least one event; duplicates within a day counted once.
+      - name: count_active_months
+        data_type: BIGINT
+        description: Distinct calendar months with at least one event; duplicates within a month counted once.
+      - name: total_events
+        data_type: HUGEINT
+        description: Sum of num_events for the visitor–account; only pairs with at least one event are included.
+      - name: total_minutes
+        data_type: HUGEINT
+        description: Sum of num_minutes for the visitor–account; non-null as only event-bearing pairs are included.
+      - name: average_daily_events
+        data_type: DOUBLE
+        description: Mean of num_events across event records for the visitor–account; no rounding.
+      - name: count_associated_accounts
+        data_type: BIGINT
+        description: Distinct accounts linked to the visitor from the latest mapping; defaults to 1 when missing.
+      - name: customer_lifetime_days
+        data_type: BIGINT
+        description: Days from the first activity date to today.
+      - name: recency_score
+        data_type: INTEGER
+        description: 'Recency score (1–5): 5 if ≤7 days, 4 if ≤30, 3 if ≤90, 2 if ≤180, else 1.'
+      - name: frequency_score
+        data_type: INTEGER
+        description: 'Frequency score (1–5) from active days: 5 if ≥50, 4 if ≥25, 3 if ≥10, 2 if ≥5, else 1.'
+      - name: magnitude_score
+        data_type: INTEGER
+        description: 'Magnitude score (1–5) from total events and minutes: 5 if ≥1000 and ≥500; 4 if ≥500 and ≥200; 3 if ≥200 and ≥100; 2 if ≥50 and ≥30; else 1.'
+      - name: rfm_composite_score
+        data_type: DECIMAL(14,1)
+        description: Weighted sum 0.3*recency + 0.4*frequency + 0.3*magnitude stored with one decimal.
+      - name: rfm_segment
+        data_type: VARCHAR
+        description: Segment assigned by ordered rules using the three scores and lifetime; first matching rule applies.
+      - name: customer_value_tier
+        data_type: VARCHAR
+        description: 'Tier from the product of the three scores: High (≥60), Medium (≥24), Low (≥8), else Minimal.'
+      - name: recommended_strategy
+        data_type: VARCHAR
+        description: Deterministic recommendation text mapped from rfm_segment; default is Standard engagement tactics.
+      - name: predicted_clv_tier
+        data_type: VARCHAR
+        description: CLV tier from rfm_segment; Very High requires Champions or Loyal Customers with lifetime >180 days.
+      - name: action_priority
+        data_type: VARCHAR
+        description: 'Next-step priority mapped from rfm_segment: Retention & Advocacy, Growth & Upsell, Onboarding & Education, Re-engagement, Win-back or Deprioritize, Reactivation, or Monitor.'
+      - name: account_total_visitors
+        data_type: BIGINT
+        description: Number of visitor rows for the account; denominator for the ratios.
+      - name: account_high_value_ratio
+        data_type: FLOAT
+        description: Share of High Value visitors over total_visitors using floating-point division.
+      - name: account_top_segment_ratio
+        data_type: FLOAT
+        description: Share of Champions or Loyal Customers over total_visitors using floating-point division.
+      - name: account_at_risk_ratio
+        data_type: FLOAT
+        description: Share of At Risk or Cannot Be Retrieved visitors over total_visitors using floating-point division.
+      - name: account_avg_rfm_score
+        data_type: DOUBLE
+        description: Mean rfm_composite_score across all visitors in the account.
+      - name: calculated_at
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Execution timestamp applied uniformly to all output rows.
+
+
+## int_pendo__feature_info
+
+    - name: int_pendo__feature_info
+      description: Feature metadata enriched with page, application, product area, and creator/updater details via left joins; no aggregation.
+      grain: One row per base record in intermediate.int_pendo__latest_feature; duplicates can occur if a joined table has multiple matches for a key.
+      source_models:
+      - intermediate.int_pendo__latest_feature
+      - intermediate.int_pendo__latest_page
+      - intermediate.int_pendo__latest_application
+      - staging.stg_pendo__group
+      - staging.stg_pendo__user
+      business_logic: '- Start with all columns from intermediate.int_pendo__latest_feature (feature_id, app_id, created_at, created_by_user_id, is_dirty, group_id, is_core_event, last_updated_at, last_updated_by_user_id, feature_name, page_id, root_version_id, stable_version_id, valid_through). No filtering, aggregation, or sorting. - Left join intermediate.int_pendo__latest_page where page_id matches; add page_name, page_created_at, and page_valid_through. - Left join staging.stg_pendo__group by comparing group_id values after converting both sides to text; add group_name as product_area_name. - Left join intermediate.int_pendo__latest_application where app_id matches application_id; add display_name as app_display_name and platform as app_platform. - Left join staging.stg_pendo__user as creator where created_by_user_id matches user_id; build created_by_user_full_name by concatenating first_name, a single space, and last_name; if either part is NULL or no user is found, the full name is NULL; add created_by_user_username from username. - Left join staging.stg_pendo__user as updater where last_updated_by_user_id matches user_id; build last_updated_by_user_full_name the same way; add last_updated_by_user_username from username. - Nulls and determinism: if a join finds no match, joined columns are NULL. Name concatenation preserves original casing and spacing and yields NULL if any component is NULL. No de-duplication; if a joined table has multiple rows for a key, multiple output rows may result. No ordering is applied.'
+      columns:
+      - name: feature_id
+        data_type: VARCHAR
+        description: Unique feature identifier.
+        tests:
+        - not_null
+        - unique
+      - name: app_id
+        data_type: VARCHAR
+        description: Application identifier from the feature record used to join to the application.
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Timestamp when the feature was created; passthrough.
+      - name: created_by_user_id
+        data_type: VARCHAR
+        description: Identifier of the creating user; used to join to the user table.
+      - name: is_dirty
+        data_type: BOOLEAN
+        description: Flag indicating the feature has unsaved changes; passthrough.
+      - name: group_id
+        data_type: BIGINT
+        description: Product area group identifier from the feature; joined to group by comparing as text.
+      - name: is_core_event
+        data_type: BOOLEAN
+        description: Flag indicating the feature is a core event; passthrough.
+      - name: last_updated_at
+        data_type: TIMESTAMP
+        description: Timestamp of the most recent update; passthrough.
+      - name: last_updated_by_user_id
+        data_type: VARCHAR
+        description: Identifier of the most recent updating user; used to join to the user table.
+      - name: feature_name
+        data_type: VARCHAR
+        description: Feature display name; passthrough.
+      - name: page_id
+        data_type: VARCHAR
+        description: Associated page identifier from the feature; used to join to the page.
+      - name: root_version_id
+        data_type: BIGINT
+        description: Root version identifier; passthrough.
+      - name: stable_version_id
+        data_type: BIGINT
+        description: Stable version identifier; passthrough.
+      - name: valid_through
+        data_type: TIMESTAMP
+        description: Feature record validity end timestamp; passthrough.
+      - name: product_area_name
+        data_type: VARCHAR
+        description: Product area name from the group table; NULL if no matching group_id.
+      - name: page_name
+        data_type: VARCHAR
+        description: Page name from the page table; NULL if no matching page_id.
+      - name: page_created_at
+        data_type: TIMESTAMP
+        description: Page creation timestamp from the page table; NULL if no match.
+      - name: page_valid_through
+        data_type: TIMESTAMP
+        description: Page record validity end timestamp from the page table; NULL if no match.
+      - name: app_display_name
+        data_type: VARCHAR
+        description: Application display name from the application table; NULL if no matching app_id.
+      - name: app_platform
+        data_type: VARCHAR
+        description: Application platform from the application table; NULL if no match.
+      - name: created_by_user_full_name
+        data_type: VARCHAR
+        description: Creator full name formed as first_name + single space + last_name; NULL if either part is missing or no user match.
+      - name: created_by_user_username
+        data_type: VARCHAR
+        description: Creator username from the user table; NULL if no match.
+      - name: last_updated_by_user_full_name
+        data_type: VARCHAR
+        description: Updater full name formed as first_name + single space + last_name; NULL if either part is missing or no user match.
+      - name: last_updated_by_user_username
+        data_type: VARCHAR
+        description: Updater username from the user table; NULL if no match.
+
+
+## int_pendo__guide_info
+
+    - name: int_pendo__guide_info
+      description: Latest guide attributes joined with application details, creator/updater user info, and the count of unique steps
+      grain: One row per guide_id from intermediate.int_pendo__latest_guide
+      source_models:
+      - intermediate.int_pendo__latest_guide
+      - intermediate.int_pendo__latest_guide_step
+      - intermediate.int_pendo__latest_application
+      - staging.stg_pendo__user
+      business_logic: '- Begin with intermediate.int_pendo__latest_guide and output one row per guide_id with all guide fields unchanged. - From intermediate.int_pendo__latest_guide_step, for each guide_id compute the number of unique step_id values; NULL step_id values are ignored; if a guide has step rows but all step_id values are NULL, the count is 0; if no step rows exist for a guide, there is no aggregate row and the joined count_steps is NULL. - Left join the latest application by comparing guide.app_id converted to a string with application.application_id; include display_name (app_display_name) and platform (app_platform); if no match, these fields are NULL. - Left join the user table twice: once for the creator by comparing created_by_user_id and user_id as strings, and once for the updater by comparing last_updated_by_user_id and user_id as strings; if no match, user-derived fields are NULL. - Build created_by_user_full_name and last_updated_by_user_full_name by concatenating first_name and last_name with a single space; if either name is NULL, the full name is NULL; usernames are passed through when present. - No sorting, filtering, trimming, or case normalization is applied; timestamps and numeric fields are passed through.'
+      columns:
+      - name: guide_id
+        data_type: VARCHAR
+        description: Unique guide identifier; defines the table grain
+      - name: guide_name
+        data_type: VARCHAR
+        description: Guide display name from the latest guide; pass-through; NULL if absent
+      - name: app_id
+        data_type: BIGINT
+        description: Application ID from the latest guide; used to join application by comparing as strings; pass-through
+      - name: state
+        data_type: VARCHAR
+        description: Guide state from the latest guide; pass-through; NULL if absent
+      - name: device_type
+        data_type: VARCHAR
+        description: Target device type from the latest guide; pass-through; NULL if absent
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Guide creation timestamp from the latest guide; pass-through; NULL if absent
+      - name: created_by_user_id
+        data_type: BIGINT
+        description: Creator user ID from the latest guide; used to join user by comparing as strings; pass-through
+      - name: is_multi_step
+        data_type: BOOLEAN
+        description: Indicates whether the guide has multiple steps; pass-through from the latest guide
+      - name: is_training
+        data_type: BOOLEAN
+        description: Indicates whether the guide is marked as training; pass-through from the latest guide
+      - name: last_updated_at
+        data_type: TIMESTAMP
+        description: Last update timestamp from the latest guide; pass-through; NULL if absent
+      - name: last_updated_by_user_id
+        data_type: BIGINT
+        description: Updater user ID from the latest guide; used to join user by comparing as strings; pass-through
+      - name: launch_method
+        data_type: VARCHAR
+        description: Guide launch method from the latest guide; pass-through; NULL if absent
+      - name: published_at
+        data_type: TIMESTAMP
+        description: Guide publication timestamp from the latest guide; pass-through; NULL if absent
+      - name: recurrence
+        data_type: BOOLEAN
+        description: Recurring guide flag; pass-through from the latest guide
+      - name: recurrence_eligibility_window
+        data_type: BOOLEAN
+        description: Eligibility window flag for recurring guides; pass-through from the latest guide
+      - name: reset_at
+        data_type: TIMESTAMP
+        description: Guide reset timestamp from the latest guide; pass-through; NULL if absent
+      - name: root_version_id
+        data_type: BIGINT
+        description: Root version identifier from the latest guide; pass-through
+      - name: stable_version_id
+        data_type: BIGINT
+        description: Stable version identifier from the latest guide; pass-through
+      - name: app_display_name
+        data_type: VARCHAR
+        description: Application display name from the latest application join; NULL if no match
+      - name: app_platform
+        data_type: VARCHAR
+        description: Application platform from the latest application join; NULL if no match
+      - name: created_by_user_full_name
+        data_type: VARCHAR
+        description: Creator full name as first_name and last_name joined by a single space; NULL if either name is NULL or no matching user
+      - name: created_by_user_username
+        data_type: VARCHAR
+        description: Creator username from the user join; NULL if no matching user
+      - name: last_updated_by_user_full_name
+        data_type: VARCHAR
+        description: Updater full name as first_name and last_name joined by a single space; NULL if either name is NULL or no matching user
+      - name: last_updated_by_user_username
+        data_type: VARCHAR
+        description: Updater username from the user join; NULL if no matching user
+      - name: count_steps
+        data_type: BIGINT
+        description: Number of unique non-null step_id values per guide; 0 if only NULL step_id values are present; NULL if no step rows exist
+
+
+## int_pendo__latest_application
+
+    - name: int_pendo__latest_application
+      description: Latest application configuration per application_id from application history
+      grain: One row per application_id
+      source_models:
+      - staging.stg_pendo__application_history
+      business_logic: '- Read all rows from staging.stg_pendo__application_history. - For each application_id, sort records by last_updated_at from newest to oldest. Determinism notes: - In DuckDB, NULL last_updated_at values are treated as newest in this sort and will come first. - If multiple records share the same last_updated_at for an application_id, their relative order is arbitrary (no secondary tie-breaker). - Assign a sequential index per application_id following that sort, starting at 1. - Keep only records where the index equals 1 (the latest per application_id). - Emit the selected record per application_id with all source fields unchanged and include latest_application_index, which equals 1 for every row.'
+      columns:
+      - name: application_id
+        data_type: VARCHAR
+        description: Unique application identifier (grouping key)
+        tests:
+        - not_null
+        - unique
+      - name: application_name
+        data_type: VARCHAR
+        description: Application name from the latest record
+      - name: display_name
+        data_type: VARCHAR
+        description: Human-friendly display name of the application
+      - name: description
+        data_type: VARCHAR
+        description: Application description text
+      - name: platform
+        data_type: VARCHAR
+        description: Application platform identifier
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Timestamp when the application was created
+      - name: created_by_user_id
+        data_type: VARCHAR
+        description: User ID who created the application
+      - name: is_deleted
+        data_type: BOOLEAN
+        description: Indicator that the application is deleted
+      - name: is_integrated
+        data_type: BOOLEAN
+        description: Indicator that the application is integrated
+      - name: agent_policy_prod
+        data_type: VARCHAR
+        description: Production agent policy configuration
+      - name: agent_policy_staging
+        data_type: VARCHAR
+        description: Staging agent policy configuration
+      - name: agent_version_prod
+        data_type: VARCHAR
+        description: Deployed production agent version
+      - name: agent_version_staging
+        data_type: VARCHAR
+        description: Deployed staging agent version
+      - name: subscription_id
+        data_type: BIGINT
+        description: Subscription identifier associated with the application
+      - name: event_count
+        data_type: BIGINT
+        description: Event count from the latest application record
+      - name: first_event_at
+        data_type: TIMESTAMP
+        description: Timestamp of the first observed event (from latest record)
+      - name: last_updated_at
+        data_type: TIMESTAMP
+        description: Timestamp used to identify the latest record (newest first)
+      - name: last_updated_by_user_id
+        data_type: VARCHAR
+        description: User ID who last updated the application record
+      - name: latest_application_index
+        data_type: BIGINT
+        description: Rank within each application's history by last_updated_at from newest to oldest; always 1 in this table
+
+
+## int_pendo__latest_feature
+
+    - name: int_pendo__latest_feature
+      description: Latest feature record per feature_id from stg_pendo__feature_history ordered by last_updated_at descending
+      grain: One row per feature_id
+      source_models:
+      - staging.stg_pendo__feature_history
+      business_logic: '- Read all columns from staging.stg_pendo__feature_history. - For each feature_id, order rows by last_updated_at descending using the database’s default NULL ordering and assign a 1-based index as latest_feature_index. - Keep only the row with latest_feature_index = 1 per feature_id and output all columns plus latest_feature_index. - All non-computed fields are passed through from the selected row without transformation. - Tie behavior: if multiple rows for a feature_id are equally recent by last_updated_at (including NULL-related ordering), the chosen row is arbitrary because no secondary tie-breaker is specified; exactly one row is still returned per feature_id.'
+      columns:
+      - name: feature_id
+        data_type: VARCHAR
+        description: Feature identifier; grouping key with exactly one output row per value
+        tests:
+        - not_null
+        - unique
+      - name: app_id
+        data_type: VARCHAR
+        description: Application identifier from the selected latest row
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Creation timestamp from the selected latest row
+      - name: created_by_user_id
+        data_type: VARCHAR
+        description: User ID who created the feature, from the selected latest row
+      - name: is_dirty
+        data_type: BOOLEAN
+        description: Whether the feature has unsaved changes, from the selected latest row
+      - name: group_id
+        data_type: BIGINT
+        description: Group identifier from the selected latest row
+      - name: is_core_event
+        data_type: BOOLEAN
+        description: Whether this is a core event feature, from the selected latest row
+      - name: last_updated_at
+        data_type: TIMESTAMP
+        description: Timestamp used to determine recency (descending); NULL ordering follows database default
+      - name: last_updated_by_user_id
+        data_type: VARCHAR
+        description: User ID who last updated the feature, from the selected latest row
+      - name: feature_name
+        data_type: VARCHAR
+        description: Feature name from the selected latest row
+      - name: page_id
+        data_type: VARCHAR
+        description: Associated page identifier from the selected latest row
+      - name: root_version_id
+        data_type: BIGINT
+        description: Root version identifier from the selected latest row
+      - name: stable_version_id
+        data_type: BIGINT
+        description: Stable version identifier from the selected latest row
+      - name: valid_through
+        data_type: TIMESTAMP
+        description: Validity end timestamp from the selected latest row
+      - name: latest_feature_index
+        data_type: BIGINT
+        description: 1-based index within each feature_id by recency; always 1 in the final output
+
+
+## int_pendo__latest_guide
+
+    - name: int_pendo__latest_guide
+      description: Latest guide record per guide_id based on the most recent last_updated_at
+      grain: One row per guide_id
+      source_models:
+      - staging.stg_pendo__guide_history
+      business_logic: '- Use all rows from staging.stg_pendo__guide_history. - For each guide_id, rank rows by last_updated_at from most recent to oldest and store the rank in latest_guide_index. - Keep only rows with latest_guide_index = 1 so exactly one row remains per guide_id. - Tie handling: if multiple rows have the same last_updated_at within a guide_id, one is chosen arbitrarily because no tie-breaker is specified. - NULL handling: NULL last_updated_at values are ordered according to the database’s default; if all rows for a guide_id have NULL timestamps, one row is still selected arbitrarily. - All other columns are passed through from the chosen source row without modification; NULLs are preserved.'
+      columns:
+      - name: guide_id
+        data_type: VARCHAR
+        description: Unique guide identifier; exactly one output row per guide_id
+      - name: guide_name
+        data_type: VARCHAR
+        description: Guide name from the selected latest row
+      - name: app_id
+        data_type: BIGINT
+        description: Application identifier associated with the guide
+      - name: state
+        data_type: VARCHAR
+        description: Guide state from the selected latest row
+      - name: device_type
+        data_type: VARCHAR
+        description: Target device type for the guide
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Timestamp when the guide was created (source value, unchanged)
+      - name: created_by_user_id
+        data_type: BIGINT
+        description: User ID who created the guide
+      - name: is_multi_step
+        data_type: BOOLEAN
+        description: Whether the guide contains multiple steps
+      - name: is_training
+        data_type: BOOLEAN
+        description: Whether the guide is designated as training
+      - name: last_updated_at
+        data_type: TIMESTAMP
+        description: Timestamp used to determine recency; the most recent per guide_id is selected
+      - name: last_updated_by_user_id
+        data_type: BIGINT
+        description: User ID who last updated the guide
+      - name: launch_method
+        data_type: VARCHAR
+        description: Guide launch method
+      - name: published_at
+        data_type: TIMESTAMP
+        description: Timestamp when the guide was published
+      - name: recurrence
+        data_type: BOOLEAN
+        description: Whether the guide is recurring
+      - name: recurrence_eligibility_window
+        data_type: BOOLEAN
+        description: Whether an eligibility window is enforced for recurrence
+      - name: reset_at
+        data_type: TIMESTAMP
+        description: Timestamp when the guide was reset
+      - name: root_version_id
+        data_type: BIGINT
+        description: Identifier of the root version for the guide
+      - name: stable_version_id
+        data_type: BIGINT
+        description: Identifier of the stable version for the guide
+      - name: latest_guide_index
+        data_type: BIGINT
+        description: Rank within each guide_id by last_updated_at from most recent to oldest; always 1 here
+
+
+## int_pendo__latest_guide_step
+
+    - name: int_pendo__latest_guide_step
+      description: Latest guide step per guide_id and step_id selected by most recent guide_last_updated_at.
+      grain: One row per guide_id and step_id
+      source_models:
+      - staging.stg_pendo__guide_step_history
+      business_logic: '- Read all records from staging.stg_pendo__guide_step_history. - For each (guide_id, step_id), order records by guide_last_updated_at from most recent to oldest. In DuckDB, NULLs sort first for descending order, so a NULL timestamp can be chosen as most recent. - Assign a rank starting at 1 based on this order within each (guide_id, step_id). - Keep only the record with rank 1 (the latest) for each (guide_id, step_id). - If multiple records have the same timestamp within a group, the selected record is arbitrary because no tie-breaker is specified. - Output columns: guide_id, step_id, guide_last_updated_at, latest_guide_step_index (always 1 for retained rows).'
+      columns:
+      - name: step_id
+        data_type: VARCHAR
+        description: Step identifier; combined with guide_id to define the grouping for selecting the latest record.
+      - name: guide_id
+        data_type: VARCHAR
+        description: Guide identifier; combined with step_id to define the grouping for selecting the latest record.
+      - name: guide_last_updated_at
+        data_type: TIMESTAMP
+        description: Timestamp used to order records within each (guide_id, step_id) from most recent to oldest; NULLs are treated as most recent.
+      - name: latest_guide_step_index
+        data_type: BIGINT
+        description: Rank within (guide_id, step_id) based on recency; ties are arbitrary; equal to 1 for all rows in this table.
+
+
+## int_pendo__latest_page
+
+    - name: int_pendo__latest_page
+      description: Latest page record per page_id from page history
+      grain: One row per page_id (latest by last_updated_at)
+      source_models:
+      - staging.stg_pendo__page_history
+      business_logic: '- Use all rows and columns from staging.stg_pendo__page_history. - For each page_id, sort records by last_updated_at with the most recent first and assign a 1-based position within that order. - If multiple records share the same last_updated_at, their relative order is unspecified; the selected record among ties is arbitrary. Records with NULL last_updated_at are positioned per database defaults; if all are NULL, selection is arbitrary. - Keep only the record with position 1 for each page_id. - All columns are taken directly from the retained record; no transformations are applied.'
+      columns:
+      - name: page_id
+        data_type: VARCHAR
+        description: Unique page identifier; one output row per value
+        tests:
+        - not_null
+        - unique
+      - name: page_name
+        data_type: VARCHAR
+        description: Page name from the retained latest record
+      - name: app_id
+        data_type: VARCHAR
+        description: Application identifier from the retained latest record
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Creation timestamp from the retained latest record; no timezone or format changes
+      - name: created_by_user_id
+        data_type: VARCHAR
+        description: User who created the page in the retained latest record
+      - name: is_dirty
+        data_type: BOOLEAN
+        description: Flag indicating unsaved changes in the retained latest record
+      - name: group_id
+        data_type: BIGINT
+        description: Group identifier from the retained latest record
+      - name: last_updated_at
+        data_type: TIMESTAMP
+        description: Timestamp used to determine recency; ordered with most recent first, tie handling and NULL placement follow database defaults
+      - name: last_updated_by_user_id
+        data_type: VARCHAR
+        description: User who last updated the page in the retained latest record
+      - name: root_version_id
+        data_type: BIGINT
+        description: Root version identifier from the retained latest record
+      - name: stable_version_id
+        data_type: BIGINT
+        description: Stable version identifier from the retained latest record
+      - name: valid_through
+        data_type: TIMESTAMP
+        description: Validity end timestamp from the retained latest record
+      - name: latest_page_index
+        data_type: BIGINT
+        description: 1-based position within each page_id after sorting by last_updated_at with most recent first; always 1 in this table
+
+
+## int_pendo__latest_page_rule
+
+    - name: int_pendo__latest_page_rule
+      description: Latest page rule per (page_id, rule) based on the most recent page_last_updated_at.
+      grain: One row per (page_id, rule) — the most recently updated record
+      source_models:
+      - staging.stg_pendo__page_rule_history
+      business_logic: '- Read all rows from staging.stg_pendo__page_rule_history. - For each group defined by (page_id, rule), order records from most recent to oldest using page_last_updated_at, then assign a sequential index starting at 1 following that order. - Keep only rows with index = 1, yielding one most recently updated record per (page_id, rule). - If multiple records in a group share the same timestamp, exactly one is kept based on the database’s default tie-breaking; no secondary sort is applied. - The placement of NULL timestamps in the ordering follows the database’s default; if all timestamps in a group are NULL, one arbitrary row is kept. - Emit all source columns plus the computed index as latest_page_rule_index (which is 1 for all retained rows).'
+      columns:
+      - name: page_id
+        data_type: VARCHAR
+        description: Page identifier; grouping key with rule.
+      - name: page_last_updated_at
+        data_type: TIMESTAMP
+        description: Timestamp used to order records within each (page_id, rule); the most recent determines the kept row; NULL placement follows database defaults.
+      - name: rule
+        data_type: VARCHAR
+        description: Rule expression; grouping key with page_id.
+      - name: designer_hint
+        data_type: DOUBLE
+        description: Numeric attribute carried through from the source.
+      - name: parsed_rule
+        data_type: VARCHAR
+        description: Parsed representation of the rule carried through from the source.
+      - name: latest_page_rule_index
+        data_type: BIGINT
+        description: Sequential index within each (page_id, rule) after ordering by most recent timestamp; equals 1 for all output rows; ties and NULL placement follow database defaults.
+
+
+## int_pendo__latest_visitor
+
+    - name: int_pendo__latest_visitor
+      description: Latest record per visitor_id chosen by the most recent last_updated_at.
+      grain: One row per visitor_id
+      source_models:
+      - staging.stg_pendo__visitor_history
+      business_logic: '- Load all rows from staging.stg_pendo__visitor_history without filtering. - For each visitor_id, rank records by recency using last_updated_at so the most recent gets rank 1. The database’s default handling of NULL timestamps applies. When timestamps are equal, no secondary tie-breaker is used and the engine’s order decides. - Keep only the rank-1 record per visitor_id; this yields at most one row for each visitor_id, with NULL visitor_id values grouped into a single set. - Include the computed rank as latest_visitor_index (always 1 in the output). All other fields are taken unchanged from the selected record; NULLs and text formatting are preserved.'
+      columns:
+      - name: visitor_id
+        data_type: VARCHAR
+        description: Visitor identifier; one output row per visitor_id (NULLs form a single group).
+      - name: visitor_id_hash
+        data_type: DOUBLE
+        description: Value from the selected latest row; NULL preserved.
+      - name: account_id
+        data_type: VARCHAR
+        description: Value from the selected latest row; NULL preserved.
+      - name: first_visit_at
+        data_type: TIMESTAMP
+        description: Value from the selected latest row; NULL preserved.
+      - name: last_updated_at
+        data_type: TIMESTAMP
+        description: Timestamp used to choose the latest record per visitor_id; NULL ordering follows database default; ties on equal timestamps are engine-determined.
+      - name: last_browser_name
+        data_type: VARCHAR
+        description: Value from the selected latest row; NULL preserved.
+      - name: last_browser_version
+        data_type: VARCHAR
+        description: Value from the selected latest row; NULL preserved.
+      - name: last_operating_system
+        data_type: VARCHAR
+        description: Value from the selected latest row; NULL preserved.
+      - name: last_server_name
+        data_type: VARCHAR
+        description: Value from the selected latest row; NULL preserved.
+      - name: last_user_agent
+        data_type: VARCHAR
+        description: Value from the selected latest row; NULL preserved.
+      - name: last_visit
+        data_type: TIMESTAMP
+        description: Value from the selected latest row; NULL preserved.
+      - name: n_id
+        data_type: BIGINT
+        description: Value from the selected latest row; NULL preserved.
+      - name: latest_visitor_index
+        data_type: BIGINT
+        description: Rank within visitor_id by most recent last_updated_at; always 1 in this output; ties resolved by engine order.
+
+
+## int_pendo__latest_visitor_account
+
+    - name: int_pendo__latest_visitor_account
+      description: Latest visitor-to-account record per (visitor_id, account_id) determined by the most recent visitor_last_updated_at.
+      grain: One row per (visitor_id, account_id)
+      source_models:
+      - staging.stg_pendo__visitor_account_history
+      business_logic: '- Read all rows from staging.stg_pendo__visitor_account_history. - For each (visitor_id, account_id) group, order rows by visitor_last_updated_at in descending time; NULL timestamps are treated as highest and come first. - Assign a sequential index starting at 1 based on that order; ties on identical timestamps are not further disambiguated and one row is selected to receive index 1. - Return only the row with index = 1 from each group; all source columns are passed through and latest_visitor_account_index is included.'
+      columns:
+      - name: account_id
+        data_type: VARCHAR
+        description: Pass-through account identifier; participates in grouping; NULL values form a single group.
+      - name: visitor_id
+        data_type: VARCHAR
+        description: Pass-through visitor identifier; participates in grouping; NULL values form a single group.
+      - name: visitor_last_updated_at
+        data_type: TIMESTAMP
+        description: Timestamp used to order recency within each group; ordered descending with NULLs treated as highest; ties are not further resolved.
+      - name: latest_visitor_account_index
+        data_type: BIGINT
+        description: Sequential index within each (visitor_id, account_id) group ordered by visitor_last_updated_at descending; always 1 in this output.
+
+
+## int_pendo__page_info
+
+    - name: int_pendo__page_info
+      description: Enhanced page metadata enriched with application, product area, aggregated rules, and recent active feature count
+      grain: One row per page_id
+      source_models:
+      - intermediate.int_pendo__latest_page
+      - staging.stg_pendo__user
+      - intermediate.int_pendo__latest_application
+      - staging.stg_pendo__group
+      - intermediate.int_pendo__latest_page_rule
+      - intermediate.int_pendo__latest_feature
+      business_logic: '- Start from intermediate.int_pendo__latest_page as the base (one row per page_id). - Aggregate page rules from intermediate.int_pendo__latest_page_rule by page_id: - Concatenate rule values using ", " as the delimiter. - Exclude NULL rule values; preserve duplicates; no explicit ordering. - If a page has no non-NULL rules, the aggregated value is NULL. - Derive the active feature count from intermediate.int_pendo__latest_feature: - Include features whose valid_through is within 30 days before the current time or any time after. - Group by page_id and count rows with non-NULL feature_id. - Left join to pages and set missing counts to 0; the current time is evaluated when the query runs. - Left join application data on app_id = application_id; bring display_name and platform. - Left join product area on group_id matched by comparing IDs as strings; bring group_name as product_area_name. - Left join creator and updater users on their respective user_id: - Full names are built by joining first name, a space, and last name; if either name is missing or there is no match, the full name is NULL. - Bring creator and updater usernames. - Output the base fields plus joined and derived fields; one row per page_id.'
+      columns:
+      - name: page_id
+        data_type: VARCHAR
+        description: Unique page identifier; exactly one output row per page_id
+      - name: page_name
+        data_type: VARCHAR
+        description: Page name passed through from latest_page
+      - name: app_id
+        data_type: VARCHAR
+        description: Application identifier from latest_page; used to join latest_application
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Page creation timestamp from latest_page; passed through; may be NULL
+      - name: created_by_user_id
+        data_type: VARCHAR
+        description: Creator user_id from latest_page; used to join stg_pendo__user for creator fields
+      - name: is_dirty
+        data_type: BOOLEAN
+        description: Flag from latest_page indicating unsaved changes; passed through
+      - name: group_id
+        data_type: BIGINT
+        description: Group/product area identifier from latest_page; matched to stg_pendo__group by comparing IDs as strings
+      - name: last_updated_at
+        data_type: TIMESTAMP
+        description: Last update timestamp from latest_page; passed through; may be NULL
+      - name: last_updated_by_user_id
+        data_type: VARCHAR
+        description: Updater user_id from latest_page; used to join stg_pendo__user for updater fields
+      - name: root_version_id
+        data_type: BIGINT
+        description: Root version identifier from latest_page; passed through
+      - name: stable_version_id
+        data_type: BIGINT
+        description: Stable version identifier from latest_page; passed through
+      - name: valid_through
+        data_type: TIMESTAMP
+        description: Validity end timestamp from latest_page; passed through
+      - name: rules
+        data_type: VARCHAR
+        description: Comma-separated rule values per page from latest_page_rule using delimiter ', '; excludes NULLs, preserves duplicates, no defined order; NULL when none
+      - name: product_area_name
+        data_type: VARCHAR
+        description: Group name from stg_pendo__group matched by group_id using string comparison; NULL if no match
+      - name: app_display_name
+        data_type: VARCHAR
+        description: Application display_name from latest_application via app_id; NULL if no match
+      - name: app_platform
+        data_type: VARCHAR
+        description: Application platform from latest_application via app_id; NULL if no match
+      - name: created_by_user_full_name
+        data_type: VARCHAR
+        description: Creator full name built as first name, a space, and last name; NULL if either name is missing or no user match
+      - name: created_by_user_username
+        data_type: VARCHAR
+        description: Creator username from stg_pendo__user; NULL if no match
+      - name: last_updated_by_user_full_name
+        data_type: VARCHAR
+        description: Updater full name built as first name, a space, and last name; NULL if either name is missing or no user match
+      - name: last_updated_by_user_username
+        data_type: VARCHAR
+        description: Updater username from stg_pendo__user; NULL if no match
+      - name: count_active_features
+        data_type: BIGINT
+        description: Number of non-NULL feature_id per page where valid_through is within 30 days before now or in the future; returns 0 when no features; evaluated at query time
+
+
+## int_pendo__user_lifecycle_segments
+
+    - name: int_pendo__user_lifecycle_segments
+      description: User lifecycle segmentation derived from Pendo event activity, recency, and intensity
+      grain: One row per visitor_id-account scope; account_id is used during aggregation but is not selected, so a visitor may appear multiple times across accounts
+      source_models:
+      - staging.stg_pendo__event
+      business_logic: '- Aggregate events by (visitor_id, account_id): - count_active_days: number of distinct calendar days with at least one event. - count_active_months: number of distinct calendar months with at least one event. - sum_events: total of num_events; NULLs are ignored and NULL is returned only if all values are NULL. - sum_minutes: total of num_minutes; NULLs are ignored and NULL is returned only if all values are NULL. - average_daily_events: arithmetic mean of num_events across grouped rows with values. - average_daily_minutes: arithmetic mean of num_minutes across grouped rows with values. - first_event_on: earliest event date (calendar day). - last_event_on: most recent event date (calendar day). - Keep only groups where first_event_on is present. - Derive: - user_age_days: whole days between first_event_on and today. - days_since_last_active: whole days between last_event_on and today. - activity_density: if user_age_days > 0, count_active_days divided by user_age_days; otherwise 0. - usage_intensity: label by average_daily_events thresholds: High (≥50), Medium (≥20), Low (≥5), Minimal (<5). - Classify lifecycle_stage in this order (first match wins): 1) New User: user_age_days ≤ 30 and count_active_days ≤ 7. 2) Growing User: user_age_days between 30 and 90, activity_density > 0.2, and days_since_last_active ≤ 30. 3) Mature User: user_age_days > 90, activity_density > 0.1, days_since_last_active ≤ 60, and usage_intensity is Medium or High. 4) Power User: activity_density > 0.3, usage_intensity is High, and days_since_last_active ≤ 14. 5) At Risk: user_age_days > 30, days_since_last_active between 30 and 90, and count_active_days ≥ 3. 6) Churned: days_since_last_active > 90. 7) Otherwise: Dormant. - Compute user_value_score and cap at 100: - activity_density × 30 - plus intensity points: High=25, Medium=15, Low=8, Minimal=2 - plus recency points: ≤7 days=25, ≤30 days=15, ≤90 days=5, else 0 - plus min(20, count_active_months × 2). - Determine engagement_trend (first match wins): - If days_since_last_active ≤ 30 and user_age_days > 60: Increasing if activity_density > 0.5; Stable if > 0.2; otherwise Declining. - Else if days_since_last_active ≤ 30: New/Recent. - Else: Inactive. - Determine churn_risk_level (first match wins): - If lifecycle_stage is Churned: Already Churned. - Else if lifecycle_stage is At Risk: High Risk. - Else Medium Risk if (days_since_last_active > 30 and usage_intensity is Minimal or Low) or (activity_density < 0.1 and user_age_days > 90); otherwise Low Risk. - Flags: - is_valuable_user: true for Power User or Mature User; else false. - needs_attention: true for At Risk or Churned; else false. - is_new_user: true for New User; else false. - calculated_at is set to the query execution timestamp.'
+      columns:
+      - name: visitor_id
+        data_type: VARCHAR
+        description: Visitor identifier; metrics are aggregated per account, so a visitor may appear in multiple rows across accounts
+      - name: first_event_on
+        data_type: DATE
+        description: Earliest event date for the visitor within the account; ensured non-null by filtering
+      - name: last_event_on
+        data_type: DATE
+        description: Most recent event date for the visitor within the account
+      - name: user_age_days
+        data_type: BIGINT
+        description: Whole days from first_event_on to current_date; non-negative
+      - name: days_since_last_active
+        data_type: BIGINT
+        description: Whole days from last_event_on to current_date; non-negative
+      - name: count_active_days
+        data_type: BIGINT
+        description: Distinct calendar days with at least one event
+      - name: count_active_months
+        data_type: BIGINT
+        description: Distinct calendar months with at least one event
+      - name: sum_events
+        data_type: HUGEINT
+        description: Total of num_events across grouped records; ignores NULLs; NULL only if all inputs are NULL
+      - name: sum_minutes
+        data_type: HUGEINT
+        description: Total of num_minutes across grouped records; ignores NULLs; NULL only if all inputs are NULL
+      - name: average_daily_events
+        data_type: DOUBLE
+        description: Mean of num_events across grouped records with values; no rounding
+      - name: average_daily_minutes
+        data_type: DOUBLE
+        description: Mean of num_minutes across grouped records with values; no rounding
+      - name: activity_density
+        data_type: FLOAT
+        description: If user_age_days > 0, count_active_days divided by user_age_days; otherwise 0; no rounding
+      - name: usage_intensity
+        data_type: VARCHAR
+        description: 'Label based on average_daily_events: High (≥50), Medium (≥20), Low (≥5), else Minimal'
+      - name: lifecycle_stage
+        data_type: VARCHAR
+        description: Lifecycle label from the ordered rules in business_logic; first match wins
+      - name: user_value_score
+        data_type: FLOAT
+        description: Composite score capped at 100 from activity density, intensity points, recency points, and active months; no rounding
+      - name: engagement_trend
+        data_type: VARCHAR
+        description: 'Trend based on recency and activity density: Increasing/Stable/Declining when recently active and age > 60, else New/Recent if recently active, else Inactive'
+      - name: churn_risk_level
+        data_type: VARCHAR
+        description: 'Risk label: Already Churned for Churned stage; High Risk for At Risk stage; otherwise Medium Risk per recency/intensity or low density with age > 90; else Low Risk'
+      - name: is_valuable_user
+        data_type: BOOLEAN
+        description: True if lifecycle_stage is Power User or Mature User; otherwise false
+      - name: needs_attention
+        data_type: BOOLEAN
+        description: True if lifecycle_stage is At Risk or Churned; otherwise false
+      - name: is_new_user
+        data_type: BOOLEAN
+        description: True if lifecycle_stage is New User; otherwise false
+      - name: calculated_at
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Timestamp when the query ran; time zone comes from the session
+
+
+## account
+
+    - name: account
+      description: Account dimension enriched with visitor counts, NPS aggregates, and all-time usage metrics joined to the latest account profile (one row per account_id)
+      grain: One row per account_id
+      source_models:
+      - intermediate.int_pendo__latest_account
+      - intermediate.int_pendo__latest_visitor_account
+      - intermediate.int_pendo__latest_nps_rating
+      - intermediate.int_pendo__account_daily_metrics
+      business_logic: '- Use intermediate.int_pendo__latest_account as the base (one record per account_id); all base columns are passed through unchanged. - From intermediate.int_pendo__latest_visitor_account, group by account_id and count unique, non-null visitor_id values to get count_associated_visitors. - From intermediate.int_pendo__latest_nps_rating, group by account_id to compute NPS metrics: minimum rating, maximum rating, and average rating; null ratings are ignored, and if an account has no ratings these fields remain null. - From intermediate.int_pendo__account_daily_metrics, group by account_id and aggregate across all available rows: - count_active_visitors, count_page_viewing_visitors, count_feature_clicking_visitors, sum_minutes, sum_events, count_event_records are summed over time. - count_active_days is the number of unique occurred_on dates (null dates are excluded). - count_active_months is the number of unique calendar months derived from occurred_on (null dates are excluded). - average_daily_minutes is total minutes divided by the number of active days; if there are no active days, this average is 0. - average_daily_events is total events divided by the number of active days; if there are no active days, this average is 0. - first_event_on is the earliest occurred_on date; last_event_on is the latest occurred_on date. - Left join the visitor, NPS, and daily aggregates to the base on account_id. - Default the following metrics to 0 when missing: count_associated_visitors, count_active_visitors, count_page_viewing_visitors, count_feature_clicking_visitors, count_active_days, count_active_months, sum_minutes, sum_events, count_event_records, average_daily_minutes, average_daily_events. NPS metrics and event dates are not defaulted. - The result contains exactly one row per account_id.'
+      columns:
+      - name: account_id
+        data_type: VARCHAR
+        description: Primary key from latest_account and join key; one output row per account_id.
+      - name: last_updated_at
+        data_type: VARCHAR
+        description: Pass-through last update timestamp string from latest_account; may be null.
+      - name: account_id_hash
+        data_type: DOUBLE
+        description: Pass-through numeric hash of account_id from latest_account; may be null.
+      - name: first_visit_at
+        data_type: VARCHAR
+        description: Pass-through first visit timestamp string from latest_account; may be null.
+      - name: last_visit_at
+        data_type: VARCHAR
+        description: Pass-through last visit timestamp string from latest_account; may be null.
+      - name: latest_account_index
+        data_type: BIGINT
+        description: Pass-through ordering/index field from latest_account; may be null.
+      - name: count_associated_visitors
+        data_type: BIGINT
+        description: Number of unique non-null visitors linked to the account; left joined and defaulted to 0 when none.
+      - name: min_nps_rating
+        data_type: INTEGER
+        description: Minimum NPS rating for the account; null ratings ignored; remains null if no ratings exist.
+      - name: max_nps_rating
+        data_type: INTEGER
+        description: Maximum NPS rating for the account; null ratings ignored; remains null if no ratings exist.
+      - name: avg_nps_rating
+        data_type: DOUBLE
+        description: Average NPS rating for the account; null ratings ignored; unrounded; remains null if no ratings exist.
+      - name: count_active_visitors
+        data_type: HUGEINT
+        description: Sum of daily active visitor counts across all time for the account; defaulted to 0 when missing.
+      - name: count_page_viewing_visitors
+        data_type: HUGEINT
+        description: Sum of daily page-viewing visitor counts across all time for the account; defaulted to 0 when missing.
+      - name: count_feature_clicking_visitors
+        data_type: HUGEINT
+        description: Sum of daily feature-clicking visitor counts across all time for the account; defaulted to 0 when missing.
+      - name: count_active_days
+        data_type: BIGINT
+        description: Number of unique occurred_on dates with activity for the account; defaulted to 0 when none.
+      - name: count_active_months
+        data_type: BIGINT
+        description: Number of unique calendar months with activity based on occurred_on; defaulted to 0 when none.
+      - name: sum_minutes
+        data_type: HUGEINT
+        description: Total minutes of activity summed across all daily records for the account; defaulted to 0 when missing.
+      - name: sum_events
+        data_type: HUGEINT
+        description: Total events summed across all daily records for the account; defaulted to 0 when missing.
+      - name: count_event_records
+        data_type: HUGEINT
+        description: Total event records summed across all daily records for the account; defaulted to 0 when missing.
+      - name: average_daily_minutes
+        data_type: DOUBLE
+        description: Total minutes divided by the number of active days; returns 0 when no active days; unrounded.
+      - name: average_daily_events
+        data_type: DOUBLE
+        description: Total events divided by the number of active days; returns 0 when no active days; unrounded.
+      - name: first_event_on
+        data_type: DATE
+        description: Earliest occurred_on date for the account; null if no events.
+      - name: last_event_on
+        data_type: DATE
+        description: Latest occurred_on date for the account; null if no events.
+
+
+## feature
+
+    - name: feature
+      description: Feature dimension enriched by aggregated usage metrics from staging.stg_pendo__feature_event joined to attributes from intermediate.int_pendo__feature_info
+      grain: One row per feature_id
+      source_models:
+      - intermediate.int_pendo__feature_info
+      - staging.stg_pendo__feature_event
+      business_logic: '- Read all feature event rows. - For each feature_id, compute: - count_visitors: number of unique non-null visitor_id. - count_accounts: number of unique non-null account_id. - sum_clicks: total of num_events, ignoring NULL values. - count_click_events: number of event rows. - first_click_at: earliest occurred_at across rows, ignoring NULL values. - last_click_at: latest occurred_at across rows, ignoring NULL values. - avg_visitor_minutes: total num_minutes divided by the visitor count; if the visitor count is zero, the result is NULL. - avg_visitor_events: total num_events divided by the visitor count; if the visitor count is zero, the result is NULL. - Read feature attributes from intermediate.int_pendo__feature_info. - Left join metrics to features on feature_id; retain all features even when no events exist. - Final formatting: - count_visitors, count_accounts, sum_clicks, count_click_events: set to 0 when NULL. - avg_visitor_minutes, avg_visitor_events: rounded to 3 decimal places and set to 0 when NULL. - first_click_at and last_click_at: remain NULL when no events. - Output one row per feature_id combining all feature attributes and computed metrics.'
+      columns:
+      - name: feature_id
+        data_type: VARCHAR
+        description: Unique feature identifier and join key; exactly one output row per feature_id
+      - name: app_id
+        data_type: VARCHAR
+        description: Pendo application identifier from feature_info
+      - name: created_at
+        data_type: VARCHAR
+        description: Feature creation timestamp from feature_info
+      - name: created_by_user_id
+        data_type: VARCHAR
+        description: User ID who created the feature from feature_info
+      - name: is_dirty
+        data_type: BOOLEAN
+        description: Flag indicating unsaved changes from feature_info
+      - name: group_id
+        data_type: BIGINT
+        description: Group identifier from feature_info
+      - name: is_core_event
+        data_type: BOOLEAN
+        description: Flag indicating core event feature from feature_info
+      - name: last_updated_at
+        data_type: VARCHAR
+        description: Last update timestamp from feature_info
+      - name: last_updated_by_user_id
+        data_type: VARCHAR
+        description: User ID who last updated the feature from feature_info
+      - name: feature_name
+        data_type: VARCHAR
+        description: Feature display name from feature_info
+      - name: page_id
+        data_type: VARCHAR
+        description: Associated page identifier from feature_info
+      - name: root_version_id
+        data_type: BIGINT
+        description: Root version identifier from feature_info
+      - name: stable_version_id
+        data_type: BIGINT
+        description: Stable version identifier from feature_info
+      - name: valid_through
+        data_type: VARCHAR
+        description: Feature validity end timestamp from feature_info
+      - name: product_area_name
+        data_type: VARCHAR
+        description: Product area name from feature_info
+      - name: page_name
+        data_type: VARCHAR
+        description: Associated page name from feature_info
+      - name: page_created_at
+        data_type: VARCHAR
+        description: Page creation timestamp from feature_info
+      - name: page_valid_through
+        data_type: VARCHAR
+        description: Page validity end timestamp from feature_info
+      - name: app_display_name
+        data_type: VARCHAR
+        description: Application display name from feature_info
+      - name: app_platform
+        data_type: VARCHAR
+        description: Application platform from feature_info
+      - name: created_by_user_full_name
+        data_type: VARCHAR
+        description: Full name of the feature creator from feature_info
+      - name: created_by_user_username
+        data_type: VARCHAR
+        description: Username of the feature creator from feature_info
+      - name: last_updated_by_user_full_name
+        data_type: VARCHAR
+        description: Full name of the last updater from feature_info
+      - name: last_updated_by_user_username
+        data_type: VARCHAR
+        description: Username of the last updater from feature_info
+      - name: count_visitors
+        data_type: BIGINT
+        description: Unique non-null visitor count per feature_id; set to 0 when no events
+      - name: count_accounts
+        data_type: BIGINT
+        description: Unique non-null account count per feature_id; set to 0 when no events
+      - name: sum_clicks
+        data_type: DOUBLE
+        description: Total num_events per feature_id with NULL values ignored; set to 0 when no events
+      - name: count_click_events
+        data_type: BIGINT
+        description: Number of event rows per feature_id; set to 0 when no events
+      - name: first_click_at
+        data_type: VARCHAR
+        description: Earliest occurred_at per feature_id; NULL when no events
+      - name: last_click_at
+        data_type: VARCHAR
+        description: Latest occurred_at per feature_id; NULL when no events
+      - name: avg_visitor_minutes
+        data_type: DOUBLE
+        description: Total minutes divided by unique non-null visitors per feature_id; rounded to 3 decimals; set to 0 when no visitors
+      - name: avg_visitor_events
+        data_type: DOUBLE
+        description: Total events divided by unique non-null visitors per feature_id; rounded to 3 decimals; set to 0 when no visitors
+
+
+## guide
+
+    - name: guide
+      description: Guide attributes from intermediate.int_pendo__guide_info joined with selected all-time metrics from intermediate.int_pendo__guide_alltime_metrics.
+      grain: One row per row in intermediate.int_pendo__guide_info; rows may multiply if multiple metrics rows exist for a guide_id.
+      source_models:
+      - intermediate.int_pendo__guide_info
+      - intermediate.int_pendo__guide_alltime_metrics
+      business_logic: '- Use all rows and columns from intermediate.int_pendo__guide_info as the base; no filtering, casting, aggregation, or deduplication is applied. - Left join intermediate.int_pendo__guide_alltime_metrics on guide_id. - Include only these fields from the metrics table: count_accounts, count_visitors_advanced, count_visitors_dismissed, count_visitors_shown, count_visitors, first_event_at, last_event_at. - Do not default or coalesce metrics; when there is no matching metrics row, these fields remain NULL. - If guide_info contains duplicate guide_id values, those duplicates are preserved. - If the metrics table has multiple rows for a guide_id, one output row is produced for each matching combination, increasing row counts. - No ordering is applied; output order is not guaranteed.'
+      columns:
+      - name: guide_id
+        data_type: VARCHAR
+        description: Guide identifier from guide_info (join key; pass-through; NULL not allowed).
+        tests:
+        - not_null
+      - name: guide_name
+        data_type: VARCHAR
+        description: Guide display name from guide_info (pass-through; NULL preserved).
+      - name: app_id
+        data_type: BIGINT
+        description: Application identifier from guide_info (pass-through; NULL preserved).
+      - name: state
+        data_type: VARCHAR
+        description: Guide state from guide_info (pass-through; NULL preserved).
+      - name: device_type
+        data_type: VARCHAR
+        description: Target device type from guide_info (pass-through; NULL preserved).
+      - name: created_at
+        data_type: VARCHAR
+        description: Guide creation timestamp from guide_info (pass-through; format/timezone unchanged; NULL preserved).
+      - name: created_by_user_id
+        data_type: BIGINT
+        description: User ID who created the guide from guide_info (pass-through; NULL preserved).
+      - name: is_multi_step
+        data_type: BOOLEAN
+        description: Indicates multi-step guide from guide_info (pass-through; NULL preserved).
+      - name: is_training
+        data_type: BOOLEAN
+        description: Indicates training guide from guide_info (pass-through; NULL preserved).
+      - name: last_updated_at
+        data_type: VARCHAR
+        description: Last update timestamp from guide_info (pass-through; format/timezone unchanged; NULL preserved).
+      - name: last_updated_by_user_id
+        data_type: BIGINT
+        description: User ID who last updated the guide from guide_info (pass-through; NULL preserved).
+      - name: launch_method
+        data_type: VARCHAR
+        description: Guide launch method from guide_info (pass-through; NULL preserved).
+      - name: published_at
+        data_type: VARCHAR
+        description: Guide publication timestamp from guide_info (pass-through; format/timezone unchanged; NULL preserved).
+      - name: recurrence
+        data_type: BOOLEAN
+        description: Indicates recurrence setting from guide_info (pass-through; NULL preserved).
+      - name: recurrence_eligibility_window
+        data_type: BOOLEAN
+        description: Recurrence eligibility window setting from guide_info (pass-through; NULL preserved).
+      - name: reset_at
+        data_type: VARCHAR
+        description: Guide reset timestamp from guide_info (pass-through; format/timezone unchanged; NULL preserved).
+      - name: root_version_id
+        data_type: BIGINT
+        description: Root version identifier from guide_info (pass-through; NULL preserved).
+      - name: stable_version_id
+        data_type: BIGINT
+        description: Stable version identifier from guide_info (pass-through; NULL preserved).
+      - name: app_display_name
+        data_type: VARCHAR
+        description: Application display name from guide_info (pass-through; NULL preserved).
+      - name: app_platform
+        data_type: VARCHAR
+        description: Application platform from guide_info (pass-through; NULL preserved).
+      - name: created_by_user_full_name
+        data_type: VARCHAR
+        description: Full name of the creating user from guide_info (pass-through; NULL preserved).
+      - name: created_by_user_username
+        data_type: VARCHAR
+        description: Username of the creating user from guide_info (pass-through; NULL preserved).
+      - name: last_updated_by_user_full_name
+        data_type: VARCHAR
+        description: Full name of the last updating user from guide_info (pass-through; NULL preserved).
+      - name: last_updated_by_user_username
+        data_type: VARCHAR
+        description: Username of the last updating user from guide_info (pass-through; NULL preserved).
+      - name: count_steps
+        data_type: BIGINT
+        description: Number of steps in the guide from guide_info (pass-through; NULL preserved).
+      - name: count_accounts
+        data_type: BIGINT
+        description: All-time account count from metrics (left join; no defaulting; NULL if no match).
+      - name: count_visitors_advanced
+        data_type: BIGINT
+        description: All-time count of visitors who advanced from metrics (left join; no defaulting; NULL if no match).
+      - name: count_visitors_dismissed
+        data_type: BIGINT
+        description: All-time count of visitors who dismissed from metrics (left join; no defaulting; NULL if no match).
+      - name: count_visitors_shown
+        data_type: BIGINT
+        description: All-time count of visitors shown from metrics (left join; no defaulting; NULL if no match).
+      - name: count_visitors
+        data_type: BIGINT
+        description: All-time total visitor count from metrics (left join; no defaulting; NULL if no match).
+      - name: first_event_at
+        data_type: VARCHAR
+        description: Timestamp of first event from metrics (left join; format/timezone unchanged; NULL if no match).
+      - name: last_event_at
+        data_type: VARCHAR
+        description: Timestamp of last event from metrics (left join; format/timezone unchanged; NULL if no match).
+
+
+## page
+
+    - name: page
+      description: Core page dimension with latest page attributes joined to aggregated event metrics
+      grain: One row per page_id from intermediate.int_pendo__latest_page
+      source_models:
+      - intermediate.int_pendo__latest_page
+      - staging.stg_pendo__page_event
+      business_logic: '- Build event metrics from staging.stg_pendo__page_event grouped by page_id: - Distinct visitor count. - Distinct account count. - Total pageviews as the sum of num_events (null values do not contribute). - Total event records counted across all rows. - First and last pageview timestamps as the earliest and latest occurred_at. - Visitor averages: - Average minutes per distinct visitor = total num_minutes divided by the distinct visitor count. - Average pageviews per distinct visitor = total num_events divided by the distinct visitor count. - When the distinct visitor count is zero, these averages are not computed. - Left join these metrics to intermediate.int_pendo__latest_page on page_id. - Apply final handling: - Counts and sums default to 0 when there are no matching events. - Averages are rounded to 3 decimal places and default to 0 when no visitors. - First and last pageview timestamps remain null when there are no matching events. - Output includes all columns from latest_page plus the metrics; one row per page_id present in latest_page.'
+      columns:
+      - name: page_id
+        data_type: VARCHAR
+        description: Unique page identifier and join key; exactly one row per page_id
+        tests:
+        - not_null
+        - unique
+      - name: page_name
+        data_type: VARCHAR
+        description: Latest page name from intermediate.int_pendo__latest_page
+      - name: app_id
+        data_type: VARCHAR
+        description: Application identifier from intermediate.int_pendo__latest_page
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Page creation timestamp from intermediate.int_pendo__latest_page
+      - name: created_by_user_id
+        data_type: VARCHAR
+        description: User ID who created the page from intermediate.int_pendo__latest_page
+      - name: is_dirty
+        data_type: BOOLEAN
+        description: Flag indicating unsaved changes in latest page info
+      - name: group_id
+        data_type: BIGINT
+        description: Group identifier from intermediate.int_pendo__latest_page
+      - name: last_updated_at
+        data_type: TIMESTAMP
+        description: Last update timestamp from intermediate.int_pendo__latest_page
+      - name: last_updated_by_user_id
+        data_type: VARCHAR
+        description: User ID who last updated the page from intermediate.int_pendo__latest_page
+      - name: root_version_id
+        data_type: BIGINT
+        description: Root version identifier from intermediate.int_pendo__latest_page
+      - name: stable_version_id
+        data_type: BIGINT
+        description: Stable version identifier from intermediate.int_pendo__latest_page
+      - name: valid_through
+        data_type: TIMESTAMP
+        description: Validity end timestamp of the latest page record snapshot
+      - name: latest_page_index
+        data_type: BIGINT
+        description: Index of the latest page record in intermediate.int_pendo__latest_page
+      - name: count_visitors
+        data_type: BIGINT
+        description: Number of distinct visitors for the page; 0 if no events
+      - name: count_accounts
+        data_type: BIGINT
+        description: Number of distinct accounts for the page; 0 if no events
+      - name: sum_pageviews
+        data_type: BIGINT
+        description: Total pageviews from num_events; 0 if no events
+      - name: count_pageview_events
+        data_type: BIGINT
+        description: Total event records for the page; 0 if no events
+      - name: first_pageview_at
+        data_type: TIMESTAMP
+        description: Earliest occurred_at for the page; NULL if no events
+      - name: last_pageview_at
+        data_type: TIMESTAMP
+        description: Latest occurred_at for the page; NULL if no events
+      - name: avg_visitor_minutes
+        data_type: DOUBLE
+        description: Average minutes per distinct visitor rounded to 3 decimals; 0 if no visitors
+      - name: avg_visitor_pageviews
+        data_type: DOUBLE
+        description: Average pageviews per distinct visitor rounded to 3 decimals; 0 if no visitors
+
+
+## visitor
+
+    - name: visitor
+      description: Visitor dimension joining latest profile with account count, NPS rating, and daily engagement aggregates
+      grain: One row per visitor_id from intermediate.int_pendo__latest_visitor
+      source_models:
+      - intermediate.int_pendo__latest_visitor
+      - intermediate.int_pendo__latest_visitor_account
+      - intermediate.int_pendo__latest_nps_rating
+      - intermediate.int_pendo__visitor_daily_metrics
+      business_logic: '- Begin with intermediate.int_pendo__latest_visitor (one row per visitor_id) and pass through all profile fields. - Compute count_associated_accounts by grouping records in intermediate.int_pendo__latest_visitor_account by visitor_id and counting rows; left join to visitors; if a visitor has no account rows, the count remains NULL. - Bring latest_nps_rating by left joining intermediate.int_pendo__latest_nps_rating on visitor_id; if no rating is found, it remains NULL. - Aggregate engagement from intermediate.int_pendo__visitor_daily_metrics by visitor_id: - count_active_days = number of unique occurred_on dates. - count_active_months = number of unique calendar months derived from occurred_on. - sum_minutes, sum_events, count_event_records = totals across all rows; NULL values do not contribute to the totals. - average_daily_minutes = total minutes divided by active days; average_daily_events = total events divided by active days; when active days is 0, the averages are treated as NULL. - first_event_on = earliest occurred_on date; last_event_on = latest occurred_on date. - Left join aggregated metrics to visitors; default numeric aggregates and averages to 0 when missing or when their computation yields NULL; first_event_on and last_event_on remain NULL if no daily metrics exist. - Duplicated source rows contribute to totals; only day and month counts use uniqueness. No ordering or additional filtering is applied.'
+      columns:
+      - name: visitor_id
+        data_type: VARCHAR
+        description: Primary key sourced from latest_visitor; one output row per visitor_id; not null
+      - name: account_id
+        data_type: VARCHAR
+        description: Pass-through from latest_visitor; may be null; not aggregated
+      - name: first_visit_at
+        data_type: VARCHAR
+        description: Pass-through first visit timestamp from latest_visitor; may be null
+      - name: visitor_id_hash
+        data_type: DOUBLE
+        description: Pass-through numeric hash of visitor_id from latest_visitor; may be null
+      - name: last_browser_name
+        data_type: VARCHAR
+        description: Pass-through most recent browser name from latest_visitor; may be null
+      - name: last_browser_version
+        data_type: DOUBLE
+        description: Pass-through most recent browser version from latest_visitor; may be null
+      - name: last_operating_system
+        data_type: VARCHAR
+        description: Pass-through most recent operating system from latest_visitor; may be null
+      - name: last_server_name
+        data_type: VARCHAR
+        description: Pass-through most recent server name from latest_visitor; may be null
+      - name: last_updated_at
+        data_type: VARCHAR
+        description: Pass-through last update timestamp from latest_visitor; may be null
+      - name: last_user_agent
+        data_type: VARCHAR
+        description: Pass-through most recent user agent string from latest_visitor; may be null
+      - name: last_visit
+        data_type: VARCHAR
+        description: Pass-through most recent visit timestamp from latest_visitor; may be null
+      - name: n_id
+        data_type: BIGINT
+        description: Pass-through internal numeric ID from latest_visitor; may be null
+      - name: latest_visitor_index
+        data_type: BIGINT
+        description: Pass-through index indicating latest record selection from latest_visitor; may be null
+      - name: count_associated_accounts
+        data_type: BIGINT
+        description: Count of visitor_account rows for this visitor; duplicates counted; null when no associated accounts
+      - name: latest_nps_rating
+        data_type: INTEGER
+        description: Most recent NPS rating joined by visitor_id; null when none
+      - name: count_active_days
+        data_type: BIGINT
+        description: Number of unique occurred_on dates in visitor_daily_metrics; defaults to 0 when no metrics
+      - name: count_active_months
+        data_type: BIGINT
+        description: Number of unique calendar months from occurred_on in visitor_daily_metrics; defaults to 0 when no metrics
+      - name: sum_minutes
+        data_type: HUGEINT
+        description: Total minutes across visitor_daily_metrics for this visitor; nulls ignored; defaults to 0 when no metrics
+      - name: sum_events
+        data_type: HUGEINT
+        description: Total events across visitor_daily_metrics for this visitor; nulls ignored; defaults to 0 when no metrics
+      - name: count_event_records
+        data_type: HUGEINT
+        description: Total event record count across visitor_daily_metrics; nulls ignored; defaults to 0 when no metrics
+      - name: average_daily_minutes
+        data_type: DOUBLE
+        description: Total minutes divided by active days; returns 0 when active days is 0 or when no metrics; no rounding
+      - name: average_daily_events
+        data_type: DOUBLE
+        description: Total events divided by active days; returns 0 when active days is 0 or when no metrics; no rounding
+      - name: first_event_on
+        data_type: DATE
+        description: Earliest occurred_on date in visitor_daily_metrics for this visitor; null if no metrics
+      - name: last_event_on
+        data_type: DATE
+        description: Latest occurred_on date in visitor_daily_metrics for this visitor; null if no metrics
+
+
+
+
+=== Premises recorded in earlier reviews ===
+[
+  {
+    "statement": "The raw application table exposes application_id, application_name, and is_integrated under those output names, so their source-column overrides are unnecessary.",
+    "about": "data",
+    "target": "staging.stg_pendo__application_history",
+    "evidence_of_dependence": "The second 'stg_pendo__application_history' entry is {'display_name':'display_name'}, replacing the earlier overrides; source selection uses mp.get(n,n).",
+    "alternative": "The material index lists raw.application_history columns \"id\", \"name\", and \"integrated\", rather than application_id, application_name, and is_integrated.",
+    "importance": 5,
+    "reason": "The overwritten mapping can prevent this staging model and its downstream dependencies from executing.",
+    "updates": null,
+    "id": "c2-1",
+    "call": 2
+  },
+  {
+    "statement": "Every retained source row already yields non-null values for all contract-required columns that the generated SQL does not explicitly filter.",
+    "about": "data",
+    "target": "staging.stg_pendo__user, staging.stg_pendo__account_history, staging.stg_pendo__visitor_history, staging.stg_pendo__feature_event, staging.stg_pendo__guide_event, staging.stg_pendo__visitor_account_history, staging.stg_pendo__poll, staging.stg_pendo__page_history, staging.stg_pendo__guide_history, staging.stg_pendo__group, staging.stg_pendo__poll_event, staging.stg_pendo__guide_step_history, staging.stg_pendo__feature_history, staging.stg_pendo__page_event, staging.stg_pendo__page_rule_history",
+    "evidence_of_dependence": "wh=[]; only t.get('where_conditions',[]) and the user/event special cases populate filters; conversions otherwise use TRY_CAST without checking their results.",
+    "alternative": "These tables declare \"constraints: [not_null]\" for required identifiers and, in several event tables, occurred_at; the contract describes deleting rows with \"Invalid primary keys\".",
+    "importance": 4,
+    "reason": "Missing source values or failed conversions can leave unusable records in many downstream models.",
+    "updates": null,
+    "id": "c2-2",
+    "call": 2
+  },
+  {
+    "statement": "General-event account IDs need not be nullified when they fail the contract's account-ID pattern.",
+    "about": "requirement",
+    "target": "staging.stg_pendo__event.account_id",
+    "evidence_of_dependence": "elif n=='account_id' and name=='stg_pendo__event': expr='CAST(account_id AS VARCHAR)'",
+    "alternative": "The contract specifies \"account_id ~ '^(ACC[0-9]+|[0-9]+)$'\" with \"on_failure: nullify_field\".",
+    "importance": 4,
+    "reason": "Invalid account identifiers would survive and affect account associations and aggregates.",
+    "updates": null,
+    "id": "c2-3",
+    "call": 2
+  },
+  {
+    "statement": "Guide and poll URLs do not require rejection when their trimmed values lack an HTTP or HTTPS prefix.",
+    "about": "requirement",
+    "target": "staging.stg_pendo__guide_event.url, staging.stg_pendo__poll_event.url",
+    "evidence_of_dependence": "expr=f\"CASE WHEN {n if src==n else base} IS NULL THEN NULL ELSE {base} END\" if n=='url' else base",
+    "alternative": "Both contracts require \"url IS NULL OR url ~ '^https?://'\" with \"on_failure: nullify_field\".",
+    "importance": 3,
+    "reason": "Malformed URLs remain available to downstream analyses instead of being nullified.",
+    "updates": null,
+    "id": "c2-4",
+    "call": 2
+  },
+  {
+    "statement": "Dotted IPv4 matching is the intended validation rule despite the contract's different literal IPv4 expression.",
+    "about": "requirement",
+    "target": "staging.stg_pendo__event.remote_ip, staging.stg_pendo__feature_event.remote_ip, staging.stg_pendo__guide_event.remote_ip, staging.stg_pendo__poll_event.remote_ip, staging.stg_pendo__page_event.remote_ip",
+    "evidence_of_dependence": "regexp_matches(CAST({src} AS VARCHAR), '^([0-9]{{1,3}}\\.){{3}}[0-9]{{1,3}}$')",
+    "alternative": "The documented expression is \"^([0-9]{1,3}){3}[0-9]{1,3}$\", without literal dots.",
+    "importance": 3,
+    "reason": "The implementation changes which IP values survive validation across five event tables.",
+    "updates": null,
+    "id": "c2-5",
+    "call": 2
+  },
+  {
+    "statement": "Checking the allowed user types before lowercasing and trimming produces the required retained user population.",
+    "about": "requirement",
+    "target": "staging.stg_pendo__user",
+    "evidence_of_dependence": "The SELECT uses 'LOWER(TRIM(user_type))', while wh includes \"user_type IN ('system','internal','api','external')\".",
+    "alternative": "The contract requires \"user_type = LOWER(TRIM(user_type))\" with \"on_failure: correct\", supporting normalization before rejecting values outside the allowed set.",
+    "importance": 3,
+    "reason": "Correctable uppercase or padded user types would be deleted instead of standardized.",
+    "updates": null,
+    "id": "c2-6",
+    "call": 2
+  },
+  {
+    "statement": "Directly casting visitor last_visit timestamps is equivalent to the contract's local-time string-truncation procedure.",
+    "about": "data",
+    "target": "staging.stg_pendo__visitor_history.last_visit",
+    "evidence_of_dependence": "The timestamp-special-case tuple contains 'last_visit_at' but not 'last_visit', so last_visit falls through to TRY_CAST(last_visit AS TIMESTAMP).",
+    "alternative": "The implementation notes prescribe \"TRY_CAST(SUBSTRING(timestamp_field, 1, 23) AS TIMESTAMP)\" and say to ignore the timezone suffix.",
+    "importance": 3,
+    "reason": "A different parse result or conversion failure changes the visitor profile's last-visit value.",
+    "updates": null,
+    "id": "c2-7",
+    "call": 2
+  },
+  {
+    "statement": "Directly casting nonempty user deleted_at strings is equivalent to the contract's local-time string-truncation procedure.",
+    "about": "data",
+    "target": "staging.stg_pendo__user.deleted_at",
+    "evidence_of_dependence": "'deleted_at':\"TRY_CAST(NULLIF(deleted_at, '') AS TIMESTAMP)\"",
+    "alternative": "The implementation notes prescribe truncating timestamp strings to their first 23 characters before conversion.",
+    "importance": 2,
+    "reason": "Any parsing difference affects deletion timestamps, though this field is optional.",
+    "updates": null,
+    "id": "c2-8",
+    "call": 2
+  },
+  {
+    "statement": "raw.group_data is the intended source for the group staging model specified as reading raw.group.",
+    "about": "data",
+    "target": "staging.stg_pendo__group",
+    "evidence_of_dependence": "raw_names={'stg_pendo__group':'group_data'}",
+    "alternative": "The group contract states \"source_table: raw.group\"; the material index instead exposes raw.group_data.",
+    "importance": 2,
+    "reason": "The substitution is plausible but determines the entire group population and its downstream enrichment.",
+    "updates": null,
+    "id": "c2-9",
+    "call": 2
+  },
+  {
+    "statement": "No guide-step source rows contain an empty guide_id requiring deletion.",
+    "about": "data",
+    "target": "staging.stg_pendo__guide_step_history",
+    "evidence_of_dependence": "The generator adds no guide-step-specific WHERE clause and does not translate column validation_rules into filters.",
+    "alternative": "The contract explicitly requires \"guide_id IS NOT NULL AND guide_id != ''\" with \"on_failure: delete_row\".",
+    "importance": 2,
+    "reason": "Empty identifiers would survive and could distort guide-step associations or counts.",
+    "updates": null,
+    "id": "c2-10",
+    "call": 2
+  },
+  {
+    "statement": "The latest visitor-account, guide-step, and page-rule models should retain one row per visitor/account pair, guide/step pair, and page/rule pair, respectively.",
+    "about": "requirement",
+    "target": "intermediate.int_pendo__latest_visitor_account, intermediate.int_pendo__latest_guide_step, intermediate.int_pendo__latest_page_rule",
+    "evidence_of_dependence": "The ranking generator uses partitions 'visitor_id, account_id', 'guide_id, step_id', and 'page_id, rule', then filters the index to 1.",
+    "alternative": null,
+    "importance": 4,
+    "reason": "These choices determine which historical relationships survive and can change association counts and downstream enrichment.",
+    "updates": null,
+    "id": "c3-1",
+    "call": 3
+  },
+  {
+    "statement": "Guide events with null account_id need not participate in the null-account first-seen group when computing count_first_time_accounts.",
+    "about": "requirement",
+    "target": "intermediate.int_pendo__guide_daily_metrics",
+    "evidence_of_dependence": "LEFT JOIN a USING(guide_id,account_id)",
+    "alternative": "The guide daily specification says \"rows without account_id are treated as one null account\" and defines count_first_time_accounts as counting visitors whose account first appeared that day.",
+    "importance": 3,
+    "reason": "Ordinary equality does not match null accounts, changing first-time and returning metrics if such staging rows exist.",
+    "updates": null,
+    "id": "c3-2",
+    "call": 3
+  },
+  {
+    "statement": "An unconvertible response on the selected latest NPS event should produce a null rating rather than a conversion error or selection of a different event.",
+    "about": "requirement",
+    "target": "intermediate.int_pendo__latest_nps_rating.nps_rating",
+    "evidence_of_dependence": "TRY_CAST(e.poll_response AS INTEGER) AS nps_rating",
+    "alternative": "The specification requires \"poll_response converted to integer (NULL if poll_response is NULL)\" but does not authorize nullifying non-null unconvertible responses.",
+    "importance": 3,
+    "reason": "This silently determines the treatment of malformed latest responses and their contribution to NPS aggregates.",
+    "updates": null,
+    "id": "c3-3",
+    "call": 3
+  },
+  {
+    "statement": "Each latest account, application, feature, guide, page, and visitor model should select exactly one source record per corresponding entity identifier.",
+    "about": "requirement",
+    "target": "intermediate.int_pendo__latest_account, intermediate.int_pendo__latest_application, intermediate.int_pendo__latest_feature, intermediate.int_pendo__latest_guide, intermediate.int_pendo__latest_page, intermediate.int_pendo__latest_visitor",
+    "evidence_of_dependence": "row_number() OVER (PARTITION BY {pk} ORDER BY {ts} DESC) ... WHERE latest_{suffix}_index = 1",
+    "alternative": null,
+    "importance": 3,
+    "reason": "The visible downstream contracts support several of these grains, but do not establish the selection requirements for every generated latest model.",
+    "updates": null,
+    "id": "c3-4",
+    "call": 3
+  },
+  {
+    "statement": "Descending order of the chosen update timestamp, using DuckDB's default null placement, defines the latest record in all nine generated latest-history models.",
+    "about": "requirement",
+    "target": "intermediate.int_pendo__latest_account, intermediate.int_pendo__latest_application, intermediate.int_pendo__latest_feature, intermediate.int_pendo__latest_guide, intermediate.int_pendo__latest_page, intermediate.int_pendo__latest_visitor, intermediate.int_pendo__latest_visitor_account, intermediate.int_pendo__latest_guide_step, intermediate.int_pendo__latest_page_rule",
+    "evidence_of_dependence": "ORDER BY {ts} DESC",
+    "alternative": null,
+    "importance": 3,
+    "reason": "The selected timestamp and null policy determine which profile or relationship record survives.",
+    "updates": null,
+    "id": "c3-5",
+    "call": 3
+  },
+  {
+    "statement": "When update timestamps tie within a latest-history partition, any tied source record is an acceptable latest record.",
+    "about": "requirement",
+    "target": "intermediate.int_pendo__latest_account, intermediate.int_pendo__latest_application, intermediate.int_pendo__latest_feature, intermediate.int_pendo__latest_guide, intermediate.int_pendo__latest_page, intermediate.int_pendo__latest_visitor, intermediate.int_pendo__latest_visitor_account, intermediate.int_pendo__latest_guide_step, intermediate.int_pendo__latest_page_rule",
+    "evidence_of_dependence": "row_number() OVER (PARTITION BY {pk} ORDER BY {ts} DESC)",
+    "alternative": null,
+    "importance": 2,
+    "reason": "Without a secondary ordering criterion, tied records with different attributes can yield different downstream profiles.",
+    "updates": null,
+    "id": "c3-6",
+    "call": 3
+  }
+]
+
+=== Agent steps since the last review ===
+### event 23
+
+## 命令原文
+
+cat >> /tmp/inter.py <<'PY'
+put('int_pendo__feature_info','''SELECT f.*,p.page_name,p.created_at page_created_at,p.valid_through page_valid_through,g.group_name product_area_name,a.display_name app_display_name,a.platform app_platform,creator.first_name || ' ' || creator.last_name created_by_user_full_name,creator.username created_by_user_username,updater.first_name || ' ' || updater.last_name last_updated_by_user_full_name,updater.username last_updated_by_user_username FROM intermediate.int_pendo__latest_feature f LEFT JOIN intermediate.int_pendo__latest_page p USING(page_id) LEFT JOIN staging.stg_pendo__group g ON CAST(f.group_id AS VARCHAR)=CAST(g.group_id AS VARCHAR) LEFT JOIN intermediate.int_pendo__latest_application a ON f.app_id=a.application_id LEFT JOIN staging.stg_pendo__user creator ON f.created_by_user_id=creator.user_id LEFT JOIN staging.stg_pendo__user updater ON f.last_updated_by_user_id=updater.user_id''')
+put('int_pendo__guide_info','''WITH sc AS (SELECT guide_id,count(DISTINCT step_id) count_steps FROM intermediate.int_pendo__latest_guide_step GROUP BY guide_id) SELECT g.*,a.display_name app_display_name,a.platform app_platform,c.first_name || ' ' || c.last_name created_by_user_full_name,c.username created_by_user_username,u.first_name || ' ' || u.last_name last_updated_by_user_full_name,u.username last_updated_by_user_username,sc.count_steps FROM intermediate.int_pendo__latest_guide g LEFT JOIN sc USING(guide_id) LEFT JOIN intermediate.int_pendo__latest_application a ON CAST(g.app_id AS VARCHAR)=a.application_id LEFT JOIN staging.stg_pendo__user c ON CAST(g.created_by_user_id AS VARCHAR)=c.user_id LEFT JOIN staging.stg_pendo__user u ON CAST(g.last_updated_by_user_id AS VARCHAR)=u.user_id''')
+put('int_pendo__page_info','''WITH rules AS (SELECT page_id,string_agg(rule, ', ') rules FROM intermediate.int_pendo__latest_page_rule GROUP BY page_id), active AS (SELECT page_id,count(feature_id) count_active_features FROM intermediate.int_pendo__latest_feature WHERE valid_through >= current_timestamp - INTERVAL 30 DAY GROUP BY page_id) SELECT p.*,r.rules,g.group_name product_area_name,a.display_name app_display_name,a.platform app_platform,c.first_name || ' ' || c.last_name created_by_user_full_name,c.username created_by_user_username,u.first_name || ' ' || u.last_name last_updated_by_user_full_name,u.username last_updated_by_user_username,coalesce(active.count_active_features,0) count_active_features FROM intermediate.int_pendo__latest_page p LEFT JOIN rules r USING(page_id) LEFT JOIN active USING(page_id) LEFT JOIN staging.stg_pendo__group g ON CAST(p.group_id AS VARCHAR)=CAST(g.group_id AS VARCHAR) LEFT JOIN intermediate.int_pendo__latest_application a ON p.app_id=a.application_id LEFT JOIN staging.stg_pendo__user c ON p.created_by_user_id=c.user_id LEFT JOIN staging.stg_pendo__user u ON p.last_updated_by_user_id=u.user_id''')
+put('int_pendo__user_lifecycle_segments','''WITH a AS (SELECT visitor_id,account_id,count(DISTINCT CAST(occurred_at AS DATE)) count_active_days,count(DISTINCT date_trunc('month',occurred_at)) count_active_months,sum(num_events) sum_events,sum(num_minutes) sum_minutes,avg(num_events) average_daily_events,avg(num_minutes) average_daily_minutes,min(CAST(occurred_at AS DATE)) first_event_on,max(CAST(occurred_at AS DATE)) last_event_on FROM staging.stg_pendo__event GROUP BY 1,2), b AS (SELECT *,date_diff('day',first_event_on,current_date) user_age_days,date_diff('day',last_event_on,current_date) days_since_last_active,CASE WHEN date_diff('day',first_event_on,current_date)>0 THEN count_active_days::DOUBLE/date_diff('day',first_event_on,current_date) ELSE 0 END activity_density,CASE WHEN average_daily_events>=50 THEN 'High' WHEN average_daily_events>=20 THEN 'Medium' WHEN average_daily_events>=5 THEN 'Low' ELSE 'Minimal' END usage_intensity FROM a WHERE first_event_on IS NOT NULL), c AS (SELECT *,CASE WHEN user_age_days<=30 AND count_active_days<=7 THEN 'New User' WHEN user_age_days BETWEEN 30 AND 90 AND activity_density>0.2 AND days_since_last_active<=30 THEN 'Growing User' WHEN user_age_days>90 AND activity_density>0.1 AND days_since_last_active<=60 AND usage_intensity IN ('Medium','High') THEN 'Mature User' WHEN activity_density>0.3 AND usage_intensity='High' AND days_since_last_active<=14 THEN 'Power User' WHEN user_age_days>30 AND days_since_last_active BETWEEN 30 AND 90 AND count_active_days>=3 THEN 'At Risk' WHEN days_since_last_active>90 THEN 'Churned' ELSE 'Dormant' END lifecycle_stage,least(100,activity_density*30+CASE usage_intensity WHEN 'High' THEN 25 WHEN 'Medium' THEN 15 WHEN 'Low' THEN 8 ELSE 2 END+CASE WHEN days_since_last_active<=7 THEN 25 WHEN days_since_last_active<=30 THEN 15 WHEN days_since_last_active<=90 THEN 5 ELSE 0 END+least(20,count_active_months*2)) user_value_score,CASE WHEN days_since_last_active<=30 AND user_age_days>60 THEN CASE WHEN activity_density>0.5 THEN 'Increasing' WHEN activity_density>0.2 THEN 'Stable' ELSE 'Declining' END WHEN days_since_last_active<=30 THEN 'New/Recent' ELSE 'Inactive' END engagement_trend FROM b) SELECT visitor_id,first_event_on,last_event_on,user_age_days,days_since_last_active,count_active_days,count_active_months,sum_events,sum_minutes,average_daily_events,average_daily_minutes,activity_density,usage_intensity,lifecycle_stage,user_value_score,engagement_trend,CASE WHEN lifecycle_stage='Churned' THEN 'Already Churned' WHEN lifecycle_stage='At Risk' THEN 'High Risk' WHEN (days_since_last_active>30 AND usage_intensity IN ('Minimal','Low')) OR (activity_density<0.1 AND user_age_days>90) THEN 'Medium Risk' ELSE 'Low Risk' END churn_risk_level,lifecycle_stage IN ('Power User','Mature User') is_valuable_user,lifecycle_stage IN ('At Risk','Churned') needs_attention,lifecycle_stage='New User' is_new_user,current_timestamp calculated_at FROM c''')
+put('int_pendo__customer_rfm_analysis','''WITH ev AS (SELECT visitor_id,account_id,count(DISTINCT CAST(occurred_at AS DATE)) active_days,count(DISTINCT date_trunc('month',occurred_at)) active_months,sum(num_events) total_events,sum(num_minutes) total_minutes,avg(num_events) avg_events,min(CAST(occurred_at AS DATE)) first_on,max(CAST(occurred_at AS DATE)) last_on FROM staging.stg_pendo__event GROUP BY 1,2), s AS (SELECT *,date_diff('day',last_on,current_date) recency_days,date_diff('day',first_on,current_date) customer_lifetime_days,CASE WHEN date_diff('day',last_on,current_date)<=7 THEN 5 WHEN date_diff('day',last_on,current_date)<=30 THEN 4 WHEN date_diff('day',last_on,current_date)<=90 THEN 3 WHEN date_diff('day',last_on,current_date)<=180 THEN 2 ELSE 1 END rs,CASE WHEN active_days>=50 THEN 5 WHEN active_days>=25 THEN 4 WHEN active_days>=10 THEN 3 WHEN active_days>=5 THEN 2 ELSE 1 END fs,CASE WHEN total_events>=1000 AND total_minutes>=500 THEN 5 WHEN total_events>=500 AND total_minutes>=200 THEN 4 WHEN total_events>=200 AND total_minutes>=100 THEN 3 WHEN total_events>=50 AND total_minutes>=30 THEN 2 ELSE 1 END ms FROM ev), z AS (SELECT *,round(.3*rs+.4*fs+.3*ms,1)::DECIMAL(14,1) rfm_composite_score,CASE WHEN rs>=4 AND fs>=4 AND ms>=4 THEN 'Champions' WHEN fs>=4 AND ms>=4 THEN 'Loyal Customers' WHEN rs>=4 AND fs>=3 AND ms<=3 THEN 'Potential Loyalists' WHEN rs>=4 AND fs<=2 AND customer_lifetime_days<=60 THEN 'New Customers' WHEN ms>=4 AND fs<=3 THEN 'Promising' WHEN rs<=2 AND fs>=3 AND ms>=3 THEN 'Customers Needing Attention' WHEN rs=3 AND fs<=3 AND ms<=3 THEN 'About to Sleep' WHEN rs<=2 AND fs<=2 AND ms<=3 THEN 'At Risk' WHEN rs=1 AND fs<=2 THEN 'Cannot Be Retrieved' WHEN rs<=2 AND ms>=4 THEN 'Hibernating' ELSE 'Others' END rfm_segment,CASE WHEN rs*fs*ms>=60 THEN 'High Value' WHEN rs*fs*ms>=24 THEN 'Medium Value' WHEN rs*fs*ms>=8 THEN 'Low Value' ELSE 'Minimal Value' END customer_value_tier FROM s) SELECT visitor_id,account_id,recency_days,active_days count_active_days,active_months count_active_months,total_events,total_minutes,avg_events average_daily_events,coalesce(m.n,1)::BIGINT count_associated_accounts,customer_lifetime_days,rs recency_score,fs frequency_score,ms magnitude_score,rfm_composite_score,rfm_segment,customer_value_tier,CASE WHEN rfm_segment IN ('Champions','Loyal Customers') THEN 'Reward loyalty and advocate' WHEN rfm_segment IN ('At Risk','Cannot Be Retrieved','Hibernating') THEN 'Re-engage customer' ELSE 'Standard engagement tactics' END recommended_strategy,CASE WHEN rfm_segment IN ('Champions','Loyal Customers') AND customer_lifetime_days>180 THEN 'Very High CLV' WHEN rfm_segment IN ('Champions','Loyal Customers') THEN 'High CLV' WHEN rfm_segment IN ('Potential Loyalists','Promising') THEN 'Medium CLV' ELSE 'Low CLV' END predicted_clv_tier,CASE WHEN rfm_segment IN ('Champions','Loyal Customers') THEN 'Retention & Advocacy' WHEN rfm_segment IN ('Potential Loyalists','Promising') THEN 'Growth & Upsell' WHEN rfm_segment='New Customers' THEN 'Onboarding & Education' WHEN rfm_segment IN ('At Risk','Cannot Be Retrieved','Hibernating') THEN 'Re-engagement' ELSE 'Monitor' END action_priority,CAST(NULL AS BIGINT) account_total_visitors,CAST(NULL AS FLOAT) account_high_value_ratio,CAST(NULL AS FLOAT) account_top_segment_ratio,CAST(NULL AS FLOAT) account_at_risk_ratio,CAST(NULL AS DOUBLE) account_avg_rfm_score,current_timestamp calculated_at FROM z LEFT JOIN (SELECT visitor_id,count(DISTINCT account_id) n FROM intermediate.int_pendo__latest_visitor_account GROUP BY visitor_id) m USING(visitor_id)''')
+PY
+python /tmp/inter.py
+
+## agent 实际看到的执行结果
+
+
+
+

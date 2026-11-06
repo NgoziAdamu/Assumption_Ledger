@@ -1,0 +1,523 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "stg_customer360__country_codes": {
+      "items": [
+        {
+          "problem": "Conflicting records with the same normalized alpha-2 code are resolved by alphabetical country name rather than a documented rule for selecting the authoritative record.",
+          "about": "data",
+          "evidence_in_work": "row_number() over (partition by country_code_alpha_2 order by country_name, country_code_alpha_3)",
+          "source": "country_code_alpha_2 ... constraints: [not_null, unique]",
+          "importance": 2,
+          "reason": "Uniqueness is required, but an arbitrary surviving name or alpha-3 code could affect geographic enrichment."
+        },
+        {
+          "problem": "Empty alternative country names are converted to NULL even though no nullification rule is specified for that column.",
+          "about": "requirement",
+          "evidence_in_work": "nullif(trim(alternative_country_name), '') as alternative_country_name",
+          "source": "- name: alternative_country_name\n  data_type: VARCHAR(255)",
+          "importance": 1,
+          "reason": "This changes the distinction between an empty value and a missing value in downstream country attributes."
+        }
+      ],
+      "fewer_reason": "The remaining validation, normalization, numeric range handling, and required uniqueness are implemented; no further substantive concerns are evident."
+    },
+    "stg_customer360__state_territory_codes": {
+      "items": [
+        {
+          "problem": "Rows with empty or whitespace-only state names are deleted although the contract only requires state_territory to be non-NULL.",
+          "about": "requirement",
+          "evidence_in_work": "where state_territory is not null and trim(state_territory) <> ''",
+          "source": "- name: state_territory\n  data_type: VARCHAR(255)\n  constraints: [not_null]",
+          "importance": 2,
+          "reason": "An additional filter can remove otherwise valid state-code reference rows and prevent address enrichment."
+        }
+      ],
+      "fewer_reason": "The state-code format rules and country foreign-key validation are otherwise represented in the SQL."
+    },
+    "stg_customer360__nicknames": {
+      "items": [
+        {
+          "problem": "Empty and whitespace-only names are removed instead of merely being trimmed and retained when non-NULL.",
+          "about": "requirement",
+          "evidence_in_work": "trim(canonical_name) <> '' ... trim(nickname) <> ''",
+          "source": "constraints: [not_null] ... rule: \"canonical_name = TRIM(canonical_name)\" ... on_failure: correct",
+          "importance": 2,
+          "reason": "The implementation applies an additional row-deletion policy not specified for either nickname field."
+        }
+      ],
+      "fewer_reason": "Only trimming and non-null enforcement are otherwise required, and both are implemented."
+    },
+    "int_customer360__marketo": {
+      "items": [],
+      "fewer_reason": "The explicit source projection, email filter, timestamp casts, and preservation of duplicates and whitespace match the visible specification."
+    },
+    "int_customer360__stripe": {
+      "items": [],
+      "fewer_reason": "The projection, exact-false deletion filter, non-empty email filter, and timestamp casts match the visible specification."
+    },
+    "int_customer360__zendesk": {
+      "items": [],
+      "fewer_reason": "The source projection, email and deletion filters, and four timestamp casts match the visible specification."
+    },
+    "int_customer360__marketo_for_matching": {
+      "items": [],
+      "fewer_reason": "The required pass-through columns and constant placeholder are present without additional processing."
+    },
+    "int_customer360__stripe_for_matching": {
+      "items": [],
+      "fewer_reason": "The required pass-through projection and null_stripe placeholder match the specification."
+    },
+    "int_customer360__zendesk_for_matching": {
+      "items": [],
+      "fewer_reason": "The required projection and null_zendesk placeholder match the specification."
+    },
+    "int_customer360__source_matches": {
+      "items": [
+        {
+          "problem": "The overall customer updated and created timestamps include Zendesk organization timestamps rather than only the three customer-record timestamps.",
+          "about": "requirement",
+          "evidence_in_work": "greatest(... f.mz_org_updated_at, ... sz.zendesk_organization_updated_at) ... least(... f.mz_org_created_at, ... sz.zendesk_organization_created_at)",
+          "source": "Overall updated_at ... latest non-null among the Marketo, Stripe, and Zendesk updated_at values ... Overall created_at ... earliest non-null among the Marketo, Stripe, and Zendesk created_at values",
+          "importance": 4,
+          "reason": "An organization's history can incorrectly replace a customer's history and is subsequently propagated into mapping timestamps."
+        }
+      ],
+      "fewer_reason": "The final rewrite implements the required exact-email pairings and full outer merge structure; no other clear mismatch is visible."
+    },
+    "int_customer360__customer_behavior_analysis": {
+      "items": [
+        {
+          "problem": "The required final ordering by engagement score and account age is omitted.",
+          "about": "requirement",
+          "evidence_in_work": "from labels\nwhere primary_email is not null",
+          "source": "Order rows by composite_engagement_score descending, then account_age_days descending",
+          "importance": 2,
+          "reason": "The materialized result does not implement the contract's requested presentation order."
+        },
+        {
+          "problem": "The 90-day churn-risk cutoff uses the current execution time rather than the current-date anchor used by the other age calculations.",
+          "about": "requirement",
+          "evidence_in_work": "last_activity < current_timestamp - interval '90 days'",
+          "source": "customer_last_activity is more than 90 days ago",
+          "importance": 1,
+          "reason": "Customers active on the boundary date can receive different risk labels depending on execution time."
+        }
+      ],
+      "fewer_reason": "The explicit null-propagating touchpoint rules, score mappings, source precedence, and classification logic otherwise follow the visible contract."
+    },
+    "int_customer360__customer_lifecycle_metrics": {
+      "items": [
+        {
+          "problem": "Frequency scoring omits the score-5 and score-4 branches, so recently active multi-platform customers can receive at most 3.",
+          "about": "requirement",
+          "evidence_in_work": "case when platform_sum>=2 and active_90_days=1 then 3 when active_180_days=1 then 2 else 1 end as frequency_score",
+          "source": "5 if platform_consistency_score = 3 and active_30_days = 1; 4 if platform_consistency_score ≥ 2 and active_60_days = 1",
+          "importance": 5,
+          "reason": "This lowers frequency, LTV, tiers, and downstream RFM and investment classifications for the most active customers."
+        },
+        {
+          "problem": "Activity-window flags are anchored to current_timestamp instead of today, potentially excluding activity on the cutoff date.",
+          "about": "requirement",
+          "evidence_in_work": "customer_last_activity >= current_timestamp - interval '30 days'",
+          "source": "active_X_days flags ... customer_last_activity occurred within X days of today",
+          "importance": 3,
+          "reason": "Boundary records can change lifecycle stage, frequency, and downstream value estimates."
+        },
+        {
+          "problem": "NULL platform flags are replaced with zero before calculating platform consistency instead of forcing the specified else result of 1.",
+          "about": "requirement",
+          "evidence_in_work": "coalesce(in_marketo,0)+coalesce(in_stripe,0)+coalesce(in_zendesk,0) as platform_sum",
+          "source": "NULL in any flag leads to the else path → 1",
+          "importance": 1,
+          "reason": "The logic differs for null flags, although the current upstream model produces non-null presence flags."
+        },
+        {
+          "problem": "The required strategic-account, action-priority, LTV, and health ordering is absent.",
+          "about": "requirement",
+          "evidence_in_work": "growth_potential, action_priority\nfrom completed",
+          "source": "sorted by is_strategic_account (true first), then action_priority descending, then estimated_customer_ltv descending, then customer_health_score descending",
+          "importance": 2,
+          "reason": "The result lacks the explicitly requested prioritization order."
+        },
+        {
+          "problem": "The output column sequence places growth_potential and action_priority after the final enrichments rather than in their documented positions.",
+          "about": "requirement",
+          "evidence_in_work": "performance_vs_expectation,\n growth_potential, action_priority",
+          "source": "revenue_at_risk ... growth_potential ... action_priority ... acquisition_year",
+          "importance": 1,
+          "reason": "Consumers relying on the documented positional schema could read the wrong fields."
+        }
+      ],
+      "fewer_reason": "Five specific implementation differences are supported; additional issues would be speculative or duplicate these concerns."
+    },
+    "int_customer360__risk_assessment": {
+      "items": [
+        {
+          "problem": "Several output measures are not cast to the exact decimal types required by the contract.",
+          "about": "requirement",
+          "evidence_in_work": "round(...,2) as total_risk_score ... case when S>=8 then .30 ... end as intervention_success_probability",
+          "source": "total_risk_score ... DECIMAL(18,2) ... intervention_success_probability ... DECIMAL(3,2) ... intervention_roi ... DECIMAL(18,2)",
+          "importance": 3,
+          "reason": "DuckDB expression inference does not guarantee the required precision and scale for these output fields."
+        },
+        {
+          "problem": "Intervention selection invents trigger conditions that are not established by the provided precedence-only documentation.",
+          "about": "requirement",
+          "evidence_in_work": "when support_engagement_risk>0 then 'Customer Success Check-in' ... when lifecycle_stage is not null then 'Lifecycle-specific Campaign'",
+          "source": "recommended_intervention precedence: Account Management Call; else Executive Outreach (activity_decline_risk ≥ 2 and LTV ≥ 5000); else Customer Success Check-in; ... otherwise Automated Monitoring",
+          "importance": 2,
+          "reason": "The undocumented predicates determine intervention costs and ROI, and the non-null stage condition makes automated monitoring effectively unreachable for normal joined rows."
+        },
+        {
+          "problem": "Primary-risk-factor selection assumes every positive component is sufficient for its label despite the documentation not specifying those thresholds.",
+          "about": "requirement",
+          "evidence_in_work": "when payment_behavior_risk>0 then 'Payment Issues' when activity_decline_risk>0 then 'Engagement Decline'",
+          "source": "primary_risk_factor precedence: Payment Issues; else Engagement Decline; else Lifecycle Transition; else High Value at Risk; else Support Issues; else Communication Breakdown",
+          "importance": 2,
+          "reason": "These assumptions can assign the dominant risk factor differently even when the numerical risk scores are unchanged."
+        },
+        {
+          "problem": "Required risk-priority ordering is not applied to the final output.",
+          "about": "requirement",
+          "evidence_in_work": "current_timestamp as risk_assessment_timestamp\nfrom final",
+          "source": "sort by critical_alert_flag (descending), then customer_priority_score (descending), potential_revenue_loss (descending), and total_risk_score (descending)",
+          "importance": 2,
+          "reason": "The output is not presented in the specified intervention-priority order."
+        },
+        {
+          "problem": "The support inactivity cutoff compares to current_timestamp whereas the model's other day-based risk buckets use current_date.",
+          "about": "requirement",
+          "evidence_in_work": "zendesk_last_update<current_timestamp-interval '90 days'",
+          "source": "user present and last_update was > 90 days ago",
+          "importance": 1,
+          "reason": "Support-risk classification can differ for records on the 90-day boundary."
+        }
+      ],
+      "fewer_reason": "The remaining joins, seven-component aggregation, risk buckets, and financial formulas largely match the visible rules; unspecified thresholds cannot be treated as definite errors."
+    },
+    "customer360__mapping": {
+      "items": [
+        {
+          "problem": "The required full outer source joins are replaced with left joins followed by unmatched-source unions, omitting the additional unmatched rows that the contract explicitly preserves.",
+          "about": "requirement",
+          "evidence_in_work": "from intermediate.int_customer360__source_matches sm\n left join intermediate.int_customer360__marketo m ... union all ... where not exists",
+          "source": "Chain full outer joins ... retaining all records from every source ... Union in three additional sets ... This can yield duplicates relative to the full outer joins",
+          "importance": 5,
+          "reason": "Every unmatched source record can have the wrong multiplicity, affecting mapping and many downstream marts."
+        },
+        {
+          "problem": "Matched rows take timestamps only from source_matches and do not perform the required fallback to the joined source record.",
+          "about": "requirement",
+          "evidence_in_work": "z.organization_id, sm.marketo_updated_at, sm.marketo_created_at, sm.stripe_updated_at, sm.stripe_created_at",
+          "source": "taking source_matches timestamps when available, else the source table’s",
+          "importance": 4,
+          "reason": "Missing match timestamps or repeated IDs with differing source timestamps can produce incomplete or incorrect individual and header histories."
+        },
+        {
+          "problem": "The contaminated overall timestamps from source_matches are inherited, including Zendesk organization history in customer-level extrema.",
+          "about": "requirement",
+          "evidence_in_work": "greatest(marketo_updated_at, stripe_updated_at, zendesk_updated_at) as marketo_updated_at",
+          "source": "most recent non-null updated_at among marketo/stripe/zendesk for that row",
+          "importance": 3,
+          "reason": "The local greatest/least calculation cannot remove organization timestamps already incorporated into the upstream overall timestamp."
+        }
+      ],
+      "fewer_reason": "Hash inputs, row-type flags, source-ID serialization, and organization grouping otherwise follow the visible contract."
+    },
+    "customer360__email": {
+      "items": [],
+      "fewer_reason": "The local joins, exact-string deduplication, and lexicographic 1-based indexing follow the contract; mapping concerns are listed under mapping."
+    },
+    "customer360__phone": {
+      "items": [],
+      "fewer_reason": "All required phone sources and extension casts are included, followed by the specified tuple deduplication and phone-only indexing."
+    },
+    "customer360__name": {
+      "items": [],
+      "fewer_reason": "The four required cleaned-name sources, non-null filters, deduplication, and alphabetical indexing are implemented."
+    },
+    "customer360__organization": {
+      "items": [],
+      "fewer_reason": "The five organization-name sources, including the unsuffixed Zendesk exception, are projected and indexed as specified."
+    },
+    "customer360__address": {
+      "items": [
+        {
+          "problem": "Address country alternative names inherit the staging conversion of empty alternative names to NULL.",
+          "about": "requirement",
+          "evidence_in_work": "cc.alternative_country_name as country_alt_name",
+          "source": "country_alt_name ... Alternative country name from stg_customer360__country_codes",
+          "importance": 1,
+          "reason": "This is a small inherited representation difference rather than an error in the address joins."
+        }
+      ],
+      "fewer_reason": "The four address projections, non-null inclusion rules, geographic joins, duplicate preservation, and priority ranking otherwise match the contract."
+    },
+    "customer360__ip_address": {
+      "items": [],
+      "fewer_reason": "The non-null IP filter and latest-updated row selection match the contract, including unspecified timestamp ties."
+    },
+    "customer360__status": {
+      "items": [],
+      "fewer_reason": "Per-source statuses, nullable logical OR aggregation, overall precedence, and distinct source-system concatenation match the specification."
+    },
+    "customer360__updates": {
+      "items": [
+        {
+          "problem": "Update counts inherit the missing unmatched-source duplicates in mapping and can therefore be lower than the contract-defined pipeline would produce.",
+          "about": "requirement",
+          "evidence_in_work": "count(*)::bigint as total_updates",
+          "source": "total_updates: the count of all joined rows across sources; includes duplicates",
+          "importance": 3,
+          "reason": "Counting is locally correct, but the upstream mapping omission directly changes this duplicate-sensitive metric."
+        }
+      ],
+      "fewer_reason": "The local union, timestamp extrema, row count, and distinct source/type lists otherwise implement the required aggregation."
+    },
+    "customer360__summary": {
+      "items": [
+        {
+          "problem": "The base row multiplicity differs from the contract because mapping omits the full-outer-join copies of unmatched source records.",
+          "about": "requirement",
+          "evidence_in_work": "from marts.customer360__mapping m left join email_first e using(customer360_id)",
+          "source": "Use marts.customer360__mapping as the base set ... no additional ... distinct",
+          "importance": 3,
+          "reason": "Summary intentionally preserves mapping multiplicity, so the upstream omission changes its rowset."
+        }
+      ],
+      "fewer_reason": "The first-ranked subsets, left joins, unrestricted IP join, and field projections are otherwise consistent with the specification."
+    },
+    "customer360__customer": {
+      "items": [
+        {
+          "problem": "The required one-row-per-customer360_id grain is not checked or enforced despite repeated IDs flowing through the dimensions join.",
+          "about": "data",
+          "evidence_in_work": "marts.customer360__mapping m inner join marts.customer360__summary s using(customer360_id) ... select * from non_headers",
+          "source": "grain: One row per customer360_id",
+          "importance": 4,
+          "reason": "The observed customer count of 12,380 versus 12,160 mapping rows indicates join multiplication, which can repeat sample sales and support metrics."
+        },
+        {
+          "problem": "Organization headers are grouped by every profile attribute rather than explicitly guaranteeing one row per header identifier.",
+          "about": "requirement",
+          "evidence_in_work": "from dimensions where is_organization_header group by all",
+          "source": "For organization headers only, produce one row per unique header",
+          "importance": 1,
+          "reason": "Different dimension values for the same header would split its aggregation, although current headers likely have uniform null profile fields."
+        },
+        {
+          "problem": "The mapping multiplicity omission changes the duplicate-sensitive dimensions join and thus the number of individual customer rows.",
+          "about": "requirement",
+          "evidence_in_work": "from marts.customer360__mapping m inner join marts.customer360__summary s using(customer360_id)",
+          "source": "Build a dimensions set by inner joining marts.customer360__mapping to marts.customer360__summary on customer360_id",
+          "importance": 3,
+          "reason": "Missing upstream copies affect both sides of this join and can materially alter repeated sample metrics."
+        }
+      ],
+      "fewer_reason": "The fixed sample metric values, zero-valued header metrics, and header-only aggregation otherwise follow the stated rules."
+    },
+    "customer360__customer_value_analysis": {
+      "items": [
+        {
+          "problem": "High Upsell is selected using recency_score rather than the required RFM average.",
+          "about": "requirement",
+          "evidence_in_work": "case when recency_score>=4 and frequency_score>=4 then 'High Upsell'",
+          "source": "rfm_avg_score≥4.0 and frequency_score≥4→High Upsell",
+          "importance": 4,
+          "reason": "Once frequency scoring is corrected, this can misclassify upsell potential and development opportunities."
+        },
+        {
+          "problem": "RFM and value metrics inherit the lifecycle model's missing frequency-score 4 and 5 branches.",
+          "about": "requirement",
+          "evidence_in_work": "from intermediate.int_customer360__customer_lifecycle_metrics ... recency_score,frequency_score,monetary_score",
+          "source": "RFM average: average of recency_score, frequency_score, and monetary_score",
+          "importance": 4,
+          "reason": "The upstream error changes RFM segments, adjusted value, investment priorities, and account strategy."
+        },
+        {
+          "problem": "Required decimal output types are left to expression inference rather than explicitly enforced.",
+          "about": "requirement",
+          "evidence_in_work": "estimated_customer_ltv*case lifecycle_stage ... end as adjusted_ltv ... round(...,2) as investment_priority_score",
+          "source": "adjusted_ltv ... DECIMAL(18,3) ... investment_priority_score ... DECIMAL(15,2) ... potential_revenue_loss ... DECIMAL(18,2)",
+          "importance": 3,
+          "reason": "Multiplication and CASE arithmetic can produce different decimal precisions from the declared output schema."
+        },
+        {
+          "problem": "The RFM string uses concat, which skips NULL arguments instead of returning NULL when any score is missing.",
+          "about": "requirement",
+          "evidence_in_work": "concat(recency_score::varchar,frequency_score::varchar,monetary_score::varchar) as rfm_score",
+          "source": "if any component is NULL the result is NULL",
+          "importance": 1,
+          "reason": "This violates the missing-score rule, although the implemented upstream scores are currently non-null."
+        },
+        {
+          "problem": "The final investment-priority, adjusted-LTV, and health ordering is omitted.",
+          "about": "requirement",
+          "evidence_in_work": "from portfolio where primary_email is not null",
+          "source": "order by investment_priority_score desc, adjusted_ltv desc, customer_health_score desc",
+          "importance": 2,
+          "reason": "The analysis is not materialized in the required priority order."
+        }
+      ],
+      "fewer_reason": "The other RFM buckets, portfolio denominator placement, strategic mappings, and recommendation formulas are represented in the SQL."
+    },
+    "customer360__customer_activity_metrics": {
+      "items": [
+        {
+          "problem": "Cross-platform consistency is calculated as a sum instead of an average across active platforms.",
+          "about": "requirement",
+          "evidence_in_work": "round(case when in_marketo=1 then marketo_engagement else 0 end + case when in_stripe=1 then stripe_engagement else 0 end + case when in_zendesk=1 then zendesk_engagement else 0 end,2)",
+          "source": "cross_platform_consistency: round( average of raw engagement across platforms where in_*=1, 2 decimals )",
+          "importance": 5,
+          "reason": "Multi-channel customers receive values up to three times the specified average."
+        },
+        {
+          "problem": "Primary engagement channel is chosen using time-decayed channel scores rather than raw engagement scores.",
+          "about": "requirement",
+          "evidence_in_work": "when marketing_engagement_score>=sales_engagement_score and marketing_engagement_score>=support_engagement_score",
+          "source": "primary_engagement_channel: choose the channel with the highest raw engagement",
+          "importance": 4,
+          "reason": "Old updates can make channel scores negative and substantially change channel labels and recommended interventions."
+        },
+        {
+          "problem": "The primary-channel CASE can choose Sales Driven or Support Driven despite unresolved NULL comparisons instead of falling back to Balanced.",
+          "about": "requirement",
+          "evidence_in_work": "when sales_engagement_score>=support_engagement_score then 'Sales Driven' when support_engagement_score is not null then 'Support Driven'",
+          "source": "if comparisons do not resolve (e.g., NULL inputs) fallback is Balanced",
+          "importance": 3,
+          "reason": "Missing timestamps in qualifying channel-score branches can incorrectly force a channel assignment."
+        },
+        {
+          "problem": "Cross-platform consistency returns zero for no active platforms and can ignore NULL flags instead of implementing the required NULL result.",
+          "about": "requirement",
+          "evidence_in_work": "case when in_marketo=1 then marketo_engagement else 0 end",
+          "source": "returns NULL if no active platforms or if any included operand (flags or raw engagements) is NULL",
+          "importance": 1,
+          "reason": "These edge cases are not expected from current behavior flags but are explicitly defined by the contract."
+        },
+        {
+          "problem": "The required ordering by activity priority, weighted engagement, and active-channel count is absent.",
+          "about": "requirement",
+          "evidence_in_work": "current_timestamp as activity_analysis_timestamp\nfrom final_scores",
+          "source": "sorted by activity_priority_score (desc), then weighted_engagement_score (desc), then active_channel_count (desc)",
+          "importance": 2,
+          "reason": "The output does not apply its specified activity-prioritization order."
+        }
+      ],
+      "fewer_reason": "The remaining recency, random activity ranges, decay formulas, depth labels, and activity-risk rules broadly match the contract."
+    },
+    "customer360__organization_network": {
+      "items": [
+        {
+          "problem": "Organization value totals and value-based rankings inherit understated LTV from the lifecycle frequency-scoring omission.",
+          "about": "requirement",
+          "evidence_in_work": "sum(estimated_customer_ltv) as total_organization_ltv,sum(adjusted_ltv) as total_adjusted_ltv",
+          "source": "Value metrics: total_organization_ltv (sum of estimated_customer_ltv) ... total_adjusted_ltv (sum)",
+          "importance": 4,
+          "reason": "Errors in active customers' values can change organization tiers, expansion priorities, market shares, and risk-adjusted value."
+        },
+        {
+          "problem": "Several financial and score columns are not explicitly cast to their documented output types.",
+          "about": "requirement",
+          "evidence_in_work": "round(total_adjusted_ltv*... ,2) as risk_adjusted_organization_value ... round(...,2) as organization_influence_score",
+          "source": "risk_adjusted_organization_value ... DECIMAL(38,2) ... organization_influence_score ... DECIMAL(18,2) ... total_adjusted_ltv ... DECIMAL(38,3)",
+          "importance": 3,
+          "reason": "Expression-derived precision can diverge from the contract, particularly when based on the uncast adjusted-LTV input."
+        },
+        {
+          "problem": "Zero-contact groups produce NULL penetration and breadth scores rather than the specified zeros.",
+          "about": "requirement",
+          "evidence_in_work": "/(3*nullif(total_contacts,0)) ... /nullif(total_contacts,0)",
+          "source": "account_penetration_score ... 0 when total_contacts=0 ... engagement_breadth_percentage ... 0 when total_contacts=0",
+          "importance": 1,
+          "reason": "The explicit zero-denominator handling is missing, though current behavior records have non-null emails and normally yield positive group counts."
+        },
+        {
+          "problem": "Organization health replaces a missing average health score with zero rather than allowing the weighted expression to remain NULL.",
+          "about": "requirement",
+          "evidence_in_work": ".4*coalesce(avg_health_score,0)",
+          "source": "organization_health_score: 0.4×avg_health_score + 0.3×... + 0.3×...",
+          "importance": 1,
+          "reason": "A group without lifecycle health data could receive a numeric health score that the stated formula would not produce."
+        }
+      ],
+      "fewer_reason": "Grouping, distinct contact counts, ranking windows, organization classifications, and final exclusion and ordering are otherwise implemented."
+    },
+    "customer360__conversion_funnel_analysis": {
+      "items": [
+        {
+          "problem": "Revenue velocity is emitted without the required two-decimal rounding.",
+          "about": "requirement",
+          "evidence_in_work": "estimated_customer_ltv*30.0/greatest(coalesce(marketing_to_sales_days,30),30) ... as revenue_velocity_monthly",
+          "source": "revenue_velocity_monthly (DOUBLE, rounded to 2 decimals)",
+          "importance": 3,
+          "reason": "Customers with non-divisible sales durations receive values with excess fractional precision."
+        },
+        {
+          "problem": "Cross-stage consistency is rounded only in the final projection, so downstream rules and formulas use an unrounded intermediate value.",
+          "about": "requirement",
+          "evidence_in_work": "as cross_stage_engagement_consistency ... round(cross_stage_engagement_consistency,2) as cross_stage_engagement_consistency",
+          "source": "cross_stage_engagement_consistency (DOUBLE, rounded to 2 decimals)",
+          "importance": 2,
+          "reason": "Journey efficiency and predictive probability can differ because they consume the unrounded average."
+        },
+        {
+          "problem": "Journey completeness relies on adding nullable flags instead of checking whether any two or any one stages are reached.",
+          "about": "requirement",
+          "evidence_in_work": "when in_marketo+in_stripe+in_zendesk>=2 then 2 when in_marketo+in_stripe+in_zendesk=1 then 1",
+          "source": "3 if all three stage flags = 1; 2 if any two = 1; 1 if any one = 1; else 0",
+          "importance": 1,
+          "reason": "A NULL third flag would incorrectly erase two known reached stages, although current upstream flags are non-null."
+        },
+        {
+          "problem": "Expected optimization value is not explicitly cast to the required DECIMAL(18,2).",
+          "about": "requirement",
+          "evidence_in_work": "round(estimated_customer_ltv*(next_stage_conversion_probability-...)*case ... end,2) as expected_optimization_value",
+          "source": "expected_optimization_value ... data_type: DECIMAL(18,2)",
+          "importance": 2,
+          "reason": "The multi-factor decimal expression can infer a different precision from the specified mart schema."
+        },
+        {
+          "problem": "Value-realization labels and intervention priorities inherit LTV values affected by the lifecycle frequency-score omission.",
+          "about": "requirement",
+          "evidence_in_work": "lm.estimated_customer_ltv ... when next_stage_conversion_probability>=.7 and estimated_customer_ltv>=3000",
+          "source": "intervention_priority ... next_stage_conversion_probability ≥ 0.7 and estimated_customer_ltv ≥ 3000 → Critical Priority",
+          "importance": 3,
+          "reason": "Understated LTV can move otherwise identical customers across funnel value and intervention thresholds."
+        }
+      ],
+      "fewer_reason": "The other stage probabilities, speed buckets, recommendation precedence, and final lexicographic priority ordering follow the visible specification."
+    },
+    "result.md": {
+      "items": [
+        {
+          "problem": "The reported schema validation checks only column-name membership, not the documented data types or column order.",
+          "about": "requirement",
+          "evidence_in_work": "expected=[x['name'] for x in model['columns']] ... missing=[x for x in expected if x not in actual]; extra=[x for x in actual if x not in expected]",
+          "source": "columns ... data_type: DECIMAL(18,3)",
+          "importance": 3,
+          "reason": "The report's column check cannot detect the uncast decimal outputs or the lifecycle column-order mismatch."
+        },
+        {
+          "problem": "The report treats downstream row expansion as contract-prescribed duplicate preservation without checking whether mapping implements the contract's own duplicate-producing steps.",
+          "about": "requirement",
+          "evidence_in_work": "下游按这些 ID 关联时，若上游相同 ID 对应多行，可能发生行数扩增；此项属于合同指定的重复保留行为。",
+          "source": "Chain full outer joins ... Union in three additional sets ... This can yield duplicates relative to the full outer joins",
+          "importance": 3,
+          "reason": "This explanation can conceal the omitted mapping full outer joins and the separate customer-grain concern."
+        },
+        {
+          "problem": "The validation summary does not distinguish successful execution from verification of the required metric formulas and output ordering.",
+          "about": "requirement",
+          "evidence_in_work": "STAGING 3/3、INTERMEDIATE 10/10、MARTS 15/15 成功 ... 数据质量抽查",
+          "source": "produce high-quality data results that meet business requirements",
+          "importance": 2,
+          "reason": "Execution and basic shape checks do not test the omitted frequency branches, average denominator, or required final sorts."
+        }
+      ],
+      "fewer_reason": "These are specific limitations of the reported checks rather than a judgment about the final response as a whole."
+    }
+  }
+}

@@ -1,0 +1,695 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Pendo analytics data transformation"
+  author: "Data Engineering Team"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+  source_system: "Pendo Analytics Platform"
+  last_updated: "2025-09-08"
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw Pendo data into clean, validated staging tables with standardized data types, consistent formatting, and comprehensive data quality checks. This phase ensures data integrity before business logic application."
+
+  # Technical Implementation Notes
+  implementation_notes:
+    duckdb_compatibility: 
+      - This specification is implemented using DuckDB-compatible SQL syntax.
+      - Data type casting uses CAST() and TRY_CAST() functions for safe conversion.
+      - String functions like SUBSTRING(), TRIM(), LOWER() are used consistently.
+    timezone_handling: 
+      - Raw data contains timestamps in format 'YYYY-MM-DD HH:MM:SS.sss +0800' (China Standard Time).
+      - The timezone suffix is handled using simple string truncation, TRY_CAST(SUBSTRING(timestamp_field, 1, 23) AS TIMESTAMP).
+      - This extracts the first 23 characters ('YYYY-MM-DD HH:MM:SS.sss') and converts to TIMESTAMP,
+      - completely ignoring the timezone part since the business operates locally.
+    constraint_implementation: 
+      - Physical UNIQUE constraints are not enforced in staging tables.
+      - Deduplication is achieved through filtering logic in WHERE clauses and generated surrogate keys.
+      - Unique business keys are maintained through application logic and data quality checks.
+
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "TRY_CAST(SUBSTRING(timestamp_field, 1, 23) AS TIMESTAMP)", "normalize phone numbers"]
+
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform clean staging data into business-ready analytical models that support user behavior analysis, feature adoption tracking, and application performance monitoring. This phase applies business logic to create actionable insights for product teams and stakeholders."
+  
+  design_principles:
+    intermediate_purpose: "Create reusable, business-centric data models that abstract complex joins and calculations from end users"
+    marts_purpose: "Deliver analysis-ready fact and dimension tables optimized for BI tools and data science workflows"
+    grain_importance: "Every model must have a clearly defined grain to ensure consistent aggregation and prevent double-counting"
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-002/agent/dacomp-de-impl-002/pendo_start.duckdb
+{"table": "raw.account_history", "columns": ["id", "last_updated_at", "agent_creationdate", "agent_group_id", "agent_is_paying", "agent_name", "agent_planlevel", "first_visit", "id_hash", "last_visit", "salesforce_status_c", "agent_salesforceaccountid", "salesforce_customer_health_engagement_score_c", "salesforce_employee_range_c", "salesforce_platform_level_c", "salesforce_segment_c", "salesforce_name", "salesforce_account_owner_email_c", "salesforce_pbf_account_c", "salesforce_region_c"]}
+{"table": "raw.application_history", "columns": ["id", "last_updated_at", "agent_policy_prod", "agent_policy_staging", "agent_version_prod", "agent_version_staging", "application_flags_cname", "application_flags_disabled", "application_flags_guide_localization", "application_flags_guide_widget", "application_flags_onboarding", "application_flags_prevent_code_injection", "application_flags_show_guides_to_anon", "application_flags_xhr_timings", "created_at", "created_by_user_id", "description", "disabled_at", "display_name", "event_count", "event_rate", "first_event_time", "guide_css_url", "icon_url", "integrated", "is_deleted", "last_updated_by_user_id", "marked_for_deletion_at", "name", "platform", "push_application_id", "record_until", "sampling_rate", "starting_event_time", "store_url", "subscription_id"]}
+{"table": "raw.event", "columns": ["account_id", "remote_ip", "server_name", "timestamp", "user_agent", "visitor_id", "app_id", "num_events", "num_minutes", "page_id"]}
+{"table": "raw.feature_event", "columns": ["account_id", "feature_id", "remote_ip", "server_name", "timestamp", "user_agent", "visitor_id", "app_id", "num_events", "num_minutes", "param_parameter"]}
+{"table": "raw.feature_history", "columns": ["id", "last_updated_at", "app_id", "color", "created_at", "created_by_user_id", "dirty", "group_id", "last_updated_by_user_id", "name", "page_id", "root_version_id", "stable_version_id", "valid_through", "is_core_event"]}
+{"table": "raw.group_data", "columns": ["id", "app_id", "color", "created_at", "created_by_user_id", "description", "last_updated_at", "last_updated_by_user_id", "length", "name"]}
+{"table": "raw.guide_event", "columns": ["account_id", "guide_id", "remote_ip", "server_name", "timestamp", "user_agent", "visitor_id", "app_id", "country", "element_path", "event_id", "guide_step_id", "latitude", "load_time", "longitude", "region", "type", "url"]}
+{"table": "raw.guide_history", "columns": ["id", "last_updated_at", "app_id", "attribute_badge_can_change_badge_color", "attribute_badge_color", "attribute_badge_height", "attribute_badge_image_url", "attribute_badge_is_only_show_once", "attribute_badge_name", "attribute_badge_offset_left", "attribute_badge_offset_right", "attribute_badge_offset_top", "attribute_badge_position", "attribute_badge_show_on_event", "attribute_badge_use_hover", "attribute_badge_width", "attribute_device_type", "attribute_priority", "attribute_type", "created_at", "created_by_user_id", "email_state", "is_multi_step", "is_training", "last_updated_by_user_id", "launch_method", "name", "published_at", "recurrence", "recurrence_eligibility_window", "reset_at", "root_version_id", "stable_version_id", "state"]}
+{"table": "raw.guide_step_history", "columns": ["guide_id", "guide_last_updated_at", "step_id"]}
+{"table": "raw.page_event", "columns": ["account_id", "page_id", "remote_ip", "server_name", "timestamp", "user_agent", "visitor_id", "app_id", "num_events", "num_minutes", "param_parameter"]}
+{"table": "raw.page_history", "columns": ["id", "last_updated_at", "app_id", "color", "created_at", "created_by_user_id", "dirty", "group_id", "last_updated_by_user_id", "name", "root_version_id", "stable_version_id", "valid_through"]}
+{"table": "raw.page_rule_history", "columns": ["page_id", "page_last_updated_at", "rule", "designer_hint", "parsed_rule"]}
+{"table": "raw.poll", "columns": ["id", "attribute_display", "attribute_follow_up", "attribute_max_length", "attribute_placeholder", "attribute_type", "question", "reset_at"]}
+{"table": "raw.poll_event", "columns": ["account_id", "guide_id", "poll_id", "remote_ip", "server_name", "timestamp", "user_agent", "visitor_id", "app_id", "country", "element_path", "event_id", "guide_step_id", "latitude", "load_time", "longitude", "poll_response", "region", "type", "url"]}
+{"table": "raw.user", "columns": ["id", "deleted_at", "first_name", "last_name", "user_type", "username"]}
+{"table": "raw.visitor_account_history", "columns": ["account_id", "visitor_id", "visitor_last_updated_at"]}
+{"table": "raw.visitor_history", "columns": ["id", "last_updated_at", "account_id", "agent_email", "agent_full_name", "agent_group_role", "agent_name", "agent_role", "first_visit", "id_hash", "last_browser_name", "last_browser_version", "last_operating_system", "last_server_name", "last_user_agent", "last_visit", "n_id", "salesforce_country_c", "salesforce_job_function_c", "salesforce_job_level_c", "salesforce_name", "agent_language", "pendo_lastemail", "pendo_lastemailstatus"]}
+{"table": "staging.stg_pendo__user", "columns": ["user_id", "deleted_at", "first_name", "last_name", "user_type", "username"]}
+
+
+=== Relevant specification and documentation ===
+
+
+=== Premises recorded in earlier reviews ===
+(none)
+
+=== Agent steps since the last review ===
+### event 5
+
+## 命令原文
+
+pwd && ls -la && find sql -maxdepth 3 -type f | sort | head -100 && ls docs config
+
+## agent 实际看到的执行结果
+
+/home/katherine/dac/runs/20261025_de_official_batch_01/impl-002/agent/dacomp-de-impl-002
+total 11844
+drwxr-xr-x 8 katherine katherine     4096 Oct 25 00:43 .
+drwx------ 3 katherine katherine       60 Oct 25 00:43 ..
+drwxr-xr-x 3 katherine katherine     4096 Oct 25 00:43 .agent-python
+drwxr-xr-x 2 katherine katherine     4096 Oct 25 00:43 .tmp
+drwxr-xr-x 2 katherine katherine     4096 Oct 17 17:41 config
+drwxr-xr-x 2 katherine katherine     4096 Oct 17 17:41 docs
+-rw-r--r-- 1 katherine katherine 12070912 Oct 17 17:41 pendo_start.duckdb
+-rw-r--r-- 1 katherine katherine     6413 Oct 17 17:41 pendo_start.yaml
+drwxr-xr-x 2 katherine katherine     4096 Oct 17 17:41 raw_data
+-rw-r--r-- 1 katherine katherine    14229 Oct 17 17:41 run.py
+drwxr-xr-x 5 katherine katherine     4096 Oct 17 17:41 sql
+-rw-r--r-- 1 katherine katherine     3736 Oct 17 17:41 test_single_sql.py
+config:
+layer_dependencies.yaml
+
+docs:
+data_contract.yaml
+
+
+### event 7
+
+## 命令原文
+
+find sql -type f | sort
+
+## agent 实际看到的执行结果
+
+
+
+### event 9
+
+## 命令原文
+
+cat config/layer_dependencies.yaml && sed -n '1,240p' run.py
+
+## agent 实际看到的执行结果
+
+# Data layer execution dependencies
+# This file defines the execution order for SQL transformations
+
+layers:
+  staging:
+    description: "Raw data standardization and cleaning"
+    tables:
+      - stg_pendo__account_history
+      - stg_pendo__application_history
+      - stg_pendo__event
+      - stg_pendo__feature_event
+      - stg_pendo__feature_history
+      - stg_pendo__group
+      - stg_pendo__guide_event
+      - stg_pendo__guide_history
+      - stg_pendo__guide_step_history
+      - stg_pendo__page_event
+      - stg_pendo__page_history
+      - stg_pendo__page_rule_history
+      - stg_pendo__poll
+      - stg_pendo__poll_event
+      - stg_pendo__user
+      - stg_pendo__visitor_account_history
+      - stg_pendo__visitor_history
+
+  intermediate:
+    description: "Business logic and data integration"
+    dependencies: ["staging"]
+    tables:
+      # Latest history models
+      - int_pendo__latest_account
+      - int_pendo__latest_application
+      - int_pendo__latest_feature
+      - int_pendo__latest_guide
+      - int_pendo__latest_guide_step
+      - int_pendo__latest_nps_rating
+      - int_pendo__latest_page
+      - int_pendo__latest_page_rule
+      - int_pendo__latest_visitor
+      - int_pendo__latest_visitor_account
+      # Daily metrics models
+      - int_pendo__calendar_spine
+      - int_pendo__account_daily_metrics
+      - int_pendo__feature_daily_metrics
+      - int_pendo__guide_daily_metrics
+      - int_pendo__page_daily_metrics
+      - int_pendo__visitor_daily_metrics
+      # Other intermediate models
+      - int_pendo__feature_info
+      - int_pendo__guide_alltime_metrics
+      - int_pendo__guide_info
+      - int_pendo__page_info
+      # Advanced analytics models
+      - int_pendo__user_lifecycle_segments
+      - int_pendo__conversion_funnel_analysis
+      - int_pendo__product_health_metrics
+      - int_pendo__customer_rfm_analysis
+      - int_pendo__data_quality_checks
+
+  marts:
+    description: "Analysis-ready business entities"
+    dependencies: ["intermediate"]
+    tables:
+      - pendo__account
+      - pendo__account_daily_metrics
+      - pendo__feature
+      - pendo__feature_daily_metrics
+      - pendo__feature_event
+      - pendo__guide
+      - pendo__guide_daily_metrics
+      - pendo__guide_event
+      - pendo__page
+      - pendo__page_daily_metrics
+      - pendo__page_event
+      - pendo__visitor
+      - pendo__visitor_daily_metrics
+      - pendo__visitor_feature
+      # Advanced analytics marts
+      - pendo__customer_lifecycle_insights
+      - pendo__product_adoption_analytics
+      - pendo__product_adoption_summary
+      - pendo__executive_dashboard_metrics
+
+# Execution order within each layer (if specific order needed)
+execution_order:
+  intermediate:
+    # Latest history models first
+    - int_pendo__latest_account
+    - int_pendo__latest_application
+    - int_pendo__latest_feature
+    - int_pendo__latest_guide
+    - int_pendo__latest_guide_step
+    - int_pendo__latest_nps_rating
+    - int_pendo__latest_page
+    - int_pendo__latest_page_rule
+    - int_pendo__latest_visitor
+    - int_pendo__latest_visitor_account
+    # Daily metrics models
+    - int_pendo__calendar_spine
+    - int_pendo__account_daily_metrics
+    - int_pendo__feature_daily_metrics
+    - int_pendo__guide_daily_metrics
+    - int_pendo__page_daily_metrics
+    - int_pendo__visitor_daily_metrics
+    # Other intermediate models
+    - int_pendo__feature_info
+    - int_pendo__guide_alltime_metrics
+    - int_pendo__guide_info
+    - int_pendo__page_info
+    # Advanced analytics models (must come after basic models)
+    - int_pendo__user_lifecycle_segments
+    - int_pendo__conversion_funnel_analysis
+    - int_pendo__product_health_metrics
+    - int_pendo__customer_rfm_analysis
+    - int_pendo__data_quality_checks
+  
+  marts:
+    # Base entities first
+    - pendo__account
+    - pendo__feature
+    - pendo__guide
+    - pendo__page
+    - pendo__visitor
+    # Events second
+    - pendo__feature_event
+    - pendo__guide_event
+    - pendo__page_event
+    - pendo__visitor_feature
+    # Daily metrics last
+    - pendo__account_daily_metrics
+    - pendo__feature_daily_metrics
+    - pendo__guide_daily_metrics
+    - pendo__page_daily_metrics
+    - pendo__visitor_daily_metrics
+    # Advanced analytics marts (depend on base marts)
+    - pendo__customer_lifecycle_insights
+    - pendo__product_adoption_analytics
+    - pendo__product_adoption_summary
+    - pendo__executive_dashboard_metrics#!/usr/bin/env python3
+import os
+import yaml
+import duckdb
+from pathlib import Path
+from typing import List, Optional
+import logging
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+class PendoDataPipeline:
+    """Pendo Data Pipeline Orchestrator - Supports a layered Schema architecture"""
+    
+    def __init__(self, 
+                 source_db_path: str = "pendo_start.duckdb", 
+                 target_db_path: str = "pendo.duckdb",
+                 config_path: str = "config/layer_dependencies.yaml"):
+        self.source_db_path = source_db_path
+        self.target_db_path = target_db_path
+        self.config_path = config_path
+        self.config = self._load_config()
+        self.sql_dir = Path("sql")
+        
+                
+        self.schema_config = {
+            'raw': 'raw',                       
+            'staging': 'staging',               
+            'intermediate': 'intermediate',             
+            'marts': 'marts'                      
+        }
+        
+                
+        self.conn = None
+        
+    def _load_config(self) -> dict:
+        """Load the configuration file"""
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f)
+        except FileNotFoundError:
+            logger.error(f"Configuration file {self.config_path} not found")
+            raise
+        except yaml.YAMLError as e:
+            logger.error(f"Error parsing configuration file: {e}")
+            raise
+    
+    def _initialize_database(self):
+        """Initialize the working database, create the layered schema architecture, and import raw data"""
+        logger.info(f"📥 Creating a new layered database: {self.target_db_path}")
+        
+                
+        if not os.path.exists(self.source_db_path):
+            raise FileNotFoundError(f"Source database file not found: {self.source_db_path}")
+        
+        self.conn = duckdb.connect(self.target_db_path)
+        
+        self._create_schemas()
+        
+                
+        self._import_raw_data()
+        
+        logger.info(f"✓ Layered database initialization complete: {self.target_db_path}")
+    
+    def _create_schemas(self):
+        """Create the schemas for the data layers"""
+        logger.info("🏗️ Creating Schema layered architecture")
+        
+        for layer, schema_name in self.schema_config.items():
+            try:
+                self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
+                logger.info(f"  ✓ Created schema: {schema_name}")
+            except Exception as e:
+                logger.error(f"  ✗ Failed to create schema {schema_name}: {e}")
+                raise
+    
+    def _import_raw_data(self):
+        """Import raw data from the source database to the raw schema"""
+        logger.info("📥 Importing raw data to the raw schema")
+        
+                
+        try:
+            
+            source_conn = duckdb.connect(self.source_db_path)
+            
+                        
+            try:
+                tables_result = source_conn.execute("""
+                    SELECT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'raw'
+                """).fetchall()
+            except:
+                
+                tables_result = source_conn.execute("SHOW TABLES").fetchall()
+            
+            source_tables = [table[0] for table in tables_result]
+            logger.info(f"Found {len(source_tables)} raw tables")
+            
+                        
+            for table_name in source_tables:
+                try:
+                    
+                    try:
+                        data = source_conn.execute(f"SELECT * FROM raw.{table_name}").fetchall()
+                        columns_info = source_conn.execute(f"DESCRIBE raw.{table_name}").fetchall()
+                    except:
+                        
+                        data = source_conn.execute(f"SELECT * FROM {table_name}").fetchall()
+                        columns_info = source_conn.execute(f"DESCRIBE {table_name}").fetchall()
+                    
+                    column_defs = []
+                    for col_info in columns_info:
+                        col_name, col_type = col_info[0], col_info[1]
+                        column_defs.append(f"{col_name} {col_type}")
+                    
+                    create_sql = f"CREATE OR REPLACE TABLE raw.{table_name} ({', '.join(column_defs)})"
+                    self.conn.execute(create_sql)
+                    
+                                        
+                    if data:
+                        placeholders = ', '.join(['?' for _ in columns_info])
+                        insert_sql = f"INSERT INTO raw.{table_name} VALUES ({placeholders})"
+                        self.conn.executemany(insert_sql, data)
+                    
+                    logger.info(f"  ✓ raw.{table_name}: {len(data):,} rows")
+                    
+                except Exception as e:
+                    logger.error(f"  ✗ Failed to import table {table_name}: {e}")
+                    
+            source_conn.close()
+                    
+        except Exception as e:
+            logger.error(f"Failed to import raw data: {e}")
+            raise
+        
+        logger.info("✓ Raw data import complete")
+    
+    def _load_sql_file(self, file_path: Path) -> str:
+        """Load the content of an SQL file"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except FileNotFoundError:
+            logger.error(f"SQL file {file_path} not found")
+            raise
+    
+    def _execute_sql(self, sql: str, table_name: str, layer_name: str) -> bool:
+        """Execute SQL and create a table in the specified schema"""
+        try:
+            
+            target_schema = self.schema_config[layer_name]
+            full_table_name = f"{target_schema}.{table_name}"
+            
+                        
+            create_table_sql = f"CREATE OR REPLACE TABLE {full_table_name} AS ({sql})"
+            
+            logger.info(f"Executing: {full_table_name}")
+            self.conn.execute(create_table_sql)
+            
+                        
+            count_result = self.conn.execute(f"SELECT COUNT(*) FROM {full_table_name}").fetchone()
+            row_count = count_result[0] if count_result else 0
+            
+            logger.info(f"✓ {full_table_name}: {row_count:,} rows")
+            return True
+            
+        except Exception as e:
+            logger.error(f"✗ {full_table_name}: {e}")
+            return False
+    
+    def _execute_layer(self, layer_name: str) -> bool:
+        """Execute all tables in a specified layer"""
+        layer_config = self.config['layers'][layer_name]
+        tables = layer_config.get('tables', [])
+        
+                
+        execution_order = self.config.get('execution_order', {}).get(layer_name, tables)
+        
+        logger.info(f"\n=== Executing {layer_name.upper()} Layer ===")
+        logger.info(f"Description: {layer_config.get('description', '')}")
+        
+        success_count = 0
+        total_count = len(execution_order)
+        
+        for table_name in execution_order:
+            
+            sql_file_path = self.sql_dir / layer_name / f"{table_name}.sql"
+            
+                        
+            if not sql_file_path.exists() and layer_name == 'intermediate':
+                
+                for subdir in ['latest_history', 'daily_metrics']:
+                    subdir_path = self.sql_dir / layer_name / subdir / f"{table_name}.sql"
+                    if subdir_path.exists():
+                        sql_file_path = subdir_path
+                        break
+                
+                if not sql_file_path.exists():
+                    sql_file_path = self.sql_dir / layer_name / f"{table_name}.sql"
+            
+            if not sql_file_path.exists() and layer_name == 'marts':
+                
+                if table_name.startswith('pendo__'):
+                    file_name = table_name[7:] + '.sql'                 
+                    sql_file_path = self.sql_dir / layer_name / file_name
+            
+            if not sql_file_path.exists():
+                logger.warning(f"Skipping {table_name}: SQL file does not exist ({sql_file_path})")
+                continue
+            
+            sql_content = self._load_sql_file(sql_file_path)
+            if self._execute_sql(sql_content, table_name, layer_name):
+                success_count += 1
+        
+        logger.info(f"{layer_name.upper()} layer complete: {success_count}/{total_count} tables created successfully")
+        return success_count == total_count
+    
+    def _clean_generated_tables(self):
+        """Clean up all generated tables, preserving the raw data schema"""
+        logger.info("🧼 Cleaning up previously generated schemas and tables...")
+        
+                
+        schemas_to_clean = ['staging', 'intermediate', 'marts']
+        
+        for schema_name in schemas_to_clean:
+            try:
+                
+                result = self.conn.execute(f"SELECT schema_name FROM information_schema.schemata WHERE schema_name = '{schema_name}'").fetchall()
+                if result:
+                    self.conn.execute(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE")
+                    logger.info(f"✓ Dropped schema: {schema_name}")
+            except Exception as e:
+                logger.warning(f"Failed to drop schema {schema_name}: {e}")
+        
+
+
+### event 11
+
+## 命令原文
+
+wc -l docs/data_contract.yaml && find sql -type f -exec wc -l {} +
+
+## agent 实际看到的执行结果
+
+3185 docs/data_contract.yaml
+
+
+### event 13
+
+## 命令原文
+
+find sql -maxdepth 3 -print; python - <<'PY'
+import duckdb
+c=duckdb.connect('pendo_start.duckdb',read_only=True)
+print(c.execute("show all tables").fetchall()[:5])
+print(c.execute("select table_name from information_schema.tables where table_schema='raw'").fetchall())
+for t, in c.execute("select table_name from information_schema.tables where table_schema='raw'").fetchall(): print('\n',t, c.execute(f'describe raw."{t}"').fetchall())
+PY
+
+## agent 实际看到的执行结果
+
+sql
+sql/marts
+sql/staging
+sql/intermediate
+sql/intermediate/latest_history
+sql/intermediate/daily_metrics
+[('pendo_start', 'raw', 'account_history', ['id', 'last_updated_at', 'agent_creationdate', 'agent_group_id', 'agent_is_paying', 'agent_name', 'agent_planlevel', 'first_visit', 'id_hash', 'last_visit', 'salesforce_status_c', 'agent_salesforceaccountid', 'salesforce_customer_health_engagement_score_c', 'salesforce_employee_range_c', 'salesforce_platform_level_c', 'salesforce_segment_c', 'salesforce_name', 'salesforce_account_owner_email_c', 'salesforce_pbf_account_c', 'salesforce_region_c'], ['VARCHAR', 'VARCHAR', 'VARCHAR', 'BIGINT', 'BOOLEAN', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'DOUBLE', 'VARCHAR', 'DOUBLE', 'DOUBLE', 'DOUBLE', 'DOUBLE', 'DOUBLE', 'DOUBLE', 'DOUBLE', 'VARCHAR', 'DOUBLE', 'DOUBLE'], False), ('pendo_start', 'raw', 'application_history', ['id', 'last_updated_at', 'agent_policy_prod', 'agent_policy_staging', 'agent_version_prod', 'agent_version_staging', 'application_flags_cname', 'application_flags_disabled', 'application_flags_guide_localization', 'application_flags_guide_widget', 'application_flags_onboarding', 'application_flags_prevent_code_injection', 'application_flags_show_guides_to_anon', 'application_flags_xhr_timings', 'created_at', 'created_by_user_id', 'description', 'disabled_at', 'display_name', 'event_count', 'event_rate', 'first_event_time', 'guide_css_url', 'icon_url', 'integrated', 'is_deleted', 'last_updated_by_user_id', 'marked_for_deletion_at', 'name', 'platform', 'push_application_id', 'record_until', 'sampling_rate', 'starting_event_time', 'store_url', 'subscription_id'], ['VARCHAR', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'BOOLEAN', 'BOOLEAN', 'BOOLEAN', 'BOOLEAN', 'BOOLEAN', 'BOOLEAN', 'BOOLEAN', 'BOOLEAN', 'VARCHAR', 'VARCHAR', 'DOUBLE', 'VARCHAR', 'VARCHAR', 'DOUBLE', 'DOUBLE', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'BOOLEAN', 'BOOLEAN', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'BIGINT', 'VARCHAR', 'BIGINT', 'VARCHAR', 'VARCHAR', 'BIGINT'], False), ('pendo_start', 'raw', 'event', ['account_id', 'remote_ip', 'server_name', 'timestamp', 'user_agent', 'visitor_id', 'app_id', 'num_events', 'num_minutes', 'page_id'], ['VARCHAR', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'BIGINT', 'BIGINT', 'VARCHAR'], False), ('pendo_start', 'raw', 'feature_event', ['account_id', 'feature_id', 'remote_ip', 'server_name', 'timestamp', 'user_agent', 'visitor_id', 'app_id', 'num_events', 'num_minutes', 'param_parameter'], ['VARCHAR', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'DOUBLE', 'DOUBLE', 'DOUBLE'], False), ('pendo_start', 'raw', 'feature_history', ['id', 'last_updated_at', 'app_id', 'color', 'created_at', 'created_by_user_id', 'dirty', 'group_id', 'last_updated_by_user_id', 'name', 'page_id', 'root_version_id', 'stable_version_id', 'valid_through', 'is_core_event'], ['VARCHAR', 'VARCHAR', 'VARCHAR', 'DOUBLE', 'VARCHAR', 'VARCHAR', 'BOOLEAN', 'BIGINT', 'VARCHAR', 'VARCHAR', 'VARCHAR', 'BIGINT', 'BIGINT', 'VARCHAR', 'BOOLEAN'], False)]
+[('account_history',), ('application_history',), ('event',), ('feature_event',), ('feature_history',), ('group_data',), ('guide_event',), ('guide_history',), ('guide_step_history',), ('page_event',), ('page_history',), ('page_rule_history',), ('poll',), ('poll_event',), ('user',), ('visitor_account_history',), ('visitor_history',)]
+
+ account_history [('id', 'VARCHAR', 'YES', None, None, None), ('last_updated_at', 'VARCHAR', 'YES', None, None, None), ('agent_creationdate', 'VARCHAR', 'YES', None, None, None), ('agent_group_id', 'BIGINT', 'YES', None, None, None), ('agent_is_paying', 'BOOLEAN', 'YES', None, None, None), ('agent_name', 'VARCHAR', 'YES', None, None, None), ('agent_planlevel', 'VARCHAR', 'YES', None, None, None), ('first_visit', 'VARCHAR', 'YES', None, None, None), ('id_hash', 'DOUBLE', 'YES', None, None, None), ('last_visit', 'VARCHAR', 'YES', None, None, None), ('salesforce_status_c', 'DOUBLE', 'YES', None, None, None), ('agent_salesforceaccountid', 'DOUBLE', 'YES', None, None, None), ('salesforce_customer_health_engagement_score_c', 'DOUBLE', 'YES', None, None, None), ('salesforce_employee_range_c', 'DOUBLE', 'YES', None, None, None), ('salesforce_platform_level_c', 'DOUBLE', 'YES', None, None, None), ('salesforce_segment_c', 'DOUBLE', 'YES', None, None, None), ('salesforce_name', 'DOUBLE', 'YES', None, None, None), ('salesforce_account_owner_email_c', 'VARCHAR', 'YES', None, None, None), ('salesforce_pbf_account_c', 'DOUBLE', 'YES', None, None, None), ('salesforce_region_c', 'DOUBLE', 'YES', None, None, None)]
+
+ application_history [('id', 'VARCHAR', 'YES', None, None, None), ('last_updated_at', 'VARCHAR', 'YES', None, None, None), ('agent_policy_prod', 'VARCHAR', 'YES', None, None, None), ('agent_policy_staging', 'VARCHAR', 'YES', None, None, None), ('agent_version_prod', 'VARCHAR', 'YES', None, None, None), ('agent_version_staging', 'VARCHAR', 'YES', None, None, None), ('application_flags_cname', 'BOOLEAN', 'YES', None, None, None), ('application_flags_disabled', 'BOOLEAN', 'YES', None, None, None), ('application_flags_guide_localization', 'BOOLEAN', 'YES', None, None, None), ('application_flags_guide_widget', 'BOOLEAN', 'YES', None, None, None), ('application_flags_onboarding', 'BOOLEAN', 'YES', None, None, None), ('application_flags_prevent_code_injection', 'BOOLEAN', 'YES', None, None, None), ('application_flags_show_guides_to_anon', 'BOOLEAN', 'YES', None, None, None), ('application_flags_xhr_timings', 'BOOLEAN', 'YES', None, None, None), ('created_at', 'VARCHAR', 'YES', None, None, None), ('created_by_user_id', 'VARCHAR', 'YES', None, None, None), ('description', 'DOUBLE', 'YES', None, None, None), ('disabled_at', 'VARCHAR', 'YES', None, None, None), ('display_name', 'VARCHAR', 'YES', None, None, None), ('event_count', 'DOUBLE', 'YES', None, None, None), ('event_rate', 'DOUBLE', 'YES', None, None, None), ('first_event_time', 'VARCHAR', 'YES', None, None, None), ('guide_css_url', 'VARCHAR', 'YES', None, None, None), ('icon_url', 'VARCHAR', 'YES', None, None, None), ('integrated', 'BOOLEAN', 'YES', None, None, None), ('is_deleted', 'BOOLEAN', 'YES', None, None, None), ('last_updated_by_user_id', 'VARCHAR', 'YES', None, None, None), ('marked_for_deletion_at', 'VARCHAR', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('platform', 'VARCHAR', 'YES', None, None, None), ('push_application_id', 'BIGINT', 'YES', None, None, None), ('record_until', 'VARCHAR', 'YES', None, None, None), ('sampling_rate', 'BIGINT', 'YES', None, None, None), ('starting_event_time', 'VARCHAR', 'YES', None, None, None), ('store_url', 'VARCHAR', 'YES', None, None, None), ('subscription_id', 'BIGINT', 'YES', None, None, None)]
+
+ event [('account_id', 'VARCHAR', 'YES', None, None, None), ('remote_ip', 'VARCHAR', 'YES', None, None, None), ('server_name', 'VARCHAR', 'YES', None, None, None), ('timestamp', 'VARCHAR', 'YES', None, None, None), ('user_agent', 'VARCHAR', 'YES', None, None, None), ('visitor_id', 'VARCHAR', 'YES', None, None, None), ('app_id', 'VARCHAR', 'YES', None, None, None), ('num_events', 'BIGINT', 'YES', None, None, None), ('num_minutes', 'BIGINT', 'YES', None, None, None), ('page_id', 'VARCHAR', 'YES', None, None, None)]
+
+ feature_event [('account_id', 'VARCHAR', 'YES', None, None, None), ('feature_id', 'VARCHAR', 'YES', None, None, None), ('remote_ip', 'VARCHAR', 'YES', None, None, None), ('server_name', 'VARCHAR', 'YES', None, None, None), ('timestamp', 'VARCHAR', 'YES', None, None, None), ('user_agent', 'VARCHAR', 'YES', None, None, None), ('visitor_id', 'VARCHAR', 'YES', None, None, None), ('app_id', 'VARCHAR', 'YES', None, None, None), ('num_events', 'DOUBLE', 'YES', None, None, None), ('num_minutes', 'DOUBLE', 'YES', None, None, None), ('param_parameter', 'DOUBLE', 'YES', None, None, None)]
+
+ feature_history [('id', 'VARCHAR', 'YES', None, None, None), ('last_updated_at', 'VARCHAR', 'YES', None, None, None), ('app_id', 'VARCHAR', 'YES', None, None, None), ('color', 'DOUBLE', 'YES', None, None, None), ('created_at', 'VARCHAR', 'YES', None, None, None), ('created_by_user_id', 'VARCHAR', 'YES', None, None, None), ('dirty', 'BOOLEAN', 'YES', None, None, None), ('group_id', 'BIGINT', 'YES', None, None, None), ('last_updated_by_user_id', 'VARCHAR', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('page_id', 'VARCHAR', 'YES', None, None, None), ('root_version_id', 'BIGINT', 'YES', None, None, None), ('stable_version_id', 'BIGINT', 'YES', None, None, None), ('valid_through', 'VARCHAR', 'YES', None, None, None), ('is_core_event', 'BOOLEAN', 'YES', None, None, None)]
+
+ group_data [('id', 'VARCHAR', 'YES', None, None, None), ('app_id', 'BIGINT', 'YES', None, None, None), ('color', 'VARCHAR', 'YES', None, None, None), ('created_at', 'VARCHAR', 'YES', None, None, None), ('created_by_user_id', 'BIGINT', 'YES', None, None, None), ('description', 'DOUBLE', 'YES', None, None, None), ('last_updated_at', 'VARCHAR', 'YES', None, None, None), ('last_updated_by_user_id', 'BIGINT', 'YES', None, None, None), ('length', 'DOUBLE', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None)]
+
+ guide_event [('account_id', 'VARCHAR', 'YES', None, None, None), ('guide_id', 'VARCHAR', 'YES', None, None, None), ('remote_ip', 'VARCHAR', 'YES', None, None, None), ('server_name', 'VARCHAR', 'YES', None, None, None), ('timestamp', 'VARCHAR', 'YES', None, None, None), ('user_agent', 'VARCHAR', 'YES', None, None, None), ('visitor_id', 'VARCHAR', 'YES', None, None, None), ('app_id', 'VARCHAR', 'YES', None, None, None), ('country', 'VARCHAR', 'YES', None, None, None), ('element_path', 'VARCHAR', 'YES', None, None, None), ('event_id', 'BIGINT', 'YES', None, None, None), ('guide_step_id', 'BIGINT', 'YES', None, None, None), ('latitude', 'DOUBLE', 'YES', None, None, None), ('load_time', 'VARCHAR', 'YES', None, None, None), ('longitude', 'DOUBLE', 'YES', None, None, None), ('region', 'VARCHAR', 'YES', None, None, None), ('type', 'VARCHAR', 'YES', None, None, None), ('url', 'VARCHAR', 'YES', None, None, None)]
+
+ guide_history [('id', 'VARCHAR', 'YES', None, None, None), ('last_updated_at', 'VARCHAR', 'YES', None, None, None), ('app_id', 'BIGINT', 'YES', None, None, None), ('attribute_badge_can_change_badge_color', 'DOUBLE', 'YES', None, None, None), ('attribute_badge_color', 'DOUBLE', 'YES', None, None, None), ('attribute_badge_height', 'DOUBLE', 'YES', None, None, None), ('attribute_badge_image_url', 'VARCHAR', 'YES', None, None, None), ('attribute_badge_is_only_show_once', 'DOUBLE', 'YES', None, None, None), ('attribute_badge_name', 'DOUBLE', 'YES', None, None, None), ('attribute_badge_offset_left', 'DOUBLE', 'YES', None, None, None), ('attribute_badge_offset_right', 'DOUBLE', 'YES', None, None, None), ('attribute_badge_offset_top', 'DOUBLE', 'YES', None, None, None), ('attribute_badge_position', 'DOUBLE', 'YES', None, None, None), ('attribute_badge_show_on_event', 'DOUBLE', 'YES', None, None, None), ('attribute_badge_use_hover', 'DOUBLE', 'YES', None, None, None), ('attribute_badge_width', 'DOUBLE', 'YES', None, None, None), ('attribute_device_type', 'VARCHAR', 'YES', None, None, None), ('attribute_priority', 'DOUBLE', 'YES', None, None, None), ('attribute_type', 'VARCHAR', 'YES', None, None, None), ('created_at', 'VARCHAR', 'YES', None, None, None), ('created_by_user_id', 'BIGINT', 'YES', None, None, None), ('email_state', 'VARCHAR', 'YES', None, None, None), ('is_multi_step', 'BOOLEAN', 'YES', None, None, None), ('is_training', 'BOOLEAN', 'YES', None, None, None), ('last_updated_by_user_id', 'BIGINT', 'YES', None, None, None), ('launch_method', 'VARCHAR', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('published_at', 'VARCHAR', 'YES', None, None, None), ('recurrence', 'BOOLEAN', 'YES', None, None, None), ('recurrence_eligibility_window', 'BOOLEAN', 'YES', None, None, None), ('reset_at', 'VARCHAR', 'YES', None, None, None), ('root_version_id', 'BIGINT', 'YES', None, None, None), ('stable_version_id', 'BIGINT', 'YES', None, None, None), ('state', 'VARCHAR', 'YES', None, None, None)]
+
+ guide_step_history [('guide_id', 'VARCHAR', 'YES', None, None, None), ('guide_last_updated_at', 'VARCHAR', 'YES', None, None, None), ('step_id', 'VARCHAR', 'YES', None, None, None)]
+
+ page_event [('account_id', 'VARCHAR', 'YES', None, None, None), ('page_id', 'VARCHAR', 'YES', None, None, None), ('remote_ip', 'VARCHAR', 'YES', None, None, None), ('server_name', 'VARCHAR', 'YES', None, None, None), ('timestamp', 'VARCHAR', 'YES', None, None, None), ('user_agent', 'VARCHAR', 'YES', None, None, None), ('visitor_id', 'VARCHAR', 'YES', None, None, None), ('app_id', 'VARCHAR', 'YES', None, None, None), ('num_events', 'DOUBLE', 'YES', None, None, None), ('num_minutes', 'DOUBLE', 'YES', None, None, None), ('param_parameter', 'DOUBLE', 'YES', None, None, None)]
+
+ page_history [('id', 'VARCHAR', 'YES', None, None, None), ('last_updated_at', 'VARCHAR', 'YES', None, None, None), ('app_id', 'VARCHAR', 'YES', None, None, None), ('color', 'DOUBLE', 'YES', None, None, None), ('created_at', 'VARCHAR', 'YES', None, None, None), ('created_by_user_id', 'VARCHAR', 'YES', None, None, None), ('dirty', 'BOOLEAN', 'YES', None, None, None), ('group_id', 'BIGINT', 'YES', None, None, None), ('last_updated_by_user_id', 'VARCHAR', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('root_version_id', 'BIGINT', 'YES', None, None, None), ('stable_version_id', 'BIGINT', 'YES', None, None, None), ('valid_through', 'VARCHAR', 'YES', None, None, None)]
+
+ page_rule_history [('page_id', 'VARCHAR', 'YES', None, None, None), ('page_last_updated_at', 'VARCHAR', 'YES', None, None, None), ('rule', 'VARCHAR', 'YES', None, None, None), ('designer_hint', 'DOUBLE', 'YES', None, None, None), ('parsed_rule', 'VARCHAR', 'YES', None, None, None)]
+
+ poll [('id', 'VARCHAR', 'YES', None, None, None), ('attribute_display', 'DOUBLE', 'YES', None, None, None), ('attribute_follow_up', 'VARCHAR', 'YES', None, None, None), ('attribute_max_length', 'DOUBLE', 'YES', None, None, None), ('attribute_placeholder', 'DOUBLE', 'YES', None, None, None), ('attribute_type', 'VARCHAR', 'YES', None, None, None), ('question', 'VARCHAR', 'YES', None, None, None), ('reset_at', 'VARCHAR', 'YES', None, None, None)]
+
+ poll_event [('account_id', 'BIGINT', 'YES', None, None, None), ('guide_id', 'VARCHAR', 'YES', None, None, None), ('poll_id', 'VARCHAR', 'YES', None, None, None), ('remote_ip', 'VARCHAR', 'YES', None, None, None), ('server_name', 'VARCHAR', 'YES', None, None, None), ('timestamp', 'VARCHAR', 'YES', None, None, None), ('user_agent', 'VARCHAR', 'YES', None, None, None), ('visitor_id', 'VARCHAR', 'YES', None, None, None), ('app_id', 'BIGINT', 'YES', None, None, None), ('country', 'VARCHAR', 'YES', None, None, None), ('element_path', 'DOUBLE', 'YES', None, None, None), ('event_id', 'BIGINT', 'YES', None, None, None), ('guide_step_id', 'BIGINT', 'YES', None, None, None), ('latitude', 'DOUBLE', 'YES', None, None, None), ('load_time', 'VARCHAR', 'YES', None, None, None), ('longitude', 'DOUBLE', 'YES', None, None, None), ('poll_response', 'VARCHAR', 'YES', None, None, None), ('region', 'DOUBLE', 'YES', None, None, None), ('type', 'VARCHAR', 'YES', None, None, None), ('url', 'VARCHAR', 'YES', None, None, None)]
+
+ user [('id', 'VARCHAR', 'YES', None, None, None), ('deleted_at', 'VARCHAR', 'YES', None, None, None), ('first_name', 'VARCHAR', 'YES', None, None, None), ('last_name', 'VARCHAR', 'YES', None, None, None), ('user_type', 'VARCHAR', 'YES', None, None, None), ('username', 'VARCHAR', 'YES', None, None, None)]
+
+ visitor_account_history [('account_id', 'VARCHAR', 'YES', None, None, None), ('visitor_id', 'VARCHAR', 'YES', None, None, None), ('visitor_last_updated_at', 'VARCHAR', 'YES', None, None, None)]
+
+ visitor_history [('id', 'VARCHAR', 'YES', None, None, None), ('last_updated_at', 'VARCHAR', 'YES', None, None, None), ('account_id', 'VARCHAR', 'YES', None, None, None), ('agent_email', 'VARCHAR', 'YES', None, None, None), ('agent_full_name', 'VARCHAR', 'YES', None, None, None), ('agent_group_role', 'DOUBLE', 'YES', None, None, None), ('agent_name', 'VARCHAR', 'YES', None, None, None), ('agent_role', 'VARCHAR', 'YES', None, None, None), ('first_visit', 'VARCHAR', 'YES', None, None, None), ('id_hash', 'DOUBLE', 'YES', None, None, None), ('last_browser_name', 'VARCHAR', 'YES', None, None, None), ('last_browser_version', 'DOUBLE', 'YES', None, None, None), ('last_operating_system', 'VARCHAR', 'YES', None, None, None), ('last_server_name', 'VARCHAR', 'YES', None, None, None), ('last_user_agent', 'VARCHAR', 'YES', None, None, None), ('last_visit', 'VARCHAR', 'YES', None, None, None), ('n_id', 'BIGINT', 'YES', None, None, None), ('salesforce_country_c', 'DOUBLE', 'YES', None, None, None), ('salesforce_job_function_c', 'VARCHAR', 'YES', None, None, None), ('salesforce_job_level_c', 'DOUBLE', 'YES', None, None, None), ('salesforce_name', 'DOUBLE', 'YES', None, None, None), ('agent_language', 'DOUBLE', 'YES', None, None, None), ('pendo_lastemail', 'VARCHAR', 'YES', None, None, None), ('pendo_lastemailstatus', 'VARCHAR', 'YES', None, None, None)]
+
+
+

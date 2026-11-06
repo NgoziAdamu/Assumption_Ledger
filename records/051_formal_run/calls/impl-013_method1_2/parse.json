@@ -1,0 +1,420 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "premises": [
+      {
+        "statement": "The contract's raw source names for entities, classes, and consolidated exchange rates identify available tables without requiring name corrections.",
+        "about": "data",
+        "target": "stg_netsuite2__entities, stg_netsuite2__classes, stg_netsuite2__consolidated_exchange_rates",
+        "evidence_of_dependence": "source=t['source_table'].split('.')[-1]; ... f'\\n    FROM raw.{source} r\\n)'",
+        "alternative": "The contract names raw.netsuite2_entity_data, raw.netsuite2_class_data, and raw.netsuite2_exchange_rate_data, whereas the material index lists raw.netsuite2_entities_data, raw.netsuite2_classification_data, and raw.netsuite2_consolidated_exchange_rate_data.",
+        "importance": 5,
+        "reason": "Unresolved source-name differences can prevent all three models and their dependents from executing.",
+        "updates": null
+      },
+      {
+        "statement": "Account balance-sheet and left-side classifications may be left NULL rather than derived from account-type data.",
+        "about": "requirement",
+        "target": "stg_netsuite2__accounts",
+        "evidence_of_dependence": "cols.append(f'    {expr(rawcol if rawcol in raw.get(source,{}) else None,typ)} AS {n}')",
+        "alternative": "The contract includes 'is_leftside' and 'is_balancesheet', and raw.netsuite2_account_type_data contains 'left' and 'balancesheet'; the comment says 'flags lookup via account type data' but no lookup is implemented.",
+        "importance": 5,
+        "reason": "Both account classifications would be missing throughout the chart of accounts.",
+        "updates": null
+      },
+      {
+        "statement": "Accounting periods already satisfy every required start-date, end-date, and maximum-duration validation after casting.",
+        "about": "data",
+        "target": "stg_netsuite2__accounting_periods",
+        "evidence_of_dependence": "if rule.get('on_failure')=='delete_row' and n.endswith('_id'):",
+        "alternative": "The contract requires deleting rows unless starting_at and ending_at are non-null, within specified date bounds, ending_at > starting_at, and 'ENDING_AT <= STARTING_AT + INTERVAL '92 DAYS''.",
+        "importance": 5,
+        "reason": "The generator omits all period-date filters, potentially retaining entire quarters, years, or invalid periods.",
+        "updates": null
+      },
+      {
+        "statement": "Every constrained unique key is already unique after projection, casting, and the implemented filters.",
+        "about": "data",
+        "target": "All generated staging models whose contract declares a unique constraint",
+        "evidence_of_dependence": "SELECT *\\nFROM source_data; if 'not_null' in col.get('constraints',[]):conditions.append(f'{n} IS NOT NULL')",
+        "alternative": "The contract declares 'constraints: [not_null, unique]' for these keys and describes 'Confirmed duplicates' as a delete_row case; the generator implements neither uniqueness checks nor deduplication.",
+        "importance": 4,
+        "reason": "Duplicate keys could violate staging grains and multiply downstream joins.",
+        "updates": null
+      },
+      {
+        "statement": "No source row carrying date_deleted needs to be excluded from its generated staging model.",
+        "about": "data",
+        "target": "All generated NetSuite2 staging models sourced from tables containing date_deleted",
+        "evidence_of_dependence": "sql='WITH source_data AS (\\n    SELECT\\n'+',\\n'.join(cols)+f'\\n    FROM raw.{source} r\\n)\\nSELECT *\\nFROM source_data'",
+        "alternative": "The staging quality actions list 'Explicitly marked for deletion' under delete_row, and the material index shows date_deleted on these sources.",
+        "importance": 4,
+        "reason": "Retaining deleted records can materially change downstream balances and entity populations.",
+        "updates": null
+      },
+      {
+        "statement": "All transaction due dates already satisfy the contractual bounds relative to the transaction date and current date.",
+        "about": "data",
+        "target": "stg_netsuite2__transactions",
+        "evidence_of_dependence": "due_date_at='duedate'; ... return f'TRY_CAST({x} AS {typ})'",
+        "alternative": "The contract requires nullifying due_date_at unless it is NULL or 'due_date_at >= transaction_date AND due_date_at <= CURRENT_DATE + INTERVAL '10 YEARS''.",
+        "importance": 4,
+        "reason": "Casting alone does not prevent invalid dates from affecting aging and overdue reporting.",
+        "updates": null
+      },
+      {
+        "statement": "All employee emails are either NULL or match the contract's email pattern.",
+        "about": "data",
+        "target": "stg_netsuite2__employees",
+        "evidence_of_dependence": "return f'TRY_CAST({x} AS {typ})'; if name=='stg_netsuite2__customers':",
+        "alternative": "The employee contract specifies an email regular-expression validation with 'on_failure: nullify_field', but special email processing is limited to customers.",
+        "importance": 3,
+        "reason": "Malformed employee contact information would survive a required validation.",
+        "updates": null
+      },
+      {
+        "statement": "Department names already meet the required nonempty, maximum-length, and allowed-character rules.",
+        "about": "data",
+        "target": "stg_netsuite2__departments",
+        "evidence_of_dependence": "name='name'; ... cols.append(f'    {expr(rawcol if rawcol in raw.get(source,{}) else None,typ)} AS {n}')",
+        "alternative": "The contract requires correcting names to satisfy 'LENGTH(name) > 0 AND LENGTH(name) <= 255' and an allowed-character pattern.",
+        "importance": 3,
+        "reason": "No name correction is generated despite explicit correction requirements.",
+        "updates": null
+      },
+      {
+        "statement": "Returning NULL for the legacy customer external identifier is acceptable without consulting another source or deriving it.",
+        "about": "requirement",
+        "target": "stg_netsuite__customers",
+        "evidence_of_dependence": "customer_external_id='customer_external_id'; if not rawcol:return f'CAST(NULL AS {typ})'",
+        "alternative": "The contract includes 'customer_external_id' as BIGINT, but raw.netsuite_customers_data in the material index has no such column.",
+        "importance": 3,
+        "reason": "The implementation silently substitutes an entirely missing identifier field.",
+        "updates": null
+      },
+      {
+        "statement": "Returning NULL for legacy subsidiary full_name is acceptable without deriving it from name or hierarchy data.",
+        "about": "requirement",
+        "target": "stg_netsuite__subsidiaries",
+        "evidence_of_dependence": "full_name='full_name'; ... expr(rawcol if rawcol in raw.get(source,{}) else None,typ)",
+        "alternative": "The contract requests 'full_name', while the indexed source contains 'name' and 'parent_id' but no full_name.",
+        "importance": 3,
+        "reason": "The entire subsidiary hierarchy-label field would be absent.",
+        "updates": null
+      },
+      {
+        "statement": "Returning NULL for entity parent_id is acceptable instead of mapping the source parent field.",
+        "about": "requirement",
+        "target": "stg_netsuite2__entities",
+        "evidence_of_dependence": "'stg_netsuite2__entities':dict(entity_id='id',entity_name='entityid', ...); rawcol=maps.get(name,{}).get(n,n)",
+        "alternative": "The entity contract requests 'parent_id', and the indexed entities source contains 'parent'.",
+        "importance": 3,
+        "reason": "The omitted alias loses all entity-parent relationships even if the source-name issue is resolved.",
+        "updates": null
+      },
+      {
+        "statement": "Source metadata in netsuite_start.yaml completely and accurately enumerates every usable column under the exact source-table keys used by the contract.",
+        "about": "data",
+        "target": "All generated staging models",
+        "evidence_of_dependence": "raw=yaml.safe_load(open('netsuite_start.yaml')); expr(rawcol if rawcol in raw.get(source,{}) else None,typ)",
+        "alternative": null,
+        "importance": 3,
+        "reason": "Any metadata omission silently replaces available source values with NULL rather than exposing the mismatch.",
+        "updates": null
+      },
+      {
+        "statement": "Non-null source values that fail TRY_CAST may be discarded as NULL, or removed when the target is required, without additional recovery.",
+        "about": "requirement",
+        "target": "All generated staging models",
+        "evidence_of_dependence": "return f'TRY_CAST({x} AS {typ})'; conditions.append(f'{n} IS NOT NULL')",
+        "alternative": "The contract distinguishes deterministic issues to 'correct', severe issues to 'delete_row', and invalid noncritical values to 'nullify_field', rather than assigning one blanket casting policy.",
+        "importance": 3,
+        "reason": "Recoverable formatting errors could cause information loss or deletion across many models.",
+        "updates": null
+      },
+      {
+        "statement": "The source transaction-line id alone identifies a globally unique transaction line in both source systems.",
+        "about": "data",
+        "target": "stg_netsuite2__transaction_lines, stg_netsuite__transaction_lines",
+        "evidence_of_dependence": "transaction_line_id='id',transaction_id='transaction'; transaction_line_id='transaction_line_id'",
+        "alternative": "The NetSuite2 source also contains 'uniquekey', and both sources contain transaction identifiers that could participate in a composite line key.",
+        "importance": 3,
+        "reason": "Transaction-local line numbering would make the selected identifier incompatible with the specified unique grain.",
+        "updates": null
+      },
+      {
+        "statement": "NetSuite2 account_type_id denotes internalid rather than the source id field.",
+        "about": "data",
+        "target": "stg_netsuite2__account_types",
+        "evidence_of_dependence": "'stg_netsuite2__account_types':dict(account_type_id='internalid',type_name='longname', ...)",
+        "alternative": "The indexed account-type source contains both 'id' and 'internalid', while the contract names only the output account_type_id.",
+        "importance": 3,
+        "reason": "Selecting the wrong identifier could break account-type relationships or lose rows during BIGINT conversion.",
+        "updates": null
+      },
+      {
+        "statement": "Customer emails with recoverable surrounding whitespace should be nullified if they fail the pattern before trimming.",
+        "about": "requirement",
+        "target": "stg_netsuite2__customers",
+        "evidence_of_dependence": "regexp_full_match(email_address, ...) THEN lower(trim(email_address)) ELSE NULL",
+        "alternative": "The contract requires 'email_address = LOWER(TRIM(email_address))' with 'on_failure: correct', which supports normalizing whitespace before deciding whether an address is malformed.",
+        "importance": 3,
+        "reason": "Otherwise valid customer emails can be lost solely because normalization occurs after validation.",
+        "updates": null
+      },
+      {
+        "statement": "Replacing only the first disallowed phone character suffices to satisfy the required customer phone normalization.",
+        "about": "requirement",
+        "target": "stg_netsuite2__customers",
+        "evidence_of_dependence": "regexp_replace(trim(phone_number), '[^0-9+()-]', '')",
+        "alternative": "The contract says 'phone_number = REGEXP_REPLACE(TRIM(phone_number), '[^0-9+()-]', '')' as a correction rule; interpreting this as full normalization would require removing every disallowed character.",
+        "importance": 2,
+        "reason": "Multiple spaces or other disallowed characters may remain in cleaned phone values.",
+        "updates": null
+      },
+      {
+        "statement": "Checking customer phone length before character removal is sufficient even when normalization changes its length.",
+        "about": "requirement",
+        "target": "stg_netsuite2__customers",
+        "evidence_of_dependence": "WHEN phone_number IS NULL OR (length(trim(phone_number)) BETWEEN 8 AND 20) THEN regexp_replace(...)",
+        "alternative": "The contract requires the resulting phone_number to satisfy 'LENGTH(TRIM(phone_number)) >= 8 AND LENGTH(TRIM(phone_number)) <= 20' as well as normalization.",
+        "importance": 2,
+        "reason": "A phone can pass the initial check and become too short after cleaning.",
+        "updates": null
+      },
+      {
+        "statement": "Account name in the staging contract means fullname rather than one of the available display-name fields.",
+        "about": "requirement",
+        "target": "stg_netsuite2__accounts",
+        "evidence_of_dependence": "name='fullname'",
+        "alternative": "The source index also lists 'accountsearchdisplayname', 'accountsearchdisplaynamecopy', and 'displaynamewithhierarchy'; the contract only labels the output 'name'.",
+        "importance": 2,
+        "reason": "Different name fields may produce materially different account labels.",
+        "updates": null
+      },
+      {
+        "statement": "Entity_id in customer, employee, and job staging denotes the source entityid label rather than the internal id used by transaction entity references.",
+        "about": "data",
+        "target": "stg_netsuite2__customers, stg_netsuite2__employees, stg_netsuite2__jobs",
+        "evidence_of_dependence": "entity_id='entityid'",
+        "alternative": "The entities mapping uses 'entity_id=\\'id\\'' and 'entity_name=\\'entityid\\'', while transactions map entity_id from 'entity'.",
+        "importance": 2,
+        "reason": "The same output field name may carry incompatible identifier domains across staging tables.",
+        "updates": null
+      }
+    ],
+    "fewer": [
+      {
+        "target": "stg_netsuite2__accounts",
+        "count": 5,
+        "reason": "Five premises identified, including the shared uniqueness, deletion, and metadata premises."
+      },
+      {
+        "target": "stg_netsuite2__transactions",
+        "count": 4,
+        "reason": "Date validation, deletion handling, metadata completeness, and casting policy are unestablished; transaction_id is not declared unique."
+      },
+      {
+        "target": "stg_netsuite2__transaction_lines",
+        "count": 5,
+        "reason": "Five premises identified through shared processing premises and line-key scope."
+      },
+      {
+        "target": "stg_netsuite2__entities",
+        "count": 5,
+        "reason": "Five highest-impact premises concern source naming, parent mapping, uniqueness, deletion, and metadata."
+      },
+      {
+        "target": "stg_netsuite2__vendors",
+        "count": 4,
+        "reason": "Only shared uniqueness, deletion, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite2__accounting_periods",
+        "count": 5,
+        "reason": "Five premises identified including omitted date validation."
+      },
+      {
+        "target": "stg_netsuite2__customers",
+        "count": 5,
+        "reason": "The five highest-impact premises are uniqueness, deletion, metadata, casting policy, and email normalization order."
+      },
+      {
+        "target": "stg_netsuite2__subsidiaries",
+        "count": 4,
+        "reason": "Only shared uniqueness, deletion, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite2__departments",
+        "count": 5,
+        "reason": "Five premises identified including omitted name correction."
+      },
+      {
+        "target": "stg_netsuite2__classes",
+        "count": 5,
+        "reason": "Five premises identified including unresolved source naming."
+      },
+      {
+        "target": "stg_netsuite2__locations",
+        "count": 4,
+        "reason": "Only shared uniqueness, deletion, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite2__employees",
+        "count": 5,
+        "reason": "The five highest-impact premises concern uniqueness, email validation, metadata, casting, and entity identifier meaning."
+      },
+      {
+        "target": "stg_netsuite2__items",
+        "count": 3,
+        "reason": "Shared uniqueness, metadata, and casting premises apply; this source has no indexed deletion marker."
+      },
+      {
+        "target": "stg_netsuite2__currencies",
+        "count": 4,
+        "reason": "Only shared uniqueness, deletion, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite2__account_types",
+        "count": 5,
+        "reason": "Five premises identified including the internalid mapping."
+      },
+      {
+        "target": "stg_netsuite2__accounting_book_subsidiaries",
+        "count": 3,
+        "reason": "Shared deletion, metadata, and casting premises apply; the contract does not require a unique key."
+      },
+      {
+        "target": "stg_netsuite2__accounting_books",
+        "count": 4,
+        "reason": "Only shared uniqueness, deletion, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite2__accounting_period_fiscal_cal",
+        "count": 3,
+        "reason": "Shared deletion, metadata, and casting premises apply; the contract does not require a unique key."
+      },
+      {
+        "target": "stg_netsuite2__entity_address",
+        "count": 3,
+        "reason": "Shared deletion, metadata, and casting premises apply; no unique key is required."
+      },
+      {
+        "target": "stg_netsuite2__fiscal_calendar",
+        "count": 4,
+        "reason": "Only shared uniqueness, deletion, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite2__jobs",
+        "count": 5,
+        "reason": "Five premises identified including entity identifier meaning."
+      },
+      {
+        "target": "stg_netsuite2__location_main_address",
+        "count": 3,
+        "reason": "Shared deletion, metadata, and casting premises apply; no unique key is required."
+      },
+      {
+        "target": "stg_netsuite2__transaction_accounting_lines",
+        "count": 3,
+        "reason": "Shared deletion, metadata, and casting premises apply; the unusual output types are explicitly specified by the contract."
+      },
+      {
+        "target": "stg_netsuite2__vendor_categories",
+        "count": 4,
+        "reason": "Only shared uniqueness, deletion, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite2__consolidated_exchange_rates",
+        "count": 5,
+        "reason": "Five premises identified including unresolved source naming."
+      },
+      {
+        "target": "stg_netsuite__accounting_books",
+        "count": 3,
+        "reason": "Only shared uniqueness, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite__accounting_periods",
+        "count": 3,
+        "reason": "Only shared uniqueness, metadata, and casting premises are evident; the stricter NetSuite2 date rules are not specified here."
+      },
+      {
+        "target": "stg_netsuite__accounts",
+        "count": 3,
+        "reason": "Only shared uniqueness, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite__classes",
+        "count": 3,
+        "reason": "Only shared uniqueness, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite__consolidated_exchange_rates",
+        "count": 3,
+        "reason": "Only shared uniqueness, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite__currencies",
+        "count": 3,
+        "reason": "Only shared uniqueness, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite__customers",
+        "count": 4,
+        "reason": "Shared uniqueness, metadata, and casting premises apply along with the missing external identifier."
+      },
+      {
+        "target": "stg_netsuite__departments",
+        "count": 3,
+        "reason": "Only shared uniqueness, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite__expense_accounts",
+        "count": 3,
+        "reason": "Only shared uniqueness, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite__income_accounts",
+        "count": 3,
+        "reason": "Only shared uniqueness, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite__items",
+        "count": 3,
+        "reason": "Only shared uniqueness, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite__locations",
+        "count": 3,
+        "reason": "Only shared uniqueness, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite__subsidiaries",
+        "count": 4,
+        "reason": "Shared uniqueness, metadata, and casting premises apply along with the missing full_name."
+      },
+      {
+        "target": "stg_netsuite__transaction_lines",
+        "count": 4,
+        "reason": "Shared uniqueness, metadata, and casting premises apply along with transaction-line key scope."
+      },
+      {
+        "target": "stg_netsuite__transactions",
+        "count": 3,
+        "reason": "Only shared uniqueness, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite__vendor_types",
+        "count": 3,
+        "reason": "Only shared uniqueness, metadata, and casting premises are evident."
+      },
+      {
+        "target": "stg_netsuite__vendors",
+        "count": 3,
+        "reason": "Only shared uniqueness, metadata, and casting premises are evident."
+      }
+    ]
+  }
+}

@@ -1,0 +1,1036 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for NetSuite ERP data transformation into analytical models"
+  author: "Data Engineering Team"
+  created_date: "2025-09-11"
+  source_system: "NetSuite ERP"
+  target_system: "DuckDB Analytics Warehouse"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw NetSuite data into clean, validated staging tables with standardized naming conventions, data types, and business rules. Remove Fivetran metadata fields and apply data quality validations."
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "standardize timezone formats", "normalize phone numbers"]
+    
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform staging data into business-ready analytical models that support financial reporting, customer analytics, vendor risk management, and operational insights for NetSuite ERP data"
+  design_principles:
+    grain_importance: "Each model must have an explicitly defined grain that determines the level of aggregation and uniqueness constraints"
+    intermediate_purpose: "Create reusable, business-centric data models that apply complex business logic, perform advanced calculations, and establish proper relationships between entities"
+    marts_purpose: "Deliver analysis-ready datasets optimized for specific business functions and reporting requirements"
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-013/agent/dacomp-de-impl-013/netsuite_start.duckdb
+{"table": "raw.netsuite2_account_data", "columns": ["id", "accountsearchdisplayname", "accountsearchdisplaynamecopy", "acctnumber", "accttype", "billableexpensesacct", "cashflowrate", "category1099misc", "class", "currency", "custrecord_fam_account_showinfixedasset", "date_deleted", "deferralacct", "department", "description", "displaynamewithhierarchy", "eliminate", "externalid", "fullname", "generalrate", "includechildren", "inventory", "isinactive", "issummary", "lastmodifieddate", "location", "parent", "reconcilewithmatching", "revalue", "sbankname", "sbankroutingnumber", "sspecacct", "subsidiary", "eliminate.1"]}
+{"table": "raw.netsuite2_account_type_data", "columns": ["id", "balancesheet", "date_deleted", "defaultcashflowratetype", "defaultgeneralratetype", "eliminationalgo", "includeinrevaldefault", "internalid", "left", "longname", "seqnum", "usercanchangerevaloption"]}
+{"table": "raw.netsuite2_accounting_book_data", "columns": ["id", "basebook", "date_deleted", "effectiveperiod", "externalid", "isadjustmentonly", "isconsolidated", "isprimary", "lastmodifieddate", "name", "subsidiariesstring"]}
+{"table": "raw.netsuite2_accounting_book_sub_data", "columns": ["accountingbook", "date_deleted", "status", "subsidiary"]}
+{"table": "raw.netsuite2_accounting_period_data", "columns": ["id", "alllocked", "allownonglchanges", "aplocked", "arlocked", "closed", "closedondate", "date_deleted", "enddate", "isadjust", "isinactive", "isposting", "isquarter", "isyear", "lastmodifieddate", "parent", "periodname", "startdate"]}
+{"table": "raw.netsuite2_accounting_period_fiscal_cal_data", "columns": ["accountingperiod", "date_deleted", "fiscalcalendar", "parent"]}
+{"table": "raw.netsuite2_classification_data", "columns": ["id", "date_deleted", "externalid", "fullname", "includechildren", "isinactive", "lastmodifieddate", "name", "parent", "subsidiary"]}
+{"table": "raw.netsuite2_consolidated_exchange_rate_data", "columns": ["id", "averagerate", "currentrate", "date_deleted", "externalid", "fromcurrency", "fromsubsidiary", "historicalrate", "postingperiod", "tocurrency", "tosubsidiary", "accountingbook"]}
+{"table": "raw.netsuite2_currency_data", "columns": ["id", "currencyprecision", "date_deleted", "displaysymbol", "exchangerate", "externalid", "fxrateupdatetimezone", "includeinfxrateupdates", "isbasecurrency", "isinactive", "lastmodifieddate", "name", "overridecurrencyformat", "symbol", "symbolplacement"]}
+{"table": "raw.netsuite2_customer_data", "columns": ["id", "accountnumber", "alcoholrecipienttype", "altemail", "altname", "altphone", "assignedwebsite", "balancesearch", "billingratecard", "billingschedule", "billingtransactiontype", "billpay", "buyingreason", "buyingtimeframe", "campaignevent", "category", "clickstream", "comments", "companyname", "consolbalancesearch", "consoldaysoverduesearch", "consoloverduebalancesearch", "consolunbilledorderssearch", "contact", "contactlist", "creditholdoverride", "creditlimit", "currency", "custentity1", "custentity10", "custentity12", "custentity13", "custentity14", "custentity15", "custentity16", "custentity18", "custentity21", "custentity4", "custentity5", "custentity6", "custentity7", "custentity8", "custentity9", "custentity_2663_customer_refund", "custentity_2663_direct_debit", "custentity_cust_priority", "custentity_fmt_cur_sales_order", "custentity_fmt_cust_credit_on_hold", "custentity_fmt_customer_credit_on_hold", "custentity_lead_category", "custentity_ppob", "custentity_supervisor", "date_deleted", "datecreated", "defaultbankaccount", "defaultbillingaddress", "defaultorderpriority", "defaultshippingaddress", "duplicate", "email", "emailpreference", "emailtransactions", "enddate", "entityid", "entitynumber", "entitystatus", "entitytitle", "estimatedbudget", "externalid", "fax", "faxtransactions", "firstname", "firstorderdate", "firstsaledate", "firstvisit", "giveaccess", "globalsubscriptionstatus", "homephone", "isbudgetapproved", "isinactive", "isperson", "keywords", "language", "lastmodifieddate", "lastname", "lastorderdate", "lastpagevisited", "lastsaledate", "lastvisit", "leadsource", "middlename", "mobilephone", "negativenumberformat", "numberformat", "oncredithold", "overduebalancesearch", "parent", "partner", "phone", "prefccprocessor", "pricelevel", "printoncheckas", "printtransactions", "probability", "receivablesaccount", "referrer", "reminderdays", "resalenumber", "salesreadiness", "salesrep", "salutation", "searchstage", "shipcomplete", "shippingcarrier", "shippingitem", "sourcewebsite", "startdate", "terms", "territory", "thirdpartyacct", "thirdpartycarrier", "thirdpartycountry", "thirdpartyzipcode", "title", "unbilledorderssearch", "url", "visits", "weblead", "dateclosed"]}
+{"table": "raw.netsuite2_department_data", "columns": ["id", "date_deleted", "externalid", "fullname", "includechildren", "isinactive", "lastmodifieddate", "name", "parent", "subsidiary"]}
+{"table": "raw.netsuite2_employee_data", "columns": ["id", "entityid", "firstname", "lastname", "department", "subsidiary", "email", "supervisor", "approvallimit", "expenselimit", "purchaseorderapprovallimit", "purchaseorderlimit", "currency", "isinactive"]}
+{"table": "raw.netsuite2_entities_data", "columns": ["id", "altemail", "altname", "altphone", "comments", "contact", "customer", "date_deleted", "datecreated", "email", "employee", "entityid", "entitynumber", "entitytitle", "externalid", "fax", "firstname", "genericresource", "homephone", "isinactive", "isperson", "laborcost", "lastmodifieddate", "lastname", "middlename", "mobilephone", "othername", "parent", "partner", "phone", "project", "projecttemplate", "salutation", "title", "toplevelparent", "type", "vendor"]}
+{"table": "raw.netsuite2_entity_address_data", "columns": ["nkey", "addr1", "addr2", "addr3", "addressee", "addrphone", "addrtext", "attention", "city", "country", "date_deleted", "dropdownstate", "lastmodifieddate", "override", "recordowner", "state", "zip"]}
+{"table": "raw.netsuite2_fiscal_calendar_data", "columns": ["id", "externalid", "fiscalmonth", "isdefault", "name", "date_deleted"]}
+{"table": "raw.netsuite2_item_data", "columns": ["id", "fullname", "itemtype", "description", "department", "class", "location", "subsidiary", "assetaccount", "expenseaccount", "gainlossaccount", "incomeaccount", "deferralaccount", "parent"]}
+{"table": "raw.netsuite2_job_data", "columns": ["id", "accountnumber", "actualtime", "allowallresourcesfortasks", "allowexpenses", "allowtime", "alternatecontact", "altname", "billingschedule", "calculatedenddate", "calculatedenddatebaseline", "category", "comments", "companyname", "contact", "contactlist", "currency", "currencyprecision", "custentity1", "custentity4", "custentity5", "customer", "date_deleted", "datecreated", "defaultbillingaddress", "defaultshippingaddress", "enddate", "entityid", "entitynumber", "entitystatus", "entitytitle", "estimatedcost", "estimatedgrossprofit", "estimatedgrossprofitpercent", "estimatedlaborcost", "estimatedlaborcostbaseline", "estimatedlaborrevenue", "estimatedrevenue", "estimatedtime", "estimatedtimeoverride", "estimatedtimeoverridebaseline", "externalid", "files", "forecastchargerunondemand", "fxrate", "includecrmtasksintotals", "isexempttime", "isinactive", "isproductivetime", "isutilizedtime", "jobbillingtype", "jobitem", "jobprice", "jobtype", "lastbaselinedate", "lastmodifieddate", "limittimetoassignees", "materializetime", "parent", "percentcomplete", "percenttimecomplete", "primarycontact", "projectedenddate", "projectedenddatebaseline", "projectmanager", "startdate", "startdatebaseline", "timeapproval", "timeremaining"]}
+{"table": "raw.netsuite2_location_data", "columns": ["id", "date_deleted", "defaultallocationpriority", "externalid", "fullname", "includeinsupplyplanning", "isinactive", "lastmodifieddate", "latitude", "locationtype", "longitude", "mainaddress", "makeinventoryavailable", "makeinventoryavailablestore", "name", "parent", "returnaddress", "subsidiary", "tranprefix", "usebins"]}
+{"table": "raw.netsuite2_location_main_address_data", "columns": ["nkey", "addr1", "addr2", "addr3", "addressee", "addrphone", "addrtext", "attention", "city", "country", "date_deleted", "dropdownstate", "lastmodifieddate", "override", "recordowner", "state", "zip"]}
+{"table": "raw.netsuite2_subsidiary_data", "columns": ["id", "country", "currency", "date_deleted", "dropdownstate", "edition", "email", "externalid", "fax", "federalidnumber", "fiscalcalendar", "fullname", "iselimination", "isinactive", "languagelocale", "lastmodifieddate", "legalname", "mainaddress", "name", "parent", "purchaseorderamount", "purchaseorderquantity", "purchaseorderquantitydiff", "receiptamount", "receiptquantity", "receiptquantitydiff", "returnaddress", "shippingaddress", "showsubsidiaryname", "ssnortin", "state", "state1taxnumber", "tranprefix", "url"]}
+{"table": "raw.netsuite2_tran_acct_line_data", "columns": ["accountingbook", "transaction", "transactionline", "account", "amount", "amountpaid", "amountunpaid", "credit", "date_deleted", "debit", "exchangerate", "netamount", "overheadparentitem", "paymentamountunused", "paymentamountused", "posting", "amountlinked"]}
+{"table": "raw.netsuite2_transaction_data", "columns": ["id", "transactionnumber", "type", "memo", "trandate", "status", "createddate", "duedate", "closedate", "currency", "entity", "postingperiod", "posting", "isreversal", "reversal", "reversaldate", "reversaldefer"]}
+{"table": "raw.netsuite2_transaction_line_data", "columns": ["id", "transaction", "actualshipdate", "amortizationenddate", "amortizationresidual", "amortizationsched", "amortizstartdate", "amountlinked", "assemblycomponent", "billeddate", "billingschedule", "billvariancestatus", "blandedcost", "bomquantity", "buildvariance", "category", "chargetype", "class", "cleared", "cleareddate", "commitinventory", "commitmentfirm", "componentyield", "costestimate", "costestimaterate", "costestimatetype", "createdfrom", "createdpo", "creditforeignamount", "custcol1", "custcol3", "custcol4", "custcol5", "custcol6", "custcol_far_trn_relatedasset", "custcol_gw_inv", "custcol_hand", "custcol_helmetsize", "custcol_pfc_configuration", "custcol_pfc_pfconfigurator", "custcol_pfc_wo", "custcol_ropetype", "date_deleted", "debitforeignamount", "department", "documentnumber", "donotdisplayline", "dropship", "entity", "estgrossprofit", "estgrossprofitpercent", "estimatedamount", "expectedreceiptdate", "expectedshipdate", "expenseaccount", "foreignamount", "foreignamountpaid", "foreignamountunpaid", "foreignpaymentamountunused", "foreignpaymentamountused", "fulfillable", "fxamountlinked", "hasfulfillableitems", "inventoryreportinglocation", "isbillable", "isclosed", "iscogs", "isfullyshipped", "isfxvariance", "isinventoryaffecting", "isrevrectransaction", "isscrap", "item", "itemsource", "itemtype", "kitcomponent", "kitmemberof", "landedcostcategory", "landedcostperline", "linelastmodifieddate", "linesequencenumber", "location", "mainline", "matchbilltoreceipt", "memo", "netamount", "oldcommitmentfirm", "operationdisplaytext", "orderpriority", "paymentmethod", "price", "processedbyrevcommit", "quantity", "quantitybackordered", "quantitybilled", "quantitycommitted", "quantitypacked", "quantitypicked", "quantityrejected", "quantityshiprecv", "rate", "rateamount", "ratepercent", "requestnote", "revenueelement", "shipmethod", "specialorder", "subsidiary", "taxline", "transactiondiscount", "transactionlinetype", "transferorderitemlineid", "uniquekey", "units", "vsoeisestimate", "eliminate"]}
+{"table": "raw.netsuite2_vendor_category_data", "columns": ["id", "date_deleted", "externalid", "isinactive", "istaxagency", "lastmodifieddate", "name"]}
+{"table": "raw.netsuite2_vendor_data", "columns": ["id", "accountnumber", "altemail", "altname", "altphone", "balance", "balanceprimary", "billpay", "category", "comments", "companyname", "contact", "contactlist", "creditlimit", "currency", "custentity_2663_payment_method", "custentity_is_manufacturer", "custentity_rvc", "custentity_vendor_lead_time", "custentity_wrnty_center_phone", "date_deleted", "datecreated", "defaultbankaccount", "defaultbillingaddress", "defaultshippingaddress", "defaultvendorpaymentaccount", "duplicate", "email", "emailpreference", "emailtransactions", "entityid", "entitynumber", "entitytitle", "expenseaccount", "externalid", "fax", "faxtransactions", "firstname", "giveaccess", "globalsubscriptionstatus", "homephone", "incoterm", "isinactive", "isjobresourcevend", "isperson", "laborcost", "lastmodifieddate", "lastname", "legalname", "middlename", "mobilephone", "payablesaccount", "phone", "printoncheckas", "printtransactions", "purchaseorderamount", "purchaseorderquantity", "purchaseorderquantitydiff", "receiptamount", "receiptquantity", "receiptquantitydiff", "rolesforsearch", "salutation", "subsidiaryedition", "terms", "timeapprover", "title", "unbilledorders", "unbilledordersprimary", "url", "workcalendar"]}
+{"table": "raw.netsuite_accounting_books_data", "columns": ["accounting_book_id", "is_primary"]}
+{"table": "raw.netsuite_accounting_periods_data", "columns": ["accounting_period_id", "name", "full_name", "fiscal_calendar_id", "year_id", "starting", "ending", "quarter", "year_0", "is_adjustment", "closed"]}
+{"table": "raw.netsuite_accounts_data", "columns": ["account_id", "parent_id", "name", "type_name", "account_number", "general_rate_type", "is_leftside", "is_balancesheet"]}
+{"table": "raw.netsuite_classes_data", "columns": ["class_id", "full_name"]}
+{"table": "raw.netsuite_consolidated_exchange_rates_data", "columns": ["consolidated_exchange_rate_id", "accounting_book_id", "accounting_period_id", "average_rate", "current_rate", "historical_rate", "from_subsidiary_id", "to_subsidiary_id"]}
+{"table": "raw.netsuite_currencies_data", "columns": ["currency_id", "name", "symbol"]}
+{"table": "raw.netsuite_customers_data", "columns": ["customer_id", "company_name", "city", "state", "zipcode", "country", "date_first_order"]}
+{"table": "raw.netsuite_departments_data", "columns": ["department_id", "name", "full_name"]}
+{"table": "raw.netsuite_expense_accounts_data", "columns": ["expense_account_id", "name", "parent_id", "account_number"]}
+{"table": "raw.netsuite_income_accounts_data", "columns": ["income_account_id", "name", "parent_id", "account_number"]}
+{"table": "raw.netsuite_items_data", "columns": ["item_id", "name", "type_name", "sales_description"]}
+{"table": "raw.netsuite_locations_data", "columns": ["location_id", "name", "full_name", "city", "country"]}
+{"table": "raw.netsuite_subsidiaries_data", "columns": ["subsidiary_id", "fiscal_calendar_id", "name", "parent_id"]}
+{"table": "raw.netsuite_transaction_lines_data", "columns": ["transaction_id", "transaction_line_id", "subsidiary_id", "account_id", "company_id", "item_id", "amount", "non_posting_line", "class_id", "location_id", "department_id", "memo"]}
+{"table": "raw.netsuite_transactions_data", "columns": ["transaction_id", "status", "transaction_date", "currency_id", "accounting_period_id", "due_date", "transaction_type", "is_intercompany", "is_advanced_intercompany"]}
+{"table": "raw.netsuite_vendor_types_data", "columns": ["vendor_type_id", "name"]}
+{"table": "raw.netsuite_vendors_data", "columns": ["vendor_id", "vendor_type_id", "company_name", "create_date"]}
+
+
+=== Relevant specification and documentation ===
+
+
+=== Premises recorded in earlier reviews ===
+(none)
+
+=== Agent steps since the last review ===
+### event 5
+
+## 命令原文
+
+pwd && ls -la && find sql -maxdepth 3 -type f | sort | head -100 && find docs config -maxdepth 2 -type f | sort
+
+## agent 实际看到的执行结果
+
+/home/katherine/dac/runs/20261025_de_official_batch_01/impl-013/agent/dacomp-de-impl-013
+total 29772
+drwxr-xr-x 8 katherine katherine     4096 Oct 25 02:30 .
+drwx------ 3 katherine katherine       60 Oct 25 02:30 ..
+drwxr-xr-x 3 katherine katherine     4096 Oct 25 02:30 .agent-python
+drwxr-xr-x 2 katherine katherine     4096 Oct 25 02:30 .tmp
+drwxr-xr-x 2 katherine katherine     4096 Oct 17 17:41 config
+drwxr-xr-x 2 katherine katherine     4096 Oct 17 17:41 docs
+-rw-r--r-- 1 katherine katherine 30420992 Oct 17 17:41 netsuite_start.duckdb
+-rw-r--r-- 1 katherine katherine    20316 Oct 17 17:41 netsuite_start.yaml
+drwxr-xr-x 2 katherine katherine     4096 Oct 17 17:41 raw_data
+-rw-r--r-- 1 katherine katherine    10561 Oct 17 17:41 run.py
+drwxr-xr-x 5 katherine katherine     4096 Oct 17 17:41 sql
+-rw-r--r-- 1 katherine katherine     3739 Oct 17 17:41 test_single_sql.py
+config/layer_dependencies.yaml
+docs/data_contract.yaml
+
+
+### event 7
+
+## 命令原文
+
+find sql -type f | sort | wc -l; find sql -type f | sort; cat config/layer_dependencies.yaml; sed -n '1,220p' run.py
+
+## agent 实际看到的执行结果
+
+0
+layers:
+  staging:
+    description: "Clean and standardize raw data, remove Fivetran fields"
+    dependencies: []
+    tables:
+      # Netsuite2 staging tables (modern model)
+      - stg_netsuite2__accounts
+      - stg_netsuite2__account_types
+      - stg_netsuite2__accounting_books
+      - stg_netsuite2__accounting_book_subsidiaries
+      - stg_netsuite2__accounting_periods
+      - stg_netsuite2__accounting_period_fiscal_cal
+      - stg_netsuite2__classes
+      - stg_netsuite2__consolidated_exchange_rates
+      - stg_netsuite2__currencies
+      - stg_netsuite2__customers
+      - stg_netsuite2__departments
+      - stg_netsuite2__employees
+      - stg_netsuite2__entities
+      - stg_netsuite2__entity_address
+      - stg_netsuite2__fiscal_calendar
+      - stg_netsuite2__items
+      - stg_netsuite2__jobs
+      - stg_netsuite2__locations
+      - stg_netsuite2__location_main_address
+      - stg_netsuite2__subsidiaries
+      - stg_netsuite2__transaction_accounting_lines
+      - stg_netsuite2__transactions
+      - stg_netsuite2__transaction_lines
+      - stg_netsuite2__vendor_categories
+      - stg_netsuite2__vendors
+      # Legacy Netsuite staging tables (legacy model)
+      - stg_netsuite__accounting_books
+      - stg_netsuite__accounting_periods
+      - stg_netsuite__accounts
+      - stg_netsuite__classes
+      - stg_netsuite__consolidated_exchange_rates
+      - stg_netsuite__currencies
+      - stg_netsuite__customers
+      - stg_netsuite__departments
+      - stg_netsuite__expense_accounts
+      - stg_netsuite__income_accounts
+      - stg_netsuite__items
+      - stg_netsuite__locations
+      - stg_netsuite__subsidiaries
+      - stg_netsuite__transaction_lines
+      - stg_netsuite__transactions
+      - stg_netsuite__vendor_types
+      - stg_netsuite__vendors
+
+  intermediate:
+    description: "Business logic transformation and data integration"
+    dependencies: ["staging"]
+    tables:
+      # Netsuite2 intermediate transformations (base layer)
+      - int_netsuite2__accounts
+      - int_netsuite2__accounting_periods
+      - int_netsuite2__customers
+      - int_netsuite2__locations
+      - int_netsuite2__transaction_lines
+      - int_netsuite2__acctxperiod_exchange_rate_map
+      - int_netsuite2__tran_lines_w_accounting_period
+      - int_netsuite2__tran_and_reporting_periods
+      - int_netsuite2__tran_with_converted_amounts
+      # Netsuite2 core business models
+      - int_netsuite2__transaction_details
+      - int_netsuite2__balance_sheet
+      - int_netsuite2__income_statement
+      # Netsuite2 advanced analytics layer (depends on core business model)
+      - int_netsuite2__customer_profitability
+      - int_netsuite2__ar_aging_analysis
+      - int_netsuite2__cash_flow_analysis
+      - int_netsuite2__financial_ratios
+      - int_netsuite2__data_quality_metrics
+      - int_netsuite2__supplier_credit_monitoring
+      - int_netsuite2__customer_credit_risk
+      - int_netsuite2__cash_flow_forecasting
+      # Legacy Netsuite intermediate transformations
+      - int_netsuite__accountxperiod_exchange_rate_map
+      - int_netsuite__transaction_lines_w_accounting_period
+      - int_netsuite__transaction_and_reporting_periods
+      - int_netsuite__transactions_with_converted_amounts
+
+  marts:
+    description: "Analysis-ready final data model"
+    dependencies: ["intermediate"]
+    tables:
+      # Netsuite2 basic marts (modern model reporting) - main model
+      - netsuite2_balance_sheet
+      - netsuite2_income_statement
+      - netsuite2_transaction_details
+      - netsuite2_transaction_details_simple
+      - netsuite2_transaction_details_original
+      # Netsuite2 advanced analysis marts (relies on intermediate advanced analysis layer)
+      - netsuite2_financial_dashboard
+      - netsuite2_customer_analytics
+      - netsuite2_vendor_risk_analysis
+      - netsuite2_operational_metrics
+      # Legacy Netsuite marts (legacy model reports) - re-enabled after fixing BOOLEAN issues
+      - netsuite__balance_sheet
+      - netsuite__income_statement
+      - netsuite__transaction_details  # Re-enabled with simplified version
+      - netsuite__transaction_details_simplified
+
+execution_order:
+  staging:
+    # Netsuite2 basic dimension table takes priority
+    - stg_netsuite2__account_types
+    - stg_netsuite2__accounts
+    - stg_netsuite2__currencies
+    - stg_netsuite2__fiscal_calendar
+    - stg_netsuite2__accounting_periods
+    - stg_netsuite2__accounting_period_fiscal_cal
+    - stg_netsuite2__accounting_books
+    - stg_netsuite2__accounting_book_subsidiaries
+    - stg_netsuite2__subsidiaries
+    - stg_netsuite2__consolidated_exchange_rates
+    # Netsuite2 entity related table
+    - stg_netsuite2__entities
+    - stg_netsuite2__entity_address
+    - stg_netsuite2__customers
+    - stg_netsuite2__vendors
+    - stg_netsuite2__vendor_categories
+    - stg_netsuite2__employees
+    # Netsuite2 organizational chart
+    - stg_netsuite2__departments
+    - stg_netsuite2__classes
+    - stg_netsuite2__locations
+    - stg_netsuite2__location_main_address
+    # Netsuite2 other dimension tables
+    - stg_netsuite2__items
+    - stg_netsuite2__jobs
+    # Netsuite2 fact table
+    - stg_netsuite2__transactions
+    - stg_netsuite2__transaction_lines
+    - stg_netsuite2__transaction_accounting_lines
+    # Legacy Netsuite base dimension tables
+    - stg_netsuite__accounts
+    - stg_netsuite__currencies
+    - stg_netsuite__accounting_periods
+    - stg_netsuite__accounting_books
+    - stg_netsuite__subsidiaries
+    - stg_netsuite__consolidated_exchange_rates
+    # Legacy Netsuite entity related tables
+    - stg_netsuite__customers
+    - stg_netsuite__vendors
+    - stg_netsuite__vendor_types
+    # Legacy Netsuite organizational chart
+    - stg_netsuite__departments
+    - stg_netsuite__classes
+    - stg_netsuite__locations
+    # Legacy Netsuite Account Classification Chart
+    - stg_netsuite__expense_accounts
+    - stg_netsuite__income_accounts
+    # Legacy Netsuite other dimension tables
+    - stg_netsuite__items
+    # Legacy Netsuite fact table
+    - stg_netsuite__transactions
+    - stg_netsuite__transaction_lines
+
+  intermediate:
+    # Netsuite2 basic model is executed first
+    - int_netsuite2__accounts
+    - int_netsuite2__accounting_periods
+    - int_netsuite2__customers
+    - int_netsuite2__locations
+    - int_netsuite2__transaction_lines
+    # Netsuite2 conversion chain
+    - int_netsuite2__acctxperiod_exchange_rate_map
+    - int_netsuite2__tran_lines_w_accounting_period
+    - int_netsuite2__tran_and_reporting_periods
+    - int_netsuite2__tran_with_converted_amounts
+    # Netsuite2 core business model
+    - int_netsuite2__transaction_details
+    - int_netsuite2__balance_sheet
+    - int_netsuite2__income_statement
+    # Netsuite2 advanced analysis model (depends on core business model)
+    - int_netsuite2__customer_profitability
+    - int_netsuite2__ar_aging_analysis
+    - int_netsuite2__cash_flow_analysis
+    - int_netsuite2__financial_ratios
+    - int_netsuite2__data_quality_metrics
+    - int_netsuite2__supplier_credit_monitoring
+    - int_netsuite2__customer_credit_risk
+    - int_netsuite2__cash_flow_forecasting
+    # Legacy Netsuite transformation chain
+    - int_netsuite__accountxperiod_exchange_rate_map
+    - int_netsuite__transaction_lines_w_accounting_period
+    - int_netsuite__transaction_and_reporting_periods
+    - int_netsuite__transactions_with_converted_amounts
+
+  marts:
+    # Netsuite2 basic marts (must be executed first)
+    - netsuite2_transaction_details
+    - netsuite2_transaction_details_simple
+    - netsuite2_transaction_details_original
+    - netsuite2_balance_sheet
+    - netsuite2_income_statement
+    # Netsuite2 advanced analysis marts (depends on basic marts and intermediate advanced analysis)
+    - netsuite2_financial_dashboard
+    - netsuite2_customer_analytics
+    - netsuite2_vendor_risk_analysis
+    - netsuite2_operational_metrics
+    # Legacy Netsuite marts - re-enabled after fixing BOOLEAN issues
+    - netsuite__transaction_details  # Re-enabled with simplified version
+    - netsuite__transaction_details_simplified
+    - netsuite__balance_sheet
+    - netsuite__income_statement#!/usr/bin/env python3
+import os
+import yaml
+import duckdb
+from pathlib import Path
+from typing import List, Optional
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+class FixedNetSuiteDataPipeline:
+    """Fixed version of the NetSuite data pipeline orchestrator"""
+    
+    def __init__(self, 
+                 source_db_path: str = "netsuite_start.duckdb", 
+                 target_db_path: str = "netsuite.duckdb",
+                 config_path: str = "config/layer_dependencies.yaml"):
+        self.source_db_path = source_db_path
+        self.target_db_path = target_db_path
+        self.config_path = config_path
+        self.config = self._load_config()
+        self.sql_dir = Path("sql")
+        
+                
+        self.schema_config = {
+            'raw': 'raw',
+            'staging': 'staging',
+            'intermediate': 'intermediate',
+            'marts': 'mart'
+        }
+        
+        self.conn = None
+        
+    def _load_config(self) -> dict:
+        """Load the configuration file"""
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f)
+        except FileNotFoundError:
+            logger.error(f"Configuration file {self.config_path} not found")
+            raise
+        except yaml.YAMLError as e:
+            logger.error(f"Configuration file parsing error: {e}")
+            raise
+    
+    def _create_schemas(self):
+        """Create schemas for data layers (without cleaning existing data)"""
+        logger.info("🏗️ Ensuring Schema layered architecture exists")
+        
+        for layer, schema_name in self.schema_config.items():
+            try:
+                self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
+                logger.info(f"  ✓ Ensured schema exists: {schema_name}")
+            except Exception as e:
+                logger.error(f"  ✗ Failed to create schema {schema_name}: {e}")
+                raise
+    
+    def _load_sql_file(self, file_path: Path) -> str:
+        """Load the content of an SQL file"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except FileNotFoundError:
+            logger.error(f"SQL file {file_path} not found")
+            raise
+    
+    def _attach_source_db_and_expose_raw(self):
+        """
+        Attach the source DuckDB and expose its raw.* tables as views in the current target database.
+        This allows raw.* references in SQL to work directly.
+        """
+        import os
+        try:
+            
+            attached = {row[1] for row in self.conn.execute("PRAGMA database_list").fetchall()}
+            if 'source' not in attached:
+                source_path = os.path.abspath(self.source_db_path)
+                self.conn.execute(f"ATTACH '{source_path}' AS source (READ_ONLY)")
+                logger.info(f"  ✓ Attached source database as 'source': {source_path}")
+            else:
+                logger.info("  ℹ️ Source database 'source' is already attached, skipping ATTACH")
+
+            self.conn.execute("CREATE SCHEMA IF NOT EXISTS raw")
+
+            
+            tables = self.conn.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_catalog = 'source' AND table_schema = 'raw'"
+            ).fetchall()
+            for (table_name,) in tables:
+                view_sql = f"CREATE OR REPLACE VIEW raw.{table_name} AS SELECT * FROM source.raw.{table_name}"
+                self.conn.execute(view_sql)
+            logger.info(f"  ✓ Exposed {len(tables)} source.raw.* tables as raw.* views")
+        except Exception as e:
+            logger.error(f"Failed to attach source database or create raw views: {e}")
+            raise
+
+    def _execute_sql(self, sql: str, table_name: str, layer_name: str) -> bool:
+        """Execute SQL and create a table in the specified schema"""
+        try:
+            
+            target_schema = self.schema_config[layer_name]
+            full_table_name = f"{target_schema}.{table_name}"
+            
+                        
+            processed_sql = self._process_sql_references(sql, layer_name)
+            
+                        
+            create_table_sql = f"CREATE OR REPLACE TABLE {full_table_name} AS ({processed_sql})"
+            
+            logger.info(f"Executing: {full_table_name}")
+            self.conn.execute(create_table_sql)
+            
+                        
+            count_result = self.conn.execute(f"SELECT COUNT(*) FROM {full_table_name}").fetchone()
+            row_count = count_result[0] if count_result else 0
+            
+            logger.info(f"✓ {full_table_name}: {row_count:,} rows")
+            return True
+            
+        except Exception as e:
+            logger.error(f"✗ {full_table_name}: {e}")
+            return False
+    
+    def _process_sql_references(self, sql: str, current_layer: str) -> str:
+        """
+        Keep schema qualifications in SQL unchanged. raw.* will be provided through views on the attached source database.
+        """
+        return sql
+    
+    def _execute_layer(self, layer_name: str) -> bool:
+        """Execute all tables for a specified layer"""
+        layer_config = self.config['layers'][layer_name]
+        tables = layer_config.get('tables', [])
+        
+                
+        execution_order = self.config.get('execution_order', {}).get(layer_name, tables)
+        
+        logger.info(f"\n=== Executing {layer_name.upper()} Layer ===")
+        logger.info(f"Description: {layer_config.get('description', '')}")
+        
+        success_count = 0
+        total_count = len(execution_order)
+        
+        for table_name in execution_order:
+            
+            sql_file_path = self.sql_dir / layer_name / f"{table_name}.sql"
+            
+            if not sql_file_path.exists():
+                logger.warning(f"Skipping {table_name}: SQL file does not exist ({sql_file_path})")
+                continue
+            
+            sql_content = self._load_sql_file(sql_file_path)
+            if self._execute_sql(sql_content, table_name, layer_name):
+                success_count += 1
+        
+        logger.info(f"{layer_name.upper()} layer complete: {success_count}/{total_count} tables created successfully")
+        return success_count == total_count
+
+    def run_pipeline(self, layers: Optional[List[str]] = None) -> bool:
+        """Run the full data pipeline (without cleaning existing tables)"""
+        if layers is None:
+            layers = list(self.config['layers'].keys())
+        
+        logger.info("🚀 Starting execution of the fixed NetSuite data pipeline")
+        logger.info(f"Source database: {self.source_db_path}")
+        logger.info(f"Target database: {self.target_db_path}")
+        
+                
+        self.conn = duckdb.connect(self.target_db_path)
+
+        
+        self._attach_source_db_and_expose_raw()
+
+        
+        self._create_schemas()
+
+        total_success = True
+        
+        for layer_name in layers:
+            if layer_name not in self.config['layers']:
+                logger.error(f"Unknown layer: {layer_name}")
+                total_success = False
+                continue
+            
+            dependencies = self.config['layers'][layer_name].get('dependencies', [])
+            for dep in dependencies:
+                if dep not in layers[:layers.index(layer_name)]:
+                    logger.warning(f"{layer_name} depends on {dep}, but {dep} has not been executed yet")
+            
+            layer_success = self._execute_layer(layer_name)
+            total_success = total_success and layer_success
+        
+        if total_success:
+            logger.info("\n🎉 NetSuite data pipeline execution completed!")
+            logger.info(f"✨ The complete data warehouse has been generated: {self.target_db_path}")
+            self._show_final_stats()
+        else:
+            logger.error("\n❌ Errors occurred during data pipeline execution")
+        
+        if self.conn:
+            self.conn.close()
+        
+        return total_success
+    
+    def _show_final_stats(self):
+        """Display final statistics - shown by Schema layer"""
+        logger.info("\n=== Final Data Statistics (by Schema Layer) ===")
+        
+        for layer_name, schema_name in self.schema_config.items():
+            try:
+                tables_result = self.conn.execute(f"""SELECT table_name 
+                                                     FROM information_schema.tables 
+                                                     WHERE table_schema = '{schema_name}'""").fetchall()
+                schema_tables = [table[0] for table in tables_result]
+                
+                if schema_tables:
+
+
+### event 9
+
+## 命令原文
+
+python - <<'PY'
+import yaml
+c=yaml.safe_load(open('docs/data_contract.yaml'))
+print(len(c['staging_contract']['tables']),len(c['modeling_spec']['intermediate_models']),len(c['modeling_spec']['marts_models']))
+for x in c['staging_contract']['tables']:
+ print(x['name'],x['source_table'])
+PY
+sed -n '220,440p' run.py; head -40 netsuite_start.yaml
+
+## agent 实际看到的执行结果
+
+42 24 13
+stg_netsuite2__accounts raw.netsuite2_account_data
+stg_netsuite2__transactions raw.netsuite2_transaction_data
+stg_netsuite2__transaction_lines raw.netsuite2_transaction_line_data
+stg_netsuite2__entities raw.netsuite2_entity_data
+stg_netsuite2__vendors raw.netsuite2_vendor_data
+stg_netsuite2__accounting_periods raw.netsuite2_accounting_period_data
+stg_netsuite2__customers raw.netsuite2_customer_data
+stg_netsuite2__subsidiaries raw.netsuite2_subsidiary_data
+stg_netsuite2__departments raw.netsuite2_department_data
+stg_netsuite2__classes raw.netsuite2_class_data
+stg_netsuite2__locations raw.netsuite2_location_data
+stg_netsuite2__employees raw.netsuite2_employee_data
+stg_netsuite2__items raw.netsuite2_item_data
+stg_netsuite2__currencies raw.netsuite2_currency_data
+stg_netsuite2__account_types raw.netsuite2_account_type_data
+stg_netsuite2__accounting_book_subsidiaries raw.netsuite2_accounting_book_sub_data
+stg_netsuite2__accounting_books raw.netsuite2_accounting_book_data
+stg_netsuite2__accounting_period_fiscal_cal raw.netsuite2_accounting_period_fiscal_cal_data
+stg_netsuite2__entity_address raw.netsuite2_entity_address_data
+stg_netsuite2__fiscal_calendar raw.netsuite2_fiscal_calendar_data
+stg_netsuite2__jobs raw.netsuite2_job_data
+stg_netsuite2__location_main_address raw.netsuite2_location_main_address_data
+stg_netsuite2__transaction_accounting_lines raw.netsuite2_tran_acct_line_data
+stg_netsuite2__vendor_categories raw.netsuite2_vendor_category_data
+stg_netsuite2__consolidated_exchange_rates raw.netsuite2_exchange_rate_data
+stg_netsuite__accounting_books raw.netsuite_accounting_books_data
+stg_netsuite__accounting_periods raw.netsuite_accounting_periods_data
+stg_netsuite__accounts raw.netsuite_accounts_data
+stg_netsuite__classes raw.netsuite_classes_data
+stg_netsuite__consolidated_exchange_rates raw.netsuite_consolidated_exchange_rates_data
+stg_netsuite__currencies raw.netsuite_currencies_data
+stg_netsuite__customers raw.netsuite_customers_data
+stg_netsuite__departments raw.netsuite_departments_data
+stg_netsuite__expense_accounts raw.netsuite_expense_accounts_data
+stg_netsuite__income_accounts raw.netsuite_income_accounts_data
+stg_netsuite__items raw.netsuite_items_data
+stg_netsuite__locations raw.netsuite_locations_data
+stg_netsuite__subsidiaries raw.netsuite_subsidiaries_data
+stg_netsuite__transaction_lines raw.netsuite_transaction_lines_data
+stg_netsuite__transactions raw.netsuite_transactions_data
+stg_netsuite__vendor_types raw.netsuite_vendor_types_data
+stg_netsuite__vendors raw.netsuite_vendors_data
+                if schema_tables:
+                    logger.info(f"\n{layer_name.upper()} Layer (Schema: {schema_name}):")
+                    for table in sorted(schema_tables):
+                        try:
+                            count = self.conn.execute(f"SELECT COUNT(*) FROM {schema_name}.{table}").fetchone()[0]
+                            logger.info(f"  ✓ {schema_name}.{table}: {count:,} rows")
+                        except Exception as e:
+                            logger.info(f"  ✗ {schema_name}.{table}: Query failed - {e}")
+                            
+            except Exception as e:
+                logger.error(f"Failed to query schema {schema_name}: {e}")
+
+def main():
+    """Main function"""
+    pipeline = FixedNetSuiteDataPipeline()
+    
+    success = pipeline.run_pipeline()
+    if success:
+        print("\n✅ NetSuite data transformation completed successfully!")
+        print("📋 Transformation Results:")
+        print(f"  📥 Source database: {pipeline.source_db_path} (raw tables only)")
+        print(f"  📤 Target database: {pipeline.target_db_path} (complete layered architecture)")
+        print("\n🏗️ NetSuite Data Architecture:")
+        print("  📊 Staging Layer - Standardized NetSuite raw data")
+        print("  🔄 Intermediate Layer - Financial business logic processing")
+        print("  🎯 Mart Layer - Data ready for financial analysis")
+        print("\n📈 Available Financial Reports:")
+        print("  💰 Balance Sheet")
+        print("  📊 Income Statement")
+        print("  🔍 Transaction Details")
+    else:
+        print("\n❌ Errors occurred during data transformation, please check the logs")
+
+if __name__ == "__main__":
+    main()netsuite2_account_data:
+  id: VARCHAR
+  accountsearchdisplayname: VARCHAR
+  accountsearchdisplaynamecopy: VARCHAR
+  acctnumber: BIGINT
+  accttype: VARCHAR
+  billableexpensesacct: VARCHAR
+  cashflowrate: VARCHAR
+  category1099misc: VARCHAR
+  class: VARCHAR
+  currency: VARCHAR
+  custrecord_fam_account_showinfixedasset: VARCHAR
+  date_deleted: VARCHAR
+  deferralacct: VARCHAR
+  department: VARCHAR
+  description: VARCHAR
+  displaynamewithhierarchy: VARCHAR
+  eliminate: VARCHAR
+  externalid: VARCHAR
+  fullname: VARCHAR
+  generalrate: VARCHAR
+  includechildren: VARCHAR
+  inventory: VARCHAR
+  isinactive: BOOLEAN
+  issummary: BOOLEAN
+  lastmodifieddate: VARCHAR
+  location: VARCHAR
+  parent: VARCHAR
+  reconcilewithmatching: VARCHAR
+  revalue: VARCHAR
+  sbankname: VARCHAR
+  sbankroutingnumber: VARCHAR
+  sspecacct: VARCHAR
+  subsidiary: VARCHAR
+  eliminate.1: VARCHAR
+netsuite2_account_type_data:
+  id: VARCHAR
+  balancesheet: BOOLEAN
+  date_deleted: VARCHAR
+  defaultcashflowratetype: VARCHAR
+
+
+### event 11
+
+## 命令原文
+
+cat test_single_sql.py; python - <<'PY'
+import yaml
+s=yaml.safe_load(open('netsuite_start.yaml'))
+for table,cols in s.items():
+ print('\n',table,':', ', '.join(cols))
+PY
+
+## agent 实际看到的执行结果
+
+#!/usr/bin/env python3
+"""
+Utility to execute a single SQL model against lever_start.duckdb (or a custom db).
+
+This helps iterate on one SQL file without running the whole config-driven pipeline:
+
+    python test_single_sql.py --table stg_lever__application --layer staging
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+from typing import Optional, Tuple
+
+import duckdb
+
+SQL_ROOT = Path("sql")
+INTERMEDIATE_SUBDIRS = ["opportunity", "contact", "interview", "posting", "requisition"]
+LAYER_SCHEMAS = {
+    "raw": "raw",
+    "staging": "staging",
+    "intermediate": "intermediate",
+    "marts": "marts",
+}
+DB_PATH = Path("netsuite_start.duckdb")
+
+
+def _candidate_paths(table: str, layer: Optional[str]) -> Tuple[Tuple[Path, str], ...]:
+    """
+    Build all possible SQL paths for a table, optionally restricting to a single layer.
+    Returns tuples of (path, layer_name) in priority order.
+    """
+    search_layers = [layer] if layer else list(LAYER_SCHEMAS.keys())
+    candidates = []
+
+    for layer_name in search_layers:
+        base = SQL_ROOT / layer_name / f"{table}.sql"
+        candidates.append((base, layer_name))
+
+        if layer_name == "intermediate":
+            for subdir in INTERMEDIATE_SUBDIRS:
+                candidates.append(
+                    (SQL_ROOT / layer_name / subdir / f"{table}.sql", layer_name)
+                )
+
+    return tuple(candidates)
+
+def locate_sql(table: str, layer: Optional[str]) -> Tuple[Path, str]:
+    """Locate the SQL file for `table` and return (path, layer)."""
+    for candidate, candidate_layer in _candidate_paths(table, layer):
+        if candidate.exists():
+            return candidate, candidate_layer
+    searched = "\n  ".join(str(path) for path, _ in _candidate_paths(table, layer))
+    raise FileNotFoundError(
+        f"SQL file for {table} not found. Checked paths:\n  {searched}"
+    )
+
+def ensure_schema(conn: duckdb.DuckDBPyConnection, schema: str) -> None:
+    conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+
+
+def execute_sql(
+    conn: duckdb.DuckDBPyConnection,
+    sql_text: str,
+    schema: str,
+    table: str,
+) -> int:
+    full_table_name = f"{schema}.{table}"
+    conn.execute(f"DROP TABLE IF EXISTS {full_table_name}")
+    conn.execute(f"CREATE TABLE {full_table_name} AS ({sql_text})")
+    row_count = conn.execute(f"SELECT COUNT(*) FROM {full_table_name}").fetchone()[0]
+    return row_count
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=("Execute a single SQL model against lever_start.duckdb to validate logic without running the full pipeline.")
+    )
+    parser.add_argument("--table", required=True, help="Table/model name without .sql, e.g. stg_lever__application")
+    parser.add_argument("--layer", choices=LAYER_SCHEMAS.keys(), help="Layer where the table lives; auto-detected when omitted")
+    return parser.parse_args()
+
+def main() -> int:
+    args = parse_args()
+    try:
+        sql_path, layer = locate_sql(args.table, args.layer)
+    except FileNotFoundError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+
+    schema = LAYER_SCHEMAS[layer]
+    if not DB_PATH.exists():
+        print(f"DuckDB file not found: {DB_PATH}", file=sys.stderr)
+        return 1
+
+    sql_text = sql_path.read_text(encoding="utf-8")
+
+    print(f"Connecting to database: {DB_PATH}")
+    conn = duckdb.connect(str(DB_PATH))
+    ensure_schema(conn, schema)
+
+    print(f"Executing SQL: {sql_path} -> {schema}.{args.table}")
+    row_count = execute_sql(conn, sql_text, schema, args.table)
+    print(f"Done: {schema}.{args.table} contains {row_count} rows")
+
+    conn.close()
+    return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+ netsuite2_account_data : id, accountsearchdisplayname, accountsearchdisplaynamecopy, acctnumber, accttype, billableexpensesacct, cashflowrate, category1099misc, class, currency, custrecord_fam_account_showinfixedasset, date_deleted, deferralacct, department, description, displaynamewithhierarchy, eliminate, externalid, fullname, generalrate, includechildren, inventory, isinactive, issummary, lastmodifieddate, location, parent, reconcilewithmatching, revalue, sbankname, sbankroutingnumber, sspecacct, subsidiary, eliminate.1
+
+ netsuite2_account_type_data : id, balancesheet, date_deleted, defaultcashflowratetype, defaultgeneralratetype, eliminationalgo, includeinrevaldefault, internalid, left, longname, seqnum, usercanchangerevaloption
+
+ netsuite2_accounting_book_data : id, basebook, date_deleted, effectiveperiod, externalid, isadjustmentonly, isconsolidated, isprimary, lastmodifieddate, name, subsidiariesstring
+
+ netsuite2_accounting_book_sub_data : accountingbook, date_deleted, status, subsidiary
+
+ netsuite2_accounting_period_data : id, alllocked, allownonglchanges, aplocked, arlocked, closed, closedondate, date_deleted, enddate, isadjust, isinactive, isposting, isquarter, isyear, lastmodifieddate, parent, periodname, startdate
+
+ netsuite2_accounting_period_fiscal_cal_data : accountingperiod, date_deleted, fiscalcalendar, parent
+
+ netsuite2_classification_data : id, date_deleted, externalid, fullname, includechildren, isinactive, lastmodifieddate, name, parent, subsidiary
+
+ netsuite2_consolidated_exchange_rate_data : id, averagerate, currentrate, date_deleted, externalid, fromcurrency, fromsubsidiary, historicalrate, postingperiod, tocurrency, tosubsidiary, accountingbook
+
+ netsuite2_currency_data : id, currencyprecision, date_deleted, displaysymbol, exchangerate, externalid, fxrateupdatetimezone, includeinfxrateupdates, isbasecurrency, isinactive, lastmodifieddate, name, overridecurrencyformat, symbol, symbolplacement
+
+ netsuite2_customer_data : id, accountnumber, alcoholrecipienttype, altemail, altname, altphone, assignedwebsite, balancesearch, billingratecard, billingschedule, billingtransactiontype, billpay, buyingreason, buyingtimeframe, campaignevent, category, clickstream, comments, companyname, consolbalancesearch, consoldaysoverduesearch, consoloverduebalancesearch, consolunbilledorderssearch, contact, contactlist, creditholdoverride, creditlimit, currency, custentity1, custentity10, custentity12, custentity13, custentity14, custentity15, custentity16, custentity18, custentity21, custentity4, custentity5, custentity6, custentity7, custentity8, custentity9, custentity_2663_customer_refund, custentity_2663_direct_debit, custentity_cust_priority, custentity_fmt_cur_sales_order, custentity_fmt_cust_credit_on_hold, custentity_fmt_customer_credit_on_hold, custentity_lead_category, custentity_ppob, custentity_supervisor, date_deleted, datecreated, defaultbankaccount, defaultbillingaddress, defaultorderpriority, defaultshippingaddress, duplicate, email, emailpreference, emailtransactions, enddate, entityid, entitynumber, entitystatus, entitytitle, estimatedbudget, externalid, fax, faxtransactions, firstname, firstorderdate, firstsaledate, firstvisit, giveaccess, globalsubscriptionstatus, homephone, isbudgetapproved, isinactive, isperson, keywords, language, lastmodifieddate, lastname, lastorderdate, lastpagevisited, lastsaledate, lastvisit, leadsource, middlename, mobilephone, negativenumberformat, numberformat, oncredithold, overduebalancesearch, parent, partner, phone, prefccprocessor, pricelevel, printoncheckas, printtransactions, probability, receivablesaccount, referrer, reminderdays, resalenumber, salesreadiness, salesrep, salutation, searchstage, shipcomplete, shippingcarrier, shippingitem, sourcewebsite, startdate, terms, territory, thirdpartyacct, thirdpartycarrier, thirdpartycountry, thirdpartyzipcode, title, unbilledorderssearch, url, visits, weblead, dateclosed
+
+ netsuite2_department_data : id, date_deleted, externalid, fullname, includechildren, isinactive, lastmodifieddate, name, parent, subsidiary
+
+ netsuite2_employee_data : id, entityid, firstname, lastname, department, subsidiary, email, supervisor, approvallimit, expenselimit, purchaseorderapprovallimit, purchaseorderlimit, currency, isinactive
+
+ netsuite2_entities_data : id, altemail, altname, altphone, comments, contact, customer, date_deleted, datecreated, email, employee, entityid, entitynumber, entitytitle, externalid, fax, firstname, genericresource, homephone, isinactive, isperson, laborcost, lastmodifieddate, lastname, middlename, mobilephone, othername, parent, partner, phone, project, projecttemplate, salutation, title, toplevelparent, type, vendor
+
+ netsuite2_entity_address_data : nkey, addr1, addr2, addr3, addressee, addrphone, addrtext, attention, city, country, date_deleted, dropdownstate, lastmodifieddate, override, recordowner, state, zip
+
+ netsuite2_fiscal_calendar_data : id, externalid, fiscalmonth, isdefault, name, date_deleted
+
+ netsuite2_item_data : id, fullname, itemtype, description, department, class, location, subsidiary, assetaccount, expenseaccount, gainlossaccount, incomeaccount, deferralaccount, parent
+
+ netsuite2_job_data : id, accountnumber, actualtime, allowallresourcesfortasks, allowexpenses, allowtime, alternatecontact, altname, billingschedule, calculatedenddate, calculatedenddatebaseline, category, comments, companyname, contact, contactlist, currency, currencyprecision, custentity1, custentity4, custentity5, customer, date_deleted, datecreated, defaultbillingaddress, defaultshippingaddress, enddate, entityid, entitynumber, entitystatus, entitytitle, estimatedcost, estimatedgrossprofit, estimatedgrossprofitpercent, estimatedlaborcost, estimatedlaborcostbaseline, estimatedlaborrevenue, estimatedrevenue, estimatedtime, estimatedtimeoverride, estimatedtimeoverridebaseline, externalid, files, forecastchargerunondemand, fxrate, includecrmtasksintotals, isexempttime, isinactive, isproductivetime, isutilizedtime, jobbillingtype, jobitem, jobprice, jobtype, lastbaselinedate, lastmodifieddate, limittimetoassignees, materializetime, parent, percentcomplete, percenttimecomplete, primarycontact, projectedenddate, projectedenddatebaseline, projectmanager, startdate, startdatebaseline, timeapproval, timeremaining
+
+ netsuite2_location_data : id, date_deleted, defaultallocationpriority, externalid, fullname, includeinsupplyplanning, isinactive, lastmodifieddate, latitude, locationtype, longitude, mainaddress, makeinventoryavailable, makeinventoryavailablestore, name, parent, returnaddress, subsidiary, tranprefix, usebins
+
+ netsuite2_location_main_address_data : nkey, addr1, addr2, addr3, addressee, addrphone, addrtext, attention, city, country, date_deleted, dropdownstate, lastmodifieddate, override, recordowner, state, zip
+
+ netsuite2_subsidiary_data : id, country, currency, date_deleted, dropdownstate, edition, email, externalid, fax, federalidnumber, fiscalcalendar, fullname, iselimination, isinactive, languagelocale, lastmodifieddate, legalname, mainaddress, name, parent, purchaseorderamount, purchaseorderquantity, purchaseorderquantitydiff, receiptamount, receiptquantity, receiptquantitydiff, returnaddress, shippingaddress, showsubsidiaryname, ssnortin, state, state1taxnumber, tranprefix, url
+
+ netsuite2_tran_acct_line_data : accountingbook, transaction, transactionline, account, amount, amountpaid, amountunpaid, credit, date_deleted, debit, exchangerate, netamount, overheadparentitem, paymentamountunused, paymentamountused, posting, amountlinked
+
+ netsuite2_transaction_data : id, transactionnumber, type, memo, trandate, status, createddate, duedate, closedate, currency, entity, postingperiod, posting, isreversal, reversal, reversaldate, reversaldefer
+
+ netsuite2_transaction_line_data : id, transaction, actualshipdate, amortizationenddate, amortizationresidual, amortizationsched, amortizstartdate, amountlinked, assemblycomponent, billeddate, billingschedule, billvariancestatus, blandedcost, bomquantity, buildvariance, category, chargetype, class, cleared, cleareddate, commitinventory, commitmentfirm, componentyield, costestimate, costestimaterate, costestimatetype, createdfrom, createdpo, creditforeignamount, custcol1, custcol3, custcol4, custcol5, custcol6, custcol_far_trn_relatedasset, custcol_gw_inv, custcol_hand, custcol_helmetsize, custcol_pfc_configuration, custcol_pfc_pfconfigurator, custcol_pfc_wo, custcol_ropetype, date_deleted, debitforeignamount, department, documentnumber, donotdisplayline, dropship, entity, estgrossprofit, estgrossprofitpercent, estimatedamount, expectedreceiptdate, expectedshipdate, expenseaccount, foreignamount, foreignamountpaid, foreignamountunpaid, foreignpaymentamountunused, foreignpaymentamountused, fulfillable, fxamountlinked, hasfulfillableitems, inventoryreportinglocation, isbillable, isclosed, iscogs, isfullyshipped, isfxvariance, isinventoryaffecting, isrevrectransaction, isscrap, item, itemsource, itemtype, kitcomponent, kitmemberof, landedcostcategory, landedcostperline, linelastmodifieddate, linesequencenumber, location, mainline, matchbilltoreceipt, memo, netamount, oldcommitmentfirm, operationdisplaytext, orderpriority, paymentmethod, price, processedbyrevcommit, quantity, quantitybackordered, quantitybilled, quantitycommitted, quantitypacked, quantitypicked, quantityrejected, quantityshiprecv, rate, rateamount, ratepercent, requestnote, revenueelement, shipmethod, specialorder, subsidiary, taxline, transactiondiscount, transactionlinetype, transferorderitemlineid, uniquekey, units, vsoeisestimate, eliminate
+
+ netsuite2_vendor_category_data : id, date_deleted, externalid, isinactive, istaxagency, lastmodifieddate, name
+
+ netsuite2_vendor_data : id, accountnumber, altemail, altname, altphone, balance, balanceprimary, billpay, category, comments, companyname, contact, contactlist, creditlimit, currency, custentity_2663_payment_method, custentity_is_manufacturer, custentity_rvc, custentity_vendor_lead_time, custentity_wrnty_center_phone, date_deleted, datecreated, defaultbankaccount, defaultbillingaddress, defaultshippingaddress, defaultvendorpaymentaccount, duplicate, email, emailpreference, emailtransactions, entityid, entitynumber, entitytitle, expenseaccount, externalid, fax, faxtransactions, firstname, giveaccess, globalsubscriptionstatus, homephone, incoterm, isinactive, isjobresourcevend, isperson, laborcost, lastmodifieddate, lastname, legalname, middlename, mobilephone, payablesaccount, phone, printoncheckas, printtransactions, purchaseorderamount, purchaseorderquantity, purchaseorderquantitydiff, receiptamount, receiptquantity, receiptquantitydiff, rolesforsearch, salutation, subsidiaryedition, terms, timeapprover, title, unbilledorders, unbilledordersprimary, url, workcalendar
+
+ netsuite_accounting_books_data : accounting_book_id, is_primary
+
+ netsuite_accounting_periods_data : accounting_period_id, name, full_name, fiscal_calendar_id, year_id, starting, ending, quarter, year_0, is_adjustment, closed
+
+ netsuite_accounts_data : account_id, parent_id, name, type_name, account_number, general_rate_type, is_leftside, is_balancesheet
+
+ netsuite_classes_data : class_id, full_name
+
+ netsuite_consolidated_exchange_rates_data : consolidated_exchange_rate_id, accounting_book_id, accounting_period_id, average_rate, current_rate, historical_rate, from_subsidiary_id, to_subsidiary_id
+
+ netsuite_currencies_data : currency_id, name, symbol
+
+ netsuite_customers_data : customer_id, company_name, city, state, zipcode, country, date_first_order
+
+ netsuite_departments_data : department_id, name, full_name
+
+ netsuite_expense_accounts_data : expense_account_id, name, parent_id, account_number
+
+ netsuite_income_accounts_data : income_account_id, name, parent_id, account_number
+
+ netsuite_items_data : item_id, name, type_name, sales_description
+
+ netsuite_locations_data : location_id, name, full_name, city, country
+
+ netsuite_subsidiaries_data : subsidiary_id, fiscal_calendar_id, name, parent_id
+
+ netsuite_transaction_lines_data : transaction_id, transaction_line_id, subsidiary_id, account_id, company_id, item_id, amount, non_posting_line, class_id, location_id, department_id, memo
+
+ netsuite_transactions_data : transaction_id, status, transaction_date, currency_id, accounting_period_id, due_date, transaction_type, is_intercompany, is_advanced_intercompany
+
+ netsuite_vendor_types_data : vendor_type_id, name
+
+ netsuite_vendors_data : vendor_id, vendor_type_id, company_name, create_date
+
+
+### event 13
+
+## 命令原文
+
+python - <<'PY'
+import duckdb
+c=duckdb.connect('netsuite_start.duckdb',read_only=True)
+for t in ['netsuite2_account_data','netsuite2_transaction_data','netsuite2_transaction_line_data','netsuite2_accounting_period_data','netsuite2_entity_address_data','netsuite2_tran_acct_line_data']:
+ print(t,c.execute(f'describe raw.{t}').fetchall())
+PY
+
+## agent 实际看到的执行结果
+
+netsuite2_account_data [('id', 'VARCHAR', 'YES', None, None, None), ('accountsearchdisplayname', 'VARCHAR', 'YES', None, None, None), ('accountsearchdisplaynamecopy', 'VARCHAR', 'YES', None, None, None), ('acctnumber', 'BIGINT', 'YES', None, None, None), ('accttype', 'VARCHAR', 'YES', None, None, None), ('billableexpensesacct', 'VARCHAR', 'YES', None, None, None), ('cashflowrate', 'VARCHAR', 'YES', None, None, None), ('category1099misc', 'VARCHAR', 'YES', None, None, None), ('class', 'VARCHAR', 'YES', None, None, None), ('currency', 'VARCHAR', 'YES', None, None, None), ('custrecord_fam_account_showinfixedasset', 'VARCHAR', 'YES', None, None, None), ('date_deleted', 'VARCHAR', 'YES', None, None, None), ('deferralacct', 'VARCHAR', 'YES', None, None, None), ('department', 'VARCHAR', 'YES', None, None, None), ('description', 'VARCHAR', 'YES', None, None, None), ('displaynamewithhierarchy', 'VARCHAR', 'YES', None, None, None), ('eliminate', 'VARCHAR', 'YES', None, None, None), ('externalid', 'VARCHAR', 'YES', None, None, None), ('fullname', 'VARCHAR', 'YES', None, None, None), ('generalrate', 'VARCHAR', 'YES', None, None, None), ('includechildren', 'VARCHAR', 'YES', None, None, None), ('inventory', 'VARCHAR', 'YES', None, None, None), ('isinactive', 'BOOLEAN', 'YES', None, None, None), ('issummary', 'BOOLEAN', 'YES', None, None, None), ('lastmodifieddate', 'VARCHAR', 'YES', None, None, None), ('location', 'VARCHAR', 'YES', None, None, None), ('parent', 'VARCHAR', 'YES', None, None, None), ('reconcilewithmatching', 'VARCHAR', 'YES', None, None, None), ('revalue', 'VARCHAR', 'YES', None, None, None), ('sbankname', 'VARCHAR', 'YES', None, None, None), ('sbankroutingnumber', 'VARCHAR', 'YES', None, None, None), ('sspecacct', 'VARCHAR', 'YES', None, None, None), ('subsidiary', 'VARCHAR', 'YES', None, None, None), ('eliminate.1', 'VARCHAR', 'YES', None, None, None)]
+netsuite2_transaction_data [('id', 'VARCHAR', 'YES', None, None, None), ('transactionnumber', 'VARCHAR', 'YES', None, None, None), ('type', 'VARCHAR', 'YES', None, None, None), ('memo', 'VARCHAR', 'YES', None, None, None), ('trandate', 'VARCHAR', 'YES', None, None, None), ('status', 'VARCHAR', 'YES', None, None, None), ('createddate', 'VARCHAR', 'YES', None, None, None), ('duedate', 'VARCHAR', 'YES', None, None, None), ('closedate', 'VARCHAR', 'YES', None, None, None), ('currency', 'VARCHAR', 'YES', None, None, None), ('entity', 'VARCHAR', 'YES', None, None, None), ('postingperiod', 'VARCHAR', 'YES', None, None, None), ('posting', 'BOOLEAN', 'YES', None, None, None), ('isreversal', 'BOOLEAN', 'YES', None, None, None), ('reversal', 'VARCHAR', 'YES', None, None, None), ('reversaldate', 'VARCHAR', 'YES', None, None, None), ('reversaldefer', 'BOOLEAN', 'YES', None, None, None)]
+netsuite2_transaction_line_data [('id', 'VARCHAR', 'YES', None, None, None), ('transaction', 'VARCHAR', 'YES', None, None, None), ('actualshipdate', 'DOUBLE', 'YES', None, None, None), ('amortizationenddate', 'DOUBLE', 'YES', None, None, None), ('amortizationresidual', 'DOUBLE', 'YES', None, None, None), ('amortizationsched', 'DOUBLE', 'YES', None, None, None), ('amortizstartdate', 'DOUBLE', 'YES', None, None, None), ('amountlinked', 'VARCHAR', 'YES', None, None, None), ('assemblycomponent', 'VARCHAR', 'YES', None, None, None), ('billeddate', 'DOUBLE', 'YES', None, None, None), ('billingschedule', 'DOUBLE', 'YES', None, None, None), ('billvariancestatus', 'DOUBLE', 'YES', None, None, None), ('blandedcost', 'VARCHAR', 'YES', None, None, None), ('bomquantity', 'DOUBLE', 'YES', None, None, None), ('buildvariance', 'DOUBLE', 'YES', None, None, None), ('category', 'DOUBLE', 'YES', None, None, None), ('chargetype', 'DOUBLE', 'YES', None, None, None), ('class', 'VARCHAR', 'YES', None, None, None), ('cleared', 'VARCHAR', 'YES', None, None, None), ('cleareddate', 'DOUBLE', 'YES', None, None, None), ('commitinventory', 'BOOLEAN', 'YES', None, None, None), ('commitmentfirm', 'VARCHAR', 'YES', None, None, None), ('componentyield', 'DOUBLE', 'YES', None, None, None), ('costestimate', 'DOUBLE', 'YES', None, None, None), ('costestimaterate', 'DOUBLE', 'YES', None, None, None), ('costestimatetype', 'DOUBLE', 'YES', None, None, None), ('createdfrom', 'DOUBLE', 'YES', None, None, None), ('createdpo', 'DOUBLE', 'YES', None, None, None), ('creditforeignamount', 'DOUBLE', 'YES', None, None, None), ('custcol1', 'DOUBLE', 'YES', None, None, None), ('custcol3', 'DOUBLE', 'YES', None, None, None), ('custcol4', 'DOUBLE', 'YES', None, None, None), ('custcol5', 'DOUBLE', 'YES', None, None, None), ('custcol6', 'DOUBLE', 'YES', None, None, None), ('custcol_far_trn_relatedasset', 'DOUBLE', 'YES', None, None, None), ('custcol_gw_inv', 'DOUBLE', 'YES', None, None, None), ('custcol_hand', 'DOUBLE', 'YES', None, None, None), ('custcol_helmetsize', 'DOUBLE', 'YES', None, None, None), ('custcol_pfc_configuration', 'DOUBLE', 'YES', None, None, None), ('custcol_pfc_pfconfigurator', 'DOUBLE', 'YES', None, None, None), ('custcol_pfc_wo', 'DOUBLE', 'YES', None, None, None), ('custcol_ropetype', 'DOUBLE', 'YES', None, None, None), ('date_deleted', 'DOUBLE', 'YES', None, None, None), ('debitforeignamount', 'DOUBLE', 'YES', None, None, None), ('department', 'VARCHAR', 'YES', None, None, None), ('documentnumber', 'DOUBLE', 'YES', None, None, None), ('donotdisplayline', 'VARCHAR', 'YES', None, None, None), ('dropship', 'VARCHAR', 'YES', None, None, None), ('entity', 'VARCHAR', 'YES', None, None, None), ('estgrossprofit', 'DOUBLE', 'YES', None, None, None), ('estgrossprofitpercent', 'DOUBLE', 'YES', None, None, None), ('estimatedamount', 'DOUBLE', 'YES', None, None, None), ('expectedreceiptdate', 'DOUBLE', 'YES', None, None, None), ('expectedshipdate', 'VARCHAR', 'YES', None, None, None), ('expenseaccount', 'DOUBLE', 'YES', None, None, None), ('foreignamount', 'DOUBLE', 'YES', None, None, None), ('foreignamountpaid', 'DOUBLE', 'YES', None, None, None), ('foreignamountunpaid', 'DOUBLE', 'YES', None, None, None), ('foreignpaymentamountunused', 'DOUBLE', 'YES', None, None, None), ('foreignpaymentamountused', 'DOUBLE', 'YES', None, None, None), ('fulfillable', 'VARCHAR', 'YES', None, None, None), ('fxamountlinked', 'VARCHAR', 'YES', None, None, None), ('hasfulfillableitems', 'VARCHAR', 'YES', None, None, None), ('inventoryreportinglocation', 'DOUBLE', 'YES', None, None, None), ('isbillable', 'VARCHAR', 'YES', None, None, None), ('isclosed', 'VARCHAR', 'YES', None, None, None), ('iscogs', 'VARCHAR', 'YES', None, None, None), ('isfullyshipped', 'VARCHAR', 'YES', None, None, None), ('isfxvariance', 'VARCHAR', 'YES', None, None, None), ('isinventoryaffecting', 'VARCHAR', 'YES', None, None, None), ('isrevrectransaction', 'VARCHAR', 'YES', None, None, None), ('isscrap', 'VARCHAR', 'YES', None, None, None), ('item', 'DOUBLE', 'YES', None, None, None), ('itemsource', 'VARCHAR', 'YES', None, None, None), ('itemtype', 'VARCHAR', 'YES', None, None, None), ('kitcomponent', 'VARCHAR', 'YES', None, None, None), ('kitmemberof', 'DOUBLE', 'YES', None, None, None), ('landedcostcategory', 'DOUBLE', 'YES', None, None, None), ('landedcostperline', 'VARCHAR', 'YES', None, None, None), ('linelastmodifieddate', 'VARCHAR', 'YES', None, None, None), ('linesequencenumber', 'DOUBLE', 'YES', None, None, None), ('location', 'VARCHAR', 'YES', None, None, None), ('mainline', 'VARCHAR', 'YES', None, None, None), ('matchbilltoreceipt', 'VARCHAR', 'YES', None, None, None), ('memo', 'VARCHAR', 'YES', None, None, None), ('netamount', 'DOUBLE', 'YES', None, None, None), ('oldcommitmentfirm', 'VARCHAR', 'YES', None, None, None), ('operationdisplaytext', 'DOUBLE', 'YES', None, None, None), ('orderpriority', 'DOUBLE', 'YES', None, None, None), ('paymentmethod', 'DOUBLE', 'YES', None, None, None), ('price', 'DOUBLE', 'YES', None, None, None), ('processedbyrevcommit', 'DOUBLE', 'YES', None, None, None), ('quantity', 'DOUBLE', 'YES', None, None, None), ('quantitybackordered', 'DOUBLE', 'YES', None, None, None), ('quantitybilled', 'BOOLEAN', 'YES', None, None, None), ('quantitycommitted', 'DOUBLE', 'YES', None, None, None), ('quantitypacked', 'BOOLEAN', 'YES', None, None, None), ('quantitypicked', 'BOOLEAN', 'YES', None, None, None), ('quantityrejected', 'BOOLEAN', 'YES', None, None, None), ('quantityshiprecv', 'BOOLEAN', 'YES', None, None, None), ('rate', 'DOUBLE', 'YES', None, None, None), ('rateamount', 'DOUBLE', 'YES', None, None, None), ('ratepercent', 'DOUBLE', 'YES', None, None, None), ('requestnote', 'DOUBLE', 'YES', None, None, None), ('revenueelement', 'DOUBLE', 'YES', None, None, None), ('shipmethod', 'DOUBLE', 'YES', None, None, None), ('specialorder', 'VARCHAR', 'YES', None, None, None), ('subsidiary', 'VARCHAR', 'YES', None, None, None), ('taxline', 'VARCHAR', 'YES', None, None, None), ('transactiondiscount', 'VARCHAR', 'YES', None, None, None), ('transactionlinetype', 'DOUBLE', 'YES', None, None, None), ('transferorderitemlineid', 'DOUBLE', 'YES', None, None, None), ('uniquekey', 'DOUBLE', 'YES', None, None, None), ('units', 'DOUBLE', 'YES', None, None, None), ('vsoeisestimate', 'DOUBLE', 'YES', None, None, None), ('eliminate', 'VARCHAR', 'YES', None, None, None)]
+netsuite2_accounting_period_data [('id', 'VARCHAR', 'YES', None, None, None), ('alllocked', 'BOOLEAN', 'YES', None, None, None), ('allownonglchanges', 'VARCHAR', 'YES', None, None, None), ('aplocked', 'BOOLEAN', 'YES', None, None, None), ('arlocked', 'BOOLEAN', 'YES', None, None, None), ('closed', 'BOOLEAN', 'YES', None, None, None), ('closedondate', 'VARCHAR', 'YES', None, None, None), ('date_deleted', 'VARCHAR', 'YES', None, None, None), ('enddate', 'VARCHAR', 'YES', None, None, None), ('isadjust', 'BOOLEAN', 'YES', None, None, None), ('isinactive', 'VARCHAR', 'YES', None, None, None), ('isposting', 'VARCHAR', 'YES', None, None, None), ('isquarter', 'VARCHAR', 'YES', None, None, None), ('isyear', 'VARCHAR', 'YES', None, None, None), ('lastmodifieddate', 'VARCHAR', 'YES', None, None, None), ('parent', 'VARCHAR', 'YES', None, None, None), ('periodname', 'VARCHAR', 'YES', None, None, None), ('startdate', 'VARCHAR', 'YES', None, None, None)]
+netsuite2_entity_address_data [('nkey', 'DOUBLE', 'YES', None, None, None), ('addr1', 'VARCHAR', 'YES', None, None, None), ('addr2', 'DOUBLE', 'YES', None, None, None), ('addr3', 'DOUBLE', 'YES', None, None, None), ('addressee', 'DOUBLE', 'YES', None, None, None), ('addrphone', 'DOUBLE', 'YES', None, None, None), ('addrtext', 'VARCHAR', 'YES', None, None, None), ('attention', 'DOUBLE', 'YES', None, None, None), ('city', 'VARCHAR', 'YES', None, None, None), ('country', 'VARCHAR', 'YES', None, None, None), ('date_deleted', 'DOUBLE', 'YES', None, None, None), ('dropdownstate', 'VARCHAR', 'YES', None, None, None), ('lastmodifieddate', 'VARCHAR', 'YES', None, None, None), ('override', 'VARCHAR', 'YES', None, None, None), ('recordowner', 'DOUBLE', 'YES', None, None, None), ('state', 'VARCHAR', 'YES', None, None, None), ('zip', 'DOUBLE', 'YES', None, None, None)]
+netsuite2_tran_acct_line_data [('accountingbook', 'VARCHAR', 'YES', None, None, None), ('transaction', 'VARCHAR', 'YES', None, None, None), ('transactionline', 'VARCHAR', 'YES', None, None, None), ('account', 'VARCHAR', 'YES', None, None, None), ('amount', 'DOUBLE', 'YES', None, None, None), ('amountpaid', 'DOUBLE', 'YES', None, None, None), ('amountunpaid', 'DOUBLE', 'YES', None, None, None), ('credit', 'DOUBLE', 'YES', None, None, None), ('date_deleted', 'DOUBLE', 'YES', None, None, None), ('debit', 'DOUBLE', 'YES', None, None, None), ('exchangerate', 'BOOLEAN', 'YES', None, None, None), ('netamount', 'DOUBLE', 'YES', None, None, None), ('overheadparentitem', 'DOUBLE', 'YES', None, None, None), ('paymentamountunused', 'DOUBLE', 'YES', None, None, None), ('paymentamountused', 'DOUBLE', 'YES', None, None, None), ('posting', 'VARCHAR', 'YES', None, None, None), ('amountlinked', 'VARCHAR', 'YES', None, None, None)]
+
+
+

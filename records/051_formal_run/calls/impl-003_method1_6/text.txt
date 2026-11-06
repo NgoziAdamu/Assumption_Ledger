@@ -1,0 +1,101 @@
+{
+  "premises": [
+    {
+      "statement": "For a single-stage customer, the first non-NULL engagement score is the available stage's score even if that stage was not reached.",
+      "about": "requirement",
+      "target": "marts.customer360__conversion_funnel_analysis.cross_stage_engagement_consistency",
+      "evidence_of_dependence": "else coalesce(marketo_engagement,stripe_engagement,zendesk_engagement,0)::double end",
+      "alternative": "The funnel contract says to \"use the single available score in order awareness, then conversion, then support\"; the behavior contract states that a \"NULL Marketo row yields 0\", so an absent marketing stage can supply a non-NULL zero ahead of the actual stage.",
+      "importance": 4,
+      "reason": "Sales-only and support-only customers can receive zero consistency instead of their active stage's score, changing recommendations and predictive metrics.",
+      "updates": null
+    },
+    {
+      "statement": "Revenue velocity does not need to be rounded to two decimal places.",
+      "about": "requirement",
+      "target": "marts.customer360__conversion_funnel_analysis.revenue_velocity_monthly",
+      "evidence_of_dependence": "estimated_customer_ltv*30.0/greatest(coalesce(marketing_to_sales_days,30),30)",
+      "alternative": "The contract specifies \"revenue_velocity_monthly (DOUBLE, rounded to 2 decimals)\".",
+      "importance": 3,
+      "reason": "Division can produce additional decimal places in the published monetary velocity metric.",
+      "updates": null
+    },
+    {
+      "statement": "Downstream funnel calculations should use unrounded cross-stage engagement consistency rather than its two-decimal value.",
+      "about": "requirement",
+      "target": "marts.customer360__conversion_funnel_analysis predictive_full_journey_probability and journey_efficiency_index",
+      "evidence_of_dependence": "round(.4*next_stage_conversion_probability+.3*drop_weight+.3*(cross_stage_engagement_consistency/5),3)",
+      "alternative": "The contract defines \"cross_stage_engagement_consistency (DOUBLE, rounded to 2 decimals)\" and then uses that named metric in subsequent formulas.",
+      "importance": 2,
+      "reason": "Using additional precision internally can change the final rounded predictive probability or efficiency index.",
+      "updates": null
+    },
+    {
+      "statement": "DuckDB's inferred numeric types satisfy the funnel contract without explicit casts for expected optimization value and revenue velocity.",
+      "about": "requirement",
+      "target": "marts.customer360__conversion_funnel_analysis numeric output schema",
+      "evidence_of_dependence": "round(estimated_customer_ltv*(next_stage_conversion_probability- ...),2) as expected_optimization_value",
+      "alternative": "The contract requires expected_optimization_value as DECIMAL(18,2) and revenue_velocity_monthly as DOUBLE.",
+      "importance": 3,
+      "reason": "Rounding and arithmetic do not establish the required precision, scale, or storage type.",
+      "updates": null
+    },
+    {
+      "statement": "Journey completeness may fall to zero when a presence flag is NULL even if one or two other stages are reached.",
+      "about": "requirement",
+      "target": "marts.customer360__conversion_funnel_analysis.journey_completeness_score",
+      "evidence_of_dependence": "when in_marketo+in_stripe+in_zendesk>=2 then 2 when in_marketo+in_stripe+in_zendesk=1 then 1 else 0",
+      "alternative": "The contract permits stage flags to be \"1/0/NULL passthrough\" and requires \"2 if any two = 1; 1 if any one = 1\".",
+      "importance": 2,
+      "reason": "NULL-sensitive addition does not implement the documented any-stage conditions, although the behavior model normally supplies non-NULL flags.",
+      "updates": null
+    },
+    {
+      "statement": "Missing average customer health should contribute zero rather than NULL to organization health.",
+      "about": "requirement",
+      "target": "marts.customer360__organization_network.organization_health_score",
+      "evidence_of_dependence": "round(.4*coalesce(avg_health_score,0)+ ... ,2) as organization_health_score",
+      "alternative": "The contract specifies \"0.4×avg_health_score\" and documents avg_health_score as \"null if all values are null\", without prescribing zero replacement.",
+      "importance": 3,
+      "reason": "Zero replacement produces a numeric health score where the specified arithmetic would propagate NULL, potentially changing expansion decisions.",
+      "updates": null
+    },
+    {
+      "statement": "Organization entities should retain behavior records without matching lifecycle or value-analysis records.",
+      "about": "requirement",
+      "target": "marts.customer360__organization_network.entities",
+      "evidence_of_dependence": "left join intermediate.int_customer360__customer_lifecycle_metrics lm using(primary_email) left join marts.customer360__customer_value_analysis va using(primary_email)",
+      "alternative": "The organization-network contract says \"Join behavior_analysis to lifecycle_metrics\" and \"join behavior_analysis to value_analysis\", whereas the funnel and activity contracts explicitly specify left joins.",
+      "importance": 3,
+      "reason": "If unmatched records exist, the join interpretation changes organization contact counts and aggregate scores.",
+      "updates": null
+    },
+    {
+      "statement": "DuckDB's inferred numeric types meet the organization-network contract for calculated decimal outputs.",
+      "about": "requirement",
+      "target": "marts.customer360__organization_network numeric output schema",
+      "evidence_of_dependence": "round(total_adjusted_ltv*(case ... end)*(case ... end),2) as risk_adjusted_organization_value",
+      "alternative": "The contract specifies risk_adjusted_organization_value as DECIMAL(38,2), organization_influence_score as DECIMAL(18,2), and total_adjusted_ltv as DECIMAL(38,3).",
+      "importance": 3,
+      "reason": "The query explicitly casts organization value score but leaves other contracted decimal precisions dependent on unverified inference and upstream types.",
+      "updates": null
+    },
+    {
+      "statement": "Personal and enterprise email-domain classification should be case-insensitive.",
+      "about": "requirement",
+      "target": "marts.customer360__organization_network.estimated_org_size",
+      "evidence_of_dependence": "case when lower(email_domain) in ('gmail.com','yahoo.com','hotmail.com','outlook.com') then 'Personal'",
+      "alternative": "The contract extracts the domain from primary_email and specifies membership in lowercase domain sets without requiring case normalization; the behavior contract says email formatting is preserved.",
+      "importance": 2,
+      "reason": "Mixed-case domains can receive different size categories, changing organization grouping.",
+      "updates": null
+    }
+  ],
+  "fewer": [
+    {
+      "target": "marts.customer360__organization_network",
+      "count": 4,
+      "reason": "Four distinct unestablished premises were identified; the remaining grouping, scoring, ranking, filtering, and ordering logic is explicitly supported by the supplied contract."
+    }
+  ]
+}

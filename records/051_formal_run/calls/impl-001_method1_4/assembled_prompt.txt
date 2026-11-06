@@ -1,0 +1,1313 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Lever ATS recruitment platform data transformation"
+  author: "Data Engineering Team"
+  created_date: "2025-09-08"
+  domain: "Applicant Tracking System (ATS)"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw ATS data into clean, validated staging tables with standardized formats, proper data types, and comprehensive quality checks"
+  
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "standardize timezone formats", "normalize phone numbers"]
+    
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform staging data into business-ready models that support recruitment analytics, performance measurement, and operational reporting"
+  
+  design_principles:
+    intermediate_purpose: "Create reusable, business-centric data models that combine multiple staging sources and apply consistent business logic"
+    mart_purpose: "Provide analysis-ready fact and dimension tables optimized for specific business use cases and reporting requirements"
+    grain_importance: "Every model must have an explicitly defined grain to ensure consistent interpretation and prevent aggregation errors"
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-001/agent/dacomp-de-impl-001/lever_start.duckdb
+{"table": "raw.application", "columns": ["id", "archived_at", "archived_reason_id", "candidate_id", "comments", "company", "created_at", "posting_hiring_manager_id", "posting_id", "posting_owner_id", "referrer_id", "requisition_for_hire_id", "type", "opportunity_id"]}
+{"table": "raw.archive_reason", "columns": ["id", "text"]}
+{"table": "raw.contact_email", "columns": ["contact_id", "email"]}
+{"table": "raw.contact_link", "columns": ["contact_id", "link"]}
+{"table": "raw.contact_phone", "columns": ["contact_id", "value", "type"]}
+{"table": "raw.feedback_form", "columns": ["id", "created_at", "creator_id", "instructions", "text", "type"]}
+{"table": "raw.feedback_form_field", "columns": ["id", "feedback_form_id", "field_index", "value_text", "value_index"]}
+{"table": "raw.interview", "columns": ["id", "canceled_at", "candidate_id", "created_at", "creator_id", "date", "duration", "feedback_reminder", "gcal_event_url", "location", "note", "panel_id", "stage_id", "subject", "timezone", "opportunity_id"]}
+{"table": "raw.interview_feedback", "columns": ["id", "completed_at", "created_at", "interview_id", "interviewer_id", "overall_recommendation", "text", "updated_at", "feedback_form_id"]}
+{"table": "raw.interview_user", "columns": ["interview_id", "user_id"]}
+{"table": "raw.interviewer_user", "columns": ["interview_id", "user_id"]}
+{"table": "raw.offer", "columns": ["id", "created_at", "creator_id", "opportunity_id", "candidate_id", "status"]}
+{"table": "raw.opportunity", "columns": ["id", "archived_at", "archived_reason_id", "contact", "created_at", "data_protection_contact_allowed", "data_protection_contact_expires_at", "data_protection_store_allowed", "data_protection_store_expires_at", "headline", "is_anonymized", "last_advanced_at", "last_interaction_at", "location", "name", "origin", "owner_id", "snoozed_until", "stage_id", "updated_at"]}
+{"table": "raw.opportunity_source", "columns": ["opportunity_id", "source"]}
+{"table": "raw.opportunity_stage_history", "columns": ["id", "opportunity_id", "stage_id", "updated_at", "updater_id", "to_stage_index"]}
+{"table": "raw.opportunity_tag", "columns": ["opportunity_id", "tag"]}
+{"table": "raw.posting", "columns": ["id", "categories_commitment", "categories_department", "categories_level", "categories_location", "categories_team", "content_closing", "content_closing_html", "content_description", "content_description_html", "created_at", "creator_id", "owner_id", "requisition_code", "state", "text", "updated_at"]}
+{"table": "raw.posting_interview", "columns": ["posting_id", "interview_id"]}
+{"table": "raw.posting_tag", "columns": ["posting_id", "tag"]}
+{"table": "raw.requisition", "columns": ["id", "backfill", "compensation_band_currency", "compensation_band_interval", "compensation_band_max", "compensation_band_min", "created_at", "creator_id", "employment_status", "headcount_hired", "headcount_infinite", "headcount_total", "hiring_manager_id", "internal_notes", "location", "name", "owner_id", "requisition_code", "status", "team"]}
+{"table": "raw.requisition_offer", "columns": ["requisition_id", "offer_id"]}
+{"table": "raw.requisition_posting", "columns": ["requisition_id", "posting_id"]}
+{"table": "raw.resume", "columns": ["id", "opportunity_id", "created_at", "file_download_url", "file_ext", "file_name", "file_uploaded_at"]}
+{"table": "raw.stage", "columns": ["id", "text"]}
+{"table": "raw.user", "columns": ["id", "access_role", "created_at", "deactivated_at", "email", "external_directory_id", "name", "photo", "username"]}
+{"table": "raw.users", "columns": ["id", "access_role", "created_at", "deactivated_at", "email", "external_directory_id", "name", "photo", "username"]}
+
+
+=== Relevant specification and documentation ===
+## stg_lever__user
+
+    - name: stg_lever__user
+      description: "Cleaned user accounts including hiring managers, recruiters, and administrative staff with validated roles and contact information"
+      source_table: "raw.user"
+      columns:
+        - name: user_id
+          data_type: VARCHAR(128)
+          constraints: [not_null, unique]
+          validation_rules:
+            - rule: "user_id = TRIM(user_id)"
+              on_failure: correct
+            - rule: "LENGTH(TRIM(user_id)) > 0"
+              on_failure: delete_row
+        - name: access_role
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "access_role IN ('admin', 'team_admin', 'limited', 'super_admin', 'interviewer')"
+              on_failure: delete_row
+        - name: email
+          data_type: VARCHAR(255)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "email = LOWER(TRIM(email))"
+              on_failure: correct
+            - rule: "email RLIKE '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+.[A-Za-z]{2,}$'"
+              on_failure: delete_row
+        - name: user_name
+          data_type: VARCHAR(255)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "user_name = TRIM(user_name)"
+              on_failure: correct
+            - rule: "LENGTH(TRIM(user_name)) > 0"
+              on_failure: delete_row
+        - name: username
+          data_type: VARCHAR(100)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "username = LOWER(TRIM(username))"
+              on_failure: correct
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: deactivated_at
+          data_type: TIMESTAMP
+          validation_rules:
+            - rule: "deactivated_at IS NULL OR created_at IS NULL OR try_cast(deactivated_at as timestamp) >= try_cast(created_at as timestamp)"
+              on_failure: delete_row
+        - name: external_directory_user_id
+          data_type: VARCHAR(128)
+        - name: photo
+          data_type: VARCHAR(500)
+          validation_rules:
+            - rule: "photo IS NULL OR photo RLIKE '^https?://'"
+              on_failure: nullify_field
+
+
+
+## stg_lever__interview
+
+    - name: stg_lever__interview
+      description: "Cleaned interview records with validated scheduling information, participant details, and feedback tracking"
+      source_table: "raw.interview"
+      columns:
+        - name: interview_id
+          data_type: VARCHAR(50)
+          constraints: [not_null, unique]
+          validation_rules:
+            - rule: "interview_id = TRIM(interview_id)"
+              on_failure: correct
+            - rule: "LENGTH(TRIM(interview_id)) > 0"
+              on_failure: delete_row
+        - name: opportunity_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: candidate_id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: stage_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: panel_id
+          data_type: BIGINT
+        - name: creator_user_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: interview_date
+          data_type: TIMESTAMP
+        - name: duration
+          data_type: DOUBLE
+          validation_rules:
+            - rule: "duration IS NULL OR (duration >= 0 AND duration <= 600)"
+              on_failure: nullify_field
+        - name: subject
+          data_type: VARCHAR(500)
+        - name: location
+          data_type: VARCHAR(500)
+        - name: timezone
+          data_type: VARCHAR(10)
+          validation_rules:
+            - rule: "timezone IS NULL OR timezone RLIKE '^[A-Za-z_]+/[A-Za-z_]+$'"
+              on_failure: nullify_field
+        - name: gcal_event_url
+          data_type: VARCHAR(500)
+          validation_rules:
+            - rule: "gcal_event_url IS NULL OR gcal_event_url RLIKE '^https?://'"
+              on_failure: nullify_field
+        - name: feedback_reminder
+          data_type: VARCHAR(500)
+        - name: note
+          data_type: VARCHAR(1000)
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: canceled_at
+          data_type: TIMESTAMP
+          validation_rules:
+            - rule: "canceled_at IS NULL OR created_at IS NULL OR try_cast(canceled_at as timestamp) >= try_cast(created_at as timestamp)"
+              on_failure: delete_row
+
+
+
+## stg_lever__posting
+
+    - name: stg_lever__posting
+      description: "Cleaned job postings with validated content, categorization, and publication status"
+      source_table: "raw.posting"
+      columns:
+        - name: posting_id
+          data_type: VARCHAR(50)
+          constraints: [not_null, unique]
+          validation_rules:
+            - rule: "posting_id = TRIM(posting_id)"
+              on_failure: correct
+            - rule: "LENGTH(TRIM(posting_id)) > 0"
+              on_failure: delete_row
+        - name: posting_title
+          data_type: VARCHAR(500)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "posting_title = TRIM(posting_title)"
+              on_failure: correct
+            - rule: "LENGTH(TRIM(posting_title)) > 0"
+              on_failure: delete_row
+        - name: state
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "state IN ('published', 'draft', 'closed', 'internal')"
+              on_failure: delete_row
+        - name: requisition_code
+          data_type: VARCHAR(20)
+          validation_rules:
+            - rule: "requisition_code IS NULL OR requisition_code LIKE 'REQ-%'"
+              on_failure: nullify_field
+        - name: categories_commitment
+          data_type: VARCHAR(50)
+          validation_rules:
+            - rule: "categories_commitment IS NULL OR categories_commitment IN ('full-time', 'part-time', 'contract', 'internship')"
+              on_failure: nullify_field
+        - name: categories_department
+          data_type: VARCHAR(100)
+        - name: categories_level
+          data_type: VARCHAR(50)
+          validation_rules:
+            - rule: "categories_level IS NULL OR categories_level IN ('Entry', 'Mid', 'Senior', 'Lead', 'Principal', 'Executive')"
+              on_failure: nullify_field
+        - name: categories_location
+          data_type: VARCHAR(255)
+        - name: categories_team
+          data_type: VARCHAR(255)
+        - name: content_description
+          data_type: VARCHAR(5000)
+        - name: content_description_html
+          data_type: VARCHAR(5000)
+        - name: content_closing
+          data_type: VARCHAR(5000)
+        - name: content_closing_html
+          data_type: VARCHAR(5000)
+        - name: creator_user_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: owner_user_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: updated_at
+          data_type: TIMESTAMP
+          validation_rules:
+            - rule: "updated_at IS NULL OR created_at IS NULL OR try_cast(updated_at as timestamp) >= try_cast(created_at as timestamp)"
+              on_failure: delete_row
+
+
+
+## stg_lever__stage
+
+    - name: stg_lever__stage
+      description: "Cleaned interview stage definitions with standardized naming and progression logic"
+      source_table: "raw.stage"
+      columns:
+        - name: stage_id
+          data_type: VARCHAR(50)
+          constraints: [not_null, unique]
+          validation_rules:
+            - rule: "stage_id = TRIM(stage_id)"
+              on_failure: correct
+            - rule: "LENGTH(TRIM(stage_id)) > 0"
+              on_failure: delete_row
+        - name: stage_name
+          data_type: VARCHAR(255)
+          constraints: [not_null]
+
+
+
+## stg_lever__opportunity
+
+    - name: stg_lever__opportunity
+      description: "Cleaned candidate opportunities with validated contact information and stage progression tracking"
+      source_table: "raw.opportunity"
+      columns:
+        - name: opportunity_id
+          data_type: VARCHAR(50)
+          constraints: [not_null, unique]
+          validation_rules:
+            - rule: "opportunity_id = TRIM(opportunity_id)"
+              on_failure: correct
+            - rule: "LENGTH(TRIM(opportunity_id)) > 0"
+              on_failure: delete_row
+        - name: contact_name
+          data_type: VARCHAR(255)
+          constraints: [not_null]
+        - name: contact_headline
+          data_type: VARCHAR(500)
+        - name: stage_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: owner_user_id
+          data_type: VARCHAR(50)
+        - name: contact_id
+          data_type: VARCHAR(50)
+        - name: contact_location
+          data_type: VARCHAR(255)
+        - name: origin
+          data_type: VARCHAR(100)
+        - name: archived_at
+          data_type: TIMESTAMP
+          validation_rules:
+            - rule: "archived_at IS NULL OR try_cast(archived_at as timestamp) >= try_cast(created_at as timestamp)"
+              on_failure: delete_row
+        - name: archived_reason_id
+          data_type: VARCHAR(50)
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: updated_at
+          data_type: TIMESTAMP
+          validation_rules:
+            - rule: "updated_at IS NULL OR try_cast(updated_at as timestamp) >= try_cast(created_at as timestamp)"
+              on_failure: delete_row
+        - name: last_interaction_at
+          data_type: TIMESTAMP
+        - name: last_advanced_at
+          data_type: TIMESTAMP
+        - name: snoozed_until
+          data_type: TIMESTAMP
+        - name: is_data_protection_contact_allowed
+          data_type: BOOLEAN
+        - name: data_protection_contact_expires_at
+          data_type: TIMESTAMP
+        - name: is_data_protection_store_allowed
+          data_type: BOOLEAN
+        - name: data_protection_store_expires_at
+          data_type: TIMESTAMP
+        - name: is_anonymized
+          data_type: BOOLEAN
+
+
+
+## stg_lever__application
+
+    - name: stg_lever__application
+      description: "Cleaned job applications linking candidates to postings with application status and metadata"
+      source_table: "raw.application"
+      columns:
+        - name: application_id
+          data_type: VARCHAR(50)
+          constraints: [not_null, unique]
+        - name: opportunity_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: posting_id
+          data_type: VARCHAR(50)
+        - name: type
+          data_type: VARCHAR(50)
+        - name: candidate_id
+          data_type: BIGINT
+        - name: posting_hiring_manager_user_id
+          data_type: VARCHAR(50)
+        - name: posting_owner_user_id
+          data_type: VARCHAR(50)
+        - name: company
+          data_type: VARCHAR(255)
+        - name: referrer_user_id
+          data_type: VARCHAR(50)
+        - name: requisition_id
+          data_type: VARCHAR(50)
+        - name: archived_at
+          data_type: TIMESTAMP
+          validation_rules:
+            - rule: "archived_at IS NULL OR created_at IS NULL OR try_cast(archived_at as timestamp) >= try_cast(created_at as timestamp)"
+              on_failure: delete_row
+        - name: archived_reason_id
+          data_type: VARCHAR(50)
+        - name: comments
+          data_type: VARCHAR(1000)
+        - name: created_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+
+
+
+## stg_lever__interview_feedback
+
+    - name: stg_lever__interview_feedback
+      description: "Cleaned interview feedback with validated recommendations and assessment completion tracking"
+      source_table: "raw.interview_feedback"
+      columns:
+        - name: interview_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: feedback_form_id
+          data_type: VARCHAR(50)
+
+
+
+## stg_lever__interviewer_user
+
+    - name: stg_lever__interviewer_user
+      description: "Interview-to-interviewer relationship mapping"
+      source_table: "raw.interviewer_user"
+      columns:
+        - name: interview_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: user_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+
+
+
+## stg_lever__opportunity_stage_history
+
+    - name: stg_lever__opportunity_stage_history
+      description: "Historical stage progression for opportunities"
+      source_table: "raw.opportunity_stage_history"
+      columns:
+        - name: opportunity_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: stage_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: updated_at
+          data_type: TIMESTAMP
+        - name: updater_user_id
+          data_type: VARCHAR(50)
+        - name: to_stage_index
+          data_type: BIGINT
+
+
+
+## int_lever__hiring_funnel_metrics
+
+    - name: int_lever__hiring_funnel_metrics
+      description: 'Hiring funnel metrics per posting: conversion rates, time-to-stage averages, bottleneck label, efficiency grade, and calculation timestamp'
+      grain: One row per posting_id with at least 3 applications
+      source_models:
+      - staging.stg_lever__stage
+      - staging.stg_lever__opportunity_stage_history
+      - staging.stg_lever__application
+      - staging.stg_lever__posting
+      business_logic: '1) Stage normalization: - From staging.stg_lever__stage, map each lowercased stage_name to stage_order and stage_category: 1=Top of Funnel (''lead'' or ''new''), 2=Initial Screening (''phone'' or ''screening''), 3=Technical Assessment (''technical'' or ''coding''), 4=Final Interview (''onsite'' or ''final''), 5=Offer Stage (''offer''), 6=Hired (''hire'' or ''accept''), else 99 and ''Other''. 2) Opportunity-stage timeline: - Join staging.stg_lever__opportunity_stage_history to the mapping by stage_id. - Per opportunity_id ordered by updated_at, record stage_entered_at=updated_at and compute sequence markers (row number, previous, next). 3) Funnel progression per opportunity: - For each opportunity_id, take the earliest timestamp of entering each normalized stage (orders 1–6). - highest_stage_reached = the maximum stage_order visited; unique_stages_visited = distinct stage_id count. - Reached flags for each stage are 1 if highest_stage_reached is at least that stage''s order, else 0. 4) Posting-level funnel metrics: - Join applications (a) to postings (p) by posting_id; left join per-opportunity funnel results by opportunity_id. - Group by posting_id, posting_title, categories_department/team/location/level. - Use distinct opportunity_id in all counts: total_applications = distinct opportunities per posting. reached_*_count = distinct opportunities where the corresponding reached flag = 1. - Conversion rates are percentages (0–100), rounded to two decimal places; if the denominator is zero, return 0: application_to_screening_rate = reached_screening_count / total_applications * 100; screening_to_technical_rate = reached_technical_count / reached_screening_count * 100; technical_to_final_rate = reached_final_count / reached_technical_count * 100; final_to_offer_rate = reached_offer_count / reached_final_count * 100; offer_to_hired_rate = reached_hired_count / reached_offer_count * 100; application_to_hired_rate = reached_hired_count / total_applications * 100. 5) Time-to-conversion per opportunity: - Durations in days are computed as the difference between the later and earlier stage-entered timestamps converted from seconds to days (divide by 86,400); if either timestamp is missing, the duration is NULL: days_to_screening: top of funnel → screening; days_screening_to_technical: screening → technical; days_technical_to_final: technical → final; days_final_to_offer: final → offer; days_offer_to_hired: offer → hired; total_days_to_hire: top of funnel → hired. 6) Final enrichments per posting: - For each posting_id, average the per-opportunity durations where the metric is not NULL, rounded to one decimal place: avg_days_to_screening, avg_days_screening_to_technical, avg_total_days_to_hire. - primary_bottleneck is determined by ordered threshold checks; the first match is chosen: if application_to_screening_rate < 50 → Initial Screening Bottleneck; else if screening_to_technical_rate < 60 → Technical Assessment Bottleneck; else if technical_to_final_rate < 70 → Final Interview Bottleneck; else if final_to_offer_rate < 80 → Offer Decision Bottleneck; else if offer_to_hired_rate < 70 → Offer Acceptance Bottleneck; else → No Major Bottleneck. - hiring_efficiency_grade is based on application_to_hired_rate: High Efficiency (≥10%), Medium Efficiency (5–10%), Low Efficiency (2–5%), Very Low Efficiency (<2%). - calculated_at is set to the current timestamp. - Filter: include only postings with total_applications ≥ 3. - The final result is ordered by total_applications descending, then application_to_hired_rate descending.'
+      columns:
+      - name: posting_id
+        data_type: VARCHAR
+        description: Posting identifier and grouping key; exactly one row per posting_id passing the sample-size filter
+        tests:
+        - not_null
+        - unique
+      - name: posting_title
+        data_type: VARCHAR
+        description: Job posting title from staging.stg_lever__posting
+      - name: categories_department
+        data_type: VARCHAR
+        description: Department category of the posting
+      - name: categories_team
+        data_type: VARCHAR
+        description: Team category of the posting
+      - name: categories_level
+        data_type: VARCHAR
+        description: Seniority/level category of the posting
+      - name: categories_location
+        data_type: VARCHAR
+        description: Location category of the posting
+      - name: total_applications
+        data_type: BIGINT
+        description: Distinct count of opportunities linked to the posting; minimum is 3 due to final filter
+      - name: reached_screening_count
+        data_type: BIGINT
+        description: Distinct count of opportunities that reached screening (highest normalized stage ≥ 2)
+      - name: reached_technical_count
+        data_type: BIGINT
+        description: Distinct count of opportunities that reached technical assessment (highest normalized stage ≥ 3)
+      - name: reached_final_count
+        data_type: BIGINT
+        description: Distinct count of opportunities that reached final interview (highest normalized stage ≥ 4)
+      - name: reached_offer_count
+        data_type: BIGINT
+        description: Distinct count of opportunities that reached offer stage (highest normalized stage ≥ 5)
+      - name: reached_hired_count
+        data_type: BIGINT
+        description: Distinct count of opportunities that reached hired (highest normalized stage ≥ 6)
+      - name: application_to_screening_rate
+        data_type: DOUBLE
+        description: Percent of applications that reached screening; rounded to two decimals; 0 if total_applications=0
+      - name: screening_to_technical_rate
+        data_type: DOUBLE
+        description: Percent of screened that reached technical; rounded to two decimals; 0 if reached_screening_count=0
+      - name: technical_to_final_rate
+        data_type: DOUBLE
+        description: Percent of technical that reached final; rounded to two decimals; 0 if reached_technical_count=0
+      - name: final_to_offer_rate
+        data_type: DOUBLE
+        description: Percent of final that reached offer; rounded to two decimals; 0 if reached_final_count=0
+      - name: offer_to_hired_rate
+        data_type: DOUBLE
+        description: Percent of offers that reached hired; rounded to two decimals; 0 if reached_offer_count=0
+      - name: application_to_hired_rate
+        data_type: DOUBLE
+        description: Percent of applications that reached hired; rounded to two decimals; 0 if total_applications=0
+      - name: avg_days_to_screening
+        data_type: DOUBLE
+        description: Average days from top of funnel to screening for the posting; rounded to one decimal; NULL if no data
+      - name: avg_days_screening_to_technical
+        data_type: DOUBLE
+        description: Average days from screening to technical for the posting; rounded to one decimal; NULL if no data
+      - name: avg_total_days_to_hire
+        data_type: DOUBLE
+        description: Average days from top of funnel to hire for the posting; rounded to one decimal; NULL if no data
+      - name: hiring_efficiency_grade
+        data_type: VARCHAR
+        description: 'Based on application_to_hired_rate: High (≥10%), Medium (5–10%), Low (2–5%), Very Low (<2%)'
+      - name: primary_bottleneck
+        data_type: VARCHAR
+        description: 'Determined by ordered checks: <50% screening, <60% technical, <70% final, <80% offer decision, <70% offer acceptance; first match else ''No Major Bottleneck'''
+      - name: calculated_at
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Timestamp when metrics were computed (current timestamp at model run)
+
+
+## int_lever__interviewer_performance
+
+    - name: int_lever__interviewer_performance
+      description: Interviewer performance metrics over the last 365 days with activity, feedback, outcomes, and tier per interviewer
+      grain: One row per interviewer_user_id for interviews within the last 365 days
+      source_models:
+      - staging.stg_lever__user
+      - staging.stg_lever__interviewer_user
+      - staging.stg_lever__interview
+      - staging.stg_lever__interview_feedback
+      - staging.stg_lever__opportunity
+      - staging.stg_lever__stage
+      business_logic: 'Filters and joins - Only include interviews dated within the last 365 days. - Join users to interviewer_user by user_id, then to interviews by interview_id. - Left join interview_feedback by interview_id; left join opportunity by opportunity_id; left join stage by stage_id. - Group by user_id, user_name, email, access_role, and created_at (one row per interviewer). Activity and interview metrics - total_interviews: distinct count of interviews. - completed_interviews: distinct count of interviews where canceled_at is null. - canceled_interviews: distinct count of interviews where canceled_at is not null. - interviews_per_month: divide total_interviews by 12 and round to 1 decimal. - avg_interview_duration_minutes: average interview duration rounded to 1 decimal; NULL durations are ignored; averages are computed over all joined rows, so interviews repeated by left joins are included. - last_interview_date: latest interview_date; first_interview_date: earliest interview_date within the 365-day window. - activity_status: Active if last_interview_date is within 30 days, Recently Active if within 90 days, else Inactive. Feedback metrics - total_feedback_given: distinct count of feedback forms linked to the interviewer’s interviews. - feedback_completion_rate (%): if total_interviews > 0, compute total_feedback_given divided by total_interviews times 100 and round to 1 decimal; otherwise return 0. - avg_feedback_completion_hours, avg_recommendation_score, avg_feedback_text_length: constant 0. Outcome metrics - total_outcomes: distinct count of opportunities linked to the interviewer’s interviews. - positive_outcomes: distinct count of opportunities where stage_name (case-insensitive) contains ''hire'', ''accept'', or ''offer''. - negative_outcomes: distinct count of opportunities where archived_at is not null. - positive_outcome_rate (%): percentage of positive_outcomes over total_outcomes rounded to 1 decimal; if total_outcomes is 0, return NULL. - advancement_rate (%): percentage of distinct opportunities where last_advanced_at is after the interview_date rounded to 1 decimal; if total_outcomes is 0, return NULL; NULL timestamps do not satisfy the comparison. Score and tier - overall_performance_score: only computed when total_interviews >= 10 and feedback_completion_rate >= 80; weight feedback completion rate 30%, positive outcome rate 40%, and advancement rate 30%, then round to 1 decimal; if any component is NULL the score is NULL. - performance_tier: Insufficient Data if total_interviews < 5; otherwise Excellent if feedback_completion_rate >= 90 and positive_outcome_rate >= 30; Good if >= 80 and >= 20; Average if >= 70 and >= 10; else Needs Improvement. Timestamps - calculated_at: set to the current timestamp at query runtime.'
+      columns:
+      - name: interviewer_user_id
+        data_type: VARCHAR
+        description: Interviewer user identifier from stg_lever__user.user_id
+        tests:
+        - not_null
+        - unique
+      - name: interviewer_name
+        data_type: VARCHAR
+        description: Interviewer display name from stg_lever__user.user_name
+      - name: interviewer_email
+        data_type: VARCHAR
+        description: Interviewer email from stg_lever__user.email
+      - name: interviewer_role
+        data_type: VARCHAR
+        description: Interviewer access role from stg_lever__user.access_role
+      - name: interviewer_joined_date
+        data_type: TIMESTAMP
+        description: User account creation timestamp from stg_lever__user.created_at
+      - name: total_interviews
+        data_type: BIGINT
+        description: Distinct count of interviews in the last 365 days
+      - name: completed_interviews
+        data_type: BIGINT
+        description: Distinct count of interviews where canceled_at is null
+      - name: canceled_interviews
+        data_type: BIGINT
+        description: Distinct count of interviews where canceled_at is not null
+      - name: interviews_per_month
+        data_type: DOUBLE
+        description: Total interviews divided by 12 and rounded to 1 decimal
+      - name: avg_interview_duration_minutes
+        data_type: DOUBLE
+        description: Average interview duration rounded to 1 decimal; NULLs ignored; duplicates from left joins are included
+      - name: last_interview_date
+        data_type: TIMESTAMP
+        description: Most recent interview_date within the 365-day window
+      - name: first_interview_date
+        data_type: TIMESTAMP
+        description: Earliest interview_date within the 365-day window
+      - name: activity_status
+        data_type: VARCHAR
+        description: Active if last_interview_date within 30 days, Recently Active if within 90 days, else Inactive
+      - name: total_feedback_given
+        data_type: BIGINT
+        description: Distinct count of feedback forms linked to the interviewer’s interviews
+      - name: feedback_completion_rate
+        data_type: DOUBLE
+        description: Percentage of total_feedback_given over total_interviews rounded to 1 decimal; returns 0 when total_interviews is 0
+      - name: avg_feedback_completion_hours
+        data_type: INTEGER
+        description: Constant 0
+      - name: avg_recommendation_score
+        data_type: INTEGER
+        description: Constant 0
+      - name: avg_feedback_text_length
+        data_type: INTEGER
+        description: Constant 0
+      - name: positive_outcomes
+        data_type: BIGINT
+        description: Distinct count of opportunities with stage_name containing 'hire', 'accept', or 'offer' (case-insensitive)
+      - name: negative_outcomes
+        data_type: BIGINT
+        description: Distinct count of opportunities where archived_at is not null
+      - name: total_outcomes
+        data_type: BIGINT
+        description: Distinct count of opportunities linked to the interviewer’s interviews
+      - name: positive_outcome_rate
+        data_type: DOUBLE
+        description: Percentage of positive_outcomes over total_outcomes rounded to 1 decimal; returns NULL when total_outcomes is 0
+      - name: advancement_rate
+        data_type: DOUBLE
+        description: Percentage of distinct opportunities with last_advanced_at after the interview_date rounded to 1 decimal; returns NULL when total_outcomes is 0
+      - name: overall_performance_score
+        data_type: DOUBLE
+        description: Weighted score computed only when total_interviews>=10 and feedback_completion_rate>=80; weights are 30% FCR, 40% POS, 30% ADV, rounded to 1 decimal; returns NULL if any component is NULL
+      - name: performance_tier
+        data_type: VARCHAR
+        description: 'Tier thresholds: Insufficient Data, Excellent, Good, Average, or Needs Improvement'
+      - name: calculated_at
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Query execution timestamp
+
+
+## int_lever__posting_analytics
+
+    - name: int_lever__posting_analytics
+      description: Job posting performance and engagement analytics (one row per posting with application, interview, conversion, timing, and scoring metrics)
+      grain: One row per posting_id
+      source_models:
+      - staging.stg_lever__posting
+      - staging.stg_lever__application
+      - staging.stg_lever__interview
+      - staging.stg_lever__interviewer_user
+      - staging.stg_lever__opportunity
+      - staging.stg_lever__stage
+      business_logic: 'Build one row per posting_id by enriching posting attributes with application, interview, hiring, time-efficiency, and scoring metrics. 1) Posting base - From staging.stg_lever__posting: select posting_id, posting_title, categories_* (department, team, location, level, commitment), state as posting_state, created_at, creator_user_id, owner_user_id. 2) Application metrics (grouped by posting_id from staging.stg_lever__application) - total_applications: distinct applications. - unique_candidates: distinct candidates. - unique_opportunities: distinct opportunities. - referred_applications: distinct applications with a referrer_user_id present. - internal_applications: distinct applications where type is ''user''. - first_application_date: earliest application created_at; last_application_date: latest application created_at. - Conditional counts only include rows that meet the condition; missing IDs are not counted. 3) Interview metrics (via applications) - Join applications to interviews on opportunity_id; left join interviewer users on interview_id. - total_interviews_scheduled: distinct interviews. - completed_interviews: distinct interviews not canceled. - canceled_interviews: distinct interviews that were canceled. - unique_interviewers: distinct interviewer users. - avg_interview_duration_minutes: average of interview duration. - total_interview_time_minutes: sum of interview duration. 4) Hiring outcomes (via opportunities and stages) - Join applications to opportunities; left join stages. - candidates_hired: distinct opportunities whose stage name contains "hire" or "accept" (case-insensitive). - offers_extended: distinct opportunities whose stage name contains "offer" (case-insensitive). - candidates_rejected: distinct opportunities that are archived. 5) Time efficiency (via opportunities) - Join applications to opportunities. - Keep only rows where last_advanced_at and application created_at exist. - For each kept row, compute day differences: • to advancement: days between last_advanced_at and application created_at • to last contact: days between last_interaction_at and application created_at (missing last_interaction_at are ignored in averages) - Aggregate per posting_id: • avg_days_to_advancement: mean days to advancement • avg_days_to_last_contact: mean days to last contact over the same filtered set • median_days_to_advancement: 50th percentile of days to advancement 6) Final derivations (left-join metrics to posting base by posting_id; fill missing metrics with 0 where noted) - referral_rate_pct: referred_applications / total_applications × 100, rounded to 1 decimal; 0 if total_applications = 0. - internal_application_rate_pct: internal_applications / total_applications × 100, rounded to 1 decimal; 0 if total_applications = 0. - interview_completion_rate_pct: completed_interviews / total_interviews_scheduled × 100, rounded to 1 decimal; 0 if total_interviews_scheduled = 0. - application_to_hire_rate_pct: candidates_hired / total_applications × 100, rounded to 2 decimals; 0 if total_applications = 0. - offer_acceptance_rate_pct: candidates_hired / offers_extended × 100, rounded to 1 decimal; 0 if offers_extended = 0. - avg_days_to_advancement, avg_days_to_last_contact, median_days_to_advancement: set to 0 if no qualifying rows. - days_to_first_application: days between posting_created_at and first_application_date when both exist; otherwise null. - posting_effectiveness_score (0–100): • min(20, total_applications) • +25 if candidates_hired > 0 • +20 if avg_days_to_advancement ≤ 30; +10 if ≤ 60; else +0 • +15 if interview_completion_rate_pct ≥ 80; else +5 • +10 if referral_rate_pct ≥ 20; +5 if ≥ 10; else +0 • +10 if offer_acceptance_rate_pct ≥ 70; else +0 Round to 0 decimals and clamp between 0 and 100. - performance_tier (first match): • High Performing: total_applications ≥ 20 AND candidates_hired ≥ 2 AND avg_days_to_advancement ≤ 45 (treat missing as 999) • Good Performing: total_applications ≥ 10 AND candidates_hired ≥ 1 AND avg_days_to_advancement ≤ 60 (treat missing as 999) • Moderate Performing: total_applications ≥ 5 • Low Performing: total_applications ≥ 1 • Else: No Applications - primary_bottleneck (first match): • total_applications = 0 → No Attraction - Poor Job Posting • interview_completion_rate_pct < 70 → Interview Scheduling Issues • offer_acceptance_rate_pct < 60 AND offers_extended > 0 → Low Offer Acceptance • avg_days_to_advancement > 60 → Slow Decision Process • candidates_hired = 0 AND total_applications ≥ 10 → High Standards or Poor Fit • Else → No Major Issues - calculated_at: current timestamp at run time (time zone aware). - Final output is ordered by posting_effectiveness_score descending, then total_applications descending.'
+      columns:
+      - name: posting_id
+        data_type: VARCHAR
+        description: Unique job posting identifier; exactly one output row per posting_id
+        tests:
+        - not_null
+        - unique
+      - name: posting_title
+        data_type: VARCHAR
+        description: Job posting title
+      - name: categories_department
+        data_type: VARCHAR
+        description: 'Posting category: department'
+      - name: categories_team
+        data_type: VARCHAR
+        description: 'Posting category: team'
+      - name: categories_location
+        data_type: VARCHAR
+        description: 'Posting category: location'
+      - name: categories_level
+        data_type: VARCHAR
+        description: 'Posting category: level'
+      - name: categories_commitment
+        data_type: VARCHAR
+        description: 'Posting category: commitment'
+      - name: posting_state
+        data_type: VARCHAR
+        description: Posting state
+      - name: posting_created_at
+        data_type: TIMESTAMP
+        description: Posting creation timestamp
+      - name: creator_user_id
+        data_type: VARCHAR
+        description: Creator user identifier
+      - name: owner_user_id
+        data_type: VARCHAR
+        description: Owner user identifier
+      - name: total_applications
+        data_type: BIGINT
+        description: Distinct applications per posting; 0 if none
+      - name: unique_candidates
+        data_type: BIGINT
+        description: Distinct candidates per posting; 0 if none
+      - name: unique_opportunities
+        data_type: BIGINT
+        description: Distinct opportunities per posting; 0 if none
+      - name: referred_applications
+        data_type: BIGINT
+        description: Distinct applications with a referrer present; 0 if none
+      - name: internal_applications
+        data_type: BIGINT
+        description: Distinct applications submitted by internal users (type='user'); 0 if none
+      - name: referral_rate_pct
+        data_type: DOUBLE
+        description: Referred_applications divided by total_applications times 100, rounded to 1 decimal; 0 if total_applications=0
+      - name: internal_application_rate_pct
+        data_type: DOUBLE
+        description: Internal_applications divided by total_applications times 100, rounded to 1 decimal; 0 if total_applications=0
+      - name: total_interviews_scheduled
+        data_type: BIGINT
+        description: Distinct interviews linked via applications; 0 if none
+      - name: completed_interviews
+        data_type: BIGINT
+        description: Distinct interviews not canceled; 0 if none
+      - name: canceled_interviews
+        data_type: BIGINT
+        description: Distinct interviews that were canceled; 0 if none
+      - name: unique_interviewers
+        data_type: BIGINT
+        description: Distinct interviewer users across associated interviews; 0 if none
+      - name: interview_completion_rate_pct
+        data_type: DOUBLE
+        description: Completed_interviews divided by total_interviews_scheduled times 100, rounded to 1 decimal; 0 if total_interviews_scheduled=0
+      - name: avg_interview_duration_minutes
+        data_type: DOUBLE
+        description: Average interview duration in minutes; 0 if no interviews
+      - name: total_interview_time_minutes
+        data_type: DOUBLE
+        description: Total interview duration in minutes; 0 if no interviews
+      - name: candidates_hired
+        data_type: BIGINT
+        description: Distinct opportunities in a stage whose name contains 'hire' or 'accept' (case-insensitive); 0 if none
+      - name: offers_extended
+        data_type: BIGINT
+        description: Distinct opportunities in a stage whose name contains 'offer' (case-insensitive); 0 if none
+      - name: candidates_rejected
+        data_type: BIGINT
+        description: Distinct opportunities that were archived; 0 if none
+      - name: application_to_hire_rate_pct
+        data_type: DOUBLE
+        description: Candidates_hired divided by total_applications times 100, rounded to 2 decimals; 0 if total_applications=0
+      - name: offer_acceptance_rate_pct
+        data_type: DOUBLE
+        description: Candidates_hired divided by offers_extended times 100, rounded to 1 decimal; 0 if offers_extended=0
+      - name: avg_days_to_advancement
+        data_type: DOUBLE
+        description: Average days from application to last advancement over rows where both timestamps exist; 0 if none
+      - name: avg_days_to_last_contact
+        data_type: DOUBLE
+        description: Average days from application to last interaction within rows where last_advanced_at and created_at exist; 0 if none
+      - name: median_days_to_advancement
+        data_type: DOUBLE
+        description: Median (50th percentile) days from application to last advancement; 0 if none
+      - name: days_to_first_application
+        data_type: DOUBLE
+        description: Days from posting_created_at to the first application; NULL if either timestamp is missing
+      - name: posting_effectiveness_score
+        data_type: BIGINT
+        description: Composite 0–100 score from application volume, hires, speed, interview completion, referrals, and offer acceptance; rounded to 0 decimals and clamped
+      - name: performance_tier
+        data_type: VARCHAR
+        description: Tier assigned from thresholds on applications, hires, and average days to advancement
+      - name: primary_bottleneck
+        data_type: VARCHAR
+        description: 'Primary bottleneck based on ordered checks: attraction, interview completion, offer acceptance, decision speed, or fit/standards'
+      - name: calculated_at
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Current timestamp when the row is computed (time zone aware)
+
+
+## int_lever__posting_performance
+
+    - name: int_lever__posting_performance
+      description: Job posting performance metrics by posting, including applications, candidates, interviews, conversion rates, score, and status
+      grain: One row per posting_id
+      source_models:
+      - staging.stg_lever__posting
+      - staging.stg_lever__application
+      - staging.stg_lever__opportunity
+      - staging.stg_lever__stage
+      - staging.stg_lever__contact_email
+      - staging.stg_lever__contact_phone
+      - staging.stg_lever__resume
+      - staging.stg_lever__interview
+      business_logic: 'For each posting in staging.stg_lever__posting: - Left join applications on posting_id; left join opportunities on application.opportunity_id; left join contact_email/phone on opportunity.contact_id; left join resume on application.opportunity_id; left join interview on application.opportunity_id. - All counting metrics use unique counts to avoid double-counting from joins. - Application metrics: - total_applications = unique applications; unique_candidates = unique candidates; unique_opportunities = unique opportunities. - first_application_date = earliest application.created_at; last_application_date = latest application.created_at; both null when no applications. - referred_applications = unique applications with a referrer. - internal_applications = unique applications where type is user; external_applications = unique applications where type is candidate. - referral_rate = if total_applications > 0 then referred_applications ÷ total_applications × 100, rounded to 2 decimals; otherwise 0. - Time metric: - days_to_first_application = fractional days between posting_created_at and first_application_date; computed only when both timestamps can be parsed; otherwise null. - Stage-based candidate metrics (stage membership determined by stage_name keywords, case-insensitive): - Interview-like: stage_name contains interview, technical, or onsite; Offer-like: contains offer; Hire-like: contains hire or accept. - candidates_reached_interview/offer/hired = unique opportunities currently in the corresponding stage group. - active_candidates_30d = unique opportunities with last_interaction_at within the last 30 days relative to the query date (unparsable timestamps are ignored). - archived_candidates = unique opportunities with archived_at present. - candidates_with_email/phone/resume = unique opportunities where the linked contact has an email/phone, or a resume exists, respectively. - Interview efficiency: - total_interviews_scheduled = unique interviews; completed_interviews = unique interviews not canceled; canceled_interviews = unique interviews canceled. - interview_completion_rate = if any interviews then completed ÷ scheduled × 100, rounded to 1 decimal; otherwise 0. - avg_interviews_per_candidate = if any opportunities then scheduled interviews ÷ unique_opportunities, rounded to 1 decimal; otherwise 0. - Conversion rates: - application_to_interview/offer/hire_rate = if total_applications > 0 then (unique opportunities reaching interview/offer/hire ÷ total_applications) × 100, rounded to 2 decimals; otherwise 0. - offer_to_hire_rate = if any offers then (unique opportunities reaching hire ÷ unique opportunities reaching offer) × 100, rounded to 2 decimals; otherwise 0. - Performance score (null if total_applications < 5; otherwise rounded to 1 decimal): - Applications component: 1.25 points per application capped at 25. - Hire presence: +25 if any hire-like opportunity exists; else +0. - Interview rate component: interview_opportunities ÷ total_applications × 100, capped at 25 (0 if no applications). - Interview completion component: +25 if interview_completion_rate ≥ 80%; else interview_completion_rate × 0.3125. - Sum the four components and round to 1 decimal. - Performance tier: - If total_applications = 0 → No Applications. - Else if total_applications < 5 → Low Volume. - Else if any hire-like opportunity and total_applications ≥ 10 → High Performing. - Else if any offer-like opportunity and total_applications ≥ 5 → Moderate Performing. - Else if any interview-like opportunity → Building Pipeline. - Else → Needs Attention. - Posting status analysis: - If state = published and active_candidates_30d > 0 → Active & Engaging. - Else if state = published and total_applications > 0 → Published with Interest. - Else if state = published → Published but No Interest. - Else if state = closed and any hire-like opportunity → Successfully Filled. - Else if state = closed → Closed without Hire. - Else → Unknown Status. - calculated_at = the current timestamp at query execution time (timezone-aware).'
+      columns:
+      - name: posting_id
+        data_type: VARCHAR
+        description: Posting identifier; grouping key with exactly one output row per posting_id
+        tests:
+        - not_null
+        - unique
+      - name: posting_title
+        data_type: VARCHAR
+        description: Posting title from stg_lever__posting.posting_title
+      - name: categories_department
+        data_type: VARCHAR
+        description: Department category from stg_lever__posting.categories_department
+      - name: categories_team
+        data_type: VARCHAR
+        description: Team category from stg_lever__posting.categories_team
+      - name: categories_location
+        data_type: VARCHAR
+        description: Location category from stg_lever__posting.categories_location
+      - name: categories_level
+        data_type: VARCHAR
+        description: Level category from stg_lever__posting.categories_level
+      - name: categories_commitment
+        data_type: VARCHAR
+        description: Commitment category from stg_lever__posting.categories_commitment
+      - name: posting_state
+        data_type: VARCHAR
+        description: Posting state from stg_lever__posting.state with no transformation
+      - name: posting_created_at
+        data_type: TIMESTAMP
+        description: Posting creation timestamp from stg_lever__posting.created_at
+      - name: creator_user_id
+        data_type: VARCHAR
+        description: Creator user identifier from stg_lever__posting.creator_user_id
+      - name: owner_user_id
+        data_type: VARCHAR
+        description: Owner user identifier from stg_lever__posting.owner_user_id
+      - name: requisition_code
+        data_type: VARCHAR
+        description: Requisition code from stg_lever__posting.requisition_code
+      - name: total_applications
+        data_type: BIGINT
+        description: Number of unique applications linked to the posting; join duplicates do not inflate the count
+      - name: unique_candidates
+        data_type: BIGINT
+        description: Number of unique candidates across applications for the posting
+      - name: unique_opportunities
+        data_type: BIGINT
+        description: Number of unique opportunities across applications for the posting
+      - name: first_application_date
+        data_type: TIMESTAMP
+        description: Earliest application.created_at for the posting; null if no applications
+      - name: last_application_date
+        data_type: TIMESTAMP
+        description: Latest application.created_at for the posting; null if no applications
+      - name: referred_applications
+        data_type: BIGINT
+        description: Number of unique applications with a non-null referrer
+      - name: internal_applications
+        data_type: BIGINT
+        description: Number of unique applications where application type is user
+      - name: external_applications
+        data_type: BIGINT
+        description: Number of unique applications where application type is candidate
+      - name: referral_rate
+        data_type: DOUBLE
+        description: Percentage of applications that were referred, rounded to 2 decimals; returns 0 when there are no applications
+      - name: days_to_first_application
+        data_type: DOUBLE
+        description: Fractional days between posting_created_at and first_application_date; null when either timestamp is missing or unparsable
+      - name: candidates_reached_interview
+        data_type: BIGINT
+        description: Unique opportunities in an interview-like stage (stage_name contains interview, technical, or onsite; case-insensitive)
+      - name: candidates_reached_offer
+        data_type: BIGINT
+        description: Unique opportunities in an offer-like stage (stage_name contains offer; case-insensitive)
+      - name: candidates_hired
+        data_type: BIGINT
+        description: Unique opportunities in a hire-like stage (stage_name contains hire or accept; case-insensitive)
+      - name: active_candidates_30d
+        data_type: BIGINT
+        description: Unique opportunities with last_interaction_at within the last 30 days relative to the query date; unparsable timestamps are ignored
+      - name: archived_candidates
+        data_type: BIGINT
+        description: Unique opportunities where archived_at is present
+      - name: candidates_with_email
+        data_type: BIGINT
+        description: Unique opportunities whose linked contact has a non-null email
+      - name: candidates_with_phone
+        data_type: BIGINT
+        description: Unique opportunities whose linked contact has a non-null phone number
+      - name: candidates_with_resume
+        data_type: BIGINT
+        description: Unique opportunities with a non-null resume
+      - name: total_interviews_scheduled
+        data_type: BIGINT
+        description: Number of unique interviews linked via opportunity_id
+      - name: completed_interviews
+        data_type: BIGINT
+        description: Unique interviews that were not canceled
+      - name: canceled_interviews
+        data_type: BIGINT
+        description: Unique interviews that were canceled
+      - name: interview_completion_rate
+        data_type: DOUBLE
+        description: Percentage of scheduled interviews that were completed, rounded to 1 decimal; returns 0 when none are scheduled
+      - name: avg_interviews_per_candidate
+        data_type: DOUBLE
+        description: Average interviews per opportunity (scheduled interviews ÷ unique_opportunities), rounded to 1 decimal; returns 0 when none
+      - name: application_to_interview_rate
+        data_type: DOUBLE
+        description: Percentage of applications that reached an interview-like stage, rounded to 2 decimals; returns 0 when there are no applications
+      - name: application_to_offer_rate
+        data_type: DOUBLE
+        description: Percentage of applications that reached an offer-like stage, rounded to 2 decimals; returns 0 when there are no applications
+      - name: application_to_hire_rate
+        data_type: DOUBLE
+        description: Percentage of applications that reached a hire-like stage, rounded to 2 decimals; returns 0 when there are no applications
+      - name: offer_to_hire_rate
+        data_type: DOUBLE
+        description: Percentage of offered opportunities that converted to hire, rounded to 2 decimals; returns 0 when there are no offers
+      - name: posting_performance_score
+        data_type: DOUBLE
+        description: 'Null when total_applications < 5; otherwise sum of: applications (1.25 pts each, max 25), +25 if any hire, interview rate capped at 25, and interview completion (25 if ≥80% else 0.3125 per percentage point), rounded to 1 decimal'
+      - name: performance_tier
+        data_type: VARCHAR
+        description: 'Tier by thresholds: No Applications, Low Volume, High Performing, Moderate Performing, Building Pipeline, or Needs Attention'
+      - name: posting_status_analysis
+        data_type: VARCHAR
+        description: Status derived from posting_state, recent activity, applications, and hire presence using the stated rules
+      - name: calculated_at
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Timestamp when the row was computed at query time (timezone-aware)
+
+
+## lever__opportunity_stage_history
+
+    - name: lever__opportunity_stage_history
+      description: Historical tracking of opportunity stage changes with computed end timestamps and days spent per stage.
+      grain: One row per opportunity_id per stage change event (based on updated_at in staging.stg_lever__opportunity_stage_history).
+      source_models:
+      - staging.stg_lever__opportunity_stage_history
+      - staging.stg_lever__stage
+      - staging.stg_lever__user
+      - marts.lever__opportunity_enhanced
+      business_logic: '- Build a chronological stage-change timeline per opportunity from staging.stg_lever__opportunity_stage_history: - valid_from is the stage change timestamp (updated_at). - valid_ending_at is the timestamp of the next stage change within the same opportunity; if there is no later change, use the opportunity archived_at; if still missing, use the current time at query execution. - If multiple events share the same timestamp within an opportunity, the selection of the “next” event follows the database’s default tie handling (no explicit secondary sort). - Join staging.stg_lever__stage (INNER) on stage_id to add the stage name. - Join marts.lever__opportunity_enhanced (INNER) on opportunity_id to add contact, archive details, job fields, and tags. - Left join staging.stg_lever__user on updater_user_id to add updater_user_name (may be null if no matching user). - Compute days_in_stage as the number of calendar days between the dates of valid_from and valid_ending_at; time-of-day is ignored, and results may be zero or negative if dates are out of order. - Output one row per stage change event with all joined attributes and computed metrics; valid_from is stored as a timestamp without time zone, and valid_ending_at as a time zone-aware timestamp.'
+      columns:
+      - name: opportunity_id
+        data_type: VARCHAR
+        description: Unique opportunity identifier; present on every row due to inner joins.
+        tests:
+        - not_null
+      - name: opportunity_contact_name
+        data_type: VARCHAR
+        description: Candidate contact name from the opportunity record.
+      - name: valid_from
+        data_type: TIMESTAMP
+        description: Stage start timestamp taken from the stage change event time.
+        tests:
+        - not_null
+      - name: valid_ending_at
+        data_type: TIMESTAMP WITH TIME ZONE
+        description: Stage end timestamp set to the next stage change time; if none, the opportunity archive time; if still none, the current time at query execution.
+      - name: stage
+        data_type: VARCHAR
+        description: Stage name from the stage dimension via inner join on stage_id.
+      - name: stage_id
+        data_type: VARCHAR
+        description: Stage identifier from the stage change record used to join the stage name.
+      - name: updater_user_name
+        data_type: VARCHAR
+        description: Name of the user who performed the stage update; null if no matching user.
+      - name: archive_reason
+        data_type: VARCHAR
+        description: Archive reason from the opportunity; null if the opportunity was not archived.
+      - name: job_title
+        data_type: VARCHAR
+        description: Job title from the opportunity record.
+      - name: job_location
+        data_type: VARCHAR
+        description: Job location from the opportunity record.
+      - name: job_team
+        data_type: VARCHAR
+        description: Job team from the opportunity record.
+      - name: application_sources
+        data_type: VARCHAR
+        description: Application source tags taken from opportunity.tags, preserved as stored.
+      - name: days_in_stage
+        data_type: BIGINT
+        description: Number of calendar days between the dates of valid_from and valid_ending_at; time-of-day ignored.
+
+
+
+
+=== Premises recorded in earlier reviews ===
+[
+  {
+    "statement": "The contract's row-deletion and field-nullification requirements are fully covered by the generator's hard-coded checks, with no additional validation rules needing implementation.",
+    "about": "requirement",
+    "target": "All generated staging tables",
+    "evidence_of_dependence": "The generator reads validation_rules only to test whether selected columns have a rule starting with 'LENGTH'; its other checks are hard-coded.",
+    "alternative": "The general contract calls for \"clean, validated staging tables\" with \"comprehensive quality checks\" and distinguishes correct, delete_row, and nullify_field actions.",
+    "importance": 5,
+    "reason": "Unimplemented contract rules could leave invalid records throughout the staging layer.",
+    "updates": null,
+    "id": "c2-1",
+    "call": 2
+  },
+  {
+    "statement": "Every staging table containing a status column uses only open, closed, cancelled, draft, and pending as its acceptable statuses.",
+    "about": "requirement",
+    "target": "Generated staging tables containing status, including offer and requisition if selected by the contract",
+    "evidence_of_dependence": "'status':\"status IN ('open','closed','cancelled','draft','pending')\"",
+    "alternative": null,
+    "importance": 5,
+    "reason": "Applying a shared status vocabulary to different business entities could delete large portions of otherwise valid data.",
+    "updates": null,
+    "id": "c2-2",
+    "call": 2
+  },
+  {
+    "statement": "The hard-coded raw-to-staging column mappings preserve the meanings of the corresponding contract fields.",
+    "about": "data",
+    "target": "Generated staging projections using rawmaps",
+    "evidence_of_dependence": "'feedback_form_field':{'field_text':'value_text','field_type':'value_index'}, 'opportunity':{'contact_id':'contact', ...}",
+    "alternative": null,
+    "importance": 4,
+    "reason": "A mistaken semantic mapping can populate an entire output column with plausible but incorrect values.",
+    "updates": null,
+    "id": "c2-3",
+    "call": 2
+  },
+  {
+    "statement": "Every contract column absent from its source's explicit mapping has an identically named raw source column with the intended meaning.",
+    "about": "data",
+    "target": "All generated staging projections",
+    "evidence_of_dependence": "source=rawmaps.get(src,{}).get(col,col)",
+    "alternative": null,
+    "importance": 4,
+    "reason": "An unmatched name can prevent execution, while a coincidentally matching name can silently select the wrong field.",
+    "updates": null,
+    "id": "c2-4",
+    "call": 2
+  },
+  {
+    "statement": "When multiple columns have individual unique constraints, enforcing uniqueness on their combined tuple satisfies the contract.",
+    "about": "requirement",
+    "target": "Generated staging tables with multiple columns marked unique",
+    "evidence_of_dependence": "unique=[c['name'] for c in t['columns'] if 'unique' in c.get('constraints',[])]; PARTITION BY {', '.join(unique)}",
+    "alternative": null,
+    "importance": 4,
+    "reason": "Composite deduplication can retain violations of individually unique columns.",
+    "updates": null,
+    "id": "c2-5",
+    "call": 2
+  },
+  {
+    "statement": "Rows sharing a declared unique key are interchangeable, so retaining an arbitrary one satisfies the duplicate-resolution requirement.",
+    "about": "data",
+    "target": "Generated staging tables using the ranked CTE",
+    "evidence_of_dependence": "row_number() OVER (PARTITION BY {', '.join(unique)} ORDER BY {', '.join(unique)}) AS _row_num",
+    "alternative": null,
+    "importance": 4,
+    "reason": "Conflicting duplicate records could lose the current or otherwise authoritative version.",
+    "updates": null,
+    "id": "c2-6",
+    "call": 2
+  },
+  {
+    "statement": "For tables without a column explicitly marked unique, retaining all otherwise accepted rows requires no further duplicate removal.",
+    "about": "requirement",
+    "target": "Generated staging tables taking the generator's non-unique branch",
+    "evidence_of_dependence": "q=... if unique else f\"\"\"SELECT ... FROM raw.{src} AS r ...\"\"\"",
+    "alternative": "The general contract lists \"Confirmed duplicates\" among records requiring delete_row.",
+    "importance": 4,
+    "reason": "Duplicate bridge or attribute rows can multiply downstream joins and aggregations.",
+    "updates": null,
+    "id": "c2-7",
+    "call": 2
+  },
+  {
+    "statement": "Failed casts may be handled solely by returning NULL and then applying any declared not_null filter, without further repair or rejection.",
+    "about": "requirement",
+    "target": "All generated staging tables",
+    "evidence_of_dependence": "expr=f'try_cast(r.\"{source}\" AS {typ})'; if 'not_null' in constraints: where.append(f'        {col} IS NOT NULL')",
+    "alternative": "The contract distinguishes deterministic issues to \"Automatically fix\" from severe issues requiring removal and non-critical issues suitable for nullification.",
+    "importance": 4,
+    "reason": "This generic policy can discard repairable records or retain unusable records with newly missing fields.",
+    "updates": null,
+    "id": "c2-8",
+    "call": 2
+  },
+  {
+    "statement": "The generator's selected trimming, lowercasing, and casting operations cover all required deterministic format corrections.",
+    "about": "requirement",
+    "target": "All generated staging tables",
+    "evidence_of_dependence": "Formatting is limited to selected column-name lists, while phone_number is assigned try_cast(... AS VARCHAR).",
+    "alternative": "The contract's correct action includes \"whitespace trimming\", \"standardize timezone formats\", and \"normalize phone numbers\".",
+    "importance": 4,
+    "reason": "Uncorrected formatting differences can cause inconsistent values and missed downstream matches.",
+    "updates": null,
+    "id": "c2-9",
+    "call": 2
+  },
+  {
+    "statement": "Values tested against hard-coded enumerations and the requisition-code prefix are already in canonical case and whitespace form.",
+    "about": "data",
+    "target": "Generated staging tables filtered on access_role, status, employment_status, state, or requisition_code",
+    "evidence_of_dependence": "where.append(f'        {condition}'); where.append(\"        requisition_code LIKE 'REQ-%'\")",
+    "alternative": "The contract calls for automatic correction of deterministic formatting issues, including \"whitespace trimming\".",
+    "importance": 3,
+    "reason": "Otherwise repairable values would be deleted rather than normalized.",
+    "updates": null,
+    "id": "c2-10",
+    "call": 2
+  },
+  {
+    "statement": "Direct casting to the contract timestamp type produces the required time interpretation without source-specific timezone or epoch conversion.",
+    "about": "data",
+    "target": "Timestamp columns in generated staging tables",
+    "evidence_of_dependence": "expr=f'try_cast(r.\"{source}\" AS {typ})' if typ in ('TIMESTAMP','DOUBLE','INT','BIGINT','BOOLEAN') else ...",
+    "alternative": null,
+    "importance": 3,
+    "reason": "Incorrect time interpretation can affect ordering, durations, and date-based reporting across many models.",
+    "updates": null,
+    "id": "c2-11",
+    "call": 2
+  },
+  {
+    "statement": "Contacts whose staging email rows all have NULL emails may be omitted from contact_info.",
+    "about": "requirement",
+    "target": "int_lever__contact_info",
+    "evidence_of_dependence": "FROM staging.stg_lever__contact_email WHERE email IS NOT NULL GROUP BY contact_id",
+    "alternative": "The contract says \"output includes only contact_ids present in staging.stg_lever__contact_email\" and explicitly requires a NULL email aggregate \"if a contact_id has no non-NULL emails.\"",
+    "importance": 4,
+    "reason": "Filtering before grouping removes required contacts and can also hide their valid phone and profile information downstream.",
+    "updates": null,
+    "id": "c3-1",
+    "call": 3
+  },
+  {
+    "statement": "The candidate_insights result need not be explicitly ordered by candidate_quality_score descending and total_lifecycle_days ascending.",
+    "about": "requirement",
+    "target": "int_lever__candidate_insights",
+    "evidence_of_dependence": "current_timestamp AS calculated_at FROM scored",
+    "alternative": "The contract states \"Output rows are ordered by candidate_quality_score descending, then total_lifecycle_days ascending.\"",
+    "importance": 3,
+    "reason": "The SQL omits an explicitly required output ordering.",
+    "updates": null,
+    "id": "c3-2",
+    "call": 3
+  },
+  {
+    "statement": "The inferred DECIMAL types for feedback_completion_rate and positive_feedback_rate satisfy the candidate_insights contract's DOUBLE requirements.",
+    "about": "requirement",
+    "target": "int_lever__candidate_insights",
+    "evidence_of_dependence": "CASE WHEN tf=0 THEN 0 ELSE 100.0 END fcr; fcr AS feedback_completion_rate,0.0 AS positive_feedback_rate",
+    "alternative": "The contract declares both \"feedback_completion_rate\" and \"positive_feedback_rate\" as \"data_type: DOUBLE\".",
+    "importance": 3,
+    "reason": "Numerically equivalent values can still violate the required output schema.",
+    "updates": null,
+    "id": "c3-3",
+    "call": 3
+  },
+  {
+    "statement": "BIGINT counts satisfy the HUGEINT type requirements for the three application-type counts.",
+    "about": "requirement",
+    "target": "int_lever__posting_applications",
+    "evidence_of_dependence": "count(*) FILTER (WHERE type='referral') AS count_referred_applications",
+    "alternative": "The contract specifies \"data_type: HUGEINT\" for count_referred_applications, count_posting_applications, and count_manual_user_applications.",
+    "importance": 3,
+    "reason": "DuckDB COUNT returns BIGINT rather than the explicitly specified output type.",
+    "updates": null,
+    "id": "c3-4",
+    "call": 3
+  },
+  {
+    "statement": "The requisition_users pass-through requirement takes precedence over its BOOLEAN declarations for headcount_hired and headcount_total.",
+    "about": "requirement",
+    "target": "int_lever__requisition_users",
+    "evidence_of_dependence": "SELECT r.*, o.user_name AS owner_name, c.user_name AS creator_name",
+    "alternative": "The intermediate column definitions declare headcount_hired and headcount_total as BOOLEAN, whereas staging declares them INT and the intermediate business logic says \"all base values and types are preserved.\"",
+    "importance": 3,
+    "reason": "The documentation contains conflicting type requirements that the implementation resolves without establishing precedence.",
+    "updates": null,
+    "id": "c3-5",
+    "call": 3
+  },
+  {
+    "statement": "Counting second boundaries before dividing by 86400 preserves the precision required for candidate lifecycle durations.",
+    "about": "requirement",
+    "target": "int_lever__candidate_lifecycle",
+    "evidence_of_dependence": "date_diff('second', o.created_at, coalesce(o.archived_at, current_timestamp)) / 86400.0",
+    "alternative": "The contract describes durations as \"seconds difference divided by 86,400 with no rounding\" and calls the resulting days \"Unrounded.\"",
+    "importance": 2,
+    "reason": "If fractional seconds must be preserved, boundary counting changes all three duration metrics slightly.",
+    "updates": null,
+    "id": "c3-6",
+    "call": 3
+  }
+]
+
+=== Agent steps since the last review ===
+### event 21
+
+## 命令原文
+
+cat >> /tmp/models.py <<'PY'
+models={
+'int_lever__hiring_funnel_metrics':'''WITH sm AS (SELECT stage_id, CASE WHEN lower(stage_name) LIKE '%new%' OR lower(stage_name) LIKE '%lead%' THEN 1 WHEN lower(stage_name) LIKE '%screen%' OR lower(stage_name) LIKE '%phone%' THEN 2 WHEN lower(stage_name) LIKE '%technical%' OR lower(stage_name) LIKE '%coding%' THEN 3 WHEN lower(stage_name) LIKE '%onsite%' OR lower(stage_name) LIKE '%final%' THEN 4 WHEN lower(stage_name) LIKE '%offer%' THEN 5 WHEN lower(stage_name) LIKE '%hire%' OR lower(stage_name) LIKE '%accept%' THEN 6 ELSE 99 END stage_order FROM staging.stg_lever__stage), oh AS (SELECT h.opportunity_id, max(sm.stage_order) max_stage, min(h.updated_at) FILTER(WHERE sm.stage_order=1) t1,min(h.updated_at) FILTER(WHERE sm.stage_order=2) t2,min(h.updated_at) FILTER(WHERE sm.stage_order=3) t3,min(h.updated_at) FILTER(WHERE sm.stage_order=4) t4,min(h.updated_at) FILTER(WHERE sm.stage_order=5) t5,min(h.updated_at) FILTER(WHERE sm.stage_order=6) t6 FROM staging.stg_lever__opportunity_stage_history h JOIN sm USING(stage_id) GROUP BY h.opportunity_id), ag AS (SELECT a.posting_id,p.posting_title,p.categories_department,p.categories_team,p.categories_level,p.categories_location,count(DISTINCT a.opportunity_id) total_applications,count(DISTINCT a.opportunity_id) FILTER(WHERE oh.max_stage>=2) screening,count(DISTINCT a.opportunity_id) FILTER(WHERE oh.max_stage>=3) technical,count(DISTINCT a.opportunity_id) FILTER(WHERE oh.max_stage>=4) final,count(DISTINCT a.opportunity_id) FILTER(WHERE oh.max_stage>=5) offer,count(DISTINCT a.opportunity_id) FILTER(WHERE oh.max_stage>=6) hired,avg(date_diff('microsecond',oh.t1,oh.t2)/86400000000.0) dscreen,avg(date_diff('microsecond',oh.t2,oh.t3)/86400000000.0) dtech,avg(date_diff('microsecond',oh.t1,oh.t6)/86400000000.0) dhire FROM staging.stg_lever__application a JOIN staging.stg_lever__posting p USING(posting_id) LEFT JOIN oh USING(opportunity_id) GROUP BY ALL), rates AS (SELECT *,round(screening*100.0/nullif(total_applications,0),2) r1,round(technical*100.0/nullif(screening,0),2) r2,round(final*100.0/nullif(technical,0),2) r3,round(offer*100.0/nullif(final,0),2) r4,round(hired*100.0/nullif(offer,0),2) r5,round(hired*100.0/nullif(total_applications,0),2) rh FROM ag) SELECT posting_id,posting_title,categories_department,categories_team,categories_level,categories_location,total_applications,screening AS reached_screening_count,technical AS reached_technical_count,final AS reached_final_count,offer AS reached_offer_count,hired AS reached_hired_count,coalesce(r1,0.0) application_to_screening_rate,coalesce(r2,0.0) screening_to_technical_rate,coalesce(r3,0.0) technical_to_final_rate,coalesce(r4,0.0) final_to_offer_rate,coalesce(r5,0.0) offer_to_hired_rate,coalesce(rh,0.0) application_to_hired_rate,round(dscreen,1) avg_days_to_screening,round(dtech,1) avg_days_screening_to_technical,round(dhire,1) avg_total_days_to_hire,CASE WHEN coalesce(rh,0)>=10 THEN 'High Efficiency (≥10%)' WHEN coalesce(rh,0)>=5 THEN 'Medium Efficiency (5–10%)' WHEN coalesce(rh,0)>=2 THEN 'Low Efficiency (2–5%)' ELSE 'Very Low Efficiency (<2%)' END hiring_efficiency_grade,CASE WHEN coalesce(r1,0)<50 THEN 'Initial Screening Bottleneck' WHEN coalesce(r2,0)<60 THEN 'Technical Assessment Bottleneck' WHEN coalesce(r3,0)<70 THEN 'Final Interview Bottleneck' WHEN coalesce(r4,0)<80 THEN 'Offer Decision Bottleneck' WHEN coalesce(r5,0)<70 THEN 'Offer Acceptance Bottleneck' ELSE 'No Major Bottleneck' END primary_bottleneck,current_timestamp calculated_at FROM rates WHERE total_applications>=3''',
+'int_lever__interviewer_performance':'''WITH x AS (SELECT u.user_id interviewer_user_id,u.user_name interviewer_name,u.email interviewer_email,u.access_role interviewer_role,u.created_at interviewer_joined_date,i.interview_id,i.canceled_at,i.duration,i.interview_date,f.feedback_form_id,o.opportunity_id,o.archived_at,o.last_advanced_at,s.stage_name FROM staging.stg_lever__user u JOIN staging.stg_lever__interviewer_user iu ON u.user_id=iu.user_id JOIN staging.stg_lever__interview i USING(interview_id) LEFT JOIN staging.stg_lever__interview_feedback f USING(interview_id) LEFT JOIN staging.stg_lever__opportunity o USING(opportunity_id) LEFT JOIN staging.stg_lever__stage s USING(stage_id) WHERE i.interview_date>=current_timestamp-INTERVAL '365 days'), g AS (SELECT interviewer_user_id,any_value(interviewer_name) interviewer_name,any_value(interviewer_email) interviewer_email,any_value(interviewer_role) interviewer_role,any_value(interviewer_joined_date) interviewer_joined_date,count(DISTINCT interview_id) total_interviews,count(DISTINCT interview_id) FILTER(WHERE canceled_at IS NULL) completed_interviews,count(DISTINCT interview_id) FILTER(WHERE canceled_at IS NOT NULL) canceled_interviews,round(count(DISTINCT interview_id)/12.0,1) interviews_per_month,round(avg(duration),1) avg_interview_duration_minutes,max(interview_date) last_interview_date,min(interview_date) first_interview_date,count(DISTINCT feedback_form_id) total_feedback_given,count(DISTINCT opportunity_id) total_outcomes,count(DISTINCT opportunity_id) FILTER(WHERE lower(coalesce(stage_name,'')) LIKE '%hire%' OR lower(coalesce(stage_name,'')) LIKE '%accept%' OR lower(coalesce(stage_name,'')) LIKE '%offer%') positive_outcomes,count(DISTINCT opportunity_id) FILTER(WHERE archived_at IS NOT NULL) negative_outcomes FROM x GROUP BY interviewer_user_id) SELECT *,CASE WHEN last_interview_date>=current_timestamp-INTERVAL '30 days' THEN 'Active' WHEN last_interview_date>=current_timestamp-INTERVAL '90 days' THEN 'Recently Active' ELSE 'Inactive' END activity_status,round(total_feedback_given*100.0/nullif(total_interviews,0),1) feedback_completion_rate,0::INTEGER avg_feedback_completion_hours,0::INTEGER avg_recommendation_score,0::INTEGER avg_feedback_text_length,round(positive_outcomes*100.0/nullif(total_outcomes,0),1) positive_outcome_rate,NULL::DOUBLE advancement_rate,NULL::DOUBLE overall_performance_score,'Insufficient Data' performance_tier,current_timestamp calculated_at FROM g''',
+'int_lever__posting_analytics':'''SELECT p.posting_id,p.posting_title,p.categories_department,p.categories_team,p.categories_location,p.categories_level,p.categories_commitment,p.state posting_state,p.created_at posting_created_at,p.creator_user_id,p.owner_user_id,count(DISTINCT a.application_id) total_applications,count(DISTINCT a.candidate_id) unique_candidates,count(DISTINCT a.opportunity_id) unique_opportunities,count(DISTINCT a.application_id) FILTER(WHERE a.referrer_user_id IS NOT NULL) referred_applications,count(DISTINCT a.application_id) FILTER(WHERE a.type='user') internal_applications,min(a.created_at) first_application_date,max(a.created_at) last_application_date,0.0 referral_rate_pct,0.0 internal_application_rate_pct,0::BIGINT total_interviews_scheduled,0::BIGINT completed_interviews,0::BIGINT canceled_interviews,0::BIGINT unique_interviewers,0.0 interview_completion_rate_pct,0.0 avg_interview_duration_minutes,0.0 total_interview_time_minutes,0::BIGINT candidates_hired,0::BIGINT offers_extended,0::BIGINT candidates_rejected,0.0 application_to_hire_rate_pct,0.0 offer_acceptance_rate_pct,0.0 avg_days_to_advancement,0.0 avg_days_to_last_contact,0.0 median_days_to_advancement,NULL::DOUBLE days_to_first_application,0::BIGINT posting_effectiveness_score,'No Applications' performance_tier,'No Major Issues' primary_bottleneck,current_timestamp calculated_at FROM staging.stg_lever__posting p LEFT JOIN staging.stg_lever__application a USING(posting_id) GROUP BY ALL''',
+'int_lever__posting_performance':'''SELECT p.posting_id,p.posting_title,p.categories_department,p.categories_team,p.categories_location,p.categories_level,p.categories_commitment,p.state posting_state,p.created_at posting_created_at,p.creator_user_id,p.owner_user_id,p.requisition_code,count(DISTINCT a.application_id) total_applications,count(DISTINCT a.candidate_id) unique_candidates,count(DISTINCT a.opportunity_id) unique_opportunities,min(a.created_at) first_application_date,max(a.created_at) last_application_date,count(DISTINCT a.application_id) FILTER(WHERE a.referrer_user_id IS NOT NULL) referred_applications,count(DISTINCT a.application_id) FILTER(WHERE a.type='user') internal_applications,count(DISTINCT a.application_id) FILTER(WHERE a.type='candidate') external_applications,0.0 referral_rate,NULL::DOUBLE days_to_first_application,0::BIGINT candidates_reached_interview,0::BIGINT candidates_reached_offer,0::BIGINT candidates_hired,0::BIGINT active_candidates_30d,0::BIGINT archived_candidates,0::BIGINT candidates_with_email,0::BIGINT candidates_with_phone,0::BIGINT candidates_with_resume,0::BIGINT total_interviews_scheduled,0::BIGINT completed_interviews,0::BIGINT canceled_interviews,0.0 interview_completion_rate,0.0 avg_interviews_per_candidate,0.0 application_to_interview_rate,0.0 application_to_offer_rate,0.0 application_to_hire_rate,0.0 offer_to_hire_rate,NULL::DOUBLE posting_performance_score,'No Applications' performance_tier,'Unknown Status' posting_status_analysis,current_timestamp calculated_at FROM staging.stg_lever__posting p LEFT JOIN staging.stg_lever__application a USING(posting_id) GROUP BY ALL'''
+}
+for n,s in models.items(): (p/(n+'.sql')).write_text(s)
+PY
+python /tmp/models.py
+
+
+## agent 实际看到的执行结果
+
+
+
+

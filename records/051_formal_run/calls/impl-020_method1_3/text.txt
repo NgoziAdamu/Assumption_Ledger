@@ -1,0 +1,441 @@
+{
+  "premises": [
+    {
+      "statement": "The company metrics model is permitted to reference the conversation metrics mart directly.",
+      "about": "requirement",
+      "target": "intercom__company_metrics",
+      "evidence_of_dependence": "join marts.intercom__conversation_metrics cm on cc.conversation_id=cm.conversation_id",
+      "alternative": "The design principles state \"Marts models only reference intermediate models\" and \"No cross-layer or same-layer dependencies are allowed.\"",
+      "importance": 5,
+      "reason": "The implementation depends on a same-layer dependency expressly excluded by the contract.",
+      "updates": null
+    },
+    {
+      "statement": "The raw team-admin source provides a _fivetran_deleted column usable for deletion filtering.",
+      "about": "data",
+      "target": "stg_intercom__team_admin",
+      "evidence_of_dependence": "from raw.team_admin_data where coalesce(try_cast(_fivetran_deleted as boolean), false) is not true",
+      "alternative": "The material index lists \"_fivetran_active\" for raw.team_admin_data but lists \"_fivetran_deleted\" only for main.team_admin_data.",
+      "importance": 5,
+      "reason": "The referenced column is absent from the indexed raw schema, potentially preventing this model from executing.",
+      "updates": null
+    },
+    {
+      "statement": "Assignment-related events are exactly the part types whose lowercase names contain 'assign'.",
+      "about": "data",
+      "target": "int_intercom__conversation_part_aggregates",
+      "evidence_of_dependence": "where event_type like '%assign%'",
+      "alternative": null,
+      "importance": 4,
+      "reason": "This unverified event classification controls assignment counts and all assignment timestamps.",
+      "updates": null
+    },
+    {
+      "statement": "Close events are exactly the part types whose lowercase names contain 'clos'.",
+      "about": "data",
+      "target": "int_intercom__conversation_part_events",
+      "evidence_of_dependence": "filter (where event_type like '%clos%')",
+      "alternative": null,
+      "importance": 4,
+      "reason": "Misclassification changes closing actors, closing times, and downstream close-duration metrics.",
+      "updates": null
+    },
+    {
+      "statement": "Every nonempty phone value containing only digits and starting with a nonzero digit already includes an international country calling code.",
+      "about": "data",
+      "target": "stg_intercom__contact_history",
+      "evidence_of_dependence": "when regexp_matches(normalized_phone, '^[1-9][0-9]{1,14}$') then '+' || normalized_phone",
+      "alternative": "The phone rule permits normalization only \"where deterministically possible\"; national numbers without country context need not determine an E.164 number.",
+      "importance": 4,
+      "reason": "The transformation can turn ambiguous national numbers into apparently valid but incorrect international numbers.",
+      "updates": null
+    },
+    {
+      "statement": "Removing every character other than digits and plus signs preserves the intended phone number.",
+      "about": "data",
+      "target": "stg_intercom__contact_history",
+      "evidence_of_dependence": "regexp_replace(trim(try_cast(phone as varchar)), '[^0-9+]', '', 'g')",
+      "alternative": "The contract requires \"Normalize to E.164 where deterministically possible\" and nullification of malformed optional phone values.",
+      "importance": 3,
+      "reason": "Extensions or alphabetic content can be merged into a different number rather than being recognized as ambiguous.",
+      "updates": null
+    },
+    {
+      "statement": "An unknown or unparseable unsubscribe flag should be represented as false.",
+      "about": "requirement",
+      "target": "stg_intercom__contact_history",
+      "evidence_of_dependence": "coalesce(try_cast(unsubscribed_from_emails as boolean), false) as is_unsubscribed_from_emails",
+      "alternative": "The contract specifies a BOOLEAN output but gives no false default for is_unsubscribed_from_emails.",
+      "importance": 3,
+      "reason": "This collapses unknown consent status into an affirmative not-unsubscribed status.",
+      "updates": null
+    },
+    {
+      "statement": "Only uppercase and whitespace differences in conversation states should be corrected before applying the allowed-state guard.",
+      "about": "requirement",
+      "target": "stg_intercom__conversation_history",
+      "evidence_of_dependence": "lower(trim(try_cast(state as varchar))) as state",
+      "alternative": "The state validation says \"state IN ('open', 'closed')\" with \"on_failure: delete_row\" and does not explicitly authorize state correction.",
+      "importance": 3,
+      "reason": "Correction can retain snapshots that a literal strict-domain filter would delete.",
+      "updates": null
+    },
+    {
+      "statement": "Conversation snapshots whose identifiers cannot be cast to BIGINT should be deleted during staging.",
+      "about": "requirement",
+      "target": "stg_intercom__conversation_history",
+      "evidence_of_dependence": "and conversation_id is not null",
+      "alternative": "The staging contract specifies not-null constraints for created_at and state, whereas conversation_id has only a data type there.",
+      "importance": 2,
+      "reason": "The added guard changes staging row inclusion beyond its explicit filters.",
+      "updates": null
+    },
+    {
+      "statement": "All retained company snapshots have non-null company_id values.",
+      "about": "data",
+      "target": "stg_intercom__company_history, int_intercom__company_history, intercom__company_enhanced, intercom__company_metrics",
+      "evidence_of_dependence": "try_cast(company_id as varchar) as company_id ... where coalesce(try_cast(_fivetran_active as boolean), true)",
+      "alternative": "The intermediate and company mart specifications declare company_id tests of \"[not_null]\", but the staging SQL does not reject missing identifiers.",
+      "importance": 3,
+      "reason": "A missing identifier can propagate into several outputs with explicit non-null expectations.",
+      "updates": null
+    },
+    {
+      "statement": "Missing or unparseable company user and session counts should be converted to zero.",
+      "about": "requirement",
+      "target": "stg_intercom__company_history",
+      "evidence_of_dependence": "greatest(coalesce(try_cast(user_count as bigint), 0), 0)::bigint",
+      "alternative": "The intermediate descriptions say negatives are \"coerced to zero upstream\" but do not prescribe replacing missing or malformed counts with zero.",
+      "importance": 2,
+      "reason": "Unknown measurements become observed zeroes and affect downstream interpretation.",
+      "updates": null
+    },
+    {
+      "statement": "The website values fit the hostname syntax handled by the chosen regular expression.",
+      "about": "data",
+      "target": "int_intercom__company_history",
+      "evidence_of_dependence": "regexp_extract(website, '^(?:[A-Za-z][A-Za-z0-9+.-]*://)?(?:[^/@]+@)?([^/:?#]+)', 1)",
+      "alternative": null,
+      "importance": 3,
+      "reason": "Protocol-relative URLs, surrounding whitespace, or other URL forms can produce empty or incorrect domains.",
+      "updates": null
+    },
+    {
+      "statement": "A company snapshot with a creation timestamp but no update timestamp should have company_age_days equal to zero.",
+      "about": "requirement",
+      "target": "int_intercom__company_history",
+      "evidence_of_dependence": "date_diff('day', created_at, coalesce(updated_at, created_at))",
+      "alternative": "The contract defines age as the day difference \"between created_at and the last updated timestamp\" and says \"when computable.\"",
+      "importance": 2,
+      "reason": "The fallback substitutes a known zero age for an age whose endpoint is unknown.",
+      "updates": null
+    },
+    {
+      "statement": "No retained contact has a null contact_id.",
+      "about": "data",
+      "target": "int_intercom__contact_latest, intercom__contact_enhanced",
+      "evidence_of_dependence": "partition by contact_id ... from staging.stg_intercom__contact_history",
+      "alternative": "Both outputs declare contact_id tests of \"[not_null]\", but the SQL has no contact identifier rejection.",
+      "importance": 3,
+      "reason": "Null identifiers would collapse unrelated records into one partition and violate the output expectation.",
+      "updates": null
+    },
+    {
+      "statement": "Contact snapshots tied on both the effective update timestamp and creation timestamp are interchangeable for latest-snapshot selection.",
+      "about": "data",
+      "target": "int_intercom__contact_latest",
+      "evidence_of_dependence": "order by coalesce(updated_at,created_at) desc nulls last, created_at desc",
+      "alternative": null,
+      "importance": 3,
+      "reason": "Without a further tie-breaker, conflicting ties can change activity, retention, and contact attributes.",
+      "updates": null
+    },
+    {
+      "statement": "Missing activity or signup timestamps should make the corresponding activity and retention flags false rather than unknown.",
+      "about": "requirement",
+      "target": "int_intercom__contact_latest",
+      "evidence_of_dependence": "coalesce(last_activity_at >= signed_up_at + interval '7 days', false) as retained_7d",
+      "alternative": null,
+      "importance": 2,
+      "reason": "The default affects company retention ratios and distinguishes missing evidence from demonstrated inactivity.",
+      "updates": null
+    },
+    {
+      "statement": "Conversation snapshots tied on effective update time and creation time are interchangeable for latest-snapshot selection.",
+      "about": "data",
+      "target": "int_intercom__latest_conversation",
+      "evidence_of_dependence": "order by coalesce(updated_at, created_at) desc nulls last, created_at desc",
+      "alternative": null,
+      "importance": 3,
+      "reason": "Conflicting ties can change conversation state, rating, and downstream company KPIs.",
+      "updates": null
+    },
+    {
+      "statement": "Retained conversation rating values are nonnegative.",
+      "about": "data",
+      "target": "int_intercom__latest_conversation",
+      "evidence_of_dependence": "try_cast(conversation_rating_value as double) as conversation_rating",
+      "alternative": "The intermediate specification requires \"conversation_rating >= 0\", but neither this model nor its staging source guards negative ratings.",
+      "importance": 3,
+      "reason": "Negative source ratings would propagate into outputs requiring nonnegative ratings and their averages.",
+      "updates": null
+    },
+    {
+      "statement": "Each retained conversation-part row represents a separate part to be counted rather than another snapshot of the same part.",
+      "about": "data",
+      "target": "int_intercom__conversation_part_aggregates",
+      "evidence_of_dependence": "count(*)::bigint as count_total_parts",
+      "alternative": "The indexed source is named \"conversation_part_history_data\" and includes id, updated_at, _fivetran_start, and _fivetran_end, which permit multiple historical versions.",
+      "importance": 4,
+      "reason": "Repeated active versions would inflate total parts, assignments, and reopen counts.",
+      "updates": null
+    },
+    {
+      "statement": "Admin responses with body content are exactly admin-authored parts whose event types are comment, message, or reply.",
+      "about": "requirement",
+      "target": "int_intercom__conversation_part_aggregates",
+      "evidence_of_dependence": "author_type = 'admin' and event_type in ('comment','message','reply') and nullif(trim(body),'') is not null",
+      "alternative": "The first-response column specifies \"first admin-authored comment with body content\", whereas the last-response column says \"admin-authored response with body content.\"",
+      "importance": 4,
+      "reason": "The expanded and shared event set changes response timestamps and all response-time medians.",
+      "updates": null
+    },
+    {
+      "statement": "Reopen events are exactly the part types whose lowercase names contain 'reopen'.",
+      "about": "data",
+      "target": "int_intercom__conversation_part_aggregates",
+      "evidence_of_dependence": "where event_type like '%reopen%'",
+      "alternative": null,
+      "importance": 3,
+      "reason": "No source event vocabulary has been established to justify the reopen counts and timestamps.",
+      "updates": null
+    },
+    {
+      "statement": "Every qualifying first or last close or contact event with a timestamp has a non-null author_id.",
+      "about": "data",
+      "target": "int_intercom__conversation_part_events",
+      "evidence_of_dependence": "arg_min(author_id, created_at) ... min(created_at) filter (where event_type like '%clos%')",
+      "alternative": null,
+      "importance": 4,
+      "reason": "Author aggregates skip null author IDs while timestamp aggregates do not, potentially attributing an event to a different author and company.",
+      "updates": null
+    },
+    {
+      "statement": "Qualifying events tied on created_at have interchangeable author IDs for first and last attribution.",
+      "about": "data",
+      "target": "int_intercom__conversation_part_events",
+      "evidence_of_dependence": "arg_min(author_id, created_at) ... arg_max(author_id, created_at)",
+      "alternative": null,
+      "importance": 3,
+      "reason": "Unresolved ties can change closing actors and the first contact used for company attribution.",
+      "updates": null
+    },
+    {
+      "statement": "Author types are already encoded exactly as lowercase admin, user, or lead wherever actor classification is needed.",
+      "about": "data",
+      "target": "int_intercom__conversation_string_aggregates, int_intercom__conversation_part_events",
+      "evidence_of_dependence": "where author_type='admin' ... where author_type in ('user','lead')",
+      "alternative": null,
+      "importance": 3,
+      "reason": "Case or whitespace variants would silently exclude participants and event attributions.",
+      "updates": null
+    },
+    {
+      "statement": "The company metrics output should include only companies present in company history, even when relationship mappings contain other company IDs.",
+      "about": "requirement",
+      "target": "intercom__company_metrics",
+      "evidence_of_dependence": "from company_dim d left join contact_rollup co ... left join conversation_rollup cr",
+      "alternative": null,
+      "importance": 3,
+      "reason": "The driving dimension excludes any mapped-company metrics lacking a company snapshot.",
+      "updates": null
+    },
+    {
+      "statement": "Contacts associated through relationship history but absent from the cleaned latest-contact model should be excluded from contacts_total.",
+      "about": "requirement",
+      "target": "intercom__company_metrics",
+      "evidence_of_dependence": "join intermediate.int_intercom__contact_latest ct on rel.contact_id=ct.contact_id",
+      "alternative": "The contacts_total description is \"Total number of contacts associated with the company\", which could instead count all retained relationship identifiers.",
+      "importance": 3,
+      "reason": "This inclusion choice affects contact totals and every conversations-per-contact rate.",
+      "updates": null
+    },
+    {
+      "statement": "Registration retention ratios should use every contact with a non-null signup timestamp as their denominator, without requiring enough elapsed time to observe the retention window.",
+      "about": "requirement",
+      "target": "intercom__company_metrics",
+      "evidence_of_dependence": "count(distinct contact_id) filter(where signed_up_at is not null) as registered_contacts",
+      "alternative": null,
+      "importance": 3,
+      "reason": "Including recently registered contacts can materially lower 7-day and 30-day retention ratios.",
+      "updates": null
+    },
+    {
+      "statement": "For a company with contacts but no mapped conversations, conversations-per-contact rates should be null rather than zero.",
+      "about": "requirement",
+      "target": "intercom__company_metrics",
+      "evidence_of_dependence": "case when co.contacts_total>0 then cr.total_conversations::double/co.contacts_total end",
+      "alternative": "The contract describes conv_rate_overall as \"Conversations per contact overall (guarded by positive denominator)\", while the displayed total_conversations is explicitly coalesced to zero.",
+      "importance": 3,
+      "reason": "The rate remains null despite a positive denominator and an output conversation total of zero.",
+      "updates": null
+    },
+    {
+      "statement": "Uncomputable or negative conversation durations should be represented as null rather than zero or another corrective value.",
+      "about": "requirement",
+      "target": "intercom__conversation_metrics",
+      "evidence_of_dependence": "case when first_close_at >= first_contact_reply_at then date_diff('second',first_contact_reply_at,first_close_at)/60.0 end",
+      "alternative": null,
+      "importance": 2,
+      "reason": "This guard determines which observations enter downstream duration medians.",
+      "updates": null
+    },
+    {
+      "statement": "Admin email inclusion should be checked after trimming whitespace rather than against the raw email value.",
+      "about": "requirement",
+      "target": "stg_intercom__admin",
+      "evidence_of_dependence": "length(trim(email)) <= 255 and regexp_matches(trim(email), ...)",
+      "alternative": "The admin rule says email must have \"length <= 255\" and match the regex, but does not explicitly specify trimming before these checks.",
+      "importance": 2,
+      "reason": "Trimming changes which administrators pass the length and syntax checks.",
+      "updates": null
+    }
+  ],
+  "fewer": [
+    {
+      "target": "stg_intercom__company_history",
+      "count": 2,
+      "reason": "The remaining typing, source selection, activity filter, and negative-value corrections follow explicit contract instructions."
+    },
+    {
+      "target": "stg_intercom__company_tag_history",
+      "count": 0,
+      "reason": "The projection, types, source, and activity filter are explicitly specified; no further unsupported dependence is apparent."
+    },
+    {
+      "target": "stg_intercom__contact_company_history",
+      "count": 0,
+      "reason": "The implementation directly follows the documented projection and activity filter."
+    },
+    {
+      "target": "stg_intercom__contact_tag_history",
+      "count": 0,
+      "reason": "The implementation directly follows the documented projection, typing, and activity filter."
+    },
+    {
+      "target": "stg_intercom__conversation_contact_history",
+      "count": 0,
+      "reason": "This additional staging file uses indexed raw columns, but no relevant per-model specification is supplied to establish a further unsupported requirement."
+    },
+    {
+      "target": "stg_intercom__contact_history",
+      "count": 3,
+      "reason": "Beyond phone normalization and the unsubscribe default, the transformations are explicitly prescribed."
+    },
+    {
+      "target": "stg_intercom__conversation_history",
+      "count": 2,
+      "reason": "The other temporal guards, activity filtering, and canonical projections are specified."
+    },
+    {
+      "target": "stg_intercom__conversation_part_history",
+      "count": 0,
+      "reason": "The source expressions, types, output columns, and activity filter are documented."
+    },
+    {
+      "target": "stg_intercom__conversation_tag_history",
+      "count": 0,
+      "reason": "The implementation directly follows the documented projection and activity filter."
+    },
+    {
+      "target": "stg_intercom__tag",
+      "count": 0,
+      "reason": "Identifier rejection, trimming, and deletion filtering implement explicit rules."
+    },
+    {
+      "target": "stg_intercom__team",
+      "count": 0,
+      "reason": "The simple projection and deletion filter match the specification and indexed source."
+    },
+    {
+      "target": "stg_intercom__team_admin",
+      "count": 1,
+      "reason": "The important unresolved issue is source-column availability; the intended projection and filter otherwise follow the contract."
+    },
+    {
+      "target": "stg_intercom__admin",
+      "count": 1,
+      "reason": "Only preprocessing before email inclusion adds a material interpretation beyond the explicit rules."
+    },
+    {
+      "target": "int_intercom__company_history",
+      "count": 3,
+      "reason": "The remaining carried attributes and day-based age calculation are prescribed."
+    },
+    {
+      "target": "int_intercom__company_tags_aggregate",
+      "count": 0,
+      "reason": "The join and distinct alphabetically ordered name aggregation are expressly required."
+    },
+    {
+      "target": "int_intercom__contact_company_history",
+      "count": 0,
+      "reason": "Deduplication and non-null rejection implement the stated pair grain and identifier tests."
+    },
+    {
+      "target": "int_intercom__contact_company_names",
+      "count": 0,
+      "reason": "The model implements the required name resolution and distinct ordered aggregation without relying on join-key uniqueness."
+    },
+    {
+      "target": "int_intercom__contact_tags_aggregate",
+      "count": 0,
+      "reason": "The join and distinct ordered aggregation directly implement the documented business logic."
+    },
+    {
+      "target": "int_intercom__latest_conversation",
+      "count": 2,
+      "reason": "Latest ordering, canonical field mappings, and the unassigned default are otherwise specified."
+    },
+    {
+      "target": "int_intercom__conversation_string_aggregates",
+      "count": 1,
+      "reason": "Distinct actor collection and identifier ordering are explicitly required; only source actor encoding remains unsupported."
+    },
+    {
+      "target": "int_intercom__conversation_tags_aggregate",
+      "count": 0,
+      "reason": "The join and distinct tag-name aggregation are explicitly documented."
+    },
+    {
+      "target": "int_intercom__contact_latest",
+      "count": 3,
+      "reason": "The activity timestamp inputs, windows, retention thresholds, and email-domain extraction are specified."
+    },
+    {
+      "target": "int_intercom__conversation_part_events",
+      "count": 4,
+      "reason": "The listed event classification, missing-author, tie, and actor-encoding premises cover the material unsupported dependencies."
+    },
+    {
+      "target": "intercom__company_enhanced",
+      "count": 1,
+      "reason": "Apart from propagated company identifier validity, the model is the explicitly requested snapshot enrichment."
+    },
+    {
+      "target": "intercom__contact_enhanced",
+      "count": 1,
+      "reason": "Apart from propagated contact identifier validity, the model combines the exact declared intermediate outputs at their established SQL grains."
+    },
+    {
+      "target": "intercom__conversation_enhanced",
+      "count": 0,
+      "reason": "The enrichment joins and first-contact company-name mapping are explicitly required; upstream attribution premises are recorded at their origin."
+    },
+    {
+      "target": "intercom__conversation_metrics",
+      "count": 1,
+      "reason": "The metric endpoints and minute units are specified, and upstream event assumptions are recorded on the models that introduce them."
+    }
+  ]
+}

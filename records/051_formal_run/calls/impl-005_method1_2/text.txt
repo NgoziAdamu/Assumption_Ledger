@@ -1,0 +1,221 @@
+{
+  "premises": [
+    {
+      "statement": "Campaign records whose advertising channel is outside the allowed set should be deleted rather than retained with a null channel.",
+      "about": "requirement",
+      "target": "stg_google_ads__campaign_history",
+      "evidence_of_dependence": "case when advertising_channel_type in (...) then advertising_channel_type end advertising_channel_type ... and advertising_channel_type is not null",
+      "alternative": "The channel validation explicitly specifies \"on_failure: nullify_field\", although the column also has a not_null constraint.",
+      "importance": 5,
+      "reason": "The implementation resolves conflicting instructions by removing entire records.",
+      "updates": null
+    },
+    {
+      "statement": "Ad records with unrecognized statuses should be deleted rather than retained with a null status.",
+      "about": "requirement",
+      "target": "stg_google_ads__ad_history",
+      "evidence_of_dependence": "case when status in ('ENABLED','PAUSED','REMOVED') then status end status ... and status is not null",
+      "alternative": "The status validation specifies \"on_failure: nullify_field\", although status also has a not_null constraint.",
+      "importance": 5,
+      "reason": "This choice changes which ads survive staging.",
+      "updates": null
+    },
+    {
+      "statement": "Replacing an invalid ad network with null before filtering is equivalent to deleting the invalid-network row.",
+      "about": "requirement",
+      "target": "stg_google_ads__ad_stats",
+      "evidence_of_dependence": "case when ad_network_type in ('SEARCH','DISPLAY','MIXED','YOUTUBE') or ad_network_type is null then ad_network_type end ad_network_type",
+      "alternative": "The contract requires \"on_failure: delete_row\" for invalid ad networks.",
+      "importance": 5,
+      "reason": "Invalid networks become null and pass the final null-network condition.",
+      "updates": null
+    },
+    {
+      "statement": "Every ad-statistics record whose validated network is null already satisfies all required identifier and date checks.",
+      "about": "data",
+      "target": "stg_google_ads__ad_stats",
+      "evidence_of_dependence": "WHERE account_id is not null and date_day between DATE '2020-01-01' and current_date ... and ad_network_type in (...) or ad_network_type is null",
+      "alternative": "The contract requires non-null identifiers and date bounds independently of the network value.",
+      "importance": 5,
+      "reason": "The unparenthesized OR permits null-network records to bypass every preceding check.",
+      "updates": null
+    },
+    {
+      "statement": "The campaign identifier required in campaign statistics is base_campaign rather than id.",
+      "about": "data",
+      "target": "stg_google_ads__campaign_stats",
+      "evidence_of_dependence": "CAST(base_campaign AS VARCHAR(20)) campaign_id",
+      "alternative": "The raw-table index also lists an \"id\" column, but the supplied specification does not resolve the mapping.",
+      "importance": 4,
+      "reason": "The choice determines campaign attribution for every performance record.",
+      "updates": null
+    },
+    {
+      "statement": "The ad-group identifier required in ad-group statistics is base_ad_group rather than id.",
+      "about": "data",
+      "target": "stg_google_ads__ad_group_stats",
+      "evidence_of_dependence": "CAST(base_ad_group AS VARCHAR(20)) ad_group_id",
+      "alternative": "The raw-table index also lists \"id\" without documenting its relationship to base_ad_group.",
+      "importance": 4,
+      "reason": "A different identifier meaning would change hierarchical attribution throughout this table.",
+      "updates": null
+    },
+    {
+      "statement": "The campaign identifier required in ad-group statistics is campaign_base_campaign rather than campaign_id.",
+      "about": "data",
+      "target": "stg_google_ads__ad_group_stats",
+      "evidence_of_dependence": "CAST(campaign_base_campaign AS VARCHAR(20)) campaign_id",
+      "alternative": "The raw-table index separately lists \"campaign_id\", which is not used.",
+      "importance": 4,
+      "reason": "The unused direct campaign field could associate records with different campaigns.",
+      "updates": null
+    },
+    {
+      "statement": "A single raw id identifies an entity across all ad groups and other parent contexts when computing the most recent history record.",
+      "about": "data",
+      "target": "stg_google_ads__account_history; stg_google_ads__campaign_history; stg_google_ads__ad_group_history; stg_google_ads__ad_history; stg_google_ads__ad_group_criterion_history",
+      "evidence_of_dependence": "row_number() over(partition by id order by try_cast(updated_at AS TIMESTAMPTZ) desc nulls last)=1",
+      "alternative": null,
+      "importance": 4,
+      "reason": "If IDs are scoped to parents, unrelated entities compete for one current-record flag.",
+      "updates": null
+    },
+    {
+      "statement": "The most recent history flag should be computed before validation even when the latest raw record is subsequently deleted.",
+      "about": "requirement",
+      "target": "stg_google_ads__account_history; stg_google_ads__campaign_history; stg_google_ads__ad_history; stg_google_ads__ad_group_criterion_history",
+      "evidence_of_dependence": "row_number() ... =1 is_most_recent_record ... SELECT * FROM validated WHERE",
+      "alternative": "The account-history description calls for \"current state tracking\", which could require marking the latest surviving valid record instead.",
+      "importance": 4,
+      "reason": "An entity can retain history without any row marked current.",
+      "updates": null
+    },
+    {
+      "statement": "Equal latest timestamps do not require a deterministic tie-breaker or multiple current-record flags.",
+      "about": "requirement",
+      "target": "stg_google_ads__account_history; stg_google_ads__campaign_history; stg_google_ads__ad_group_history; stg_google_ads__ad_history; stg_google_ads__ad_group_criterion_history",
+      "evidence_of_dependence": "row_number() over(partition by id order by try_cast(updated_at AS TIMESTAMPTZ) desc nulls last)=1",
+      "alternative": null,
+      "importance": 3,
+      "reason": "Tied timestamps can produce an arbitrary current version.",
+      "updates": null
+    },
+    {
+      "statement": "Converting raw temporal values through TIMESTAMPTZ and then to DATE or TIMESTAMP preserves the business date and update time intended by the contract.",
+      "about": "data",
+      "target": "All eleven generated staging tables",
+      "evidence_of_dependence": "try_cast(date AS TIMESTAMPTZ)::DATE; try_cast(updated_at AS TIMESTAMPTZ)::TIMESTAMP",
+      "alternative": "The search-term and ad-statistics specifications explicitly prescribe \"CAST(date AS DATE)\" rather than conversion through TIMESTAMPTZ.",
+      "importance": 4,
+      "reason": "Timezone interpretation can shift daily metrics and history ordering.",
+      "updates": null
+    },
+    {
+      "statement": "Malformed temporal values should be treated as null and handled by the final filters rather than causing a cast failure or receiving other remediation.",
+      "about": "requirement",
+      "target": "All eleven generated staging tables",
+      "evidence_of_dependence": "try_cast(date AS TIMESTAMPTZ); try_cast(updated_at AS TIMESTAMPTZ); try_cast(start_date AS TIMESTAMPTZ)",
+      "alternative": null,
+      "importance": 3,
+      "reason": "The chosen fallback can silently remove records or erase optional dates.",
+      "updates": null
+    },
+    {
+      "statement": "The required source_relation value is the constant google_ads without a platform suffix.",
+      "about": "requirement",
+      "target": "All eleven generated staging tables",
+      "evidence_of_dependence": "SELECT 'google_ads'::VARCHAR AS source_relation, *",
+      "alternative": "The search-term specification says \"source_relation || '-' || platform final concatenation\".",
+      "importance": 4,
+      "reason": "A different provenance convention changes an output field across every record.",
+      "updates": null
+    },
+    {
+      "statement": "All pass-through string values already satisfy the contract's declared maximum lengths.",
+      "about": "data",
+      "target": "All eleven generated staging tables",
+      "evidence_of_dependence": "currency_code, auto_tagging_enabled, time_zone, descriptive_name account_name; name campaign_name; display_url, final_urls",
+      "alternative": null,
+      "importance": 2,
+      "reason": "Neither pass-through selection nor DuckDB VARCHAR length annotations establish the specified bounds.",
+      "updates": null
+    },
+    {
+      "statement": "The retained raw clicks, impressions, and view-through conversion columns already have the required BIGINT representation.",
+      "about": "data",
+      "target": "stg_google_ads__campaign_stats; stg_google_ads__keyword_stats; stg_google_ads__account_stats; stg_google_ads__ad_group_stats",
+      "evidence_of_dependence": "device, clicks, ... impressions, ... view_through_conversions",
+      "alternative": null,
+      "importance": 3,
+      "reason": "The output types depend on raw schemas that are not established by the column index.",
+      "updates": null
+    },
+    {
+      "statement": "All retained raw cost and conversion values are numerically usable and fit the target decimal ranges.",
+      "about": "data",
+      "target": "stg_google_ads__campaign_stats; stg_google_ads__keyword_stats; stg_google_ads__account_stats; stg_google_ads__ad_group_stats",
+      "evidence_of_dependence": "CAST(cost_micros / 1000000.0 AS DECIMAL(15,2)); CAST(conversions AS DECIMAL(10,2)); CAST(conversions_value AS DECIMAL(15,2))",
+      "alternative": null,
+      "importance": 3,
+      "reason": "Unusable or overflowing values can prevent pipeline execution.",
+      "updates": null
+    },
+    {
+      "statement": "No metrics_calculated processing is needed for account statistics or keyword statistics.",
+      "about": "requirement",
+      "target": "stg_google_ads__account_stats; stg_google_ads__keyword_stats",
+      "evidence_of_dependence": "WITH base AS (...) , validated AS (...) SELECT * FROM validated",
+      "alternative": "The implementation notes specify \"FULL Tables (3-CTE): account_stats, keyword_stats\" and describe complex calculated performance metrics.",
+      "importance": 4,
+      "reason": "The implementation omits a processing phase explicitly called out for these tables.",
+      "updates": null
+    },
+    {
+      "statement": "A campaign with a non-null end date but null start date should be retained.",
+      "about": "requirement",
+      "target": "stg_google_ads__campaign_history",
+      "evidence_of_dependence": "(end_date is null or start_date is null or end_date >= start_date)",
+      "alternative": "The contract's validation is \"end_date IS NULL OR end_date >= start_date\" and does not include the extra start_date-null exception.",
+      "importance": 3,
+      "reason": "The additional exception changes which incomplete campaign histories pass validation.",
+      "updates": null
+    },
+    {
+      "statement": "Unusable or missing cost_micros should produce zero spend rather than null spend.",
+      "about": "requirement",
+      "target": "stg_google_ads__ad_stats; stg_google_ads__search_term_keyword_stats",
+      "evidence_of_dependence": "CAST(coalesce(try_cast(cost_micros AS DOUBLE),0)/1000000.0 AS DECIMAL(15,2))",
+      "alternative": "Both specifications give \"cost_micros / 1000000.0\" without prescribing a zero fallback for spend.",
+      "importance": 3,
+      "reason": "This conflates unknown spend with genuinely free activity.",
+      "updates": null
+    },
+    {
+      "statement": "The latest ad-group history row should remain eligible for the current-record flag even if its update timestamp is missing.",
+      "about": "requirement",
+      "target": "stg_google_ads__ad_group_history",
+      "evidence_of_dependence": "order by try_cast(updated_at AS TIMESTAMPTZ) desc nulls last ... WHERE ad_group_id is not null and campaign_id is not null and status is not null",
+      "alternative": null,
+      "importance": 2,
+      "reason": "An entity with only undated history can be labeled current without a known update time.",
+      "updates": null
+    },
+    {
+      "statement": "Null checks alone are sufficient to identify usable required IDs and required business strings.",
+      "about": "data",
+      "target": "All eleven generated staging tables",
+      "evidence_of_dependence": "account_id is not null; campaign_name is not null; status is not null",
+      "alternative": "The quality-action guidance identifies \"Invalid primary keys\" and irrecoverable essential attributes as grounds for deletion.",
+      "importance": 3,
+      "reason": "Empty or otherwise invalid non-null identifiers can survive all implemented checks.",
+      "updates": null
+    }
+  ],
+  "fewer": [
+    {
+      "target": "stg_google_ads__ad_group_history",
+      "count": 8,
+      "reason": "Not applicable: shared premises supply at least five premises for this result."
+    }
+  ]
+}

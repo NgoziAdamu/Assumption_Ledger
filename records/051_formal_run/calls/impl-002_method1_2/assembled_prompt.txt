@@ -1,0 +1,1883 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Pendo analytics data transformation"
+  author: "Data Engineering Team"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+  source_system: "Pendo Analytics Platform"
+  last_updated: "2025-09-08"
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw Pendo data into clean, validated staging tables with standardized data types, consistent formatting, and comprehensive data quality checks. This phase ensures data integrity before business logic application."
+
+  # Technical Implementation Notes
+  implementation_notes:
+    duckdb_compatibility: 
+      - This specification is implemented using DuckDB-compatible SQL syntax.
+      - Data type casting uses CAST() and TRY_CAST() functions for safe conversion.
+      - String functions like SUBSTRING(), TRIM(), LOWER() are used consistently.
+    timezone_handling: 
+      - Raw data contains timestamps in format 'YYYY-MM-DD HH:MM:SS.sss +0800' (China Standard Time).
+      - The timezone suffix is handled using simple string truncation, TRY_CAST(SUBSTRING(timestamp_field, 1, 23) AS TIMESTAMP).
+      - This extracts the first 23 characters ('YYYY-MM-DD HH:MM:SS.sss') and converts to TIMESTAMP,
+      - completely ignoring the timezone part since the business operates locally.
+    constraint_implementation: 
+      - Physical UNIQUE constraints are not enforced in staging tables.
+      - Deduplication is achieved through filtering logic in WHERE clauses and generated surrogate keys.
+      - Unique business keys are maintained through application logic and data quality checks.
+
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "TRY_CAST(SUBSTRING(timestamp_field, 1, 23) AS TIMESTAMP)", "normalize phone numbers"]
+
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform clean staging data into business-ready analytical models that support user behavior analysis, feature adoption tracking, and application performance monitoring. This phase applies business logic to create actionable insights for product teams and stakeholders."
+  
+  design_principles:
+    intermediate_purpose: "Create reusable, business-centric data models that abstract complex joins and calculations from end users"
+    marts_purpose: "Deliver analysis-ready fact and dimension tables optimized for BI tools and data science workflows"
+    grain_importance: "Every model must have a clearly defined grain to ensure consistent aggregation and prevent double-counting"
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-002/agent/dacomp-de-impl-002/pendo_start.duckdb
+{"table": "raw.account_history", "columns": ["id", "last_updated_at", "agent_creationdate", "agent_group_id", "agent_is_paying", "agent_name", "agent_planlevel", "first_visit", "id_hash", "last_visit", "salesforce_status_c", "agent_salesforceaccountid", "salesforce_customer_health_engagement_score_c", "salesforce_employee_range_c", "salesforce_platform_level_c", "salesforce_segment_c", "salesforce_name", "salesforce_account_owner_email_c", "salesforce_pbf_account_c", "salesforce_region_c"]}
+{"table": "raw.application_history", "columns": ["id", "last_updated_at", "agent_policy_prod", "agent_policy_staging", "agent_version_prod", "agent_version_staging", "application_flags_cname", "application_flags_disabled", "application_flags_guide_localization", "application_flags_guide_widget", "application_flags_onboarding", "application_flags_prevent_code_injection", "application_flags_show_guides_to_anon", "application_flags_xhr_timings", "created_at", "created_by_user_id", "description", "disabled_at", "display_name", "event_count", "event_rate", "first_event_time", "guide_css_url", "icon_url", "integrated", "is_deleted", "last_updated_by_user_id", "marked_for_deletion_at", "name", "platform", "push_application_id", "record_until", "sampling_rate", "starting_event_time", "store_url", "subscription_id"]}
+{"table": "raw.event", "columns": ["account_id", "remote_ip", "server_name", "timestamp", "user_agent", "visitor_id", "app_id", "num_events", "num_minutes", "page_id"]}
+{"table": "raw.feature_event", "columns": ["account_id", "feature_id", "remote_ip", "server_name", "timestamp", "user_agent", "visitor_id", "app_id", "num_events", "num_minutes", "param_parameter"]}
+{"table": "raw.feature_history", "columns": ["id", "last_updated_at", "app_id", "color", "created_at", "created_by_user_id", "dirty", "group_id", "last_updated_by_user_id", "name", "page_id", "root_version_id", "stable_version_id", "valid_through", "is_core_event"]}
+{"table": "raw.group_data", "columns": ["id", "app_id", "color", "created_at", "created_by_user_id", "description", "last_updated_at", "last_updated_by_user_id", "length", "name"]}
+{"table": "raw.guide_event", "columns": ["account_id", "guide_id", "remote_ip", "server_name", "timestamp", "user_agent", "visitor_id", "app_id", "country", "element_path", "event_id", "guide_step_id", "latitude", "load_time", "longitude", "region", "type", "url"]}
+{"table": "raw.guide_history", "columns": ["id", "last_updated_at", "app_id", "attribute_badge_can_change_badge_color", "attribute_badge_color", "attribute_badge_height", "attribute_badge_image_url", "attribute_badge_is_only_show_once", "attribute_badge_name", "attribute_badge_offset_left", "attribute_badge_offset_right", "attribute_badge_offset_top", "attribute_badge_position", "attribute_badge_show_on_event", "attribute_badge_use_hover", "attribute_badge_width", "attribute_device_type", "attribute_priority", "attribute_type", "created_at", "created_by_user_id", "email_state", "is_multi_step", "is_training", "last_updated_by_user_id", "launch_method", "name", "published_at", "recurrence", "recurrence_eligibility_window", "reset_at", "root_version_id", "stable_version_id", "state"]}
+{"table": "raw.guide_step_history", "columns": ["guide_id", "guide_last_updated_at", "step_id"]}
+{"table": "raw.page_event", "columns": ["account_id", "page_id", "remote_ip", "server_name", "timestamp", "user_agent", "visitor_id", "app_id", "num_events", "num_minutes", "param_parameter"]}
+{"table": "raw.page_history", "columns": ["id", "last_updated_at", "app_id", "color", "created_at", "created_by_user_id", "dirty", "group_id", "last_updated_by_user_id", "name", "root_version_id", "stable_version_id", "valid_through"]}
+{"table": "raw.page_rule_history", "columns": ["page_id", "page_last_updated_at", "rule", "designer_hint", "parsed_rule"]}
+{"table": "raw.poll", "columns": ["id", "attribute_display", "attribute_follow_up", "attribute_max_length", "attribute_placeholder", "attribute_type", "question", "reset_at"]}
+{"table": "raw.poll_event", "columns": ["account_id", "guide_id", "poll_id", "remote_ip", "server_name", "timestamp", "user_agent", "visitor_id", "app_id", "country", "element_path", "event_id", "guide_step_id", "latitude", "load_time", "longitude", "poll_response", "region", "type", "url"]}
+{"table": "raw.user", "columns": ["id", "deleted_at", "first_name", "last_name", "user_type", "username"]}
+{"table": "raw.visitor_account_history", "columns": ["account_id", "visitor_id", "visitor_last_updated_at"]}
+{"table": "raw.visitor_history", "columns": ["id", "last_updated_at", "account_id", "agent_email", "agent_full_name", "agent_group_role", "agent_name", "agent_role", "first_visit", "id_hash", "last_browser_name", "last_browser_version", "last_operating_system", "last_server_name", "last_user_agent", "last_visit", "n_id", "salesforce_country_c", "salesforce_job_function_c", "salesforce_job_level_c", "salesforce_name", "agent_language", "pendo_lastemail", "pendo_lastemailstatus"]}
+{"table": "staging.stg_pendo__user", "columns": ["user_id", "deleted_at", "first_name", "last_name", "user_type", "username"]}
+
+
+=== Relevant specification and documentation ===
+## stg_pendo__user
+
+    - name: stg_pendo__user
+      description: "Cleaned and validated user data with standardized names and roles"
+      source_table: "raw.user"
+      columns:
+        - name: user_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: deleted_at
+          data_type: TIMESTAMP
+          validation_rules:
+            - rule: "deleted_at = CASE WHEN deleted_at = '' THEN NULL ELSE deleted_at END"
+              on_failure: nullify_field
+        - name: first_name
+          data_type: VARCHAR(100)
+        - name: last_name
+          data_type: VARCHAR(100)
+        - name: user_type
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "user_type IN ('system', 'internal', 'api', 'external')"
+              on_failure: delete_row
+            - rule: "user_type = LOWER(TRIM(user_type))"
+              on_failure: correct
+        - name: username
+          data_type: VARCHAR(100)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "username = LOWER(TRIM(username))"
+              on_failure: correct
+            - rule: "LENGTH(username) > 0"
+              on_failure: delete_row
+
+
+
+## stg_pendo__event
+
+    - name: stg_pendo__event
+      description: "Cleaned user interaction events with validated IDs and standardized timestamps"
+      source_table: "raw.event"
+      where_conditions:
+        - "visitor_id IS NOT NULL"
+        - "visitor_id != ''"
+        - "account_id IS NOT NULL"
+        - "account_id != ''"
+        - "app_id IS NOT NULL"
+        - "app_id != ''"
+        - "timestamp IS NOT NULL"
+      columns:
+        - name: visitor_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: account_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "account_id IS NOT NULL AND account_id != ''"
+              on_failure: delete_row
+            - rule: "account_id ~ '^(ACC[0-9]+|[0-9]+)$'"
+              on_failure: nullify_field
+        - name: app_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: page_id
+          data_type: VARCHAR(50)
+        - name: remote_ip
+          data_type: VARCHAR(255)
+          validation_rules:
+            - rule: "remote_ip IS NULL OR remote_ip ~ '^([0-9]{1,3}){3}[0-9]{1,3}$' OR remote_ip ~ '^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$'"
+              on_failure: nullify_field
+        - name: server_name
+          data_type: VARCHAR(255)
+          validation_rules:
+            - rule: "server_name = NULLIF(TRIM(server_name), '')"
+              on_failure: correct
+        - name: occurred_at
+          data_type: TIMESTAMP
+        - name: user_agent
+          data_type: VARCHAR(255)
+          validation_rules:
+            - rule: "user_agent = NULLIF(TRIM(user_agent), '')"
+              on_failure: correct
+        - name: num_events
+          data_type: BIGINT
+          validation_rules:
+            - rule: "num_events >= 0 AND num_events <= 10000"
+              on_failure: nullify_field
+        - name: num_minutes
+          data_type: BIGINT
+          validation_rules:
+            - rule: "num_minutes >= 0 AND num_minutes <= 1440"
+              on_failure: nullify_field
+        - name: event_key
+          data_type: VARCHAR(255)
+          description: "Generated MD5 hash surrogate key based on visitor_id, timestamp, account_id, server_name, user_agent, and remote_ip"
+
+
+
+## stg_pendo__application_history
+
+    - name: stg_pendo__application_history
+      description: "Cleaned application configuration history with standardized flags and environment settings"
+      source_table: "raw.application_history"
+      where_conditions:
+        - "NOT COALESCE(is_deleted, false)"
+        - "id IS NOT NULL"
+        - "id != ''"
+      columns:
+        - name: application_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: agent_policy_prod
+          data_type: VARCHAR(255)
+        - name: agent_policy_staging
+          data_type: VARCHAR(255)
+        - name: agent_version_prod
+          data_type: VARCHAR(255)
+        - name: agent_version_staging
+          data_type: VARCHAR(255)
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: created_by_user_id
+          data_type: VARCHAR(50)
+        - name: description
+          data_type: VARCHAR(65535)
+        - name: display_name
+          data_type: VARCHAR(255)
+        - name: event_count
+          data_type: BIGINT
+        - name: first_event_at
+          data_type: TIMESTAMP
+          source_column: "first_event_time"
+          transformation: "TRY_CAST(SUBSTRING(first_event_time, 1, 23) AS TIMESTAMP)"
+        - name: is_integrated
+          data_type: BOOLEAN
+        - name: is_deleted
+          data_type: BOOLEAN
+        - name: last_updated_at
+          data_type: TIMESTAMP
+        - name: last_updated_by_user_id
+          data_type: VARCHAR(50)
+        - name: application_name
+          data_type: VARCHAR(255)
+        - name: platform
+          data_type: VARCHAR(255)
+        - name: subscription_id
+          data_type: BIGINT
+
+
+
+## stg_pendo__account_history
+
+    - name: stg_pendo__account_history
+      description: "Cleaned account data with validated subscription and contact information"
+      source_table: "raw.account_history"
+      columns:
+        - name: account_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: last_updated_at
+          data_type: TIMESTAMP
+        - name: account_id_hash
+          data_type: DOUBLE
+        - name: first_visit_at
+          data_type: TIMESTAMP
+        - name: last_visit_at
+          data_type: TIMESTAMP
+
+
+
+## stg_pendo__visitor_history
+
+    - name: stg_pendo__visitor_history
+      description: "Cleaned visitor tracking data with validated visitor and account associations"
+      source_table: "raw.visitor_history"
+      columns:
+        - name: visitor_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: account_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: first_visit_at
+          data_type: TIMESTAMP
+        - name: visitor_id_hash
+          data_type: DOUBLE
+        - name: last_browser_name
+          data_type: VARCHAR(255)
+        - name: last_browser_version
+          data_type: VARCHAR(255)
+        - name: last_operating_system
+          data_type: VARCHAR(255)
+        - name: last_server_name
+          data_type: VARCHAR(255)
+        - name: last_updated_at
+          data_type: TIMESTAMP
+        - name: last_user_agent
+          data_type: VARCHAR(255)
+        - name: last_visit
+          data_type: TIMESTAMP
+        - name: n_id
+          data_type: BIGINT
+
+
+
+## stg_pendo__feature_event
+
+    - name: stg_pendo__feature_event
+      description: "Cleaned feature interaction events with validated feature and visitor IDs"
+      source_table: "raw.feature_event"
+      columns:
+        - name: account_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: feature_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: remote_ip
+          data_type: VARCHAR(255)
+          validation_rules:
+            - rule: "remote_ip IS NULL OR remote_ip ~ '^([0-9]{1,3}){3}[0-9]{1,3}$' OR remote_ip ~ '^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$'"
+              on_failure: nullify_field
+        - name: server_name
+          data_type: VARCHAR(255)
+        - name: occurred_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: user_agent
+          data_type: VARCHAR(255)
+        - name: visitor_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: app_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: num_events
+          data_type: DOUBLE
+        - name: num_minutes
+          data_type: DOUBLE
+        - name: feature_event_key
+          data_type: VARCHAR(255)
+          description: "Generated surrogate key"
+
+
+
+## stg_pendo__guide_event
+
+    - name: stg_pendo__guide_event
+      description: "Cleaned guide interaction events with validated guide steps and timing"
+      source_table: "raw.guide_event"
+      columns:
+        - name: account_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: guide_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: remote_ip
+          data_type: VARCHAR(255)
+          validation_rules:
+            - rule: "remote_ip IS NULL OR remote_ip ~ '^([0-9]{1,3}){3}[0-9]{1,3}$' OR remote_ip ~ '^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$'"
+              on_failure: nullify_field
+        - name: server_name
+          data_type: VARCHAR(255)
+        - name: occurred_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: user_agent
+          data_type: VARCHAR(255)
+        - name: visitor_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: app_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: country
+          data_type: VARCHAR(255)
+        - name: guide_step_id
+          data_type: BIGINT
+        - name: latitude
+          data_type: DOUBLE
+        - name: longitude
+          data_type: DOUBLE
+          validation_rules:
+            - rule: "longitude BETWEEN -180 AND 180 OR longitude IS NULL"
+              on_failure: nullify_field
+        - name: region
+          data_type: VARCHAR(255)
+        - name: type
+          data_type: VARCHAR(255)
+        - name: url
+          data_type: VARCHAR(255)
+          validation_rules:
+            - rule: "url = NULLIF(TRIM(url), '')"
+              on_failure: correct
+            - rule: "url IS NULL OR url ~ '^https?://'"
+              on_failure: nullify_field
+        - name: guide_event_key
+          data_type: VARCHAR(255)
+          description: "Generated surrogate key"
+
+
+
+## stg_pendo__visitor_account_history
+
+    - name: stg_pendo__visitor_account_history
+      description: "Cleaned visitor account association tracking with validated relationships"
+      source_table: "raw.visitor_account_history"
+      columns:
+        - name: account_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: visitor_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: visitor_last_updated_at
+          data_type: TIMESTAMP
+
+
+
+## stg_pendo__poll
+
+    - name: stg_pendo__poll
+      description: "Cleaned poll configuration data with validated attributes"
+      source_table: "raw.poll"
+      columns:
+        - name: poll_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: attribute_display
+          data_type: DOUBLE
+        - name: follow_up_poll_id
+          data_type: VARCHAR(255)
+        - name: attribute_max_length
+          data_type: DOUBLE
+        - name: attribute_type
+          data_type: VARCHAR(255)
+        - name: question
+          data_type: VARCHAR(255)
+        - name: reset_at
+          data_type: TIMESTAMP
+
+
+
+## stg_pendo__page_history
+
+    - name: stg_pendo__page_history
+      description: "Cleaned page configuration history with validated settings"
+      source_table: "raw.page_history"
+      columns:
+        - name: page_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: page_name
+          data_type: VARCHAR(255)
+        - name: app_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: created_by_user_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: is_dirty
+          data_type: BOOLEAN
+          validation_rules:
+            - rule: "is_dirty IS NULL OR is_dirty IN (TRUE, FALSE)"
+              on_failure: nullify_field
+        - name: group_id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: last_updated_at
+          data_type: TIMESTAMP
+        - name: last_updated_by_user_id
+          data_type: VARCHAR(50)
+        - name: root_version_id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: stable_version_id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: valid_through
+          data_type: TIMESTAMP
+
+
+
+## stg_pendo__guide_history
+
+    - name: stg_pendo__guide_history
+      description: "Cleaned guide configuration history with validated attributes and settings"
+      source_table: "raw.guide_history"
+      columns:
+        - name: guide_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: guide_name
+          data_type: VARCHAR(255)
+        - name: app_id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: state 
+          data_type: VARCHAR(255)
+        - name: device_type
+          data_type: VARCHAR(255)
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: created_by_user_id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: is_multi_step
+          data_type: BOOLEAN
+          validation_rules:
+            - rule: "is_multi_step IS NULL OR is_multi_step IN (TRUE, FALSE)"
+              on_failure: nullify_field
+        - name: is_training
+          data_type: BOOLEAN
+        - name: last_updated_at
+          data_type: TIMESTAMP
+        - name: last_updated_by_user_id
+          data_type: BIGINT
+        - name: launch_method
+          data_type: VARCHAR(255)
+        - name: published_at
+          data_type: TIMESTAMP
+        - name: recurrence
+          data_type: BOOLEAN
+          validation_rules:
+            - rule: "recurrence IS NULL OR recurrence IN (TRUE, FALSE)"
+              on_failure: nullify_field
+        - name: recurrence_eligibility_window
+          data_type: BOOLEAN
+          validation_rules:
+            - rule: "recurrence_eligibility_window IS NULL OR recurrence_eligibility_window IN (TRUE, FALSE)"
+              on_failure: nullify_field
+        - name: reset_at
+          data_type: TIMESTAMP
+        - name: root_version_id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: stable_version_id
+          data_type: BIGINT
+          constraints: [not_null]
+
+
+
+## stg_pendo__group
+
+    - name: stg_pendo__group
+      description: "Cleaned group configuration data with validated settings"
+      source_table: "raw.group"
+      columns:
+        - name: group_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: group_name
+          data_type: VARCHAR(255)
+        - name: app_id
+          data_type: BIGINT
+          constraints: [not_null]
+
+
+
+## stg_pendo__poll_event
+
+    - name: stg_pendo__poll_event
+      description: "Cleaned poll interaction events with validated responses"
+      source_table: "raw.poll_event"
+      columns:
+        - name: account_id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: guide_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: poll_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: remote_ip
+          data_type: VARCHAR(255)
+          validation_rules:
+            - rule: "remote_ip IS NULL OR remote_ip ~ '^([0-9]{1,3}){3}[0-9]{1,3}$' OR remote_ip ~ '^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$'"
+              on_failure: nullify_field
+        - name: server_name
+          data_type: VARCHAR(255)
+        - name: occurred_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: user_agent
+          data_type: VARCHAR(255)
+        - name: visitor_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: app_id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: poll_response
+          data_type: VARCHAR(255)
+        - name: country
+          data_type: VARCHAR(255)
+        - name: guide_step_id
+          data_type: BIGINT
+        - name: latitude
+          data_type: DOUBLE
+          validation_rules:
+            - rule: "latitude BETWEEN -90 AND 90 OR latitude IS NULL"
+              on_failure: nullify_field
+        - name: longitude
+          data_type: DOUBLE
+          validation_rules:
+            - rule: "longitude BETWEEN -180 AND 180 OR longitude IS NULL"
+              on_failure: nullify_field
+        - name: region
+          data_type: VARCHAR(255)
+        - name: type
+          data_type: VARCHAR(255)
+        - name: url
+          data_type: VARCHAR(255)
+          validation_rules:
+            - rule: "url = NULLIF(TRIM(url), '')"
+              on_failure: correct
+            - rule: "url IS NULL OR url ~ '^https?://'"
+              on_failure: nullify_field
+        - name: poll_event_key
+          data_type: VARCHAR(255)
+
+
+
+## stg_pendo__guide_step_history
+
+    - name: stg_pendo__guide_step_history
+      description: "Cleaned guide step configuration history with validated relationships"
+      source_table: "raw.guide_step_history"
+      columns:
+        - name: guide_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+          validation_rules:
+            - rule: "guide_id IS NOT NULL AND guide_id != ''"
+              on_failure: delete_row
+        - name: guide_last_updated_at
+          data_type: TIMESTAMP
+        - name: step_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+
+
+
+## stg_pendo__feature_history
+
+    - name: stg_pendo__feature_history
+      description: "Cleaned feature configuration history with validated settings"
+      source_table: "raw.feature_history"
+      columns:
+        - name: feature_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: last_updated_at
+          data_type: TIMESTAMP
+        - name: app_id
+          data_type: VARCHAR(50)
+        - name: feature_name
+          data_type: VARCHAR(255)
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: created_by_user_id
+          data_type: VARCHAR(50)
+        - name: is_dirty
+          data_type: BOOLEAN
+        - name: group_id
+          data_type: BIGINT
+        - name: last_updated_by_user_id
+          data_type: VARCHAR(50)
+        - name: page_id
+          data_type: VARCHAR(50)
+        - name: root_version_id
+          data_type: BIGINT
+        - name: stable_version_id
+          data_type: BIGINT
+        - name: valid_through
+          data_type: TIMESTAMP
+        - name: is_core_event
+          data_type: BOOLEAN
+          validation_rules:
+            - rule: "is_core_event IS NULL OR is_core_event IN (TRUE, FALSE)"
+              on_failure: nullify_field
+
+
+
+## stg_pendo__page_event
+
+    - name: stg_pendo__page_event
+      description: "Cleaned page interaction events with validated page and visitor IDs"
+      source_table: "raw.page_event"
+      columns:
+        - name: account_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: page_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: remote_ip
+          data_type: VARCHAR(255)
+          validation_rules:
+            - rule: "remote_ip IS NULL OR remote_ip ~ '^([0-9]{1,3}){3}[0-9]{1,3}$' OR remote_ip ~ '^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$'"
+              on_failure: nullify_field
+        - name: server_name
+          data_type: VARCHAR(255)
+        - name: occurred_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+        - name: user_agent
+          data_type: VARCHAR(255)
+        - name: visitor_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: app_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: num_events
+          data_type: DOUBLE
+        - name: num_minutes
+          data_type: DOUBLE
+        - name: page_event_key
+          data_type: VARCHAR(255)
+          description: "Generated surrogate key"
+
+
+
+## stg_pendo__page_rule_history
+
+    - name: stg_pendo__page_rule_history
+      description: "Cleaned page rule configuration history with validated rule definitions"
+      source_table: "raw.page_rule_history"
+      columns:
+        - name: page_id
+          data_type: VARCHAR(50)
+          constraints: [not_null]
+        - name: page_last_updated_at
+          data_type: TIMESTAMP
+        - name: rule
+          data_type: VARCHAR(255)
+        - name: designer_hint
+          data_type: DOUBLE
+        - name: parsed_rule
+          data_type: VARCHAR(255)
+
+# --------------------------------------------------------------------------- #
+# PHASE 2: Defines the business logic from staging tables to analytical models. #
+# --------------------------------------------------------------------------- #
+
+
+## account
+
+    - name: account
+      description: Account dimension enriched with visitor counts, NPS aggregates, and all-time usage metrics joined to the latest account profile (one row per account_id)
+      grain: One row per account_id
+      source_models:
+      - intermediate.int_pendo__latest_account
+      - intermediate.int_pendo__latest_visitor_account
+      - intermediate.int_pendo__latest_nps_rating
+      - intermediate.int_pendo__account_daily_metrics
+      business_logic: '- Use intermediate.int_pendo__latest_account as the base (one record per account_id); all base columns are passed through unchanged. - From intermediate.int_pendo__latest_visitor_account, group by account_id and count unique, non-null visitor_id values to get count_associated_visitors. - From intermediate.int_pendo__latest_nps_rating, group by account_id to compute NPS metrics: minimum rating, maximum rating, and average rating; null ratings are ignored, and if an account has no ratings these fields remain null. - From intermediate.int_pendo__account_daily_metrics, group by account_id and aggregate across all available rows: - count_active_visitors, count_page_viewing_visitors, count_feature_clicking_visitors, sum_minutes, sum_events, count_event_records are summed over time. - count_active_days is the number of unique occurred_on dates (null dates are excluded). - count_active_months is the number of unique calendar months derived from occurred_on (null dates are excluded). - average_daily_minutes is total minutes divided by the number of active days; if there are no active days, this average is 0. - average_daily_events is total events divided by the number of active days; if there are no active days, this average is 0. - first_event_on is the earliest occurred_on date; last_event_on is the latest occurred_on date. - Left join the visitor, NPS, and daily aggregates to the base on account_id. - Default the following metrics to 0 when missing: count_associated_visitors, count_active_visitors, count_page_viewing_visitors, count_feature_clicking_visitors, count_active_days, count_active_months, sum_minutes, sum_events, count_event_records, average_daily_minutes, average_daily_events. NPS metrics and event dates are not defaulted. - The result contains exactly one row per account_id.'
+      columns:
+      - name: account_id
+        data_type: VARCHAR
+        description: Primary key from latest_account and join key; one output row per account_id.
+      - name: last_updated_at
+        data_type: VARCHAR
+        description: Pass-through last update timestamp string from latest_account; may be null.
+      - name: account_id_hash
+        data_type: DOUBLE
+        description: Pass-through numeric hash of account_id from latest_account; may be null.
+      - name: first_visit_at
+        data_type: VARCHAR
+        description: Pass-through first visit timestamp string from latest_account; may be null.
+      - name: last_visit_at
+        data_type: VARCHAR
+        description: Pass-through last visit timestamp string from latest_account; may be null.
+      - name: latest_account_index
+        data_type: BIGINT
+        description: Pass-through ordering/index field from latest_account; may be null.
+      - name: count_associated_visitors
+        data_type: BIGINT
+        description: Number of unique non-null visitors linked to the account; left joined and defaulted to 0 when none.
+      - name: min_nps_rating
+        data_type: INTEGER
+        description: Minimum NPS rating for the account; null ratings ignored; remains null if no ratings exist.
+      - name: max_nps_rating
+        data_type: INTEGER
+        description: Maximum NPS rating for the account; null ratings ignored; remains null if no ratings exist.
+      - name: avg_nps_rating
+        data_type: DOUBLE
+        description: Average NPS rating for the account; null ratings ignored; unrounded; remains null if no ratings exist.
+      - name: count_active_visitors
+        data_type: HUGEINT
+        description: Sum of daily active visitor counts across all time for the account; defaulted to 0 when missing.
+      - name: count_page_viewing_visitors
+        data_type: HUGEINT
+        description: Sum of daily page-viewing visitor counts across all time for the account; defaulted to 0 when missing.
+      - name: count_feature_clicking_visitors
+        data_type: HUGEINT
+        description: Sum of daily feature-clicking visitor counts across all time for the account; defaulted to 0 when missing.
+      - name: count_active_days
+        data_type: BIGINT
+        description: Number of unique occurred_on dates with activity for the account; defaulted to 0 when none.
+      - name: count_active_months
+        data_type: BIGINT
+        description: Number of unique calendar months with activity based on occurred_on; defaulted to 0 when none.
+      - name: sum_minutes
+        data_type: HUGEINT
+        description: Total minutes of activity summed across all daily records for the account; defaulted to 0 when missing.
+      - name: sum_events
+        data_type: HUGEINT
+        description: Total events summed across all daily records for the account; defaulted to 0 when missing.
+      - name: count_event_records
+        data_type: HUGEINT
+        description: Total event records summed across all daily records for the account; defaulted to 0 when missing.
+      - name: average_daily_minutes
+        data_type: DOUBLE
+        description: Total minutes divided by the number of active days; returns 0 when no active days; unrounded.
+      - name: average_daily_events
+        data_type: DOUBLE
+        description: Total events divided by the number of active days; returns 0 when no active days; unrounded.
+      - name: first_event_on
+        data_type: DATE
+        description: Earliest occurred_on date for the account; null if no events.
+      - name: last_event_on
+        data_type: DATE
+        description: Latest occurred_on date for the account; null if no events.
+
+
+## feature
+
+    - name: feature
+      description: Feature dimension enriched by aggregated usage metrics from staging.stg_pendo__feature_event joined to attributes from intermediate.int_pendo__feature_info
+      grain: One row per feature_id
+      source_models:
+      - intermediate.int_pendo__feature_info
+      - staging.stg_pendo__feature_event
+      business_logic: '- Read all feature event rows. - For each feature_id, compute: - count_visitors: number of unique non-null visitor_id. - count_accounts: number of unique non-null account_id. - sum_clicks: total of num_events, ignoring NULL values. - count_click_events: number of event rows. - first_click_at: earliest occurred_at across rows, ignoring NULL values. - last_click_at: latest occurred_at across rows, ignoring NULL values. - avg_visitor_minutes: total num_minutes divided by the visitor count; if the visitor count is zero, the result is NULL. - avg_visitor_events: total num_events divided by the visitor count; if the visitor count is zero, the result is NULL. - Read feature attributes from intermediate.int_pendo__feature_info. - Left join metrics to features on feature_id; retain all features even when no events exist. - Final formatting: - count_visitors, count_accounts, sum_clicks, count_click_events: set to 0 when NULL. - avg_visitor_minutes, avg_visitor_events: rounded to 3 decimal places and set to 0 when NULL. - first_click_at and last_click_at: remain NULL when no events. - Output one row per feature_id combining all feature attributes and computed metrics.'
+      columns:
+      - name: feature_id
+        data_type: VARCHAR
+        description: Unique feature identifier and join key; exactly one output row per feature_id
+      - name: app_id
+        data_type: VARCHAR
+        description: Pendo application identifier from feature_info
+      - name: created_at
+        data_type: VARCHAR
+        description: Feature creation timestamp from feature_info
+      - name: created_by_user_id
+        data_type: VARCHAR
+        description: User ID who created the feature from feature_info
+      - name: is_dirty
+        data_type: BOOLEAN
+        description: Flag indicating unsaved changes from feature_info
+      - name: group_id
+        data_type: BIGINT
+        description: Group identifier from feature_info
+      - name: is_core_event
+        data_type: BOOLEAN
+        description: Flag indicating core event feature from feature_info
+      - name: last_updated_at
+        data_type: VARCHAR
+        description: Last update timestamp from feature_info
+      - name: last_updated_by_user_id
+        data_type: VARCHAR
+        description: User ID who last updated the feature from feature_info
+      - name: feature_name
+        data_type: VARCHAR
+        description: Feature display name from feature_info
+      - name: page_id
+        data_type: VARCHAR
+        description: Associated page identifier from feature_info
+      - name: root_version_id
+        data_type: BIGINT
+        description: Root version identifier from feature_info
+      - name: stable_version_id
+        data_type: BIGINT
+        description: Stable version identifier from feature_info
+      - name: valid_through
+        data_type: VARCHAR
+        description: Feature validity end timestamp from feature_info
+      - name: product_area_name
+        data_type: VARCHAR
+        description: Product area name from feature_info
+      - name: page_name
+        data_type: VARCHAR
+        description: Associated page name from feature_info
+      - name: page_created_at
+        data_type: VARCHAR
+        description: Page creation timestamp from feature_info
+      - name: page_valid_through
+        data_type: VARCHAR
+        description: Page validity end timestamp from feature_info
+      - name: app_display_name
+        data_type: VARCHAR
+        description: Application display name from feature_info
+      - name: app_platform
+        data_type: VARCHAR
+        description: Application platform from feature_info
+      - name: created_by_user_full_name
+        data_type: VARCHAR
+        description: Full name of the feature creator from feature_info
+      - name: created_by_user_username
+        data_type: VARCHAR
+        description: Username of the feature creator from feature_info
+      - name: last_updated_by_user_full_name
+        data_type: VARCHAR
+        description: Full name of the last updater from feature_info
+      - name: last_updated_by_user_username
+        data_type: VARCHAR
+        description: Username of the last updater from feature_info
+      - name: count_visitors
+        data_type: BIGINT
+        description: Unique non-null visitor count per feature_id; set to 0 when no events
+      - name: count_accounts
+        data_type: BIGINT
+        description: Unique non-null account count per feature_id; set to 0 when no events
+      - name: sum_clicks
+        data_type: DOUBLE
+        description: Total num_events per feature_id with NULL values ignored; set to 0 when no events
+      - name: count_click_events
+        data_type: BIGINT
+        description: Number of event rows per feature_id; set to 0 when no events
+      - name: first_click_at
+        data_type: VARCHAR
+        description: Earliest occurred_at per feature_id; NULL when no events
+      - name: last_click_at
+        data_type: VARCHAR
+        description: Latest occurred_at per feature_id; NULL when no events
+      - name: avg_visitor_minutes
+        data_type: DOUBLE
+        description: Total minutes divided by unique non-null visitors per feature_id; rounded to 3 decimals; set to 0 when no visitors
+      - name: avg_visitor_events
+        data_type: DOUBLE
+        description: Total events divided by unique non-null visitors per feature_id; rounded to 3 decimals; set to 0 when no visitors
+
+
+## feature_event
+
+    - name: feature_event
+      description: Feature interaction events enriched with current and previous feature metadata
+      grain: One row per stg_pendo__feature_event record with a matching feature_id in int_pendo__feature_info
+      source_models:
+      - staging.stg_pendo__feature_event
+      - intermediate.int_pendo__feature_info
+      - intermediate.int_pendo__latest_account
+      - intermediate.int_pendo__latest_visitor
+      business_logic: '- Begin with all rows and columns from staging.stg_pendo__feature_event; no filtering, casting, or aggregation. - For each visitor_id, sort events by occurred_at ascending and populate: - previous_feature_id: the feature_id from the immediately prior event for that visitor. - previous_feature_event_at: the occurred_at from the immediately prior event. - previous_feature_num_minutes: the num_minutes from the immediately prior event. - previous_feature_num_events: the num_events from the immediately prior event. If there is no prior event, these fields are NULL. If multiple events share the same occurred_at for a visitor, the chosen prior row follows the database’s default ordering. - Inner join to intermediate.int_pendo__feature_info on the current event’s feature_id to add current feature attributes (feature_name, page_id, page_name, product_area_name, group_id as product_area_id, app_display_name, app_platform). Events without a match are removed. - Left join to intermediate.int_pendo__feature_info on previous_feature_id to add previous feature attributes (previous_feature_name, previous_feature_page_id, previous_feature_page_name, previous_feature_product_area_name, previous_feature_product_area_id). If previous_feature_id is NULL or has no match, these attributes are NULL. - Left join to intermediate.int_pendo__latest_visitor on visitor_id and intermediate.int_pendo__latest_account on account_id; no columns are selected from these joins. Row count is unchanged unless duplicate keys exist in those sources. - Output all source columns, the four previous_* fields, and the selected current and previous feature attributes; no final ordering is applied.'
+      columns:
+      - name: account_id
+        data_type: VARCHAR
+        description: Source account identifier; used only to support a left join; pass-through; may be NULL
+      - name: app_id
+        data_type: VARCHAR
+        description: Source application identifier; pass-through; may be NULL
+      - name: feature_id
+        data_type: VARCHAR
+        description: Current event feature identifier; required for the inner join to feature_info; events without a match are dropped
+      - name: num_events
+        data_type: DOUBLE
+        description: Event count for this record; pass-through; may be NULL; no rounding applied
+      - name: num_minutes
+        data_type: DOUBLE
+        description: Elapsed minutes for this record; pass-through; may be NULL; no rounding applied
+      - name: remote_ip
+        data_type: VARCHAR
+        description: Source remote IP address; pass-through; may be NULL; no normalization applied
+      - name: server_name
+        data_type: VARCHAR
+        description: Source server name; pass-through; may be NULL; no normalization applied
+      - name: occurred_at
+        data_type: VARCHAR
+        description: Event timestamp used to order events within each visitor ascending; ties are not deterministically broken
+      - name: user_agent
+        data_type: VARCHAR
+        description: Source user agent string; pass-through; may be NULL; casing and whitespace preserved
+      - name: visitor_id
+        data_type: VARCHAR
+        description: Visitor identifier that defines the window for previous_* calculations; pass-through; may be NULL
+      - name: feature_event_key
+        data_type: VARCHAR
+        description: Opaque event key from the source; pass-through; uniqueness not enforced
+      - name: previous_feature_id
+        data_type: VARCHAR
+        description: Feature identifier from the immediately prior event for the same visitor when ordered by occurred_at ascending; NULL for the first event or if ordering ties occur
+      - name: previous_feature_event_at
+        data_type: VARCHAR
+        description: Timestamp from the immediately prior event for the same visitor; NULL for the first event or if ordering ties occur
+      - name: previous_feature_num_minutes
+        data_type: DOUBLE
+        description: num_minutes from the immediately prior event for the same visitor; NULL for the first event; no rounding applied
+      - name: previous_feature_num_events
+        data_type: DOUBLE
+        description: num_events from the immediately prior event for the same visitor; NULL for the first event; no rounding applied
+      - name: feature_name
+        data_type: VARCHAR
+        description: Current feature name from feature_info; row presence guaranteed by the inner join; value may be NULL if NULL in source
+      - name: page_id
+        data_type: VARCHAR
+        description: Current feature page identifier from feature_info; pass-through from dimension; may be NULL
+      - name: page_name
+        data_type: VARCHAR
+        description: Current feature page name from feature_info; pass-through from dimension; may be NULL
+      - name: product_area_name
+        data_type: VARCHAR
+        description: Current feature product area name from feature_info; pass-through from dimension; may be NULL
+      - name: product_area_id
+        data_type: BIGINT
+        description: Current feature group_id from feature_info provided as product_area_id; may be NULL
+      - name: app_display_name
+        data_type: VARCHAR
+        description: Current feature application display name from feature_info; pass-through from dimension; may be NULL
+      - name: app_platform
+        data_type: VARCHAR
+        description: Current feature application platform from feature_info; pass-through from dimension; may be NULL
+      - name: previous_feature_name
+        data_type: VARCHAR
+        description: Previous feature name joined by previous_feature_id; NULL if no prior feature or no match
+      - name: previous_feature_page_id
+        data_type: VARCHAR
+        description: Previous feature page identifier joined by previous_feature_id; NULL if no prior feature or no match
+      - name: previous_feature_page_name
+        data_type: VARCHAR
+        description: Previous feature page name joined by previous_feature_id; NULL if no prior feature or no match
+      - name: previous_feature_product_area_name
+        data_type: VARCHAR
+        description: Previous feature product area name joined by previous_feature_id; NULL if no prior feature or no match
+      - name: previous_feature_product_area_id
+        data_type: BIGINT
+        description: Previous feature group_id provided as product_area_id via previous_feature_id; NULL if no prior feature or no match
+
+
+## guide
+
+    - name: guide
+      description: Guide attributes from intermediate.int_pendo__guide_info joined with selected all-time metrics from intermediate.int_pendo__guide_alltime_metrics.
+      grain: One row per row in intermediate.int_pendo__guide_info; rows may multiply if multiple metrics rows exist for a guide_id.
+      source_models:
+      - intermediate.int_pendo__guide_info
+      - intermediate.int_pendo__guide_alltime_metrics
+      business_logic: '- Use all rows and columns from intermediate.int_pendo__guide_info as the base; no filtering, casting, aggregation, or deduplication is applied. - Left join intermediate.int_pendo__guide_alltime_metrics on guide_id. - Include only these fields from the metrics table: count_accounts, count_visitors_advanced, count_visitors_dismissed, count_visitors_shown, count_visitors, first_event_at, last_event_at. - Do not default or coalesce metrics; when there is no matching metrics row, these fields remain NULL. - If guide_info contains duplicate guide_id values, those duplicates are preserved. - If the metrics table has multiple rows for a guide_id, one output row is produced for each matching combination, increasing row counts. - No ordering is applied; output order is not guaranteed.'
+      columns:
+      - name: guide_id
+        data_type: VARCHAR
+        description: Guide identifier from guide_info (join key; pass-through; NULL not allowed).
+        tests:
+        - not_null
+      - name: guide_name
+        data_type: VARCHAR
+        description: Guide display name from guide_info (pass-through; NULL preserved).
+      - name: app_id
+        data_type: BIGINT
+        description: Application identifier from guide_info (pass-through; NULL preserved).
+      - name: state
+        data_type: VARCHAR
+        description: Guide state from guide_info (pass-through; NULL preserved).
+      - name: device_type
+        data_type: VARCHAR
+        description: Target device type from guide_info (pass-through; NULL preserved).
+      - name: created_at
+        data_type: VARCHAR
+        description: Guide creation timestamp from guide_info (pass-through; format/timezone unchanged; NULL preserved).
+      - name: created_by_user_id
+        data_type: BIGINT
+        description: User ID who created the guide from guide_info (pass-through; NULL preserved).
+      - name: is_multi_step
+        data_type: BOOLEAN
+        description: Indicates multi-step guide from guide_info (pass-through; NULL preserved).
+      - name: is_training
+        data_type: BOOLEAN
+        description: Indicates training guide from guide_info (pass-through; NULL preserved).
+      - name: last_updated_at
+        data_type: VARCHAR
+        description: Last update timestamp from guide_info (pass-through; format/timezone unchanged; NULL preserved).
+      - name: last_updated_by_user_id
+        data_type: BIGINT
+        description: User ID who last updated the guide from guide_info (pass-through; NULL preserved).
+      - name: launch_method
+        data_type: VARCHAR
+        description: Guide launch method from guide_info (pass-through; NULL preserved).
+      - name: published_at
+        data_type: VARCHAR
+        description: Guide publication timestamp from guide_info (pass-through; format/timezone unchanged; NULL preserved).
+      - name: recurrence
+        data_type: BOOLEAN
+        description: Indicates recurrence setting from guide_info (pass-through; NULL preserved).
+      - name: recurrence_eligibility_window
+        data_type: BOOLEAN
+        description: Recurrence eligibility window setting from guide_info (pass-through; NULL preserved).
+      - name: reset_at
+        data_type: VARCHAR
+        description: Guide reset timestamp from guide_info (pass-through; format/timezone unchanged; NULL preserved).
+      - name: root_version_id
+        data_type: BIGINT
+        description: Root version identifier from guide_info (pass-through; NULL preserved).
+      - name: stable_version_id
+        data_type: BIGINT
+        description: Stable version identifier from guide_info (pass-through; NULL preserved).
+      - name: app_display_name
+        data_type: VARCHAR
+        description: Application display name from guide_info (pass-through; NULL preserved).
+      - name: app_platform
+        data_type: VARCHAR
+        description: Application platform from guide_info (pass-through; NULL preserved).
+      - name: created_by_user_full_name
+        data_type: VARCHAR
+        description: Full name of the creating user from guide_info (pass-through; NULL preserved).
+      - name: created_by_user_username
+        data_type: VARCHAR
+        description: Username of the creating user from guide_info (pass-through; NULL preserved).
+      - name: last_updated_by_user_full_name
+        data_type: VARCHAR
+        description: Full name of the last updating user from guide_info (pass-through; NULL preserved).
+      - name: last_updated_by_user_username
+        data_type: VARCHAR
+        description: Username of the last updating user from guide_info (pass-through; NULL preserved).
+      - name: count_steps
+        data_type: BIGINT
+        description: Number of steps in the guide from guide_info (pass-through; NULL preserved).
+      - name: count_accounts
+        data_type: BIGINT
+        description: All-time account count from metrics (left join; no defaulting; NULL if no match).
+      - name: count_visitors_advanced
+        data_type: BIGINT
+        description: All-time count of visitors who advanced from metrics (left join; no defaulting; NULL if no match).
+      - name: count_visitors_dismissed
+        data_type: BIGINT
+        description: All-time count of visitors who dismissed from metrics (left join; no defaulting; NULL if no match).
+      - name: count_visitors_shown
+        data_type: BIGINT
+        description: All-time count of visitors shown from metrics (left join; no defaulting; NULL if no match).
+      - name: count_visitors
+        data_type: BIGINT
+        description: All-time total visitor count from metrics (left join; no defaulting; NULL if no match).
+      - name: first_event_at
+        data_type: VARCHAR
+        description: Timestamp of first event from metrics (left join; format/timezone unchanged; NULL if no match).
+      - name: last_event_at
+        data_type: VARCHAR
+        description: Timestamp of last event from metrics (left join; format/timezone unchanged; NULL if no match).
+
+
+## guide_event
+
+    - name: guide_event
+      description: Guide event fact table with all event fields passed through and guide metadata added via inner join
+      grain: Rows per stg_pendo__guide_event record that has at least one matching guide_id in int_pendo__guide_info; if multiple guide_info rows match a guide_id, one output row is produced per match
+      source_models:
+      - staging.stg_pendo__guide_event
+      - intermediate.int_pendo__guide_info
+      - intermediate.int_pendo__latest_account
+      - intermediate.int_pendo__latest_visitor
+      business_logic: '- Begin with all columns from staging.stg_pendo__guide_event without filtering or transformation. - Inner join intermediate.int_pendo__guide_info on guide_id; events without a guide match are excluded. - Left join intermediate.int_pendo__latest_visitor on visitor_id and intermediate.int_pendo__latest_account on account_id; no columns are selected from these joins. - Select guide_event.* plus guide.guide_name, guide.app_display_name, and guide.app_platform from guide_info. - Determinism: - Joins: guide join is INNER; visitor/account joins are LEFT. No de-duplication or ranking; if any joined table has multiple rows per key, output rows duplicate multiplicatively. - Null policy: All source nulls are preserved; unmatched or NULL guide_id removes the event due to the INNER JOIN. - Ordering: No explicit ordering; output row order is undefined. - Formatting: All values are passed through exactly as stored in source tables.'
+      columns:
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier from the event; used only to LEFT JOIN latest_account; passed through as-is
+      - name: app_id
+        data_type: VARCHAR
+        description: Application identifier from the event; passed through as-is
+      - name: country
+        data_type: VARCHAR
+        description: Country from the event; passed through as-is
+      - name: guide_id
+        data_type: VARCHAR
+        description: Guide identifier used for the INNER JOIN to guide_info; events without a match are excluded
+      - name: guide_step_id
+        data_type: BIGINT
+        description: Guide step identifier from the event; passed through as-is
+      - name: latitude
+        data_type: DOUBLE
+        description: Latitude from the event; passed through as-is
+      - name: longitude
+        data_type: DOUBLE
+        description: Longitude from the event; passed through as-is
+      - name: region
+        data_type: VARCHAR
+        description: Region from the event; passed through as-is
+      - name: remote_ip
+        data_type: VARCHAR
+        description: Remote IP address from the event; passed through as-is
+      - name: server_name
+        data_type: VARCHAR
+        description: Server name from the event; passed through as-is
+      - name: occurred_at
+        data_type: VARCHAR
+        description: Event timestamp string from the event; original format preserved
+      - name: type
+        data_type: VARCHAR
+        description: Event type from the event; passed through as-is
+      - name: url
+        data_type: VARCHAR
+        description: Event URL from the event; passed through as-is
+      - name: user_agent
+        data_type: VARCHAR
+        description: User agent string from the event; passed through as-is
+      - name: visitor_id
+        data_type: VARCHAR
+        description: Visitor identifier from the event; used only to LEFT JOIN latest_visitor; passed through as-is
+      - name: guide_event_key
+        data_type: VARCHAR
+        description: Event key from the event; passed through as-is
+      - name: guide_name
+        data_type: VARCHAR
+        description: Guide name from guide_info joined on guide_id; duplicates propagate if multiple guide_info rows match
+      - name: app_display_name
+        data_type: VARCHAR
+        description: Application display name from guide_info; duplicates propagate if multiple guide_info rows match
+      - name: app_platform
+        data_type: VARCHAR
+        description: Application platform from guide_info; duplicates propagate if multiple guide_info rows match
+
+
+## page
+
+    - name: page
+      description: Core page dimension with latest page attributes joined to aggregated event metrics
+      grain: One row per page_id from intermediate.int_pendo__latest_page
+      source_models:
+      - intermediate.int_pendo__latest_page
+      - staging.stg_pendo__page_event
+      business_logic: '- Build event metrics from staging.stg_pendo__page_event grouped by page_id: - Distinct visitor count. - Distinct account count. - Total pageviews as the sum of num_events (null values do not contribute). - Total event records counted across all rows. - First and last pageview timestamps as the earliest and latest occurred_at. - Visitor averages: - Average minutes per distinct visitor = total num_minutes divided by the distinct visitor count. - Average pageviews per distinct visitor = total num_events divided by the distinct visitor count. - When the distinct visitor count is zero, these averages are not computed. - Left join these metrics to intermediate.int_pendo__latest_page on page_id. - Apply final handling: - Counts and sums default to 0 when there are no matching events. - Averages are rounded to 3 decimal places and default to 0 when no visitors. - First and last pageview timestamps remain null when there are no matching events. - Output includes all columns from latest_page plus the metrics; one row per page_id present in latest_page.'
+      columns:
+      - name: page_id
+        data_type: VARCHAR
+        description: Unique page identifier and join key; exactly one row per page_id
+        tests:
+        - not_null
+        - unique
+      - name: page_name
+        data_type: VARCHAR
+        description: Latest page name from intermediate.int_pendo__latest_page
+      - name: app_id
+        data_type: VARCHAR
+        description: Application identifier from intermediate.int_pendo__latest_page
+      - name: created_at
+        data_type: TIMESTAMP
+        description: Page creation timestamp from intermediate.int_pendo__latest_page
+      - name: created_by_user_id
+        data_type: VARCHAR
+        description: User ID who created the page from intermediate.int_pendo__latest_page
+      - name: is_dirty
+        data_type: BOOLEAN
+        description: Flag indicating unsaved changes in latest page info
+      - name: group_id
+        data_type: BIGINT
+        description: Group identifier from intermediate.int_pendo__latest_page
+      - name: last_updated_at
+        data_type: TIMESTAMP
+        description: Last update timestamp from intermediate.int_pendo__latest_page
+      - name: last_updated_by_user_id
+        data_type: VARCHAR
+        description: User ID who last updated the page from intermediate.int_pendo__latest_page
+      - name: root_version_id
+        data_type: BIGINT
+        description: Root version identifier from intermediate.int_pendo__latest_page
+      - name: stable_version_id
+        data_type: BIGINT
+        description: Stable version identifier from intermediate.int_pendo__latest_page
+      - name: valid_through
+        data_type: TIMESTAMP
+        description: Validity end timestamp of the latest page record snapshot
+      - name: latest_page_index
+        data_type: BIGINT
+        description: Index of the latest page record in intermediate.int_pendo__latest_page
+      - name: count_visitors
+        data_type: BIGINT
+        description: Number of distinct visitors for the page; 0 if no events
+      - name: count_accounts
+        data_type: BIGINT
+        description: Number of distinct accounts for the page; 0 if no events
+      - name: sum_pageviews
+        data_type: BIGINT
+        description: Total pageviews from num_events; 0 if no events
+      - name: count_pageview_events
+        data_type: BIGINT
+        description: Total event records for the page; 0 if no events
+      - name: first_pageview_at
+        data_type: TIMESTAMP
+        description: Earliest occurred_at for the page; NULL if no events
+      - name: last_pageview_at
+        data_type: TIMESTAMP
+        description: Latest occurred_at for the page; NULL if no events
+      - name: avg_visitor_minutes
+        data_type: DOUBLE
+        description: Average minutes per distinct visitor rounded to 3 decimals; 0 if no visitors
+      - name: avg_visitor_pageviews
+        data_type: DOUBLE
+        description: Average pageviews per distinct visitor rounded to 3 decimals; 0 if no visitors
+
+
+## page_event
+
+    - name: page_event
+      description: Page event fact table enriched with previous-event context and page metadata.
+      grain: One row per event from staging.stg_pendo__page_event that has a matching page_id in intermediate.int_pendo__latest_page
+      source_models:
+      - staging.stg_pendo__page_event
+      - intermediate.int_pendo__latest_page
+      - intermediate.int_pendo__latest_account
+      - intermediate.int_pendo__latest_visitor
+      business_logic: '- Base rows: take all columns from staging.stg_pendo__page_event without de-duplication or aggregation. - Previous-event context: - For each visitor_id, order events by occurred_at ascending. - Attach values from the immediately prior event for the same visitor: previous_page_id, previous_page_event_at, previous_page_num_minutes, previous_page_num_events. - The first event per visitor has NULLs in these fields; if the prior event''s value is NULL, the attached value is NULL. - Ordering uses occurred_at only; if multiple events share the same occurred_at for a visitor, the chosen prior event is not deterministically defined. - Current page enrichment: - Inner join to intermediate.int_pendo__latest_page on page_id to add page_name and product_area_id (from group_id). - Events without a matching page_id are removed. - Previous page enrichment: - Left join to intermediate.int_pendo__latest_page on previous_page_id to add previous_page_name and previous_page_product_area_id (from group_id). - If previous_page_id is NULL or has no match, these fields are NULL. - Left joins to intermediate.int_pendo__latest_visitor and intermediate.int_pendo__latest_account are performed; no columns are selected from them. When those tables are unique by key, row counts are unchanged. - All other staging columns are passed through unchanged; NULLs and duplicates are preserved.'
+      columns:
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier passed through from staging; may be NULL.
+      - name: app_id
+        data_type: VARCHAR
+        description: Application identifier passed through from staging; may be NULL.
+      - name: num_events
+        data_type: DOUBLE
+        description: Event count from staging; passed through unchanged; may be NULL.
+      - name: num_minutes
+        data_type: DOUBLE
+        description: Minutes from staging; passed through unchanged; may be NULL.
+      - name: page_id
+        data_type: VARCHAR
+        description: Current page identifier from staging; only events with a matching page in latest_page are retained.
+      - name: remote_ip
+        data_type: VARCHAR
+        description: Remote IP address from staging; passed through unchanged; may be NULL.
+      - name: server_name
+        data_type: VARCHAR
+        description: Server name from staging; passed through unchanged; may be NULL.
+      - name: occurred_at
+        data_type: TIMESTAMP
+        description: Event timestamp used to order events within each visitor for previous-event derivations; ties are not deterministically broken.
+      - name: user_agent
+        data_type: VARCHAR
+        description: User agent string from staging; passed through unchanged; may be NULL.
+      - name: visitor_id
+        data_type: VARCHAR
+        description: Visitor identifier from staging; used to group events for previous-event context; may be NULL.
+      - name: page_event_key
+        data_type: VARCHAR
+        description: Opaque event key from staging; passed through unchanged; uniqueness not enforced.
+      - name: previous_page_id
+        data_type: VARCHAR
+        description: Page ID from the immediately prior event for the same visitor when ordered by occurred_at ascending; NULL for the first event or if the prior event's page_id is NULL.
+      - name: previous_page_event_at
+        data_type: TIMESTAMP
+        description: Timestamp from the immediately prior event for the same visitor when ordered by occurred_at ascending; NULL for the first event; tie handling follows occurred_at ordering only.
+      - name: previous_page_num_minutes
+        data_type: DOUBLE
+        description: Minutes from the immediately prior event for the same visitor when ordered by occurred_at ascending; NULL for the first event.
+      - name: previous_page_num_events
+        data_type: DOUBLE
+        description: Event count from the immediately prior event for the same visitor when ordered by occurred_at ascending; NULL for the first event.
+      - name: page_name
+        data_type: VARCHAR
+        description: Page name from latest_page joined on page_id; may be NULL if the matched page has a NULL name.
+      - name: product_area_id
+        data_type: BIGINT
+        description: Current page group identifier from latest_page joined on page_id; may be NULL if the matched page has a NULL group.
+      - name: previous_page_name
+        data_type: VARCHAR
+        description: Page name from latest_page joined on previous_page_id (left); NULL if no previous_page_id or no match.
+      - name: previous_page_product_area_id
+        data_type: BIGINT
+        description: Group identifier from latest_page joined on previous_page_id (left); NULL if no previous_page_id or no match.
+
+
+## visitor
+
+    - name: visitor
+      description: Visitor dimension joining latest profile with account count, NPS rating, and daily engagement aggregates
+      grain: One row per visitor_id from intermediate.int_pendo__latest_visitor
+      source_models:
+      - intermediate.int_pendo__latest_visitor
+      - intermediate.int_pendo__latest_visitor_account
+      - intermediate.int_pendo__latest_nps_rating
+      - intermediate.int_pendo__visitor_daily_metrics
+      business_logic: '- Begin with intermediate.int_pendo__latest_visitor (one row per visitor_id) and pass through all profile fields. - Compute count_associated_accounts by grouping records in intermediate.int_pendo__latest_visitor_account by visitor_id and counting rows; left join to visitors; if a visitor has no account rows, the count remains NULL. - Bring latest_nps_rating by left joining intermediate.int_pendo__latest_nps_rating on visitor_id; if no rating is found, it remains NULL. - Aggregate engagement from intermediate.int_pendo__visitor_daily_metrics by visitor_id: - count_active_days = number of unique occurred_on dates. - count_active_months = number of unique calendar months derived from occurred_on. - sum_minutes, sum_events, count_event_records = totals across all rows; NULL values do not contribute to the totals. - average_daily_minutes = total minutes divided by active days; average_daily_events = total events divided by active days; when active days is 0, the averages are treated as NULL. - first_event_on = earliest occurred_on date; last_event_on = latest occurred_on date. - Left join aggregated metrics to visitors; default numeric aggregates and averages to 0 when missing or when their computation yields NULL; first_event_on and last_event_on remain NULL if no daily metrics exist. - Duplicated source rows contribute to totals; only day and month counts use uniqueness. No ordering or additional filtering is applied.'
+      columns:
+      - name: visitor_id
+        data_type: VARCHAR
+        description: Primary key sourced from latest_visitor; one output row per visitor_id; not null
+      - name: account_id
+        data_type: VARCHAR
+        description: Pass-through from latest_visitor; may be null; not aggregated
+      - name: first_visit_at
+        data_type: VARCHAR
+        description: Pass-through first visit timestamp from latest_visitor; may be null
+      - name: visitor_id_hash
+        data_type: DOUBLE
+        description: Pass-through numeric hash of visitor_id from latest_visitor; may be null
+      - name: last_browser_name
+        data_type: VARCHAR
+        description: Pass-through most recent browser name from latest_visitor; may be null
+      - name: last_browser_version
+        data_type: DOUBLE
+        description: Pass-through most recent browser version from latest_visitor; may be null
+      - name: last_operating_system
+        data_type: VARCHAR
+        description: Pass-through most recent operating system from latest_visitor; may be null
+      - name: last_server_name
+        data_type: VARCHAR
+        description: Pass-through most recent server name from latest_visitor; may be null
+      - name: last_updated_at
+        data_type: VARCHAR
+        description: Pass-through last update timestamp from latest_visitor; may be null
+      - name: last_user_agent
+        data_type: VARCHAR
+        description: Pass-through most recent user agent string from latest_visitor; may be null
+      - name: last_visit
+        data_type: VARCHAR
+        description: Pass-through most recent visit timestamp from latest_visitor; may be null
+      - name: n_id
+        data_type: BIGINT
+        description: Pass-through internal numeric ID from latest_visitor; may be null
+      - name: latest_visitor_index
+        data_type: BIGINT
+        description: Pass-through index indicating latest record selection from latest_visitor; may be null
+      - name: count_associated_accounts
+        data_type: BIGINT
+        description: Count of visitor_account rows for this visitor; duplicates counted; null when no associated accounts
+      - name: latest_nps_rating
+        data_type: INTEGER
+        description: Most recent NPS rating joined by visitor_id; null when none
+      - name: count_active_days
+        data_type: BIGINT
+        description: Number of unique occurred_on dates in visitor_daily_metrics; defaults to 0 when no metrics
+      - name: count_active_months
+        data_type: BIGINT
+        description: Number of unique calendar months from occurred_on in visitor_daily_metrics; defaults to 0 when no metrics
+      - name: sum_minutes
+        data_type: HUGEINT
+        description: Total minutes across visitor_daily_metrics for this visitor; nulls ignored; defaults to 0 when no metrics
+      - name: sum_events
+        data_type: HUGEINT
+        description: Total events across visitor_daily_metrics for this visitor; nulls ignored; defaults to 0 when no metrics
+      - name: count_event_records
+        data_type: HUGEINT
+        description: Total event record count across visitor_daily_metrics; nulls ignored; defaults to 0 when no metrics
+      - name: average_daily_minutes
+        data_type: DOUBLE
+        description: Total minutes divided by active days; returns 0 when active days is 0 or when no metrics; no rounding
+      - name: average_daily_events
+        data_type: DOUBLE
+        description: Total events divided by active days; returns 0 when active days is 0 or when no metrics; no rounding
+      - name: first_event_on
+        data_type: DATE
+        description: Earliest occurred_on date in visitor_daily_metrics for this visitor; null if no metrics
+      - name: last_event_on
+        data_type: DATE
+        description: Latest occurred_on date in visitor_daily_metrics for this visitor; null if no metrics
+
+
+
+
+=== Premises recorded in earlier reviews ===
+(none)
+
+=== Agent steps since the last review ===
+### event 15
+
+## 命令原文
+
+cat pendo_start.yaml | head -80; sed -n '240,380p' run.py
+
+## agent 实际看到的执行结果
+
+account_history:
+  id: VARCHAR
+  last_updated_at: VARCHAR
+  agent_creationdate: VARCHAR
+  agent_group_id: BIGINT
+  agent_is_paying: BOOLEAN
+  agent_name: VARCHAR
+  agent_planlevel: VARCHAR
+  first_visit: VARCHAR
+  id_hash: DOUBLE
+  last_visit: VARCHAR
+  salesforce_status_c: DOUBLE
+  agent_salesforceaccountid: DOUBLE
+  salesforce_customer_health_engagement_score_c: DOUBLE
+  salesforce_employee_range_c: DOUBLE
+  salesforce_platform_level_c: DOUBLE
+  salesforce_segment_c: DOUBLE
+  salesforce_name: DOUBLE
+  salesforce_account_owner_email_c: VARCHAR
+  salesforce_pbf_account_c: DOUBLE
+  salesforce_region_c: DOUBLE
+application_history:
+  id: VARCHAR
+  last_updated_at: VARCHAR
+  agent_policy_prod: VARCHAR
+  agent_policy_staging: VARCHAR
+  agent_version_prod: VARCHAR
+  agent_version_staging: VARCHAR
+  application_flags_cname: BOOLEAN
+  application_flags_disabled: BOOLEAN
+  application_flags_guide_localization: BOOLEAN
+  application_flags_guide_widget: BOOLEAN
+  application_flags_onboarding: BOOLEAN
+  application_flags_prevent_code_injection: BOOLEAN
+  application_flags_show_guides_to_anon: BOOLEAN
+  application_flags_xhr_timings: BOOLEAN
+  created_at: VARCHAR
+  created_by_user_id: VARCHAR
+  description: DOUBLE
+  disabled_at: VARCHAR
+  display_name: VARCHAR
+  event_count: DOUBLE
+  event_rate: DOUBLE
+  first_event_time: VARCHAR
+  guide_css_url: VARCHAR
+  icon_url: VARCHAR
+  integrated: BOOLEAN
+  is_deleted: BOOLEAN
+  last_updated_by_user_id: VARCHAR
+  marked_for_deletion_at: VARCHAR
+  name: VARCHAR
+  platform: VARCHAR
+  push_application_id: BIGINT
+  record_until: VARCHAR
+  sampling_rate: BIGINT
+  starting_event_time: VARCHAR
+  store_url: VARCHAR
+  subscription_id: BIGINT
+event:
+  account_id: VARCHAR
+  remote_ip: VARCHAR
+  server_name: VARCHAR
+  timestamp: VARCHAR
+  user_agent: VARCHAR
+  visitor_id: VARCHAR
+  app_id: VARCHAR
+  num_events: BIGINT
+  num_minutes: BIGINT
+  page_id: VARCHAR
+feature_event:
+  account_id: VARCHAR
+  feature_id: VARCHAR
+  remote_ip: VARCHAR
+  server_name: VARCHAR
+  timestamp: VARCHAR
+  user_agent: VARCHAR
+  visitor_id: VARCHAR
+  app_id: VARCHAR
+  num_events: DOUBLE
+  num_minutes: DOUBLE
+        
+        logger.info("Cleanup complete")
+
+    def run_pipeline(self, layers: Optional[List[str]] = None) -> bool:
+        """Run the complete data pipeline"""
+        if layers is None:
+            layers = list(self.config['layers'].keys())
+        
+        logger.info("🚀 Starting Pendo data pipeline execution")
+        logger.info(f"Source database: {self.source_db_path}")
+        logger.info(f"Target database: {self.target_db_path}")
+        
+                
+        if not os.path.exists(self.target_db_path):
+            logger.info("Target database does not exist, starting initialization...")
+            try:
+                
+                self._initialize_database()
+            except Exception as e:
+                logger.error(f"Database initialization failed: {e}")
+                logger.info("Attempting to continue with existing database...")
+        else:
+            logger.info("Found existing target database, using it directly...")
+            
+            self.conn = duckdb.connect(self.target_db_path)
+        
+        self._clean_generated_tables()
+        
+                
+        self._create_schemas()
+        
+        total_success = True
+        
+        for layer_name in layers:
+            if layer_name not in self.config['layers']:
+                logger.error(f"Unknown layer: {layer_name}")
+                total_success = False
+                continue
+            
+            dependencies = self.config['layers'][layer_name].get('dependencies', [])
+            for dep in dependencies:
+                if dep not in layers[:layers.index(layer_name)]:
+                    logger.warning(f"{layer_name} depends on {dep}, but {dep} has not been executed yet")
+            
+            layer_success = self._execute_layer(layer_name)
+            total_success = total_success and layer_success
+        
+        if total_success:
+            logger.info("\n🎉 Pendo data pipeline execution complete!")
+            logger.info(f"✨ A complete data warehouse has been generated: {self.target_db_path}")
+            self._show_final_stats()
+        else:
+            logger.error("\n❌ Errors occurred during data pipeline execution")
+        
+        if self.conn:
+            self.conn.close()
+        
+        return total_success
+    
+    def _show_final_stats(self):
+        """Display final statistics - shown by Schema layer"""
+        logger.info("\n=== Final Data Statistics (by Schema Layer) ===")
+        
+                
+        for layer_name, schema_name in self.schema_config.items():
+            try:
+                
+                tables_result = self.conn.execute(f"""SELECT table_name 
+                                                     FROM information_schema.tables 
+                                                     WHERE table_schema = '{schema_name}'""").fetchall()
+                schema_tables = [table[0] for table in tables_result]
+                
+                if schema_tables:
+                    logger.info(f"\n{layer_name.upper()} Layer (Schema: {schema_name}):")
+                    for table in sorted(schema_tables):
+                        try:
+                            count = self.conn.execute(f"SELECT COUNT(*) FROM {schema_name}.{table}").fetchone()[0]
+                            logger.info(f"  ✓ {schema_name}.{table}: {count:,} rows")
+                        except Exception as e:
+                            logger.info(f"  ✗ {schema_name}.{table}: Query failed - {e}")
+                else:
+                    logger.info(f"\n{layer_name.upper()} Layer (Schema: {schema_name}): No tables")
+                    
+            except Exception as e:
+                logger.error(f"Failed to query schema {schema_name}: {e}")
+
+
+def main():
+    """Main function"""
+    pipeline = PendoDataPipeline()
+    
+    success = pipeline.run_pipeline()
+    if success:
+        print("\n✅ Pendo data transformation completed successfully!")
+        print("📋 Transformation Results:")
+        print(f"  📥 Source Database: {pipeline.source_db_path} (raw tables only)")
+        print(f"  📤 Target Database: {pipeline.target_db_path} (complete layered architecture)")
+        print("\n🏗️ Data Architecture:")
+        print("  📊 Staging Layer - Standardized raw data")
+        print("  🔄 Intermediate Layer - Business logic processing")
+        print("  🎯 Marts Layer - Analysis-ready data")
+    else:
+        print("\n❌ Errors occurred during data transformation, please check the logs")
+
+
+if __name__ == "__main__":
+    main()
+
+### event 17
+
+## 命令原文
+
+python - <<'PY'
+import yaml
+x=yaml.safe_load(open('docs/data_contract.yaml'))
+print(len(x['staging_contract']['tables']),len(x['modeling_spec']['intermediate_models']),len(x['modeling_spec']['marts_models']))
+for key in ['intermediate_models','marts_models']:
+ for m in x['modeling_spec'][key]: print(m['name'])
+PY
+
+## agent 实际看到的执行结果
+
+17 25 18
+int_pendo__account_daily_metrics
+int_pendo__calendar_spine
+int_pendo__conversion_funnel_analysis
+int_pendo__customer_rfm_analysis
+int_pendo__data_quality_checks
+int_pendo__feature_daily_metrics
+int_pendo__feature_info
+int_pendo__guide_alltime_metrics
+int_pendo__guide_daily_metrics
+int_pendo__guide_info
+int_pendo__latest_account
+int_pendo__latest_application
+int_pendo__latest_feature
+int_pendo__latest_guide
+int_pendo__latest_guide_step
+int_pendo__latest_nps_rating
+int_pendo__latest_page
+int_pendo__latest_page_rule
+int_pendo__latest_visitor
+int_pendo__latest_visitor_account
+int_pendo__page_daily_metrics
+int_pendo__page_info
+int_pendo__product_health_metrics
+int_pendo__user_lifecycle_segments
+int_pendo__visitor_daily_metrics
+account
+account_daily_metrics
+customer_lifecycle_insights
+executive_dashboard_metrics
+feature
+feature_daily_metrics
+feature_event
+guide
+guide_daily_metrics
+guide_event
+page
+page_daily_metrics
+page_event
+product_adoption_analytics
+product_adoption_summary
+visitor
+visitor_daily_metrics
+visitor_feature
+
+
+### event 19
+
+## 命令原文
+
+cat > /tmp/generate.py <<'PY'
+import yaml,os
+from pathlib import Path
+c=yaml.safe_load(open('docs/data_contract.yaml'))
+for d in ['sql/staging','sql/intermediate','sql/marts']: Path(d).mkdir(parents=True,exist_ok=True)
+# Contract column -> raw column overrides
+maps={
+'stg_pendo__user':{'user_id':'id'}, 'stg_pendo__event':{'occurred_at':'timestamp'},
+'stg_pendo__application_history':{'application_id':'id','application_name':'name','is_integrated':'integrated','first_event_at':'first_event_time'},
+'stg_pendo__account_history':{'account_id':'id','account_id_hash':'id_hash','first_visit_at':'first_visit','last_visit_at':'last_visit'},
+'stg_pendo__visitor_history':{'visitor_id':'id','visitor_id_hash':'id_hash','first_visit_at':'first_visit','last_visit':'last_visit'},
+'stg_pendo__visitor_account_history':{}, 'stg_pendo__feature_event':{'occurred_at':'timestamp'},
+'stg_pendo__guide_event':{'occurred_at':'timestamp'}, 'stg_pendo__page_event':{'occurred_at':'timestamp'},
+'stg_pendo__poll_event':{'occurred_at':'timestamp'}, 'stg_pendo__poll':{'poll_id':'id','follow_up_poll_id':'attribute_follow_up'},
+'stg_pendo__page_history':{'page_id':'id','page_name':'name','is_dirty':'dirty'},
+'stg_pendo__feature_history':{'feature_id':'id','feature_name':'name','is_dirty':'dirty'},
+'stg_pendo__guide_history':{'guide_id':'id','guide_name':'name','device_type':'attribute_device_type'},
+'stg_pendo__group':{'group_id':'id','group_name':'name'},
+'stg_pendo__guide_step_history':{},'stg_pendo__page_rule_history':{},
+'stg_pendo__application_history':{'display_name':'display_name'} }
+raw_names={'stg_pendo__group':'group_data'}
+for t in c['staging_contract']['tables']:
+ name=t['name']; raw=t['source_table'].split('.')[1]; raw=raw_names.get(name,raw); mp=maps.get(name,{})
+ cols=[]
+ for col in t['columns']:
+  n=col['name']; src=col.get('source_column',mp.get(n,n))
+  typ=col['data_type'];
+  if name=='stg_pendo__user':
+   expr={'user_id':'CAST(id AS VARCHAR)','deleted_at':"TRY_CAST(NULLIF(deleted_at, '') AS TIMESTAMP)",'first_name':'CAST(first_name AS VARCHAR)','last_name':'CAST(last_name AS VARCHAR)','user_type':'LOWER(TRIM(user_type))','username':'LOWER(TRIM(username))'}[n]
+  elif n in ('occurred_at','created_at','last_updated_at','first_visit_at','last_visit_at','first_event_at','reset_at','valid_through','published_at','visitor_last_updated_at','guide_last_updated_at','page_last_updated_at','deleted_at'):
+   # source contract specified string timestamps with timezone and raw might string
+   expr=f"TRY_CAST(SUBSTRING(CAST({src} AS VARCHAR), 1, 23) AS TIMESTAMP)"
+  elif n in ('remote_ip',):
+   expr=f"CASE WHEN {src} IS NULL OR regexp_matches(CAST({src} AS VARCHAR), '^([0-9]{{1,3}}\\.){{3}}[0-9]{{1,3}}$') OR regexp_matches(CAST({src} AS VARCHAR), '^([0-9a-fA-F]{{0,4}}:){{2,7}}[0-9a-fA-F]{{0,4}}$') THEN CAST({src} AS VARCHAR) ELSE NULL END"
+  elif n in ('server_name','user_agent','url'):
+   base=f'NULLIF(TRIM(CAST({src} AS VARCHAR)), \'\')'
+   expr=f"CASE WHEN {n if src==n else base} IS NULL THEN NULL ELSE {base} END" if n=='url' else base
+  elif n=='account_id' and name=='stg_pendo__event':
+   expr='CAST(account_id AS VARCHAR)'
+  elif n=='event_key':
+   expr="md5(concat_ws('|', coalesce(CAST(visitor_id AS VARCHAR), ''), coalesce(CAST(timestamp AS VARCHAR), ''), coalesce(CAST(account_id AS VARCHAR), ''), coalesce(server_name, ''), coalesce(user_agent, ''), coalesce(remote_ip, '')))"
+  elif n in ('feature_event_key','guide_event_key','page_event_key','poll_event_key'):
+   entity={'feature_event_key':'feature_id','guide_event_key':'guide_id','page_event_key':'page_id','poll_event_key':'poll_id'}[n]
+   expr=f"md5(concat_ws('|', coalesce(CAST(visitor_id AS VARCHAR), ''), coalesce(CAST(timestamp AS VARCHAR), ''), coalesce(CAST({entity} AS VARCHAR), ''), coalesce(CAST(account_id AS VARCHAR), '')))"
+  else:
+   expr=f'TRY_CAST({src} AS {typ})' if typ not in ('VARCHAR(50)','VARCHAR(100)','VARCHAR(255)','VARCHAR(65535)') else f'CAST({src} AS VARCHAR)'
+   if typ.startswith('VARCHAR'): expr=f'CAST({src} AS VARCHAR)'
+   if name=='stg_pendo__event' and n in ('num_events','num_minutes'):
+    expr=f"CASE WHEN TRY_CAST({src} AS BIGINT) BETWEEN 0 AND {'10000' if n=='num_events' else '1440'} THEN TRY_CAST({src} AS BIGINT) ELSE NULL END"
+   if name=='stg_pendo__event' and n=='account_id': expr='CAST(account_id AS VARCHAR)'
+   if name=='stg_pendo__feature_event' and n in ('num_events','num_minutes'): expr=f'TRY_CAST({src} AS DOUBLE)'
+   if name=='stg_pendo__guide_event' and n=='longitude': expr=f'CASE WHEN TRY_CAST({src} AS DOUBLE) BETWEEN -180 AND 180 THEN TRY_CAST({src} AS DOUBLE) ELSE NULL END'
+   if name=='stg_pendo__poll_event' and n in ('latitude','longitude'):
+    lo,hi=((-90,90) if n=='latitude' else (-180,180)); expr=f'CASE WHEN TRY_CAST({src} AS DOUBLE) BETWEEN {lo} AND {hi} THEN TRY_CAST({src} AS DOUBLE) ELSE NULL END'
+  cols.append(f'    {expr} AS {n}')
+ wh=[]
+ for w in t.get('where_conditions',[]):
+  if w=='id IS NOT NULL': wh.append('id IS NOT NULL')
+  elif w=='id != \'\'': wh.append("id != ''")
+  else: wh.append(w)
+ if name=='stg_pendo__user': wh += ["user_type IN ('system','internal','api','external')", "username IS NOT NULL AND LENGTH(TRIM(username)) > 0"]
+ if name=='stg_pendo__event': wh += ["visitor_id IS NOT NULL AND visitor_id != ''", "account_id IS NOT NULL AND account_id != ''", "app_id IS NOT NULL AND app_id != ''", 'timestamp IS NOT NULL']
+ sql='SELECT\n'+',\n'.join(cols)+f'\nFROM raw.{raw}'
+ if wh: sql+='\nWHERE '+'\n  AND '.join(wh)
+ Path(f'sql/staging/{name}.sql').write_text(sql)
+PY
+python /tmp/generate.py
+
+## agent 实际看到的执行结果
+
+
+
+

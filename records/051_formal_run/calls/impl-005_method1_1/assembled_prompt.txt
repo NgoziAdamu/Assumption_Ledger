@@ -1,0 +1,898 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+
+
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Google Ads advertising data transformations"
+  author: "Data Engineering Team"
+  created_date: "2025-09-08"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+  source_system: "Google Ads API"
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw Google Ads data into clean, validated, and standardized staging tables suitable for analytical processing. This phase handles data quality issues, standardizes formats, and ensures referential integrity across the hierarchical Google Ads data structure."
+
+  # IMPLEMENTATION NOTES:
+  # Due to raw data source limitations and complexity, tables are implemented using two approaches:
+  # 1. SIMPLIFIED 2-CTE structure: base -> validated (for basic config tables and performance metrics with limited source columns)
+  # 2. FULL 3-CTE structure: base -> validated -> metrics_calculated (for advanced analytics with comprehensive performance data)
+  #
+  # SIMPLIFIED Tables (2-CTE): account_history, campaign_history, campaign_stats, ad_history, ad_group_stats, ad_stats, ad_group_criterion_history, search_term_keyword_stats
+  # FULL Tables (3-CTE): account_stats, keyword_stats (these include complex calculated performance metrics)
+
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "CAST(date_field AS DATE)", "normalize phone numbers"]
+
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+    filter_row:
+      description: "Filter entire row when fields don't meet validation criteria, mainly used in simplified 2-CTE tables"
+      examples: ["WHERE ad_network_type IS NULL OR ad_network_type IN (...)"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform clean staging data into business-ready analytical models that support Google Ads performance analysis, optimization decisions, and executive reporting. This phase applies business logic to create reusable intermediate models and final analytical marts."
+  
+  design_principles:
+    intermediate_purpose: "Create reusable, business-centric data models that implement complex business logic and serve as building blocks for multiple marts."
+    mart_purpose: "Provide analysis-ready models optimized for specific business questions and reporting requirements."
+    grain_importance: "Every model must have an explicitly defined grain to ensure data consumers understand the level of aggregation and prevent misinterpretation."
+    performance_optimization: "Models should be designed for efficient querying with appropriate pre-aggregations and denormalization where beneficial."
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-005/agent/dacomp-de-impl-005/google_ads_start.duckdb
+{"table": "raw.account_history_data", "columns": ["id", "updated_at", "auto_tagging_enabled", "currency_code", "descriptive_name", "final_url_suffix", "hidden", "manager", "manager_customer_id", "optimization_score", "pay_per_conversion_eligibility_failure_reasons", "test_account", "time_zone", "tracking_url_template"]}
+{"table": "raw.account_stats_data", "columns": ["customer_id", "date", "active_view_impressions", "active_view_measurability", "active_view_measurable_cost_micros", "active_view_measurable_impressions", "active_view_viewability", "ad_network_type", "clicks", "conversions", "conversions_value", "cost_micros", "device", "impressions", "interaction_event_types", "interactions", "view_through_conversions"]}
+{"table": "raw.ad_group_criterion_history_data", "columns": ["id", "ad_group_id", "base_campaign_id", "updated_at", "type", "status", "keyword_match_type", "keyword_text"]}
+{"table": "raw.ad_group_history_data", "columns": ["id", "updated_at", "type", "campaign_id", "campaign_name", "name", "status"]}
+{"table": "raw.ad_group_stats_data", "columns": ["customer_id", "date", "active_view_impressions", "active_view_measurability", "active_view_measurable_cost_micros", "active_view_measurable_impressions", "active_view_viewability", "ad_network_type", "base_ad_group", "campaign_base_campaign", "campaign_id", "clicks", "conversions", "conversions_value", "cost_micros", "device", "id", "impressions", "interaction_event_types", "interactions", "view_through_conversions"]}
+{"table": "raw.ad_history_data", "columns": ["ad_group_id", "id", "name", "updated_at", "type", "status", "display_url", "final_urls"]}
+{"table": "raw.ad_stats_data", "columns": ["customer_id", "date", "ad_group_id", "ad_group", "keyword_ad_group_criterion", "ad_network_type", "device", "ad_id", "campaign_id", "clicks", "cost_micros", "impressions"]}
+{"table": "raw.campaign_history_data", "columns": ["id", "updated_at", "name", "customer_id", "advertising_channel_type", "advertising_channel_subtype", "start_date", "end_date", "serving_status", "status", "tracking_url_template"]}
+{"table": "raw.campaign_stats_data", "columns": ["customer_id", "date", "active_view_impressions", "active_view_measurability", "active_view_measurable_cost_micros", "active_view_measurable_impressions", "active_view_viewability", "ad_network_type", "base_campaign", "clicks", "conversions", "conversions_value", "cost_micros", "device", "id", "impressions", "interaction_event_types", "interactions", "view_through_conversions"]}
+{"table": "raw.keyword_stats_data", "columns": ["customer_id", "date", "active_view_impressions", "active_view_measurability", "active_view_measurable_cost_micros", "active_view_measurable_impressions", "active_view_viewability", "ad_group_base_ad_group", "ad_group_criterion_criterion_id", "ad_group_id", "ad_network_type", "campaign_base_campaign", "campaign_id", "clicks", "conversions", "conversions_value", "cost_micros", "device", "impressions", "interaction_event_types", "interactions", "view_through_conversions"]}
+{"table": "raw.search_term_keyword_stats_data", "columns": ["ad_group_id", "campaign_id", "clicks", "conversions", "conversions_value", "cost_micros", "customer_id", "date", "impressions", "info_text", "keyword_ad_group_criterion", "search_term", "search_term_match_type", "status", "view_through_conversions"]}
+
+
+=== Relevant specification and documentation ===
+
+
+=== Premises recorded in earlier reviews ===
+(none)
+
+=== Agent steps since the last review ===
+### event 5
+
+## 命令原文
+
+pwd && ls -la && find sql -maxdepth 3 -type f -print && find docs config -maxdepth 2 -type f -print
+
+## agent 实际看到的执行结果
+
+/home/katherine/dac/runs/20261025_de_official_batch_01/impl-005/agent/dacomp-de-impl-005
+total 7492
+drwxr-xr-x 8 katherine katherine    4096 Oct 25 01:19 .
+drwx------ 3 katherine katherine      60 Oct 25 01:19 ..
+drwxr-xr-x 3 katherine katherine    4096 Oct 25 01:19 .agent-python
+drwxr-xr-x 2 katherine katherine    4096 Oct 25 01:19 .tmp
+drwxr-xr-x 2 katherine katherine    4096 Oct 17 17:41 config
+drwxr-xr-x 2 katherine katherine    4096 Oct 17 17:41 docs
+-rw-r--r-- 1 katherine katherine 7614464 Oct 17 17:41 google_ads_start.duckdb
+-rw-r--r-- 1 katherine katherine    4209 Oct 17 17:41 google_ads_start.yaml
+drwxr-xr-x 2 katherine katherine    4096 Oct 17 17:41 raw_data
+-rw-r--r-- 1 katherine katherine   15332 Oct 17 17:41 run.py
+drwxr-xr-x 5 katherine katherine    4096 Oct 17 17:41 sql
+-rw-r--r-- 1 katherine katherine    3741 Oct 17 17:41 test_single_sql.py
+docs/data_contract.yaml
+config/layer_dependencies.yaml
+
+
+### event 7
+
+## 命令原文
+
+cat config/layer_dependencies.yaml && find sql -type f -maxdepth 3 -print -exec wc -l {} \;
+
+## agent 实际看到的执行结果
+
+# Google Ads data pipeline layer dependencies
+# This file defines the execution order for SQL transformations with enhanced business logic layers
+
+layers:
+  staging:
+    description: "Raw Google Ads data standardization and cleaning"
+    tables:
+      - stg_google_ads__account_history
+      - stg_google_ads__account_stats
+      - stg_google_ads__campaign_history
+      - stg_google_ads__campaign_stats
+      - stg_google_ads__ad_group_history
+      - stg_google_ads__ad_group_stats
+      - stg_google_ads__ad_history
+      - stg_google_ads__ad_stats
+      - stg_google_ads__ad_group_criterion_history
+      - stg_google_ads__keyword_stats
+      - stg_google_ads__search_term_keyword_stats
+
+  intermediate:
+    description: "Complex business logic and advanced analytics processing"
+    dependencies: ["staging"]
+    tables:
+      - int_google_ads__account_performance_metrics
+      - int_google_ads__campaign_cohort_analysis
+      - int_google_ads__keyword_performance_segmentation
+
+  marts:
+    description: "Executive-ready analysis and business intelligence reports"
+    dependencies: ["staging", "intermediate"]
+    tables:
+      - google_ads__account_report
+      - google_ads__campaign_report
+      - google_ads__ad_group_report
+      - google_ads__ad_report
+      - google_ads__keyword_report
+      - google_ads__search_term_report
+      - google_ads__url_report
+      - google_ads__channel_performance_analysis
+      - google_ads__customer_acquisition_analysis
+      - google_ads__executive_dashboard
+
+# Execution order within each layer (if specific order needed)
+execution_order:
+  staging:
+    - stg_google_ads__account_history
+    - stg_google_ads__account_stats
+    - stg_google_ads__campaign_history
+    - stg_google_ads__campaign_stats
+    - stg_google_ads__ad_group_history
+    - stg_google_ads__ad_group_stats
+    - stg_google_ads__ad_history
+    - stg_google_ads__ad_stats
+    - stg_google_ads__ad_group_criterion_history
+    - stg_google_ads__keyword_stats
+    - stg_google_ads__search_term_keyword_stats
+  
+  intermediate:
+    - int_google_ads__account_performance_metrics
+    - int_google_ads__campaign_cohort_analysis
+    - int_google_ads__keyword_performance_segmentation
+  
+  marts:
+    - google_ads__account_report
+    - google_ads__campaign_report
+    - google_ads__ad_group_report
+    - google_ads__ad_report
+    - google_ads__keyword_report
+    - google_ads__search_term_report
+    - google_ads__url_report
+    - google_ads__channel_performance_analysis
+    - google_ads__customer_acquisition_analysis
+    - google_ads__executive_dashboardfind: warning: you have specified the global option -maxdepth after the argument -type, but global options are not positional, i.e., -maxdepth affects tests specified before it as well as those specified after it.  Please specify global options before other arguments.
+
+
+### event 9
+
+## 命令原文
+
+sed -n '1,240p' run.py
+
+## agent 实际看到的执行结果
+
+#!/usr/env/bin/env python3
+import os
+import yaml
+import duckdb
+from pathlib import Path
+from typing import List, Optional
+import logging
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+class GoogleAdsDataPipeline:
+    """Google Ads Data Pipeline Orchestrator - Supports a Layered Schema Architecture"""
+    
+    def __init__(self, 
+                 source_db_path: str = "google_ads_start.duckdb", 
+                 target_db_path: str = "google_ads.duckdb",
+                 config_path: str = "config/layer_dependencies.yaml"):
+        self.source_db_path = source_db_path
+        self.target_db_path = target_db_path
+        self.config_path = config_path
+        self.config = self._load_config()
+        self.sql_dir = Path("sql")
+        
+                
+        self.schema_config = {
+            'raw': 'raw',                       
+            'staging': 'staging',               
+            'intermediate': 'intermediate',                 
+            'marts': 'marts'                     
+        }
+        
+                
+        self.conn = None
+        
+    def _load_config(self) -> dict:
+        """Load the configuration file"""
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f)
+        except FileNotFoundError:
+            logger.error(f"Configuration file {self.config_path} not found")
+            raise
+        except yaml.YAMLError as e:
+            logger.error(f"Error parsing configuration file: {e}")
+            raise
+    
+    def _initialize_database(self):
+        """Initialize the working database, create the layered schema architecture, and import raw data"""
+        logger.info(f"📥 Creating a new layered database: {self.target_db_path}")
+        
+                
+        if not os.path.exists(self.source_db_path):
+            raise FileNotFoundError(f"Source database file not found: {self.source_db_path}")
+        
+        self.conn = duckdb.connect(self.target_db_path)
+        
+                
+        self._create_schemas()
+        
+                
+        self._import_raw_data()
+        
+        logger.info(f"✓ Layered database initialization complete: {self.target_db_path}")
+    
+    def _create_schemas(self):
+        """Create the schemas for the data layers"""
+        logger.info("🏗️ Creating Schema layered architecture")
+        
+        for layer, schema_name in self.schema_config.items():
+            try:
+                self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
+                logger.info(f"  ✓ Created schema: {schema_name}")
+            except Exception as e:
+                logger.error(f"  ✗ Failed to create schema {schema_name}: {e}")
+                raise
+    
+    def _import_raw_data(self):
+        """Import raw data from the source database to the raw schema"""
+        logger.info("📥 Importing raw data into the raw schema")
+        
+                
+        try:
+            source_conn = duckdb.connect(self.source_db_path)
+        except Exception as e:
+            logger.error(f"Unable to connect to source database {self.source_db_path}: {e}")
+            raise
+        
+        try:
+            
+            tables_result = source_conn.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'raw'").fetchall()
+            source_tables = [table[0] for table in tables_result]
+            
+            logger.info(f"Found {len(source_tables)} raw tables")
+            
+                        
+            for table_name in source_tables:
+                try:
+                    
+                    data = source_conn.execute(f"SELECT * FROM raw.{table_name}").fetchall()
+                    columns_info = source_conn.execute(f"DESCRIBE raw.{table_name}").fetchall()
+                    
+                                        
+                    column_defs = []
+                    for col_info in columns_info:
+                        col_name, col_type = col_info[0], col_info[1]
+                        if col_name.lower() in ['end', 'start', 'order', 'group', 'select', 'from', 'where']:
+                            safe_col_name = f'"{col_name}"'
+                        else:
+                            safe_col_name = col_name
+                        column_defs.append(f"{safe_col_name} {col_type}")
+                    
+                    create_sql = f"CREATE OR REPLACE TABLE raw.{table_name} ({', '.join(column_defs)})"
+                    self.conn.execute(create_sql)
+                    
+                                        
+                    if data:
+                        placeholders = ', '.join(['?' for _ in columns_info])
+                        insert_sql = f"INSERT INTO raw.{table_name} VALUES ({placeholders})"
+                        self.conn.executemany(insert_sql, data)
+                    
+                    logger.info(f"  ✓ raw.{table_name}: {len(data)} rows")
+                    
+                except Exception as e:
+                    logger.error(f"  ✗ Failed to import table {table_name}: {e}")
+        
+        finally:
+            source_conn.close()
+        
+        logger.info("✓ Raw data import complete")
+    
+    def _load_sql_file(self, file_path: Path) -> str:
+        """Load the content of a SQL file"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except FileNotFoundError:
+            logger.error(f"SQL file {file_path} not found")
+            raise
+    
+    def _execute_sql(self, sql: str, table_name: str, layer_name: str) -> bool:
+        """Execute SQL and create a table in the specified schema"""
+        try:
+            
+            target_schema = self.schema_config[layer_name]
+            full_table_name = f"{target_schema}.{table_name}"
+            
+                        
+            processed_sql = self._process_sql_references(sql, layer_name)
+            
+                        
+            create_table_sql = f"CREATE OR REPLACE TABLE {full_table_name} AS ({processed_sql})"
+            
+            logger.info(f"Executing: {full_table_name}")
+            self.conn.execute(create_table_sql)
+            
+                        
+            count_result = self.conn.execute(f"SELECT COUNT(*) FROM {full_table_name}").fetchone()
+            row_count = count_result[0] if count_result else 0
+            
+            logger.info(f"✓ {full_table_name}: {row_count:,} rows")
+            return True
+            
+        except Exception as e:
+            logger.error(f"✗ {full_table_name}: {e}")
+            return False
+    
+    def _process_sql_references(self, sql: str, current_layer: str) -> str:
+        """Process table references in SQL, converting them to schema.table format"""
+        import re
+        processed_sql = sql
+        
+                
+        cte_pattern = r'(\w+)\s+as\s*\('
+        cte_names = set(re.findall(cte_pattern, sql, re.IGNORECASE))
+        
+                
+        raw_table_mappings = {
+            'account_history_data': 'raw.account_history_data',
+            'account_stats_data': 'raw.account_stats_data',
+            'campaign_history_data': 'raw.campaign_history_data',
+            'campaign_stats_data': 'raw.campaign_stats_data',
+            'ad_group_history_data': 'raw.ad_group_history_data',
+            'ad_group_stats_data': 'raw.ad_group_stats_data',
+            'ad_history_data': 'raw.ad_history_data',
+            'ad_stats_data': 'raw.ad_stats_data',
+            'ad_group_criterion_history_data': 'raw.ad_group_criterion_history_data',
+            'keyword_stats_data': 'raw.keyword_stats_data',
+            'search_term_keyword_stats_data': 'raw.search_term_keyword_stats_data'
+        }
+        
+                
+        for table_name, schema_table in raw_table_mappings.items():
+            if table_name not in cte_names:
+                pattern = r'\bfrom\s+' + re.escape(table_name) + r'\b'
+                replacement = f'from {schema_table}'
+                processed_sql = re.sub(pattern, replacement, processed_sql, flags=re.IGNORECASE)
+        
+        processed_sql = re.sub(r'\bfrom\s+stg_google_ads__', 'from staging.stg_google_ads__', processed_sql, flags=re.IGNORECASE)
+        
+                
+        processed_sql = re.sub(r'\bfrom\s+int_google_ads__', 'from intermediate.int_google_ads__', processed_sql, flags=re.IGNORECASE)
+        
+                
+        processed_sql = re.sub(r'\bfrom\s+google_ads__', 'from marts.google_ads__', processed_sql, flags=re.IGNORECASE)
+        
+        return processed_sql
+    
+    def _execute_layer(self, layer_name: str) -> bool:
+        """Execute all tables for a specific layer"""
+        layer_config = self.config['layers'][layer_name]
+        tables = layer_config.get('tables', [])
+        
+                
+        execution_order = self.config.get('execution_order', {}).get(layer_name, tables)
+        
+        logger.info(f"\n=== Executing {layer_name.upper()} Layer ===")
+        logger.info(f"Description: {layer_config.get('description', '')}")
+        
+        success_count = 0
+        total_count = len(execution_order)
+        
+        for table_name in execution_order:
+            
+            sql_file_path = self.sql_dir / layer_name / f"{table_name}.sql"
+            
+            if not sql_file_path.exists():
+                logger.warning(f"Skipping {table_name}: SQL file does not exist ({sql_file_path})")
+                continue
+            
+            sql_content = self._load_sql_file(sql_file_path)
+            if self._execute_sql(sql_content, table_name, layer_name):
+                success_count += 1
+        
+        logger.info(f"{layer_name.upper()} Layer complete: {success_count}/{total_count} tables created successfully")
+
+
+### event 11
+
+## 命令原文
+
+cat google_ads_start.yaml
+
+## agent 实际看到的执行结果
+
+account_history_data:
+  id: VARCHAR
+  updated_at: VARCHAR
+  auto_tagging_enabled: BOOLEAN
+  currency_code: VARCHAR
+  descriptive_name: VARCHAR
+  final_url_suffix: VARCHAR
+  hidden: BOOLEAN
+  manager: DOUBLE
+  manager_customer_id: VARCHAR
+  optimization_score: DOUBLE
+  pay_per_conversion_eligibility_failure_reasons: BOOLEAN
+  test_account: VARCHAR
+  time_zone: VARCHAR
+  tracking_url_template: VARCHAR
+account_stats_data:
+  customer_id: VARCHAR
+  date: VARCHAR
+  active_view_impressions: BIGINT
+  active_view_measurability: DOUBLE
+  active_view_measurable_cost_micros: BIGINT
+  active_view_measurable_impressions: BIGINT
+  active_view_viewability: DOUBLE
+  ad_network_type: VARCHAR
+  clicks: BIGINT
+  conversions: DOUBLE
+  conversions_value: DOUBLE
+  cost_micros: BIGINT
+  device: VARCHAR
+  impressions: BIGINT
+  interaction_event_types: VARCHAR
+  interactions: BIGINT
+  view_through_conversions: BIGINT
+ad_group_criterion_history_data:
+  id: VARCHAR
+  ad_group_id: VARCHAR
+  base_campaign_id: VARCHAR
+  updated_at: VARCHAR
+  type: VARCHAR
+  status: VARCHAR
+  keyword_match_type: VARCHAR
+  keyword_text: VARCHAR
+ad_group_history_data:
+  id: VARCHAR
+  updated_at: VARCHAR
+  type: VARCHAR
+  campaign_id: VARCHAR
+  campaign_name: VARCHAR
+  name: VARCHAR
+  status: VARCHAR
+ad_group_stats_data:
+  customer_id: VARCHAR
+  date: VARCHAR
+  active_view_impressions: BIGINT
+  active_view_measurability: DOUBLE
+  active_view_measurable_cost_micros: BIGINT
+  active_view_measurable_impressions: BIGINT
+  active_view_viewability: DOUBLE
+  ad_network_type: VARCHAR
+  base_ad_group: VARCHAR
+  campaign_base_campaign: VARCHAR
+  campaign_id: VARCHAR
+  clicks: BIGINT
+  conversions: DOUBLE
+  conversions_value: DOUBLE
+  cost_micros: BIGINT
+  device: VARCHAR
+  id: BIGINT
+  impressions: BIGINT
+  interaction_event_types: VARCHAR
+  interactions: BIGINT
+  view_through_conversions: BIGINT
+ad_history_data:
+  ad_group_id: VARCHAR
+  id: VARCHAR
+  name: VARCHAR
+  updated_at: VARCHAR
+  type: VARCHAR
+  status: VARCHAR
+  display_url: VARCHAR
+  final_urls: VARCHAR
+ad_stats_data:
+  customer_id: VARCHAR
+  date: VARCHAR
+  ad_group_id: VARCHAR
+  ad_group: VARCHAR
+  keyword_ad_group_criterion: VARCHAR
+  ad_network_type: VARCHAR
+  device: VARCHAR
+  ad_id: VARCHAR
+  campaign_id: VARCHAR
+  clicks: BIGINT
+  cost_micros: BIGINT
+  impressions: BIGINT
+campaign_history_data:
+  id: VARCHAR
+  updated_at: VARCHAR
+  name: VARCHAR
+  customer_id: VARCHAR
+  advertising_channel_type: VARCHAR
+  advertising_channel_subtype: VARCHAR
+  start_date: VARCHAR
+  end_date: VARCHAR
+  serving_status: VARCHAR
+  status: VARCHAR
+  tracking_url_template: VARCHAR
+campaign_stats_data:
+  customer_id: VARCHAR
+  date: VARCHAR
+  active_view_impressions: BIGINT
+  active_view_measurability: DOUBLE
+  active_view_measurable_cost_micros: BIGINT
+  active_view_measurable_impressions: BIGINT
+  active_view_viewability: DOUBLE
+  ad_network_type: VARCHAR
+  base_campaign: VARCHAR
+  clicks: BIGINT
+  conversions: DOUBLE
+  conversions_value: DOUBLE
+  cost_micros: BIGINT
+  device: VARCHAR
+  id: BIGINT
+  impressions: BIGINT
+  interaction_event_types: VARCHAR
+  interactions: BIGINT
+  view_through_conversions: BIGINT
+keyword_stats_data:
+  customer_id: VARCHAR
+  date: VARCHAR
+  active_view_impressions: BIGINT
+  active_view_measurability: DOUBLE
+  active_view_measurable_cost_micros: BIGINT
+  active_view_measurable_impressions: BIGINT
+  active_view_viewability: DOUBLE
+  ad_group_base_ad_group: VARCHAR
+  ad_group_criterion_criterion_id: VARCHAR
+  ad_group_id: VARCHAR
+  ad_network_type: VARCHAR
+  campaign_base_campaign: VARCHAR
+  campaign_id: VARCHAR
+  clicks: BIGINT
+  conversions: DOUBLE
+  conversions_value: DOUBLE
+  cost_micros: BIGINT
+  device: VARCHAR
+  impressions: BIGINT
+  interaction_event_types: VARCHAR
+  interactions: BIGINT
+  view_through_conversions: BIGINT
+search_term_keyword_stats_data:
+  ad_group_id: VARCHAR
+  campaign_id: VARCHAR
+  clicks: BIGINT
+  conversions: DOUBLE
+  conversions_value: DOUBLE
+  cost_micros: BIGINT
+  customer_id: VARCHAR
+  date: VARCHAR
+  impressions: BIGINT
+  info_text: VARCHAR
+  keyword_ad_group_criterion: VARCHAR
+  search_term: VARCHAR
+  search_term_match_type: VARCHAR
+  status: VARCHAR
+  view_through_conversions: BIGINT
+
+
+### event 13
+
+## 命令原文
+
+find sql -maxdepth 2 -type f -print; sed -n '240,450p' run.py; python - <<'PY'
+import duckdb
+c=duckdb.connect('google_ads_start.duckdb',read_only=True)
+for (t,) in c.execute("select table_name from information_schema.tables where table_schema='raw' order by 1").fetchall():
+ print('\n',t, c.execute(f'describe raw.{t}').fetchall())
+ print(c.execute(f'select * from raw.{t} limit 1').fetchall())
+PY
+
+## agent 实际看到的执行结果
+
+        logger.info(f"{layer_name.upper()} Layer complete: {success_count}/{total_count} tables created successfully")
+        return success_count == total_count
+    
+    def _clean_generated_tables(self):
+        """Clean up all generated tables, keeping the raw data schema"""
+        logger.info("🧼 Cleaning up previously generated schemas and tables...")
+        
+                
+        schemas_to_clean = ['staging', 'intermediate', 'marts']
+        
+        for schema_name in schemas_to_clean:
+            try:
+                
+                result = self.conn.execute(f"SELECT schema_name FROM information_schema.schemata WHERE schema_name = '{schema_name}'").fetchall()
+                if result:
+                    self.conn.execute(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE")
+                    logger.info(f"✓ Dropped schema: {schema_name}")
+            except Exception as e:
+                logger.warning(f"Failed to drop schema {schema_name}: {e}")
+        
+        logger.info("Cleanup complete")
+
+    def run_pipeline(self, layers: Optional[List[str]] = None) -> bool:
+        """Run the complete data pipeline"""
+        if layers is None:
+            layers = list(self.config['layers'].keys())
+        
+        logger.info("🚀 Starting Google Ads data pipeline execution")
+        logger.info(f"Source database: {self.source_db_path}")
+        logger.info(f"Target database: {self.target_db_path}")
+        
+                
+        if not os.path.exists(self.target_db_path):
+            logger.info("Target database does not exist, starting initialization...")
+            try:
+                
+                self._initialize_database()
+            except Exception as e:
+                logger.error(f"Database initialization failed: {e}")
+                logger.info("Attempting to continue with existing database...")
+        else:
+            logger.info("Found existing target database, using it directly...")
+            
+            self.conn = duckdb.connect(self.target_db_path)
+        
+        self._clean_generated_tables()
+        
+                
+        self._create_schemas()
+        
+        total_success = True
+        
+        for layer_name in layers:
+            if layer_name not in self.config['layers']:
+                logger.error(f"Unknown layer: {layer_name}")
+                total_success = False
+                continue
+            
+            dependencies = self.config['layers'][layer_name].get('dependencies', [])
+            for dep in dependencies:
+                if dep not in layers[:layers.index(layer_name)]:
+                    logger.warning(f"{layer_name} depends on {dep}, but {dep} has not been executed yet")
+            
+            layer_success = self._execute_layer(layer_name)
+            total_success = total_success and layer_success
+        
+        if total_success:
+            logger.info("\n🎉 Google Ads data pipeline execution complete!")
+            logger.info(f"✨ The complete Google Ads data warehouse has been generated: {self.target_db_path}")
+            self._show_final_stats()
+        else:
+            logger.error("\n❌ Errors occurred during data pipeline execution")
+        
+        if self.conn:
+            self.conn.close()
+        
+        return total_success
+    
+    def _show_final_stats(self):
+        """Display final statistics - shown by Schema layer"""
+        logger.info("\n=== Google Ads Data Warehouse Final Statistics (by Schema Layer) ===")
+        
+                
+        for layer_name, schema_name in self.schema_config.items():
+            try:
+                
+                tables_result = self.conn.execute(f"""SELECT table_name 
+                                                     FROM information_schema.tables 
+                                                     WHERE table_schema = '{schema_name}'""").fetchall()
+                schema_tables = [table[0] for table in tables_result]
+                
+                if schema_tables:
+                    logger.info(f"\n{layer_name.upper()} Layer (Schema: {schema_name}):")
+                    for table in sorted(schema_tables):
+                        try:
+                            count = self.conn.execute(f"SELECT COUNT(*) FROM {schema_name}.{table}").fetchone()[0]
+                            logger.info(f"  ✓ {schema_name}.{table}: {count:,} rows")
+                        except Exception as e:
+                            logger.info(f"  ✗ {schema_name}.{table}: Query failed - {e}")
+                else:
+                    logger.info(f"\n{layer_name.upper()} Layer (Schema: {schema_name}): No tables")
+                    
+            except Exception as e:
+                logger.error(f"Failed to query schema {schema_name}: {e}")
+
+
+def main():
+    """Main function"""
+    pipeline = GoogleAdsDataPipeline()
+    
+    success = pipeline.run_pipeline()
+    if success:
+        print("\n✅ Google Ads data transformation completed successfully!")
+        print("📋 Transformation Results:")
+        print(f"  📥 Source Database: {pipeline.source_db_path} (Raw Google Ads data)")
+        print(f"  📤 Target Database: {pipeline.target_db_path} (Complete Layered Architecture)")
+        print("\n🏗️ Google Ads Data Architecture:")
+        print("  📊 Staging Layer - Standardized Google Ads data")
+        print("  🎯 Mart Layer - Analysis-ready Google Ads reports")
+    else:
+        print("\n❌ Errors occurred during Google Ads data transformation, please check the logs")
+
+
+if __name__ == "__main__":
+    main()
+ account_history_data [('id', 'VARCHAR', 'YES', None, None, None), ('updated_at', 'VARCHAR', 'YES', None, None, None), ('auto_tagging_enabled', 'BOOLEAN', 'YES', None, None, None), ('currency_code', 'VARCHAR', 'YES', None, None, None), ('descriptive_name', 'VARCHAR', 'YES', None, None, None), ('final_url_suffix', 'VARCHAR', 'YES', None, None, None), ('hidden', 'BOOLEAN', 'YES', None, None, None), ('manager', 'DOUBLE', 'YES', None, None, None), ('manager_customer_id', 'VARCHAR', 'YES', None, None, None), ('optimization_score', 'DOUBLE', 'YES', None, None, None), ('pay_per_conversion_eligibility_failure_reasons', 'BOOLEAN', 'YES', None, None, None), ('test_account', 'VARCHAR', 'YES', None, None, None), ('time_zone', 'VARCHAR', 'YES', None, None, None), ('tracking_url_template', 'VARCHAR', 'YES', None, None, None)]
+[('ACC35659725675', '2024-02-11 06:14:39.000 +0800', True, 'DKK', 'Professional Fashion Services', '?utm_source=google&utm_medium=cpc&utm_campaign=ACC35659725675', True, 372.03, '26322109864', 39.7, False, 'Test', 'Asia/Tokyo', 'https://www.nhoqadulnq.net/services/')]
+
+ account_stats_data [('customer_id', 'VARCHAR', 'YES', None, None, None), ('date', 'VARCHAR', 'YES', None, None, None), ('active_view_impressions', 'BIGINT', 'YES', None, None, None), ('active_view_measurability', 'DOUBLE', 'YES', None, None, None), ('active_view_measurable_cost_micros', 'BIGINT', 'YES', None, None, None), ('active_view_measurable_impressions', 'BIGINT', 'YES', None, None, None), ('active_view_viewability', 'DOUBLE', 'YES', None, None, None), ('ad_network_type', 'VARCHAR', 'YES', None, None, None), ('clicks', 'BIGINT', 'YES', None, None, None), ('conversions', 'DOUBLE', 'YES', None, None, None), ('conversions_value', 'DOUBLE', 'YES', None, None, None), ('cost_micros', 'BIGINT', 'YES', None, None, None), ('device', 'VARCHAR', 'YES', None, None, None), ('impressions', 'BIGINT', 'YES', None, None, None), ('interaction_event_types', 'VARCHAR', 'YES', None, None, None), ('interactions', 'BIGINT', 'YES', None, None, None), ('view_through_conversions', 'BIGINT', 'YES', None, None, None)]
+[('ACC15060819398', '2023-11-19 00:00:00.000 +0800', 126, 0.824, 2178285, 137, 0.359, 'MIXED', 9, 0.1, 17.23, 13876539, 'TABLET', 289, '[CLICK, ENGAGEMENT]', 9, 0)]
+
+ ad_group_criterion_history_data [('id', 'VARCHAR', 'YES', None, None, None), ('ad_group_id', 'VARCHAR', 'YES', None, None, None), ('base_campaign_id', 'VARCHAR', 'YES', None, None, None), ('updated_at', 'VARCHAR', 'YES', None, None, None), ('type', 'VARCHAR', 'YES', None, None, None), ('status', 'VARCHAR', 'YES', None, None, None), ('keyword_match_type', 'VARCHAR', 'YES', None, None, None), ('keyword_text', 'VARCHAR', 'YES', None, None, None)]
+[('AD_86485007730', '95518648228', 'CAM44658856951', '2024-07-01 18:59:08.000 +0800', 'KEYWORD', 'ENABLED', 'PHRASE', 'top solution')]
+
+ ad_group_history_data [('id', 'VARCHAR', 'YES', None, None, None), ('updated_at', 'VARCHAR', 'YES', None, None, None), ('type', 'VARCHAR', 'YES', None, None, None), ('campaign_id', 'VARCHAR', 'YES', None, None, None), ('campaign_name', 'VARCHAR', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('status', 'VARCHAR', 'YES', None, None, None)]
+[('AD_40405358980', '2023-01-05 03:39:20.000 +0800', 'SEARCH_STANDARD', 'CAM75046001300', 'WLcyudjLopZCAwVCG42LtA==', 'G+b561Y/O/hceLQhm/Cd6Q==', 'PAUSED')]
+
+ ad_group_stats_data [('customer_id', 'VARCHAR', 'YES', None, None, None), ('date', 'VARCHAR', 'YES', None, None, None), ('active_view_impressions', 'BIGINT', 'YES', None, None, None), ('active_view_measurability', 'DOUBLE', 'YES', None, None, None), ('active_view_measurable_cost_micros', 'BIGINT', 'YES', None, None, None), ('active_view_measurable_impressions', 'BIGINT', 'YES', None, None, None), ('active_view_viewability', 'DOUBLE', 'YES', None, None, None), ('ad_network_type', 'VARCHAR', 'YES', None, None, None), ('base_ad_group', 'VARCHAR', 'YES', None, None, None), ('campaign_base_campaign', 'VARCHAR', 'YES', None, None, None), ('campaign_id', 'VARCHAR', 'YES', None, None, None), ('clicks', 'BIGINT', 'YES', None, None, None), ('conversions', 'DOUBLE', 'YES', None, None, None), ('conversions_value', 'DOUBLE', 'YES', None, None, None), ('cost_micros', 'BIGINT', 'YES', None, None, None), ('device', 'VARCHAR', 'YES', None, None, None), ('id', 'BIGINT', 'YES', None, None, None), ('impressions', 'BIGINT', 'YES', None, None, None), ('interaction_event_types', 'VARCHAR', 'YES', None, None, None), ('interactions', 'BIGINT', 'YES', None, None, None), ('view_through_conversions', 'BIGINT', 'YES', None, None, None)]
+[('ACC61393167557', '2022-04-23 00:00:00.000 +0800', 199, 0.829, 11046500, 239, 0.377, 'MIXED', 'AD_96523691001', 'CAM94269068771', 'CAM15753005768', 5, 0.4, 52.66, 21330460, 'TABLET', 9860686206, 532, '[CLICK]', 5, 0)]
+
+ ad_history_data [('ad_group_id', 'VARCHAR', 'YES', None, None, None), ('id', 'VARCHAR', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('updated_at', 'VARCHAR', 'YES', None, None, None), ('type', 'VARCHAR', 'YES', None, None, None), ('status', 'VARCHAR', 'YES', None, None, None), ('display_url', 'VARCHAR', 'YES', None, None, None), ('final_urls', 'VARCHAR', 'YES', None, None, None)]
+[('AD_92089570914', 'AD_93329605572', 'Ad Headline 1', '2023-01-16 10:09:23.000 +0800', 'TEXT_AD', 'ENABLED', 'https://www.vzust.co.uk/services/', 'https://www.gkxfbida.com/contact/')]
+
+ ad_stats_data [('customer_id', 'VARCHAR', 'YES', None, None, None), ('date', 'VARCHAR', 'YES', None, None, None), ('ad_group_id', 'VARCHAR', 'YES', None, None, None), ('ad_group', 'VARCHAR', 'YES', None, None, None), ('keyword_ad_group_criterion', 'VARCHAR', 'YES', None, None, None), ('ad_network_type', 'VARCHAR', 'YES', None, None, None), ('device', 'VARCHAR', 'YES', None, None, None), ('ad_id', 'VARCHAR', 'YES', None, None, None), ('campaign_id', 'VARCHAR', 'YES', None, None, None), ('clicks', 'BIGINT', 'YES', None, None, None), ('cost_micros', 'BIGINT', 'YES', None, None, None), ('impressions', 'BIGINT', 'YES', None, None, None)]
+[('ACC43188184734', '2023-11-23 00:00:00.000 +0800', 'AD_79737875870', 'AD_79721483510', 'AD_20671903516', 'YOUTUBE', 'TABLET', 'AD_28364383913', 'CAM52489170079', 2, 2600061, 70)]
+
+ campaign_history_data [('id', 'VARCHAR', 'YES', None, None, None), ('updated_at', 'VARCHAR', 'YES', None, None, None), ('name', 'VARCHAR', 'YES', None, None, None), ('customer_id', 'VARCHAR', 'YES', None, None, None), ('advertising_channel_type', 'VARCHAR', 'YES', None, None, None), ('advertising_channel_subtype', 'VARCHAR', 'YES', None, None, None), ('start_date', 'VARCHAR', 'YES', None, None, None), ('end_date', 'VARCHAR', 'YES', None, None, None), ('serving_status', 'VARCHAR', 'YES', None, None, None), ('status', 'VARCHAR', 'YES', None, None, None), ('tracking_url_template', 'VARCHAR', 'YES', None, None, None)]
+[('CAM71051262389', '2024-04-12 14:03:04.000 +0800', 'Brand Keywords - Q1 2023', 'ACC86390733882', 'MULTI_CHANNEL', 'STANDARD', '2023-07-30 00:00:00.000 +0800', '2024-05-31 00:00:00.000 +0800', 'ENDED', 'ENABLED', 'https://www.zzrcrkm.com/products/')]
+
+ campaign_stats_data [('customer_id', 'VARCHAR', 'YES', None, None, None), ('date', 'VARCHAR', 'YES', None, None, None), ('active_view_impressions', 'BIGINT', 'YES', None, None, None), ('active_view_measurability', 'DOUBLE', 'YES', None, None, None), ('active_view_measurable_cost_micros', 'BIGINT', 'YES', None, None, None), ('active_view_measurable_impressions', 'BIGINT', 'YES', None, None, None), ('active_view_viewability', 'DOUBLE', 'YES', None, None, None), ('ad_network_type', 'VARCHAR', 'YES', None, None, None), ('base_campaign', 'VARCHAR', 'YES', None, None, None), ('clicks', 'BIGINT', 'YES', None, None, None), ('conversions', 'DOUBLE', 'YES', None, None, None), ('conversions_value', 'DOUBLE', 'YES', None, None, None), ('cost_micros', 'BIGINT', 'YES', None, None, None), ('device', 'VARCHAR', 'YES', None, None, None), ('id', 'BIGINT', 'YES', None, None, None), ('impressions', 'BIGINT', 'YES', None, None, None), ('interaction_event_types', 'VARCHAR', 'YES', None, None, None), ('interactions', 'BIGINT', 'YES', None, None, None), ('view_through_conversions', 'BIGINT', 'YES', None, None, None)]
+[('ACC12253649392', '2023-02-28 00:00:00.000 +0800', 96, 0.543, 4092734, 89, 0.634, 'DISPLAY', 'CAM91547206303', 5, 0.2, 33.56, 16496369, 'DESKTOP', 4498420985, 155, '[CLICK]', 5, 0)]
+
+ keyword_stats_data [('customer_id', 'VARCHAR', 'YES', None, None, None), ('date', 'VARCHAR', 'YES', None, None, None), ('active_view_impressions', 'BIGINT', 'YES', None, None, None), ('active_view_measurability', 'DOUBLE', 'YES', None, None, None), ('active_view_measurable_cost_micros', 'BIGINT', 'YES', None, None, None), ('active_view_measurable_impressions', 'BIGINT', 'YES', None, None, None), ('active_view_viewability', 'DOUBLE', 'YES', None, None, None), ('ad_group_base_ad_group', 'VARCHAR', 'YES', None, None, None), ('ad_group_criterion_criterion_id', 'VARCHAR', 'YES', None, None, None), ('ad_group_id', 'VARCHAR', 'YES', None, None, None), ('ad_network_type', 'VARCHAR', 'YES', None, None, None), ('campaign_base_campaign', 'VARCHAR', 'YES', None, None, None), ('campaign_id', 'VARCHAR', 'YES', None, None, None), ('clicks', 'BIGINT', 'YES', None, None, None), ('conversions', 'DOUBLE', 'YES', None, None, None), ('conversions_value', 'DOUBLE', 'YES', None, None, None), ('cost_micros', 'BIGINT', 'YES', None, None, None), ('device', 'VARCHAR', 'YES', None, None, None), ('impressions', 'BIGINT', 'YES', None, None, None), ('interaction_event_types', 'VARCHAR', 'YES', None, None, None), ('interactions', 'BIGINT', 'YES', None, None, None), ('view_through_conversions', 'BIGINT', 'YES', None, None, None)]
+[('ACC09426864345', '2024-03-22 00:00:00.000 +0800', 51, 0.944, 13633440, 154, 0.452, 'AD_17329296223', 'AD_12210945296', 'AD_31470571266', 'SEARCH', 'CAM87789567503', 'CAM89762826741', 6, 0.3, 12.05, 21984491, 'TABLET', 157, '[CLICK]', 6, 0)]
+
+ search_term_keyword_stats_data [('ad_group_id', 'VARCHAR', 'YES', None, None, None), ('campaign_id', 'VARCHAR', 'YES', None, None, None), ('clicks', 'BIGINT', 'YES', None, None, None), ('conversions', 'DOUBLE', 'YES', None, None, None), ('conversions_value', 'DOUBLE', 'YES', None, None, None), ('cost_micros', 'BIGINT', 'YES', None, None, None), ('customer_id', 'VARCHAR', 'YES', None, None, None), ('date', 'VARCHAR', 'YES', None, None, None), ('impressions', 'BIGINT', 'YES', None, None, None), ('info_text', 'VARCHAR', 'YES', None, None, None), ('keyword_ad_group_criterion', 'VARCHAR', 'YES', None, None, None), ('search_term', 'VARCHAR', 'YES', None, None, None), ('search_term_match_type', 'VARCHAR', 'YES', None, None, None), ('status', 'VARCHAR', 'YES', None, None, None), ('view_through_conversions', 'BIGINT', 'YES', None, None, None)]
+[('AD_52558709979', 'CAM32176623104', 5, 0.5, 95.54, 4174417, 'ACC33443162904', '2023-08-09 00:00:00.000 +0800', 496, 'Long tail keyword', 'AD_05790596645', 'discount prices', 'PHRASE', 'EXCLUDED', 0)]
+
+
+

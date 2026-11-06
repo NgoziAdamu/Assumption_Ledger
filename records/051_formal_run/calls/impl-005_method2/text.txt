@@ -1,0 +1,730 @@
+{
+  "stg_google_ads__account_history": {
+    "items": [
+      {
+        "problem": "The most-recent flag still orders by a timestamp cast that was demonstrated to return NULL for the source format, so it may select an arbitrary history record.",
+        "about": "data",
+        "evidence_in_work": "row_number() over(partition by id order by try_cast(updated_at AS TIMESTAMPTZ) desc nulls last)=1",
+        "source": "Cleaned and validated Google Ads account configuration data with current state tracking",
+        "importance": 5,
+        "reason": "The parsing repair changed the selected timestamp but not the window ordering, potentially giving every downstream model stale account attributes."
+      },
+      {
+        "problem": "The most-recent flag is assigned before invalid records are removed, potentially leaving an account with valid history but no surviving current record.",
+        "about": "requirement",
+        "evidence_in_work": "row_number() ... =1 is_most_recent_record ... FROM validated WHERE ... updated_at <= current_timestamp",
+        "source": "updated_at <= CURRENT_TIMESTAMP; on_failure: delete_row",
+        "importance": 3,
+        "reason": "A rejected record can consume the current-record position and prevent otherwise valid account attributes from joining downstream."
+      }
+    ],
+    "fewer_reason": "Only two distinct, supported concerns were found for this table."
+  },
+  "stg_google_ads__account_stats": {
+    "items": [
+      {
+        "problem": "The retained network/device rows may not constitute one daily account record, but their actual grain was not checked before downstream daily windows were applied.",
+        "about": "data",
+        "evidence_in_work": "staging.stg_google_ads__account_stats 10000; marts.google_ads__account_report 9674",
+        "source": "raw.account_stats_data includes ad_network_type and device",
+        "importance": 4,
+        "reason": "The reduction in the daily report indicates repeated daily keys that can materially change downstream trends and account totals."
+      },
+      {
+        "problem": "The explicitly required full three-CTE implementation for account statistics is replaced with a two-CTE projection with no metrics_calculated step.",
+        "about": "requirement",
+        "evidence_in_work": "WITH base AS (...) , validated AS (...) SELECT * FROM validated",
+        "source": "FULL Tables (3-CTE): account_stats, keyword_stats (these include complex calculated performance metrics)",
+        "importance": 2,
+        "reason": "An expressly documented processing stage is absent, although the supplied column list does not specify its additional calculations."
+      }
+    ],
+    "fewer_reason": "Only two supported concerns were identifiable without inventing additional staging validations."
+  },
+  "stg_google_ads__campaign_history": {
+    "items": [
+      {
+        "problem": "The current campaign record is selected using the unrepaired TIMESTAMPTZ cast rather than the working timestamp parser.",
+        "about": "data",
+        "evidence_in_work": "order by try_cast(updated_at AS TIMESTAMPTZ) desc nulls last",
+        "source": "Cleaned and validated Google Ads campaign configuration data with hierarchical relationships",
+        "importance": 5,
+        "reason": "NULL sort keys make current campaign attributes arbitrary whenever an ID has multiple history records."
+      },
+      {
+        "problem": "Invalid advertising-channel values are nullified and then their entire records are deleted instead of being retained with a NULL field.",
+        "about": "requirement",
+        "evidence_in_work": "case when advertising_channel_type in (...) then advertising_channel_type end ... and advertising_channel_type is not null",
+        "source": "advertising_channel_type IN ('SEARCH', 'DISPLAY', 'SHOPPING', 'VIDEO', 'MULTI_CHANNEL'); on_failure: nullify_field",
+        "importance": 4,
+        "reason": "This removes campaign dimensions and can eliminate matching campaign facts from cohort analysis."
+      },
+      {
+        "problem": "The date filters admit a missing start_date even when a populated end_date cannot satisfy the specified comparison.",
+        "about": "requirement",
+        "evidence_in_work": "(start_date is null or start_date <= current_date) and (end_date is null or start_date is null or end_date >= start_date)",
+        "source": "start_date <= CURRENT_DATE; end_date IS NULL OR end_date >= start_date",
+        "importance": 2,
+        "reason": "The explicit NULL exemptions broaden the accepted row set beyond a literal implementation of the validation rules."
+      },
+      {
+        "problem": "The current-record position is assigned before campaign validation, so rejecting that row can leave no current campaign snapshot.",
+        "about": "requirement",
+        "evidence_in_work": "row_number() ... =1 is_most_recent_record ... SELECT * FROM validated WHERE ...",
+        "source": "start_date <= CURRENT_DATE; on_failure: delete_row",
+        "importance": 3,
+        "reason": "Valid older history can survive without ever being available to the latest-history joins."
+      }
+    ],
+    "fewer_reason": "Four distinct concerns are supported by the implementation and contract."
+  },
+  "stg_google_ads__campaign_stats": {
+    "items": [
+      {
+        "problem": "The campaign identifier is taken from base_campaign rather than id without establishing which raw field represents the required campaign key.",
+        "about": "data",
+        "evidence_in_work": "CAST(base_campaign AS VARCHAR(20)) campaign_id",
+        "source": "raw.campaign_stats_data includes base_campaign and id",
+        "importance": 3,
+        "reason": "The observed prefixed base_campaign values make this plausible, but choosing the wrong key would change all campaign joins and grouping."
+      },
+      {
+        "problem": "The source may contain several network/device records for the same campaign date, which is not reconciled with downstream models described as daily campaign grain.",
+        "about": "data",
+        "evidence_in_work": "staging.stg_google_ads__campaign_stats: 10,000 rows; marts.google_ads__campaign_report: 9,976 rows",
+        "source": "int_google_ads__campaign_cohort_analysis grain: One row per source_relation, campaign_id, and date_day",
+        "importance": 3,
+        "reason": "Repeated daily keys can make cumulative metrics and cohort row counts operate on segments rather than daily campaigns."
+      }
+    ],
+    "fewer_reason": "Only two grounded concerns were found; the specified staging date filters and monetary casts are present."
+  },
+  "stg_google_ads__ad_group_history": {
+    "items": [
+      {
+        "problem": "The most-recent ad-group record is ordered using the timestamp cast already shown not to parse the supplied source format.",
+        "about": "data",
+        "evidence_in_work": "row_number() over(partition by id order by try_cast(updated_at AS TIMESTAMPTZ) desc nulls last)=1",
+        "source": "is_most_recent_record; data_type: BOOLEAN; constraints: [not_null]",
+        "importance": 4,
+        "reason": "Multiple history rows would yield arbitrary names, types, statuses, and campaign relationships downstream."
+      },
+      {
+        "problem": "Ranking before required-field filtering can remove the selected current row without promoting a valid surviving history row.",
+        "about": "requirement",
+        "evidence_in_work": "row_number() ... is_most_recent_record ... WHERE ad_group_id is not null and campaign_id is not null and status is not null",
+        "source": "campaign_id and status: constraints: [not_null]",
+        "importance": 3,
+        "reason": "Downstream latest-ad-group joins can miss an entity despite valid retained history."
+      }
+    ],
+    "fewer_reason": "Two distinct concerns were found, both concerning current-state selection."
+  },
+  "stg_google_ads__ad_group_stats": {
+    "items": [
+      {
+        "problem": "The campaign key is sourced from campaign_base_campaign rather than the explicitly available campaign_id without verifying their business meanings.",
+        "about": "data",
+        "evidence_in_work": "CAST(campaign_base_campaign AS VARCHAR(20)) campaign_id",
+        "source": "raw.ad_group_stats_data includes campaign_base_campaign and campaign_id",
+        "importance": 4,
+        "reason": "The inspected sample has different values in these fields, so the choice changes campaign attribution and dimensional matches."
+      },
+      {
+        "problem": "The ad-group key is sourced from base_ad_group rather than id without checking that it is the intended entity identifier.",
+        "about": "data",
+        "evidence_in_work": "CAST(base_ad_group AS VARCHAR(20)) ad_group_id",
+        "source": "raw.ad_group_stats_data includes base_ad_group and id",
+        "importance": 3,
+        "reason": "The prefixed values support the choice, but an incorrect interpretation would affect every ad-group join and report key."
+      }
+    ],
+    "fewer_reason": "Only the two unresolved identifier mappings provide concrete concerns; the specified network nullification is implemented."
+  },
+  "stg_google_ads__ad_history": {
+    "items": [
+      {
+        "problem": "The most-recent ad flag uses the failed timestamp cast even though the projected updated_at uses the repaired parser.",
+        "about": "data",
+        "evidence_in_work": "order by try_cast(updated_at AS TIMESTAMPTZ) desc nulls last",
+        "source": "google_ads__ad_report: Descriptive attributes ... are taken from the most recent history record",
+        "importance": 5,
+        "reason": "Arbitrary snapshot selection can change creative attributes and final URLs throughout the ad and URL reports."
+      },
+      {
+        "problem": "An invalid status causes the ad record to be removed after nullification rather than retained with NULL status.",
+        "about": "requirement",
+        "evidence_in_work": "case when status in ('ENABLED','PAUSED','REMOVED') then status end status ... and status is not null",
+        "source": "status IN ('ENABLED', 'PAUSED', 'REMOVED'); on_failure: nullify_field",
+        "importance": 4,
+        "reason": "This loses useful creative and URL information and can remove corresponding rows from the URL mart."
+      },
+      {
+        "problem": "Current-record ranking precedes timestamp and status rejection, which can leave valid historical ads without a current row.",
+        "about": "requirement",
+        "evidence_in_work": "row_number() ... =1 is_most_recent_record ... WHERE ... updated_at <= current_timestamp ...",
+        "source": "updated_at <= CURRENT_TIMESTAMP; on_failure: delete_row",
+        "importance": 3,
+        "reason": "A rejected snapshot can prevent valid retained creative information from reaching downstream joins."
+      }
+    ],
+    "fewer_reason": "Three distinct current-state and validation concerns were found."
+  },
+  "stg_google_ads__ad_stats": {
+    "items": [
+      {
+        "problem": "Invalid network values are converted to NULL and then admitted by the NULL-accepting filter instead of causing row deletion.",
+        "about": "requirement",
+        "evidence_in_work": "case when ad_network_type in (...) or ad_network_type is null then ad_network_type end ... and (ad_network_type in (...) or ad_network_type is null)",
+        "source": "ad_network_type IN ('SEARCH', 'DISPLAY', 'MIXED', 'YOUTUBE') OR ad_network_type IS NULL; on_failure: delete_row",
+        "importance": 4,
+        "reason": "Facts explicitly required to be rejected remain in every ad-based aggregate."
+      },
+      {
+        "problem": "Missing or unparseable cost_micros is changed to zero although the documented spend calculation does not prescribe zero defaulting.",
+        "about": "requirement",
+        "evidence_in_work": "CAST(coalesce(try_cast(cost_micros AS DOUBLE),0)/1000000.0 AS DECIMAL(15,2)) spend",
+        "source": "spend calculation: cost_micros / 1000000.0",
+        "importance": 2,
+        "reason": "This changes missing-spend semantics and can turn all-NULL aggregate spend into zero."
+      }
+    ],
+    "fewer_reason": "Two supported issues remain after accounting for the agent's repaired filter parentheses."
+  },
+  "stg_google_ads__ad_group_criterion_history": {
+    "items": [
+      {
+        "problem": "Criterion recency is determined using a timestamp conversion that remains unable to parse the observed source strings.",
+        "about": "data",
+        "evidence_in_work": "row_number() over(partition by id order by try_cast(updated_at AS TIMESTAMPTZ) desc nulls last)=1",
+        "source": "is_most_recent_record; data_type: BOOLEAN; constraints: [not_null]",
+        "importance": 4,
+        "reason": "Keyword text, match type, and status can come from an arbitrary snapshot."
+      },
+      {
+        "problem": "The code assumes criterion id alone identifies a history entity without checking whether the same criterion id can occur in different ad groups.",
+        "about": "data",
+        "evidence_in_work": "partition by id",
+        "source": "raw.ad_group_criterion_history_data includes id and ad_group_id",
+        "importance": 2,
+        "reason": "If IDs are only unique within ad groups, current-state selection would suppress unrelated keyword records."
+      },
+      {
+        "problem": "Required-field rejection occurs after recency ranking, potentially removing the sole flagged current criterion.",
+        "about": "requirement",
+        "evidence_in_work": "row_number() ... is_most_recent_record ... WHERE criterion_id is not null and updated_at is not null and ad_group_id is not null and status is not null",
+        "source": "updated_at, ad_group_id, status: constraints: [not_null]",
+        "importance": 3,
+        "reason": "A criterion can retain usable history but no record available to latest-snapshot joins."
+      }
+    ],
+    "fewer_reason": "Three concrete concerns were found; further issues would require unsupported assumptions."
+  },
+  "stg_google_ads__keyword_stats": {
+    "items": [
+      {
+        "problem": "The documented full metrics_calculated stage is omitted from keyword statistics.",
+        "about": "requirement",
+        "evidence_in_work": "WITH base AS (...) , validated AS (...) SELECT * FROM validated",
+        "source": "FULL Tables (3-CTE): account_stats, keyword_stats (these include complex calculated performance metrics)",
+        "importance": 2,
+        "reason": "The implementation omits a specifically required stage, although its additional expressions are not detailed in the provided column section."
+      },
+      {
+        "problem": "The distinction between direct and base campaign/ad-group identifiers was not validated against history keys.",
+        "about": "data",
+        "evidence_in_work": "CAST(ad_group_id AS VARCHAR(20)) ad_group_id, CAST(campaign_id AS VARCHAR(20)) campaign_id",
+        "source": "raw.keyword_stats_data includes ad_group_base_ad_group, ad_group_id, campaign_base_campaign, and campaign_id",
+        "importance": 2,
+        "reason": "These choices are plausible but could change dimensional coverage and benchmark partitions if the source uses different entity semantics."
+      }
+    ],
+    "fewer_reason": "Only two sufficiently grounded concerns were found for the staging implementation."
+  },
+  "stg_google_ads__search_term_keyword_stats": {
+    "items": [
+      {
+        "problem": "The specified source_relation/platform concatenation is not implemented.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT 'google_ads'::VARCHAR AS source_relation, *",
+        "source": "generation: source_relation || '-' || platform final concatenation",
+        "importance": 3,
+        "reason": "The lineage value differs from the explicit contract and can alter history matching if other models use the required convention."
+      },
+      {
+        "problem": "Missing cost_micros is defaulted to zero despite the spend specification providing only a micros conversion.",
+        "about": "requirement",
+        "evidence_in_work": "CAST(coalesce(try_cast(cost_micros AS DOUBLE),0)/1000000.0 AS DECIMAL(15,2)) AS spend",
+        "source": "spend calculation: cost_micros / 1000000.0",
+        "importance": 2,
+        "reason": "Unknown spend becomes a measured zero and changes downstream NULL-preserving sums."
+      }
+    ],
+    "fewer_reason": "Two supported discrepancies were found; the forced network/device defaults and other field validations match the supplied rules."
+  },
+  "int_google_ads__account_performance_metrics": {
+    "items": [
+      {
+        "problem": "The output does not establish the declared daily account grain before calculating row-based windows.",
+        "about": "data",
+        "evidence_in_work": "SELECT * FROM staging.stg_google_ads__account_stats; account_performance_metrics: 10,000 rows versus account_report: 9,674 rows",
+        "source": "grain: One row per account_id, source_relation, date_day",
+        "importance": 5,
+        "reason": "Repeated daily keys mean daily metrics and windows can represent network/device segments rather than account days."
+      },
+      {
+        "problem": "The 30-day comparison uses the thirtieth preceding record rather than verifying a value from thirty calendar days earlier.",
+        "about": "requirement",
+        "evidence_in_work": "lag(spend, 30) OVER (PARTITION BY account_id, source_relation ORDER BY date_day)",
+        "source": "30-day lags: prior 30th-day values for spend and conversions",
+        "importance": 4,
+        "reason": "Sparse dates and repeated daily keys can make month-over-month changes compare entirely different intervals."
+      },
+      {
+        "problem": "The seven-day averages use seven records, which may not be seven daily observations.",
+        "about": "requirement",
+        "evidence_in_work": "ROWS BETWEEN 6 PRECEDING AND CURRENT ROW",
+        "source": "average spend, clicks, and impressions across the current day and up to six prior days",
+        "importance": 4,
+        "reason": "Segmented daily inputs or missing dates alter rolling averages and the performance score derived from them."
+      },
+      {
+        "problem": "Several output measures retain DECIMAL staging types instead of the declared DOUBLE types.",
+        "about": "requirement",
+        "evidence_in_work": "s.spend, s.conversions, s.conversions_value",
+        "source": "spend, conversions, conversions_value: data_type: DOUBLE",
+        "importance": 2,
+        "reason": "The CTAS output schema does not match the contract even when displayed values agree."
+      },
+      {
+        "problem": "Joined account attributes inherit the staging table's unresolved current-record ordering.",
+        "about": "data",
+        "evidence_in_work": "LEFT JOIN staging.stg_google_ads__account_history a ... AND a.is_most_recent_record",
+        "source": "joined to most-recent account info",
+        "importance": 3,
+        "reason": "Accounts with multiple snapshots may receive stale names, currencies, or time zones."
+      }
+    ],
+    "fewer_reason": "Five distinct concerns were found; no additional unsupported metric discrepancies were added."
+  },
+  "int_google_ads__campaign_cohort_analysis": {
+    "items": [
+      {
+        "problem": "ROAS ranking uses RANK, so ties share positions instead of receiving distinct arbitrary positions.",
+        "about": "requirement",
+        "evidence_in_work": "rank() OVER (PARTITION BY campaign_launch_cohort, lifecycle_stage ORDER BY roas DESC NULLS LAST)",
+        "source": "ties are resolved arbitrarily",
+        "importance": 4,
+        "reason": "Tied ROAS values can change cohort tiers and every downstream count based on those tiers."
+      },
+      {
+        "problem": "The declared campaign/day grain is not enforced despite evidence of repeated daily campaign keys.",
+        "about": "data",
+        "evidence_in_work": "campaign_cohort_analysis: 10,000 rows; campaign_report: 9,976 rows",
+        "source": "grain: One row per source_relation, campaign_id, and date_day",
+        "importance": 4,
+        "reason": "Segmented rows affect running totals, cohort counts, ranks, and benchmarks rather than producing one daily campaign result."
+      },
+      {
+        "problem": "underperforming_flag can be NULL when launch date is missing rather than always false for that case.",
+        "about": "requirement",
+        "evidence_in_work": "(spend > 0 AND conversions = 0 AND days_since_launch > 30) AS underperforming_flag",
+        "source": "NULL days_since_launch evaluates to false; underperforming_flag tests: not_null",
+        "importance": 3,
+        "reason": "A positive-spend, zero-conversion row with unknown launch date violates the required boolean semantics."
+      },
+      {
+        "problem": "The cost-per-conversion score component uses an assumed linear decline rate not specified in the supplied contract.",
+        "about": "requirement",
+        "evidence_in_work": "greatest(0,20 - greatest(cost_per_conversion-100,0)*0.2)",
+        "source": "otherwise decreases linearly and does not go below 0",
+        "importance": 3,
+        "reason": "The arbitrary slope changes campaign health scores and downstream channel health assessments."
+      },
+      {
+        "problem": "Campaign attributes and launch cohorts inherit potentially arbitrary current-history selection.",
+        "about": "data",
+        "evidence_in_work": "SELECT * FROM staging.stg_google_ads__campaign_history WHERE is_most_recent_record",
+        "source": "Use the most recent campaign_history records",
+        "importance": 4,
+        "reason": "The unrepaired history sort can change channel assignment, lifecycle, cohorts, and benchmarks."
+      }
+    ],
+    "fewer_reason": "Five material concerns were found for this result."
+  },
+  "int_google_ads__keyword_performance_segmentation": {
+    "items": [
+      {
+        "problem": "Dimensional enrichment depends on current-history flags whose timestamp ordering was not repaired.",
+        "about": "data",
+        "evidence_in_work": "ag.is_most_recent_record ... ch.is_most_recent_record",
+        "source": "Join ... ad_group_history ... and campaign_history ... filtered to is_most_recent_record = true",
+        "importance": 3,
+        "reason": "Names and advertising-channel attributes may come from arbitrary history records."
+      },
+      {
+        "problem": "The code does not check whether network/device segmentation produces multiple rows at the declared keyword/day grain.",
+        "about": "data",
+        "evidence_in_work": "SELECT * FROM staging.stg_google_ads__keyword_stats",
+        "source": "grain: One row per source_relation, keyword_id, ad_group_id, campaign_id, date_day",
+        "importance": 3,
+        "reason": "If the raw rows are segmented, benchmark averages, percentile ranks, and same-day lifetime values would describe segments rather than keyword days."
+      }
+    ],
+    "fewer_reason": "Only two supported concerns were found; the specified scoring, percentile direction, recommendations, and final filters are otherwise represented."
+  },
+  "google_ads__account_report": {
+    "items": [
+      {
+        "problem": "Summed monetary and fractional measures inherit DECIMAL types rather than the required DOUBLE output types.",
+        "about": "requirement",
+        "evidence_in_work": "sum(s.spend) spend ... sum(s.conversions) conversions ... sum(s.conversions_value) conversions_value",
+        "source": "numeric types follow engine defaults (DOUBLE for monetary/fractional metrics, HUGEINT for count metrics)",
+        "importance": 3,
+        "reason": "DECIMAL staging inputs produce DECIMAL sums, so the materialized schema differs from the contract."
+      },
+      {
+        "problem": "The latest account attributes can be drawn from an arbitrary snapshot because upstream history ordering still uses the failed parser.",
+        "about": "data",
+        "evidence_in_work": "accounts AS (SELECT * FROM staging.stg_google_ads__account_history WHERE is_most_recent_record)",
+        "source": "Load rows ... flagged as the most recent record",
+        "importance": 3,
+        "reason": "Currency and descriptive grouping dimensions may be stale even when aggregate sums execute successfully."
+      }
+    ],
+    "fewer_reason": "Two supported concerns were found; the grouping and left-join structure otherwise follow the report definition."
+  },
+  "google_ads__campaign_report": {
+    "items": [
+      {
+        "problem": "account_id is selected from campaign history rather than the matched account record.",
+        "about": "requirement",
+        "evidence_in_work": "a.account_name,c.account_id,a.currency_code",
+        "source": "Account ID from the most recent account linked via the joined campaign; NULL if no matching campaign or account",
+        "importance": 4,
+        "reason": "A campaign with no matching account incorrectly retains an account ID and changes the documented grouping dimensions."
+      },
+      {
+        "problem": "The monetary and fractional sums remain DECIMAL instead of the specified DOUBLE columns.",
+        "about": "requirement",
+        "evidence_in_work": "sum(s.spend) spend ... sum(s.conversions) conversions ... sum(s.conversions_value) conversions_value",
+        "source": "spend, conversions, conversions_value: data_type: DOUBLE",
+        "importance": 3,
+        "reason": "The output schema is incompatible with the declared report types."
+      },
+      {
+        "problem": "Current campaign and account attributes inherit the unresolved history-ordering defect.",
+        "about": "data",
+        "evidence_in_work": "campaign_history WHERE is_most_recent_record ... account_history WHERE is_most_recent_record",
+        "source": "use only records flagged as most recent",
+        "importance": 3,
+        "reason": "Multiple source snapshots can change the report's names, currency, channel, and status dimensions."
+      }
+    ],
+    "fewer_reason": "Three distinct report concerns were supported."
+  },
+  "google_ads__ad_group_report": {
+    "items": [
+      {
+        "problem": "Campaign attribution depends on the unverified upstream choice of campaign_base_campaign instead of campaign_id.",
+        "about": "data",
+        "evidence_in_work": "LEFT JOIN c ON s.source_relation=c.source_relation AND s.campaign_id=c.campaign_id",
+        "source": "raw.ad_group_stats_data includes campaign_base_campaign and campaign_id",
+        "importance": 4,
+        "reason": "The inspected raw sample contains different campaign values, so the staging mapping can attach the wrong campaign context."
+      },
+      {
+        "problem": "Monetary and fractional sums have DECIMAL engine types rather than the declared DOUBLE types.",
+        "about": "requirement",
+        "evidence_in_work": "sum(s.spend) spend ... sum(s.conversions) conversions ... sum(s.conversions_value) conversions_value",
+        "source": "spend, conversions, conversions_value: data_type: DOUBLE",
+        "importance": 3,
+        "reason": "The resulting report schema does not match its contract."
+      },
+      {
+        "problem": "All latest dimensional attributes depend on history flags selected with the unrepaired timestamp ordering.",
+        "about": "data",
+        "evidence_in_work": "ag ... WHERE is_most_recent_record; c ... WHERE is_most_recent_record; a ... WHERE is_most_recent_record",
+        "source": "From each history table, keep only rows flagged as the most recent",
+        "importance": 3,
+        "reason": "Ad-group status, campaign name, and account currency may be taken from stale snapshots."
+      }
+    ],
+    "fewer_reason": "Three grounded concerns were found after considering the repaired explicit joins."
+  },
+  "google_ads__ad_report": {
+    "items": [
+      {
+        "problem": "Creative and hierarchy attributes depend on potentially arbitrary current-history rows.",
+        "about": "data",
+        "evidence_in_work": "ad ... WHERE is_most_recent_record ... ag ... c ... a ...",
+        "source": "Descriptive attributes ... are taken from the most recent history record",
+        "importance": 4,
+        "reason": "The unrepaired history ordering can change ad names, statuses, URLs, and account currency."
+      },
+      {
+        "problem": "The report includes ad facts whose invalid network values should have caused upstream deletion.",
+        "about": "requirement",
+        "evidence_in_work": "s AS (SELECT * FROM staging.stg_google_ads__ad_stats)",
+        "source": "stg_google_ads__ad_stats ad_network_type validation: on_failure: delete_row",
+        "importance": 3,
+        "reason": "The staging nullification-and-filter behavior can inflate all report measures."
+      }
+    ],
+    "fewer_reason": "Only two supported concerns remain; the final repaired joins, grouping, and decimal sums fit the mart specification."
+  },
+  "google_ads__keyword_report": {
+    "items": [
+      {
+        "problem": "The aggregated spend, conversions, and conversion value have DECIMAL rather than the required DOUBLE output types.",
+        "about": "requirement",
+        "evidence_in_work": "sum(s.spend) spend ... sum(s.conversions) conversions ... sum(s.conversions_value) conversions_value",
+        "source": "spend, conversions, conversions_value: data_type: DOUBLE",
+        "importance": 3,
+        "reason": "The materialized schema differs from the stated analytical interface."
+      },
+      {
+        "problem": "Keyword and hierarchy attributes inherit the failed current-history timestamp ordering.",
+        "about": "data",
+        "evidence_in_work": "cr ... WHERE is_most_recent_record ... ag ... c ... a ...",
+        "source": "Restrict each history table to is_most_recent_record = true to represent current attributes",
+        "importance": 4,
+        "reason": "Keyword text, match type, status, and grouping attributes can reflect arbitrary snapshots."
+      },
+      {
+        "problem": "The nonnegative metric tests are not validated or otherwise ensured for retained keyword facts.",
+        "about": "requirement",
+        "evidence_in_work": "WITH s AS (SELECT * FROM staging.stg_google_ads__keyword_stats) ... sum(s.spend)",
+        "source": "spend, clicks, impressions, conversions, conversions_value, view_through_conversions tests: >= 0",
+        "importance": 2,
+        "reason": "The no-filter aggregation is required, but without checking source validity the declared output quality guarantees remain unverified."
+      }
+    ],
+    "fewer_reason": "Three supported concerns were found without adding filters contrary to the mart's no-filter requirement."
+  },
+  "google_ads__search_term_report": {
+    "items": [
+      {
+        "problem": "Latest keyword and hierarchy attributes inherit the upstream history-ordering defect.",
+        "about": "data",
+        "evidence_in_work": "cr ... WHERE is_most_recent_record ... ag ... c ... a ...",
+        "source": "From each history table ... keep only rows marked as the most recent snapshot",
+        "importance": 4,
+        "reason": "The report can group search terms under stale keyword text, match type, campaign, and account attributes."
+      },
+      {
+        "problem": "The report propagates a search-term source_relation that omits its specified platform concatenation.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT s.source_relation ... FROM staging.stg_google_ads__search_term_keyword_stats",
+        "source": "stg_google_ads__search_term_keyword_stats source_relation generation: source_relation || '-' || platform final concatenation",
+        "importance": 2,
+        "reason": "Lineage values differ from the contract and may affect compatibility with expected source-scoped joins."
+      }
+    ],
+    "fewer_reason": "Two supported concerns were found; the final aggregation keys and decimal sum types otherwise match the specification."
+  },
+  "google_ads__url_report": {
+    "items": [
+      {
+        "problem": "The ad join omits the required ad_group_id equality.",
+        "about": "requirement",
+        "evidence_in_work": "LEFT JOIN ad ON s.source_relation=ad.source_relation AND s.ad_id=ad.ad_id",
+        "source": "Join ads to stats on matching ad_id, ad_group_id, and source_relation from stats",
+        "importance": 5,
+        "reason": "Stats can receive URLs from ads in a different ad group and survive the final-URL filter when they should not."
+      },
+      {
+        "problem": "Ad groups and campaigns are joined directly from stats instead of following the required ad-to-ad-group-to-campaign hierarchy.",
+        "about": "requirement",
+        "evidence_in_work": "LEFT JOIN ag ON s.source_relation=ag.source_relation AND s.ad_group_id=ag.ad_group_id LEFT JOIN c ON s.source_relation=c.source_relation AND s.campaign_id=c.campaign_id",
+        "source": "Join ad groups to ads ... Join campaigns to ad groups",
+        "importance": 5,
+        "reason": "Conflicting or missing hierarchy links produce different campaign, account, and UTM dimensions."
+      },
+      {
+        "problem": "The selected final URL and hierarchy snapshots may not be the most recent because staging history sorting still uses the failed cast.",
+        "about": "data",
+        "evidence_in_work": "ad ... WHERE is_most_recent_record ... ag ... c ... a ...",
+        "source": "Limit each history table ... to its most recent record",
+        "importance": 4,
+        "reason": "Incorrect snapshot selection can change both which rows pass the URL filter and where their spend is attributed."
+      },
+      {
+        "problem": "Invalid-network ad facts can reach the URL aggregates because staging retains them after converting the network to NULL.",
+        "about": "requirement",
+        "evidence_in_work": "s AS (SELECT * FROM staging.stg_google_ads__ad_stats)",
+        "source": "stg_google_ads__ad_stats ad_network_type validation: on_failure: delete_row",
+        "importance": 3,
+        "reason": "The URL mart may include spend and traffic explicitly excluded by the staging contract."
+      }
+    ],
+    "fewer_reason": "Four material concerns were found, including two direct join-specification mismatches."
+  },
+  "google_ads__channel_performance_analysis": {
+    "items": [
+      {
+        "problem": "The efficiency-score expression applies the CTR and ROAS weights twice and introduces an undocumented 50-point baseline.",
+        "about": "requirement",
+        "evidence_in_work": "coalesce(50+coalesce(ctr_vs_channel_benchmark_pct,0)*.3,50)*.3 + coalesce(50+coalesce(roas_vs_channel_benchmark_pct,0)*.4,50)*.4",
+        "source": "weighted blend of CTR delta (30%), ROAS delta (40%), and avg_campaign_health_score (30%); missing inputs default to 50",
+        "importance": 5,
+        "reason": "This changes efficiency scores and growth-opportunity alerts across the output."
+      },
+      {
+        "problem": "The strategic recommendation omits several inputs explicitly required for its priority rules.",
+        "about": "requirement",
+        "evidence_in_work": "CASE WHEN roas<.5 AND total_spend>1000 ... WHEN ... underperforming_campaigns ... WHEN high_momentum_pct>50 ... ELSE ...",
+        "source": "Recommendation chosen by priority using ROAS vs channel benchmark, spend share, top-tier share, underperforming share, momentum, and health score",
+        "importance": 4,
+        "reason": "The implemented recommendations cannot reflect channel-relative performance, spend share, top-tier share, or health as documented."
+      },
+      {
+        "problem": "device_benchmark_cpa averages already rounded CPA values rather than unrounded group ratios.",
+        "about": "requirement",
+        "evidence_in_work": "avg(cost_per_conversion) over(partition by device,date_day) device_benchmark_cpa",
+        "source": "device_benchmark_cpa ... not rounded",
+        "importance": 2,
+        "reason": "Premature rounding changes CPA benchmarks and their percentage deltas."
+      },
+      {
+        "problem": "The final channel_efficiency_score is not rounded to one decimal.",
+        "about": "requirement",
+        "evidence_in_work": "least(100.0,greatest(0.0,...)) channel_efficiency_score ... SELECT *",
+        "source": "Rounding: ... channel_efficiency_score to 1 decimal",
+        "importance": 2,
+        "reason": "The output precision differs from the reporting contract."
+      },
+      {
+        "problem": "Rounded avg_campaign_health_score and avg_roas are appended beside existing same-named columns rather than replacing them.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT *, ... round(avg_campaign_health_score,1) avg_campaign_health_score,round(avg_roas,4) avg_roas",
+        "source": "avg_campaign_health_score to 1 decimal; avg_roas to 4 decimals",
+        "importance": 3,
+        "reason": "DuckDB can retain the original unrounded named fields and rename duplicates, producing extra columns and incorrect named-column precision."
+      },
+      {
+        "problem": "Investment sums use FILTER and can return NULL when no campaign qualifies, which may not represent the intended zero spend in that category.",
+        "about": "data",
+        "evidence_in_work": "sum(spend) FILTER(WHERE investment_tier='Premium Investment') premium_spend",
+        "source": "premium_spend: Spend summed where investment_tier = Premium Investment",
+        "importance": 2,
+        "reason": "Absent qualifying campaigns can yield NULL premium_spend_pct instead of a meaningful zero share."
+      },
+      {
+        "problem": "Upstream tied ROAS ranks and arbitrary current campaign snapshots can alter channel composition and portfolio counts.",
+        "about": "data",
+        "evidence_in_work": "cp AS (SELECT * FROM intermediate.int_google_ads__campaign_cohort_analysis)",
+        "source": "Distinct counts ... performance tiers (Top 20%, Bottom 20%)",
+        "importance": 3,
+        "reason": "The channel aggregates inherit known upstream risks in channel assignment and tier membership."
+      }
+    ],
+    "fewer_reason": "Seven distinct supported concerns were found; the unusual campaign_id-to-account_id join follows the explicit contract and was not treated as an implementation error."
+  },
+  "google_ads__customer_acquisition_analysis": {
+    "items": [
+      {
+        "problem": "Cohort CAC and LTV benchmarks average rounded per-row economics instead of the required unrounded cumulative ratios.",
+        "about": "requirement",
+        "evidence_in_work": "avg(customer_acquisition_cost) ... cohort_avg_cac; avg(average_customer_ltv) ... cohort_avg_ltv",
+        "source": "average of (cumulative_acquisition_cost / cumulative_conversions) ... not rounded",
+        "importance": 4,
+        "reason": "The premature rounding changes cohort comparisons and can shift threshold-based classifications and alerts."
+      },
+      {
+        "problem": "ltv_cac_ratio is computed from unrounded cumulative ratios rather than the previously rounded average_customer_ltv and customer_acquisition_cost.",
+        "about": "requirement",
+        "evidence_in_work": "round((cumulative_ltv/cumulative_conversions)/(cumulative_acquisition_cost/cumulative_conversions),2)",
+        "source": "ltv_cac_ratio: average_customer_ltv divided by customer_acquisition_cost",
+        "importance": 3,
+        "reason": "Different rounding order can change ratios around tier, recommendation, and alert thresholds."
+      },
+      {
+        "problem": "The strategic segment and acquisition recommendation omit some of the documented decision inputs.",
+        "about": "requirement",
+        "evidence_in_work": "CASE WHEN ltv_cac_ratio>=3 AND cac_efficiency_percentile>=.8 ... WHEN channel_diversity_count<2 ... ELSE ... END acquisition_recommendation",
+        "source": "acquisition_recommendation ... using ... days_since_first_conversion ... and active_campaigns_count",
+        "importance": 4,
+        "reason": "The invented reduced rule set cannot implement all documented dimensions of the acquisition decisions."
+      },
+      {
+        "problem": "high_cac_alert and retention_risk can be NULL instead of false when their required comparisons are unknown.",
+        "about": "requirement",
+        "evidence_in_work": "(customer_acquisition_cost>cohort_avg_cac*2) high_cac_alert ... (days_since_first_conversion>365 AND ltv_cac_ratio<1.5) retention_risk",
+        "source": "high_cac_alert and retention_risk: else false; tests: not_null",
+        "importance": 4,
+        "reason": "Spend-only accounts with no conversions can violate explicit non-null alert guarantees."
+      },
+      {
+        "problem": "The sophistication-score scaling for LTV is an unsupported assumption.",
+        "about": "requirement",
+        "evidence_in_work": "least(average_customer_ltv/100,30)",
+        "source": "up to 30 from average_customer_ltv",
+        "importance": 2,
+        "reason": "The cap is specified but the chosen scaling is not, so the score requires confirmation."
+      },
+      {
+        "problem": "Daily spend and conversion outputs inherit segmented account rows and DECIMAL types from account performance.",
+        "about": "data",
+        "evidence_in_work": "ap AS (SELECT * FROM intermediate.int_google_ads__account_performance_metrics) ... spend ... conversions",
+        "source": "One row per source_relation, account_id, date_day, and matched campaign cohort row; spend and conversions: DOUBLE",
+        "importance": 4,
+        "reason": "Duplicate account dates unrelated to campaign matches alter the declared grain and running acquisition economics."
+      }
+    ],
+    "fewer_reason": "Six supported concerns were found; the unusual campaign join and account-only window partitions are explicitly specified."
+  },
+  "google_ads__executive_dashboard": {
+    "items": [
+      {
+        "problem": "The dashboard preserves multiple account rows per date rather than achieving its required one-row-per-account-day grain.",
+        "about": "data",
+        "evidence_in_work": "executive_dashboard 10000; account_report 9674; SELECT ... FROM ap",
+        "source": "exactly one row per account_id per date_day post-filter",
+        "importance": 5,
+        "reason": "Executive totals and trend windows operate on segmented account observations rather than unique daily account results."
+      },
+      {
+        "problem": "Week-over-week changes use the seventh prior row instead of establishing the observation from seven calendar days earlier.",
+        "about": "requirement",
+        "evidence_in_work": "lag(total_spend,7) over(partition by account_id order by date_day)",
+        "source": "percent change ... vs the value 7 days prior",
+        "importance": 5,
+        "reason": "Sparse dates and repeated account dates can make the stated weekly trends compare unrelated intervals."
+      },
+      {
+        "problem": "trending_alert and scale_opportunity can be NULL instead of false when lag values or keyword denominators are missing.",
+        "about": "requirement",
+        "evidence_in_work": "(spend_wow_growth_pct>50 OR conversions_wow_growth_pct< -30) trending_alert,(star_pct>15) scale_opportunity",
+        "source": "trending_alert and scale_opportunity: else false; tests: not_null",
+        "importance": 4,
+        "reason": "Early account observations and dates without keyword activity violate the required boolean output contract."
+      },
+      {
+        "problem": "The rounded rolling averages are added as duplicate aliases and the final projection may select the original unrounded columns.",
+        "about": "requirement",
+        "evidence_in_work": "SELECT *,round(spend_30d_avg,2) spend_30d_avg,round(roas_30d_avg,4) roas_30d_avg,round(performance_score_30d_avg,1) performance_score_30d_avg",
+        "source": "spend_30d_avg ... rounded ... 2 decimals; roas_30d_avg ... 4 decimals; performance_score_30d_avg ... 1 decimal",
+        "importance": 3,
+        "reason": "Duplicate-name handling can leave the contract-named output fields unrounded."
+      },
+      {
+        "problem": "Portfolio ratios are rounded before threshold comparisons rather than compared using the specified safe divisions.",
+        "about": "requirement",
+        "evidence_in_work": "round(100.0*star_performer_keywords/nullif(active_keywords,0),2) star_pct ... WHEN star_pct>20",
+        "source": "star_performer_keywords/active_keywords > 0.2 ... using safe divide",
+        "importance": 2,
+        "reason": "Ratios just above a decision boundary can round down and select the wrong recommendation or alert."
+      },
+      {
+        "problem": "Daily monetary and fractional outputs retain DECIMAL types instead of the specified DOUBLE types.",
+        "about": "requirement",
+        "evidence_in_work": "ap.spend total_spend ... ap.conversions total_conversions ... ap.conversions_value total_conversions_value",
+        "source": "total_spend, total_conversions, total_conversions_value: data_type: DOUBLE",
+        "importance": 2,
+        "reason": "The dashboard schema inherits an upstream type mismatch."
+      }
+    ],
+    "fewer_reason": "Six distinct concerns were found; global date-only portfolio joins and row-based 30-observation averages are expressly required and were not flagged."
+  }
+}

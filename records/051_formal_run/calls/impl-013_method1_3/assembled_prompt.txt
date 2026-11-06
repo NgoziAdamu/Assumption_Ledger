@@ -1,0 +1,1587 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for NetSuite ERP data transformation into analytical models"
+  author: "Data Engineering Team"
+  created_date: "2025-09-11"
+  source_system: "NetSuite ERP"
+  target_system: "DuckDB Analytics Warehouse"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw NetSuite data into clean, validated staging tables with standardized naming conventions, data types, and business rules. Remove Fivetran metadata fields and apply data quality validations."
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "standardize timezone formats", "normalize phone numbers"]
+    
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+    
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform staging data into business-ready analytical models that support financial reporting, customer analytics, vendor risk management, and operational insights for NetSuite ERP data"
+  design_principles:
+    grain_importance: "Each model must have an explicitly defined grain that determines the level of aggregation and uniqueness constraints"
+    intermediate_purpose: "Create reusable, business-centric data models that apply complex business logic, perform advanced calculations, and establish proper relationships between entities"
+    marts_purpose: "Deliver analysis-ready datasets optimized for specific business functions and reporting requirements"
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-013/agent/dacomp-de-impl-013/netsuite_start.duckdb
+{"table": "raw.netsuite2_account_data", "columns": ["id", "accountsearchdisplayname", "accountsearchdisplaynamecopy", "acctnumber", "accttype", "billableexpensesacct", "cashflowrate", "category1099misc", "class", "currency", "custrecord_fam_account_showinfixedasset", "date_deleted", "deferralacct", "department", "description", "displaynamewithhierarchy", "eliminate", "externalid", "fullname", "generalrate", "includechildren", "inventory", "isinactive", "issummary", "lastmodifieddate", "location", "parent", "reconcilewithmatching", "revalue", "sbankname", "sbankroutingnumber", "sspecacct", "subsidiary", "eliminate.1"]}
+{"table": "raw.netsuite2_account_type_data", "columns": ["id", "balancesheet", "date_deleted", "defaultcashflowratetype", "defaultgeneralratetype", "eliminationalgo", "includeinrevaldefault", "internalid", "left", "longname", "seqnum", "usercanchangerevaloption"]}
+{"table": "raw.netsuite2_accounting_book_data", "columns": ["id", "basebook", "date_deleted", "effectiveperiod", "externalid", "isadjustmentonly", "isconsolidated", "isprimary", "lastmodifieddate", "name", "subsidiariesstring"]}
+{"table": "raw.netsuite2_accounting_book_sub_data", "columns": ["accountingbook", "date_deleted", "status", "subsidiary"]}
+{"table": "raw.netsuite2_accounting_period_data", "columns": ["id", "alllocked", "allownonglchanges", "aplocked", "arlocked", "closed", "closedondate", "date_deleted", "enddate", "isadjust", "isinactive", "isposting", "isquarter", "isyear", "lastmodifieddate", "parent", "periodname", "startdate"]}
+{"table": "raw.netsuite2_accounting_period_fiscal_cal_data", "columns": ["accountingperiod", "date_deleted", "fiscalcalendar", "parent"]}
+{"table": "raw.netsuite2_classification_data", "columns": ["id", "date_deleted", "externalid", "fullname", "includechildren", "isinactive", "lastmodifieddate", "name", "parent", "subsidiary"]}
+{"table": "raw.netsuite2_consolidated_exchange_rate_data", "columns": ["id", "averagerate", "currentrate", "date_deleted", "externalid", "fromcurrency", "fromsubsidiary", "historicalrate", "postingperiod", "tocurrency", "tosubsidiary", "accountingbook"]}
+{"table": "raw.netsuite2_currency_data", "columns": ["id", "currencyprecision", "date_deleted", "displaysymbol", "exchangerate", "externalid", "fxrateupdatetimezone", "includeinfxrateupdates", "isbasecurrency", "isinactive", "lastmodifieddate", "name", "overridecurrencyformat", "symbol", "symbolplacement"]}
+{"table": "raw.netsuite2_customer_data", "columns": ["id", "accountnumber", "alcoholrecipienttype", "altemail", "altname", "altphone", "assignedwebsite", "balancesearch", "billingratecard", "billingschedule", "billingtransactiontype", "billpay", "buyingreason", "buyingtimeframe", "campaignevent", "category", "clickstream", "comments", "companyname", "consolbalancesearch", "consoldaysoverduesearch", "consoloverduebalancesearch", "consolunbilledorderssearch", "contact", "contactlist", "creditholdoverride", "creditlimit", "currency", "custentity1", "custentity10", "custentity12", "custentity13", "custentity14", "custentity15", "custentity16", "custentity18", "custentity21", "custentity4", "custentity5", "custentity6", "custentity7", "custentity8", "custentity9", "custentity_2663_customer_refund", "custentity_2663_direct_debit", "custentity_cust_priority", "custentity_fmt_cur_sales_order", "custentity_fmt_cust_credit_on_hold", "custentity_fmt_customer_credit_on_hold", "custentity_lead_category", "custentity_ppob", "custentity_supervisor", "date_deleted", "datecreated", "defaultbankaccount", "defaultbillingaddress", "defaultorderpriority", "defaultshippingaddress", "duplicate", "email", "emailpreference", "emailtransactions", "enddate", "entityid", "entitynumber", "entitystatus", "entitytitle", "estimatedbudget", "externalid", "fax", "faxtransactions", "firstname", "firstorderdate", "firstsaledate", "firstvisit", "giveaccess", "globalsubscriptionstatus", "homephone", "isbudgetapproved", "isinactive", "isperson", "keywords", "language", "lastmodifieddate", "lastname", "lastorderdate", "lastpagevisited", "lastsaledate", "lastvisit", "leadsource", "middlename", "mobilephone", "negativenumberformat", "numberformat", "oncredithold", "overduebalancesearch", "parent", "partner", "phone", "prefccprocessor", "pricelevel", "printoncheckas", "printtransactions", "probability", "receivablesaccount", "referrer", "reminderdays", "resalenumber", "salesreadiness", "salesrep", "salutation", "searchstage", "shipcomplete", "shippingcarrier", "shippingitem", "sourcewebsite", "startdate", "terms", "territory", "thirdpartyacct", "thirdpartycarrier", "thirdpartycountry", "thirdpartyzipcode", "title", "unbilledorderssearch", "url", "visits", "weblead", "dateclosed"]}
+{"table": "raw.netsuite2_department_data", "columns": ["id", "date_deleted", "externalid", "fullname", "includechildren", "isinactive", "lastmodifieddate", "name", "parent", "subsidiary"]}
+{"table": "raw.netsuite2_employee_data", "columns": ["id", "entityid", "firstname", "lastname", "department", "subsidiary", "email", "supervisor", "approvallimit", "expenselimit", "purchaseorderapprovallimit", "purchaseorderlimit", "currency", "isinactive"]}
+{"table": "raw.netsuite2_entities_data", "columns": ["id", "altemail", "altname", "altphone", "comments", "contact", "customer", "date_deleted", "datecreated", "email", "employee", "entityid", "entitynumber", "entitytitle", "externalid", "fax", "firstname", "genericresource", "homephone", "isinactive", "isperson", "laborcost", "lastmodifieddate", "lastname", "middlename", "mobilephone", "othername", "parent", "partner", "phone", "project", "projecttemplate", "salutation", "title", "toplevelparent", "type", "vendor"]}
+{"table": "raw.netsuite2_entity_address_data", "columns": ["nkey", "addr1", "addr2", "addr3", "addressee", "addrphone", "addrtext", "attention", "city", "country", "date_deleted", "dropdownstate", "lastmodifieddate", "override", "recordowner", "state", "zip"]}
+{"table": "raw.netsuite2_fiscal_calendar_data", "columns": ["id", "externalid", "fiscalmonth", "isdefault", "name", "date_deleted"]}
+{"table": "raw.netsuite2_item_data", "columns": ["id", "fullname", "itemtype", "description", "department", "class", "location", "subsidiary", "assetaccount", "expenseaccount", "gainlossaccount", "incomeaccount", "deferralaccount", "parent"]}
+{"table": "raw.netsuite2_job_data", "columns": ["id", "accountnumber", "actualtime", "allowallresourcesfortasks", "allowexpenses", "allowtime", "alternatecontact", "altname", "billingschedule", "calculatedenddate", "calculatedenddatebaseline", "category", "comments", "companyname", "contact", "contactlist", "currency", "currencyprecision", "custentity1", "custentity4", "custentity5", "customer", "date_deleted", "datecreated", "defaultbillingaddress", "defaultshippingaddress", "enddate", "entityid", "entitynumber", "entitystatus", "entitytitle", "estimatedcost", "estimatedgrossprofit", "estimatedgrossprofitpercent", "estimatedlaborcost", "estimatedlaborcostbaseline", "estimatedlaborrevenue", "estimatedrevenue", "estimatedtime", "estimatedtimeoverride", "estimatedtimeoverridebaseline", "externalid", "files", "forecastchargerunondemand", "fxrate", "includecrmtasksintotals", "isexempttime", "isinactive", "isproductivetime", "isutilizedtime", "jobbillingtype", "jobitem", "jobprice", "jobtype", "lastbaselinedate", "lastmodifieddate", "limittimetoassignees", "materializetime", "parent", "percentcomplete", "percenttimecomplete", "primarycontact", "projectedenddate", "projectedenddatebaseline", "projectmanager", "startdate", "startdatebaseline", "timeapproval", "timeremaining"]}
+{"table": "raw.netsuite2_location_data", "columns": ["id", "date_deleted", "defaultallocationpriority", "externalid", "fullname", "includeinsupplyplanning", "isinactive", "lastmodifieddate", "latitude", "locationtype", "longitude", "mainaddress", "makeinventoryavailable", "makeinventoryavailablestore", "name", "parent", "returnaddress", "subsidiary", "tranprefix", "usebins"]}
+{"table": "raw.netsuite2_location_main_address_data", "columns": ["nkey", "addr1", "addr2", "addr3", "addressee", "addrphone", "addrtext", "attention", "city", "country", "date_deleted", "dropdownstate", "lastmodifieddate", "override", "recordowner", "state", "zip"]}
+{"table": "raw.netsuite2_subsidiary_data", "columns": ["id", "country", "currency", "date_deleted", "dropdownstate", "edition", "email", "externalid", "fax", "federalidnumber", "fiscalcalendar", "fullname", "iselimination", "isinactive", "languagelocale", "lastmodifieddate", "legalname", "mainaddress", "name", "parent", "purchaseorderamount", "purchaseorderquantity", "purchaseorderquantitydiff", "receiptamount", "receiptquantity", "receiptquantitydiff", "returnaddress", "shippingaddress", "showsubsidiaryname", "ssnortin", "state", "state1taxnumber", "tranprefix", "url"]}
+{"table": "raw.netsuite2_tran_acct_line_data", "columns": ["accountingbook", "transaction", "transactionline", "account", "amount", "amountpaid", "amountunpaid", "credit", "date_deleted", "debit", "exchangerate", "netamount", "overheadparentitem", "paymentamountunused", "paymentamountused", "posting", "amountlinked"]}
+{"table": "raw.netsuite2_transaction_data", "columns": ["id", "transactionnumber", "type", "memo", "trandate", "status", "createddate", "duedate", "closedate", "currency", "entity", "postingperiod", "posting", "isreversal", "reversal", "reversaldate", "reversaldefer"]}
+{"table": "raw.netsuite2_transaction_line_data", "columns": ["id", "transaction", "actualshipdate", "amortizationenddate", "amortizationresidual", "amortizationsched", "amortizstartdate", "amountlinked", "assemblycomponent", "billeddate", "billingschedule", "billvariancestatus", "blandedcost", "bomquantity", "buildvariance", "category", "chargetype", "class", "cleared", "cleareddate", "commitinventory", "commitmentfirm", "componentyield", "costestimate", "costestimaterate", "costestimatetype", "createdfrom", "createdpo", "creditforeignamount", "custcol1", "custcol3", "custcol4", "custcol5", "custcol6", "custcol_far_trn_relatedasset", "custcol_gw_inv", "custcol_hand", "custcol_helmetsize", "custcol_pfc_configuration", "custcol_pfc_pfconfigurator", "custcol_pfc_wo", "custcol_ropetype", "date_deleted", "debitforeignamount", "department", "documentnumber", "donotdisplayline", "dropship", "entity", "estgrossprofit", "estgrossprofitpercent", "estimatedamount", "expectedreceiptdate", "expectedshipdate", "expenseaccount", "foreignamount", "foreignamountpaid", "foreignamountunpaid", "foreignpaymentamountunused", "foreignpaymentamountused", "fulfillable", "fxamountlinked", "hasfulfillableitems", "inventoryreportinglocation", "isbillable", "isclosed", "iscogs", "isfullyshipped", "isfxvariance", "isinventoryaffecting", "isrevrectransaction", "isscrap", "item", "itemsource", "itemtype", "kitcomponent", "kitmemberof", "landedcostcategory", "landedcostperline", "linelastmodifieddate", "linesequencenumber", "location", "mainline", "matchbilltoreceipt", "memo", "netamount", "oldcommitmentfirm", "operationdisplaytext", "orderpriority", "paymentmethod", "price", "processedbyrevcommit", "quantity", "quantitybackordered", "quantitybilled", "quantitycommitted", "quantitypacked", "quantitypicked", "quantityrejected", "quantityshiprecv", "rate", "rateamount", "ratepercent", "requestnote", "revenueelement", "shipmethod", "specialorder", "subsidiary", "taxline", "transactiondiscount", "transactionlinetype", "transferorderitemlineid", "uniquekey", "units", "vsoeisestimate", "eliminate"]}
+{"table": "raw.netsuite2_vendor_category_data", "columns": ["id", "date_deleted", "externalid", "isinactive", "istaxagency", "lastmodifieddate", "name"]}
+{"table": "raw.netsuite2_vendor_data", "columns": ["id", "accountnumber", "altemail", "altname", "altphone", "balance", "balanceprimary", "billpay", "category", "comments", "companyname", "contact", "contactlist", "creditlimit", "currency", "custentity_2663_payment_method", "custentity_is_manufacturer", "custentity_rvc", "custentity_vendor_lead_time", "custentity_wrnty_center_phone", "date_deleted", "datecreated", "defaultbankaccount", "defaultbillingaddress", "defaultshippingaddress", "defaultvendorpaymentaccount", "duplicate", "email", "emailpreference", "emailtransactions", "entityid", "entitynumber", "entitytitle", "expenseaccount", "externalid", "fax", "faxtransactions", "firstname", "giveaccess", "globalsubscriptionstatus", "homephone", "incoterm", "isinactive", "isjobresourcevend", "isperson", "laborcost", "lastmodifieddate", "lastname", "legalname", "middlename", "mobilephone", "payablesaccount", "phone", "printoncheckas", "printtransactions", "purchaseorderamount", "purchaseorderquantity", "purchaseorderquantitydiff", "receiptamount", "receiptquantity", "receiptquantitydiff", "rolesforsearch", "salutation", "subsidiaryedition", "terms", "timeapprover", "title", "unbilledorders", "unbilledordersprimary", "url", "workcalendar"]}
+{"table": "raw.netsuite_accounting_books_data", "columns": ["accounting_book_id", "is_primary"]}
+{"table": "raw.netsuite_accounting_periods_data", "columns": ["accounting_period_id", "name", "full_name", "fiscal_calendar_id", "year_id", "starting", "ending", "quarter", "year_0", "is_adjustment", "closed"]}
+{"table": "raw.netsuite_accounts_data", "columns": ["account_id", "parent_id", "name", "type_name", "account_number", "general_rate_type", "is_leftside", "is_balancesheet"]}
+{"table": "raw.netsuite_classes_data", "columns": ["class_id", "full_name"]}
+{"table": "raw.netsuite_consolidated_exchange_rates_data", "columns": ["consolidated_exchange_rate_id", "accounting_book_id", "accounting_period_id", "average_rate", "current_rate", "historical_rate", "from_subsidiary_id", "to_subsidiary_id"]}
+{"table": "raw.netsuite_currencies_data", "columns": ["currency_id", "name", "symbol"]}
+{"table": "raw.netsuite_customers_data", "columns": ["customer_id", "company_name", "city", "state", "zipcode", "country", "date_first_order"]}
+{"table": "raw.netsuite_departments_data", "columns": ["department_id", "name", "full_name"]}
+{"table": "raw.netsuite_expense_accounts_data", "columns": ["expense_account_id", "name", "parent_id", "account_number"]}
+{"table": "raw.netsuite_income_accounts_data", "columns": ["income_account_id", "name", "parent_id", "account_number"]}
+{"table": "raw.netsuite_items_data", "columns": ["item_id", "name", "type_name", "sales_description"]}
+{"table": "raw.netsuite_locations_data", "columns": ["location_id", "name", "full_name", "city", "country"]}
+{"table": "raw.netsuite_subsidiaries_data", "columns": ["subsidiary_id", "fiscal_calendar_id", "name", "parent_id"]}
+{"table": "raw.netsuite_transaction_lines_data", "columns": ["transaction_id", "transaction_line_id", "subsidiary_id", "account_id", "company_id", "item_id", "amount", "non_posting_line", "class_id", "location_id", "department_id", "memo"]}
+{"table": "raw.netsuite_transactions_data", "columns": ["transaction_id", "status", "transaction_date", "currency_id", "accounting_period_id", "due_date", "transaction_type", "is_intercompany", "is_advanced_intercompany"]}
+{"table": "raw.netsuite_vendor_types_data", "columns": ["vendor_type_id", "name"]}
+{"table": "raw.netsuite_vendors_data", "columns": ["vendor_id", "vendor_type_id", "company_name", "create_date"]}
+
+
+=== Relevant specification and documentation ===
+## stg_netsuite2__accounts
+
+    - name: stg_netsuite2__accounts
+      description: "Chart of accounts with standardized account hierarchy and classification"
+      source_table: raw.netsuite2_account_data
+      columns:
+        - name: account_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+          validation_rules:
+            - rule: "account_id IS NOT NULL AND LENGTH(account_id) > 0"
+              on_failure: delete_row
+        - name: parent_id
+          data_type: VARCHAR
+        - name: account_number
+          data_type: VARCHAR
+        - name: name
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: type_name
+          data_type: VARCHAR
+        - name: general_rate_type
+          data_type: VARCHAR
+        - name: is_leftside
+          data_type: BOOLEAN
+        - name: is_balancesheet
+          data_type: BOOLEAN
+
+
+
+## stg_netsuite2__transaction_lines
+
+    - name: stg_netsuite2__transaction_lines
+      description: "Individual line items for transactions with amount validation and account assignments"
+      source_table: raw.netsuite2_transaction_line_data
+      columns:
+        - name: transaction_line_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: transaction_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: transaction_line_number
+          data_type: DOUBLE
+        - name: memo
+          data_type: VARCHAR
+        - name: entity_id
+          data_type: VARCHAR
+        - name: item_id
+          data_type: VARCHAR
+        - name: class_id
+          data_type: VARCHAR
+        - name: location_id
+          data_type: VARCHAR
+        - name: subsidiary_id
+          data_type: VARCHAR
+        - name: department_id
+          data_type: VARCHAR
+        - name: is_closed
+          data_type: BOOLEAN
+        - name: is_billable
+          data_type: BOOLEAN
+        - name: is_cogs
+          data_type: BOOLEAN
+        - name: is_cleared
+          data_type: BOOLEAN
+        - name: is_commitment_firm
+          data_type: BOOLEAN
+        - name: is_main_line
+          data_type: BOOLEAN
+        - name: is_tax_line
+          data_type: BOOLEAN
+        - name: is_eliminate
+          data_type: BOOLEAN
+        - name: netamount
+          data_type: DOUBLE
+
+
+
+## stg_netsuite2__accounting_periods
+
+    - name: stg_netsuite2__accounting_periods
+      description: "Accounting periods with fiscal calendar mapping"
+      source_table: raw.netsuite2_accounting_period_data
+      columns:
+        - name: accounting_period_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+          validation_rules:
+            - rule: "accounting_period_id IS NOT NULL AND LENGTH(accounting_period_id) > 0"
+              on_failure: delete_row
+        - name: parent_id
+          data_type: VARCHAR
+        - name: name
+          data_type: VARCHAR
+        - name: starting_at
+          data_type: DATE
+          validation_rules:
+            - rule: "starting_at IS NOT NULL AND starting_at >= DATE '1900-01-01' AND starting_at <= CURRENT_DATE + INTERVAL '2 YEARS'"
+              on_failure: delete_row
+        - name: ending_at
+          data_type: DATE
+          validation_rules:
+            - rule: "ending_at IS NOT NULL AND ending_at > starting_at AND ending_at <= CURRENT_DATE + INTERVAL '2 YEARS'"
+              on_failure: delete_row
+            - rule: "ENDING_AT <= STARTING_AT + INTERVAL '92 DAYS'"
+              on_failure: delete_row
+        - name: closed_at
+          data_type: VARCHAR
+        - name: is_quarter
+          data_type: BOOLEAN
+        - name: is_year
+          data_type: BOOLEAN
+        - name: is_adjustment
+          data_type: BOOLEAN
+        - name: is_posting
+          data_type: BOOLEAN
+        - name: is_closed
+          data_type: BOOLEAN
+        - name: is_all_locked
+          data_type: BOOLEAN
+        - name: is_ar_locked
+          data_type: BOOLEAN
+        - name: is_ap_locked
+          data_type: BOOLEAN
+
+
+
+## stg_netsuite2__customers
+
+    - name: stg_netsuite2__customers
+      description: "Customer master data with contact information and billing details"
+      source_table: raw.netsuite2_customer_data
+      columns:
+        - name: customer_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: entity_id
+          data_type: VARCHAR
+        - name: customer_external_id
+          data_type: VARCHAR
+        - name: parent_id
+          data_type: VARCHAR
+        - name: is_person
+          data_type: BOOLEAN
+        - name: alt_name
+          data_type: VARCHAR
+        - name: company_name
+          data_type: VARCHAR
+        - name: first_name
+          data_type: VARCHAR
+        - name: last_name
+          data_type: VARCHAR
+        - name: email_address
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "email_address IS NULL OR email_address RLIKE '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$'"
+              on_failure: nullify_field
+            - rule: "email_address = LOWER(TRIM(email_address))"
+              on_failure: correct
+        - name: phone_number
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "phone_number IS NULL OR (LENGTH(TRIM(phone_number)) >= 8 AND LENGTH(TRIM(phone_number)) <= 20)"
+              on_failure: nullify_field
+            - rule: "phone_number = REGEXP_REPLACE(TRIM(phone_number), '[^0-9+()-]', '')"
+              on_failure: correct
+        - name: default_billing_address_id
+          data_type: VARCHAR
+        - name: default_shipping_address_id
+          data_type: VARCHAR
+        - name: receivables_account_id
+          data_type: VARCHAR
+        - name: currency_id
+          data_type: VARCHAR
+        - name: date_first_order_at
+          data_type: DATE
+
+
+
+## stg_netsuite2__subsidiaries
+
+    - name: stg_netsuite2__subsidiaries
+      description: "Subsidiary master data with organizational structure"
+      source_table: raw.netsuite2_subsidiary_data
+      columns:
+        - name: subsidiary_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: name
+          data_type: VARCHAR
+        - name: full_name
+          data_type: VARCHAR
+        - name: email
+          data_type: VARCHAR
+        - name: main_address_id
+          data_type: VARCHAR
+        - name: country
+          data_type: VARCHAR
+        - name: state
+          data_type: VARCHAR
+        - name: fiscal_calendar_id
+          data_type: VARCHAR
+        - name: parent_id
+          data_type: VARCHAR
+        - name: currency_id
+          data_type: VARCHAR
+        - name: is_elimination
+          data_type: BOOLEAN
+
+
+## stg_netsuite2__departments
+
+    - name: stg_netsuite2__departments
+      description: "Department master data for organizational structure"
+      source_table: raw.netsuite2_department_data
+      columns:
+        - name: department_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: parent_id
+          data_type: VARCHAR
+        - name: name
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "name IS NOT NULL AND LENGTH(name) > 0 AND LENGTH(name) <= 255"
+              on_failure: correct
+            - rule: "name RLIKE '^[A-Za-z0-9\\s\\-&()''',]+$'"
+              on_failure: correct
+        - name: full_name
+          data_type: VARCHAR
+        - name: subsidiary_id
+          data_type: VARCHAR
+        - name: is_inactive
+          data_type: BOOLEAN
+
+
+
+## stg_netsuite2__classes
+
+    - name: stg_netsuite2__classes
+      description: "Class master data for transaction classification"
+      source_table: raw.netsuite2_class_data
+      columns:
+        - name: class_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: class_external_id
+          data_type: VARCHAR
+        - name: name
+          data_type: VARCHAR
+        - name: full_name
+          data_type: VARCHAR
+        - name: is_inactive
+          data_type: BOOLEAN
+
+
+## stg_netsuite2__locations
+
+    - name: stg_netsuite2__locations
+      description: "Location master data for tracking geographic entities"
+      source_table: raw.netsuite2_location_data
+      columns:
+        - name: location_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: name
+          data_type: VARCHAR
+        - name: full_name
+          data_type: VARCHAR
+        - name: main_address_id
+          data_type: VARCHAR
+        - name: parent_id
+          data_type: VARCHAR
+        - name: subsidiary_id
+          data_type: VARCHAR
+
+
+## stg_netsuite2__currencies
+
+    - name: stg_netsuite2__currencies
+      description: "Currency master data with symbols and exchange rate information"
+      source_table: raw.netsuite2_currency_data
+      columns:
+        - name: currency_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: name
+          data_type: VARCHAR
+        - name: symbol
+          data_type: VARCHAR
+
+
+## stg_netsuite2__accounting_period_fiscal_cal
+
+    - name: stg_netsuite2__accounting_period_fiscal_cal
+      description: "Mapping between accounting periods and fiscal calendar"
+      source_table: raw.netsuite2_accounting_period_fiscal_cal_data
+      columns:
+        - name: accounting_period_id
+          data_type: DOUBLE
+          constraints: [not_null]
+        - name: fiscal_calendar_id
+          data_type: VARCHAR
+          constraints: [not_null]
+        - name: parent_id
+          data_type: VARCHAR
+
+
+## stg_netsuite2__entity_address
+
+    - name: stg_netsuite2__entity_address
+      description: "Entity address information for customers, vendors, and other entities"
+      source_table: raw.netsuite2_entity_address_data
+      columns:
+        - name: addr1
+          data_type: VARCHAR
+        - name: addr2
+          data_type: DOUBLE
+        - name: addr3
+          data_type: DOUBLE
+        - name: addressee
+          data_type: DOUBLE
+        - name: full_address
+          data_type: VARCHAR
+        - name: city
+          data_type: VARCHAR
+        - name: country
+          data_type: VARCHAR
+        - name: state
+          data_type: VARCHAR
+        - name: nkey
+          data_type: DOUBLE
+        - name: zipcode
+          data_type: DOUBLE
+
+
+## stg_netsuite2__location_main_address
+
+    - name: stg_netsuite2__location_main_address
+      description: "Main address information for locations"
+      source_table: raw.netsuite2_location_main_address_data
+      columns:
+        - name: addr1
+          data_type: DOUBLE
+        - name: addr2
+          data_type: DOUBLE
+        - name: addr3
+          data_type: DOUBLE
+        - name: addressee
+          data_type: DOUBLE
+        - name: full_address
+          data_type: VARCHAR
+        - name: city
+          data_type: DOUBLE
+        - name: country
+          data_type: DOUBLE
+        - name: state
+          data_type: DOUBLE
+        - name: nkey
+          data_type: DOUBLE
+        - name: zipcode
+          data_type: DOUBLE
+
+
+## stg_netsuite2__consolidated_exchange_rates
+
+    - name: stg_netsuite2__consolidated_exchange_rates
+      description: "Exchange rates for multi-currency consolidation"
+      source_table: raw.netsuite2_exchange_rate_data
+      columns:
+        - name: consolidated_exchange_rate_id
+          data_type: VARCHAR
+          constraints: [not_null, unique]
+        - name: accounting_period_id
+          data_type: VARCHAR
+        - name: from_currency_id
+          data_type: VARCHAR
+        - name: from_subsidiary_id
+          data_type: VARCHAR
+        - name: to_currency_id
+          data_type: VARCHAR
+        - name: to_subsidiary_id
+          data_type: VARCHAR
+        - name: accounting_book_id
+          data_type: VARCHAR
+        - name: current_rate
+          data_type: BOOLEAN
+        - name: average_rate
+          data_type: BOOLEAN
+        - name: historical_rate
+          data_type: BOOLEAN
+
+
+## int_netsuite2__transaction_details
+
+    - name: int_netsuite2__transaction_details
+      description: Transaction line details enriched with account and subsidiary data plus simple period placeholders
+      grain: One row per transaction_line_id
+      source_models:
+      - intermediate.int_netsuite2__transaction_lines
+      - intermediate.int_netsuite2__tran_with_converted_amounts
+      - intermediate.int_netsuite2__accounts
+      - staging.stg_netsuite2__subsidiaries
+      business_logic: '- Start from intermediate.int_netsuite2__transaction_lines and keep all rows. - Left join intermediate.int_netsuite2__tran_with_converted_amounts on transaction_line_id to bring the converted amount; when missing or NULL, set converted_amount to 0. - Left join intermediate.int_netsuite2__accounts on account_id to populate account_name, account_type_name, account_number, and is_account_leftside; when missing, these fields are NULL. - Left join staging.stg_netsuite2__subsidiaries on subsidiary_id to populate sub_id, subsidiary_full_name, and subsidiary_name; when missing, these fields are NULL. - Amount defaults: - transaction_amount uses transaction_lines.amount, defaulting to 0 when NULL. - transaction_line_amount uses transaction_lines.netamount, defaulting to 0 when NULL. - converted_amount uses the joined converted value, defaulting to 0 when NULL or no match. - Period placeholders: - accounting_period_name is the literal value ''mock_period'' for all rows. - accounting_period_ending is set to the date when the model runs. - is_accounting_period_adjustment and is_accounting_period_closed are FALSE for all rows. - Create transaction_details_id by hashing the string "<transaction_line_id>_<transaction_id>" after casting both to strings; if either input is NULL, the result is NULL. - No sorting is applied; output order is not guaranteed.'
+      columns:
+      - name: transaction_details_id
+        data_type: VARCHAR
+        description: 32-character hex hash of '<transaction_line_id>_<transaction_id>' as strings; NULL if either input is NULL; unique per row
+        tests:
+        - not_null
+        - unique
+      - name: transaction_line_id
+        data_type: VARCHAR
+        description: Transaction line identifier from transaction_lines; defines the row grain
+        tests:
+        - not_null
+      - name: transaction_id
+        data_type: VARCHAR
+        description: Parent transaction identifier sourced from transaction_lines
+        tests:
+        - not_null
+      - name: subsidiary_id
+        data_type: VARCHAR
+        description: Subsidiary ID from transaction_lines; may be NULL
+      - name: account_id
+        data_type: VARCHAR
+        description: Account ID from transaction_lines; may be NULL
+      - name: account_name
+        data_type: VARCHAR
+        description: Account name from the joined accounts table; NULL if no match
+      - name: account_type_name
+        data_type: VARCHAR
+        description: Account type from the joined accounts table; NULL if no match
+      - name: account_number
+        data_type: VARCHAR
+        description: Account number from the joined accounts table; formatting preserved; NULL if no match
+      - name: is_account_leftside
+        data_type: BOOLEAN
+        description: Flag from the joined accounts table indicating left side of the balance sheet; NULL if no match
+      - name: sub_id
+        data_type: VARCHAR
+        description: Subsidiary ID from the joined subsidiaries table; NULL if no match
+      - name: subsidiary_full_name
+        data_type: VARCHAR
+        description: Full subsidiary name from the joined subsidiaries table; NULL if no match
+      - name: subsidiary_name
+        data_type: VARCHAR
+        description: Short subsidiary name from the joined subsidiaries table; NULL if no match
+      - name: converted_amount
+        data_type: DOUBLE
+        description: Amount converted using the transaction accounting period; defaults to 0 when NULL or missing
+      - name: transaction_amount
+        data_type: DOUBLE
+        description: Original line amount from transaction_lines; defaults to 0 when NULL
+      - name: transaction_line_amount
+        data_type: DOUBLE
+        description: Net line amount from transaction_lines; defaults to 0 when NULL
+      - name: accounting_period_name
+        data_type: VARCHAR
+        description: Static value 'mock_period' for all rows
+      - name: accounting_period_ending
+        data_type: DATE
+        description: Date set to the model execution date
+      - name: is_accounting_period_adjustment
+        data_type: BOOLEAN
+        description: Static FALSE for all rows
+      - name: is_accounting_period_closed
+        data_type: BOOLEAN
+        description: Static FALSE for all rows
+
+
+## int_netsuite2__accounts
+
+    - name: int_netsuite2__accounts
+      description: Direct pass-through of NetSuite account records from staging with no transformations
+      grain: One row per source row in staging.stg_netsuite2__accounts
+      source_models:
+      - staging.stg_netsuite2__accounts
+      business_logic: '- Read all rows from staging.stg_netsuite2__accounts. - Select exactly these columns: account_id, parent_id, account_number, name, type_name, general_rate_type, is_leftside, is_balancesheet. - Apply no filters, joins, aggregations, renaming, or type changes. - Preserve source values exactly: NULLs retained; text casing and whitespace unchanged; boolean values retained; duplicates kept. - Do not enforce any output ordering.'
+      columns:
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier
+      - name: parent_id
+        data_type: VARCHAR
+        description: Identifier of the parent account in the hierarchy
+      - name: account_number
+        data_type: VARCHAR
+        description: Account code or reference number
+      - name: name
+        data_type: VARCHAR
+        description: Account name
+      - name: type_name
+        data_type: VARCHAR
+        description: Label of the account type
+      - name: general_rate_type
+        data_type: VARCHAR
+        description: Currency conversion rate type associated with the account
+      - name: is_leftside
+        data_type: BOOLEAN
+        description: Indicates left-side (debit) placement
+      - name: is_balancesheet
+        data_type: BOOLEAN
+        description: Indicates inclusion on the balance sheet
+
+
+## int_netsuite2__accounting_periods
+
+    - name: int_netsuite2__accounting_periods
+      description: Accounting periods enriched with fiscal calendar ID and a year-start date derived from starting_at.
+      grain: One row per accounting period record; multiple rows may appear for an accounting_period_id when multiple fiscal calendar mappings exist.
+      source_models:
+      - staging.stg_netsuite2__accounting_periods
+      - staging.stg_netsuite2__accounting_period_fiscal_cal
+      business_logic: '- Start with all rows and columns from staging.stg_netsuite2__accounting_periods; values, types, and NULLs are preserved; no filtering or sorting. - Left join staging.stg_netsuite2__accounting_period_fiscal_cal where accounting_period_id values match after converting the right-side ID to text to align types. - If multiple matches exist, all are retained (no de-duplication), producing multiple rows; if no match, fiscal_calendar_id is NULL. - Derive fiscal_year_trunc as the first day of the calendar year for starting_at; if starting_at is NULL, fiscal_year_trunc is NULL. - Output includes all original accounting period columns plus fiscal_calendar_id and fiscal_year_trunc.'
+      columns:
+      - name: accounting_period_id
+        data_type: VARCHAR
+        description: Accounting period identifier and join key.
+      - name: parent_id
+        data_type: VARCHAR
+        description: Parent accounting period identifier.
+      - name: name
+        data_type: VARCHAR
+        description: Accounting period name.
+      - name: starting_at
+        data_type: DATE
+        description: Period start date used to derive fiscal_year_trunc.
+      - name: ending_at
+        data_type: DATE
+        description: Period end date.
+      - name: closed_at
+        data_type: VARCHAR
+        description: Closure value as text.
+      - name: is_quarter
+        data_type: BOOLEAN
+        description: Quarter period flag.
+      - name: is_year
+        data_type: BOOLEAN
+        description: Year period flag.
+      - name: is_adjustment
+        data_type: BOOLEAN
+        description: Adjustment period flag.
+      - name: is_posting
+        data_type: BOOLEAN
+        description: Posting allowed flag.
+      - name: is_closed
+        data_type: BOOLEAN
+        description: Closed period flag.
+      - name: is_all_locked
+        data_type: BOOLEAN
+        description: All activities locked flag.
+      - name: is_ar_locked
+        data_type: BOOLEAN
+        description: Accounts receivable locked flag.
+      - name: is_ap_locked
+        data_type: BOOLEAN
+        description: Accounts payable locked flag.
+      - name: fiscal_calendar_id
+        data_type: VARCHAR
+        description: Fiscal calendar ID from the joined mapping; NULL if no match; duplicates preserved.
+      - name: fiscal_year_trunc
+        data_type: DATE
+        description: First day of the calendar year for starting_at; NULL if starting_at is NULL.
+
+
+## int_netsuite2__balance_sheet
+
+    - name: int_netsuite2__balance_sheet
+      description: Balance sheet presentation rows per transaction line and reporting period with account reclassification (Net Income/Retained Earnings/CTA), subsidiary details, and converted/unconverted amounts
+      grain: One row per transaction_line_id × transaction_id × reporting accounting_period_id × derived presentation account (account_name + account_id/null)
+      source_models:
+      - intermediate.int_netsuite2__tran_with_converted_amounts
+      - intermediate.int_netsuite2__accounts
+      - intermediate.int_netsuite2__accounting_periods
+      - staging.stg_netsuite2__subsidiaries
+      - staging.stg_netsuite2__currencies
+      business_logic: '- Start from intermediate.int_netsuite2__tran_with_converted_amounts (driving transaction lines), keeping rows where the account is a balance sheet account or the driving row is flagged is_income_statement. - Left join: - intermediate.int_netsuite2__accounts by account_id to get account properties (is_balancesheet, type_name, is_leftside, general_rate_type, name, account_number). - intermediate.int_netsuite2__accounting_periods twice: - reporting_accounting_periods via reporting_accounting_period_id (provides accounting_period_id, ending_at, name, is_adjustment, is_closed, fiscal_year_trunc, fiscal_calendar_id). - transaction_accounting_periods via transaction_accounting_period_id (used only to compare fiscal_year_trunc and fiscal_calendar_id with the reporting period). - staging.stg_netsuite2__subsidiaries by subsidiary_id and staging.stg_netsuite2__currencies via subsidiaries.currency_id to get the subsidiary currency symbol. - Create the main balance sheet row with presentation account reclassification: - If the account is not a balance sheet account and the reporting period’s fiscal year/calendar matches the transaction period → account_name/display/type_name/id are "Net Income"/"net_income". - Else if the account is not a balance sheet account → account_name/display/type_name/id are "Retained Earnings"/"retained_earnings". - Else → account_name/display come from accounts.name; for type_name: map lower(type_name)=''retearnings'' to "Retained Earnings", lower(type_name) in (''cta-e'',''cumultransadj'') to "Cumulative Translation Adjustment", otherwise use accounts.type_name; for account_type_id apply the same mappings to ''retained_earnings'' and ''cumulative_translation_adjustment'', otherwise use accounts.type_name. - account_id is null for non-balance-sheet rows; otherwise use accounts.account_id. - account_number is the Retained Earnings account_number selected from any account of type ''retearnings'' when non-balance-sheet; otherwise use accounts.account_number. - is_account_intercompany is always false. - is_account_leftside is false for non-balance-sheet; otherwise use accounts.is_leftside. - converted_amount: - Non-balance-sheet: use a negative sign; use transaction accounting period for historical/average rates, otherwise use reporting month. - Balance-sheet: for right-side (not is_leftside) use negative sign; choose transaction accounting period for historical/average rates, otherwise reporting month; for left-side use positive sign with the same rate selection. - Else → 0. - transaction_amount: - Non-balance-sheet → negative unconverted_amount. - Balance-sheet right-side → negative unconverted_amount; left-side → positive unconverted_amount. - Else → 0. - balance_sheet_sort_helper: - bank=1, acctrec=2, unbilledrec=3, othcurrasset=4, fixedasset=5, othasset=6, deferexpense=7, acctpay=8, credcard=9, othcurrliab=10, longtermliab=11, deferrevenue=12, equity=13, retained earnings=14, net income=15, CTA (''cta-e''/''cumultransadj'')=16; non-balance-sheet reclassification to Retained Earnings also =14; else null. - Union all a second row per included transaction line to represent Cumulative Translation Adjustment (CTA): - account_category=''Equity''; account_name/display/type_name=''Cumulative Translation Adjustment''; account_type_id=''cumulative_translation_adjustment''; account_id=null; account_number selected from any account where lower(type_name)=''cumultransadj''. - is_account_intercompany=false; is_account_leftside=false. - converted_amount: use transaction accounting period for historical/average rates, otherwise reporting month (no sign flip). - transaction_amount: unconverted_amount. - balance_sheet_sort_helper=16. - Create balance_sheet_id by concatenating transaction_line_id, transaction_id, accounting_period_id, account_name, and coalesced account_id using "_" as a delimiter and hashing the result with MD5 to produce a deterministic unique identifier.'
+      columns:
+      - name: balance_sheet_id
+        data_type: VARCHAR
+        description: Deterministic row id hashing transaction_line_id, transaction_id, accounting_period_id, account_name, and coalesced account_id joined by '_'
+        tests:
+        - not_null
+        - unique
+      - name: transaction_id
+        data_type: VARCHAR
+        description: Source transaction identifier carried through from the driving transaction line
+      - name: transaction_line_id
+        data_type: VARCHAR
+        description: Source transaction line identifier used in the surrogate key and as the row driver
+      - name: subsidiary_id
+        data_type: VARCHAR
+        description: Subsidiary id from the driving transaction line; used to join subsidiary attributes
+      - name: subsidiary_full_name
+        data_type: VARCHAR
+        description: Full name from subsidiaries; null if no match
+      - name: subsidiary_name
+        data_type: VARCHAR
+        description: Name from subsidiaries; null if no match
+      - name: subsidiary_currency_symbol
+        data_type: VARCHAR
+        description: Subsidiary currency symbol resolved via subsidiaries.currency_id to currencies; null if no match
+      - name: accounting_period_id
+        data_type: VARCHAR
+        description: Reporting accounting period id from the reporting_accounting_periods join
+      - name: accounting_period_ending
+        data_type: DATE
+        description: Reporting accounting period end date from reporting_accounting_periods
+      - name: accounting_period_name
+        data_type: VARCHAR
+        description: Reporting accounting period name from reporting_accounting_periods
+      - name: is_accounting_period_adjustment
+        data_type: BOOLEAN
+        description: Value from reporting_accounting_periods.is_adjustment; null if no match
+      - name: is_accounting_period_closed
+        data_type: BOOLEAN
+        description: Value from reporting_accounting_periods.is_closed; null if no match
+      - name: account_category
+        data_type: VARCHAR
+        description: Category from the driving row; CTA union sets 'Equity'
+      - name: account_name
+        data_type: VARCHAR
+        description: 'Presentation name: Net Income for non-balance-sheet with matching FY/calendar; Retained Earnings for other non-balance-sheet; otherwise accounts.name; CTA union sets ''Cumulative Translation Adjustment'''
+      - name: account_display_name
+        data_type: VARCHAR
+        description: Same as account_name for display
+      - name: account_type_name
+        data_type: VARCHAR
+        description: 'Presentation type name with mappings: Net Income/Retained Earnings for non-balance-sheet; ''Retained Earnings'' for retearnings; ''Cumulative Translation Adjustment'' for ''cta-e''/''cumultransadj''; else accounts.type_name'
+      - name: account_type_id
+        data_type: VARCHAR
+        description: 'Presentation type id: ''net_income''/''retained_earnings'' for non-balance-sheet and retearnings; ''cumulative_translation_adjustment'' for CTA; else accounts.type_name'
+      - name: account_id
+        data_type: VARCHAR
+        description: Null for non-balance-sheet and CTA rows; otherwise accounts.account_id
+      - name: account_number
+        data_type: VARCHAR
+        description: Retained Earnings account_number when non-balance-sheet; CTA union uses a cumultransadj account_number; else accounts.account_number
+      - name: is_account_intercompany
+        data_type: BOOLEAN
+        description: Always false
+      - name: is_account_leftside
+        data_type: BOOLEAN
+        description: False for non-balance-sheet and CTA union; otherwise accounts.is_leftside
+      - name: converted_amount
+        data_type: DOUBLE
+        description: 'Converted amount with sign and rate selection: non-balance-sheet uses negative sign (transaction period for historical/average, else reporting month); balance-sheet uses is_leftside and general_rate_type to choose transaction vs reporting month and apply sign; else 0'
+      - name: transaction_amount
+        data_type: DOUBLE
+        description: 'Unconverted amount signed by side: non-balance-sheet and right-side balance-sheet negative; left-side balance-sheet positive; CTA union uses unconverted_amount'
+      - name: balance_sheet_sort_helper
+        data_type: INTEGER
+        description: 'Sort code by type and reclassification: bank=1, acctrec=2, unbilledrec=3, othcurrasset=4, fixedasset=5, othasset=6, deferexpense=7, acctpay=8, credcard=9, othcurrliab=10, longtermliab=11, deferrevenue=12, equity=13, retained earnings=14, net income=15, CTA=16; else null'
+
+
+## int_netsuite2__income_statement
+
+    - name: int_netsuite2__income_statement
+      description: Income statement lines with joined dimensions and converted amounts for profitability analysis
+      grain: One row per transaction_id + transaction_line_id for income-statement transactions in their reporting period
+      source_models:
+      - intermediate.int_netsuite2__tran_with_converted_amounts
+      - intermediate.int_netsuite2__transaction_lines
+      - intermediate.int_netsuite2__accounts
+      - intermediate.int_netsuite2__accounting_periods
+      - staging.stg_netsuite2__subsidiaries
+      - staging.stg_netsuite2__currencies
+      - staging.stg_netsuite2__classes
+      - staging.stg_netsuite2__locations
+      - staging.stg_netsuite2__departments
+      business_logic: '- Start from intermediate.int_netsuite2__tran_with_converted_amounts. - Inner join intermediate.int_netsuite2__transaction_lines on both transaction_id and transaction_line_id to bring line-level attributes. - Left join dimensions: - Accounts by account_id. - Accounting periods (as reporting_accounting_periods) by reporting_accounting_period_id. - Subsidiaries by subsidiary_id, then currencies by subsidiaries.currency_id to get the subsidiary currency symbol. - Classes by class_id, locations by location_id, and departments by department_id from the transaction line. - Keep only rows where is_income_statement is true and the transaction accounting period equals the reporting accounting period. - Select identifiers and attributes from the joined tables, including reporting period, account, subsidiary, class, location, department, and account_category. - Derivations: - account_number_and_name: join account_number and account_name with a single "-" (no spaces); if either input is NULL, the result is NULL. - income_statement_sort_helper: map the lowercase account_type_name as income→1, cogs→2, expense→3, othincome→4, othexpense→5; otherwise NULL. - converted_amount: negate converted_amount_using_transaction_accounting_period; transaction_amount: negate unconverted_amount; NULLs propagate. - Surrogate key income_statement_id: MD5 of transaction_line_id, transaction_id, accounting_period_id, and account_name joined by underscores; if any component is NULL, the key is NULL. - No aggregation or de-duplication is performed; duplicates from sources are preserved.'
+      columns:
+      - name: income_statement_id
+        data_type: VARCHAR
+        description: MD5 of transaction_line_id, transaction_id, accounting_period_id, and account_name joined with '_' (NULL in any component yields NULL)
+      - name: transaction_id
+        data_type: VARCHAR
+        description: Source transaction identifier from int_netsuite2__tran_with_converted_amounts
+      - name: transaction_line_id
+        data_type: VARCHAR
+        description: Source transaction line identifier aligned via int_netsuite2__transaction_lines
+      - name: accounting_period_id
+        data_type: VARCHAR
+        description: Reporting accounting period identifier from int_netsuite2__accounting_periods
+      - name: accounting_period_ending
+        data_type: DATE
+        description: Reporting accounting period end date
+      - name: accounting_period_name
+        data_type: VARCHAR
+        description: Reporting accounting period name
+      - name: is_accounting_period_adjustment
+        data_type: BOOLEAN
+        description: True if the reporting accounting period is an adjustment period
+      - name: is_accounting_period_closed
+        data_type: BOOLEAN
+        description: True if the reporting accounting period is closed
+      - name: account_name
+        data_type: VARCHAR
+        description: Account name from intermediate.int_netsuite2__accounts
+      - name: account_type_name
+        data_type: VARCHAR
+        description: Account type name from intermediate.int_netsuite2__accounts
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier from the accounts dimension
+      - name: account_number
+        data_type: VARCHAR
+        description: Account number from intermediate.int_netsuite2__accounts
+      - name: subsidiary_id
+        data_type: VARCHAR
+        description: Identifier of the subsidiary associated with the transaction
+      - name: subsidiary_full_name
+        data_type: VARCHAR
+        description: Subsidiary full name from staging.stg_netsuite2__subsidiaries
+      - name: subsidiary_name
+        data_type: VARCHAR
+        description: Subsidiary short name from staging.stg_netsuite2__subsidiaries
+      - name: subsidiary_currency_symbol
+        data_type: VARCHAR
+        description: Currency symbol of the transaction’s subsidiary from staging.stg_netsuite2__currencies
+      - name: account_number_and_name
+        data_type: VARCHAR
+        description: account_number and account_name joined by '-' with no spaces; NULL if either part is NULL
+      - name: class_id
+        data_type: VARCHAR
+        description: Class identifier from the transaction line
+      - name: class_full_name
+        data_type: VARCHAR
+        description: Full class name from staging.stg_netsuite2__classes
+      - name: location_id
+        data_type: VARCHAR
+        description: Location identifier from the transaction line
+      - name: location_full_name
+        data_type: VARCHAR
+        description: Full location name from staging.stg_netsuite2__locations
+      - name: department_id
+        data_type: VARCHAR
+        description: Department identifier from the transaction line
+      - name: department_full_name
+        data_type: VARCHAR
+        description: Full department name from staging.stg_netsuite2__departments
+      - name: account_category
+        data_type: VARCHAR
+        description: Account category copied from int_netsuite2__tran_with_converted_amounts
+      - name: income_statement_sort_helper
+        data_type: INTEGER
+        description: 'Sort rank from account_type_name (lowercased): income=1, cogs=2, expense=3, othincome=4, othexpense=5; else NULL'
+      - name: converted_amount
+        data_type: DOUBLE
+        description: Negated converted_amount_using_transaction_accounting_period (NULL if source is NULL)
+      - name: transaction_amount
+        data_type: DOUBLE
+        description: Negated unconverted_amount (NULL if source is NULL)
+
+
+## int_netsuite2__transaction_lines
+
+    - name: int_netsuite2__transaction_lines
+      description: Transaction lines with cyclical account assignment and derived amounts/flags
+      grain: One row per input row in staging.stg_netsuite2__transaction_lines
+      source_models:
+      - staging.stg_netsuite2__transaction_lines
+      - staging.stg_netsuite2__accounts
+      business_logic: '- Load all rows from staging.stg_netsuite2__transaction_lines; no filtering or de-duplication. - Assign a sequential number tl_row to each transaction line starting at 1; ordering is undefined without an explicit sort. - From staging.stg_netsuite2__accounts, assign a sequential number account_row to each account starting at 1; let total_accounts be the count of accounts. - Requires total_accounts ≥ 1; if 0, the modulus-based selection causes the query to fail (division by zero). - For each transaction line, select exactly one account by cycling through accounts in sequence: line 1 -> account 1, line 2 -> account 2, …, line N -> account N, then wrap back to account 1 and repeat. The assignment depends on the undefined ordering of both sequences. - Derivations: - exchange_rate: fixed at 1.0. - amount: equal to netamount. - credit_amount: 0 when netamount is positive; otherwise the absolute value of netamount; becomes NULL when netamount is NULL. - debit_amount: netamount when netamount is positive; otherwise 0; becomes 0 when netamount is NULL. - paid_amount: fixed at 0. - unpaid_amount: fixed at 0. - is_posting: fixed TRUE. - Output all original transaction line fields plus the computed fields above.'
+      columns:
+      - name: transaction_line_id
+        data_type: VARCHAR
+        description: Direct from source; unchanged.
+      - name: transaction_id
+        data_type: VARCHAR
+        description: Direct from source; unchanged.
+      - name: transaction_line_number
+        data_type: DOUBLE
+        description: Direct from source; unchanged.
+      - name: memo
+        data_type: VARCHAR
+        description: Direct from source; unchanged.
+      - name: entity_id
+        data_type: VARCHAR
+        description: Direct from source; unchanged.
+      - name: item_id
+        data_type: VARCHAR
+        description: Direct from source; unchanged.
+      - name: class_id
+        data_type: VARCHAR
+        description: Direct from source; unchanged.
+      - name: location_id
+        data_type: VARCHAR
+        description: Direct from source; unchanged.
+      - name: subsidiary_id
+        data_type: VARCHAR
+        description: Direct from source; unchanged.
+      - name: department_id
+        data_type: VARCHAR
+        description: Direct from source; unchanged.
+      - name: is_closed
+        data_type: BOOLEAN
+        description: Direct from source; unchanged.
+      - name: is_billable
+        data_type: BOOLEAN
+        description: Direct from source; unchanged.
+      - name: is_cogs
+        data_type: BOOLEAN
+        description: Direct from source; unchanged.
+      - name: is_cleared
+        data_type: BOOLEAN
+        description: Direct from source; unchanged.
+      - name: is_commitment_firm
+        data_type: BOOLEAN
+        description: Direct from source; unchanged.
+      - name: is_main_line
+        data_type: BOOLEAN
+        description: Direct from source; unchanged.
+      - name: is_tax_line
+        data_type: BOOLEAN
+        description: Direct from source; unchanged.
+      - name: is_eliminate
+        data_type: BOOLEAN
+        description: Direct from source; unchanged.
+      - name: netamount
+        data_type: DOUBLE
+        description: Direct from source; used to derive amount, credit_amount, and debit_amount; NULLs preserved.
+      - name: tl_row
+        data_type: BIGINT
+        description: Sequential number per line starting at 1 with undefined order; used for cyclical account assignment.
+      - name: account_id
+        data_type: VARCHAR
+        description: Assigned by cycling through accounts in sequence; depends on undefined ordering; requires at least one account; may be NULL if the selected account has NULL id.
+      - name: exchange_rate
+        data_type: DECIMAL(2,1)
+        description: Constant 1.0; not NULL.
+      - name: amount
+        data_type: DOUBLE
+        description: Equal to netamount; same sign and NULL state as netamount.
+      - name: credit_amount
+        data_type: DOUBLE
+        description: 0 when netamount > 0; otherwise the absolute value of netamount; NULL when netamount is NULL.
+      - name: debit_amount
+        data_type: DOUBLE
+        description: netamount when netamount > 0; otherwise 0; 0 when netamount is NULL.
+      - name: paid_amount
+        data_type: INTEGER
+        description: Constant 0; not NULL.
+      - name: unpaid_amount
+        data_type: INTEGER
+        description: Constant 0; not NULL.
+      - name: is_posting
+        data_type: BOOLEAN
+        description: Constant TRUE; not NULL.
+
+
+## int_netsuite2__acctxperiod_exchange_rate_map
+
+    - name: int_netsuite2__acctxperiod_exchange_rate_map
+      description: Account-by-period mapping to the applicable consolidated exchange rate for conversion to the primary (top-level) subsidiary
+      grain: One row per account_id × accounting_period_id × from_subsidiary_id × to_subsidiary_id (duplicates possible)
+      source_models:
+      - intermediate.int_netsuite2__accounts
+      - staging.stg_netsuite2__consolidated_exchange_rates
+      - staging.stg_netsuite2__subsidiaries
+      - staging.stg_netsuite2__currencies
+      business_logic: '- Build period_exchange_rate_map from stg_netsuite2__consolidated_exchange_rates: - Join to stg_netsuite2__subsidiaries (as to_subsidiaries) on to_subsidiary_id to retrieve the subsidiary name and currency_id. - Join to stg_netsuite2__currencies on to_subsidiaries.currency_id to retrieve the currency symbol. - Keep only rows where to_subsidiary_id belongs to a subsidiary that has no parent (primary subsidiary). - Pass through accounting_period_id, from_subsidiary_id, to_subsidiary_id, and the three rate fields (average_rate, current_rate, historical_rate); no aggregation or sorting; duplicates are preserved. - Cross join every row in intermediate.int_netsuite2__accounts with every row in period_exchange_rate_map to form all account-by-period-by-subsidiary combinations. - For each combination, set exchange_rate based on accounts.general_rate_type using case-insensitive matching: - historical → use historical_rate - current → use current_rate - average → use average_rate - any other value or null → exchange_rate is null - Carry forward to_subsidiary_name and to_subsidiary_currency_symbol from the joined subsidiary and currency records. - No additional filtering, aggregation, or ordering is applied; source duplicates are retained.'
+      columns:
+      - name: accounting_period_id
+        data_type: VARCHAR
+        description: Accounting period identifier from consolidated exchange rates; pass-through with original casing; nulls preserved
+      - name: from_subsidiary_id
+        data_type: VARCHAR
+        description: Origin subsidiary ID for conversion; pass-through from consolidated exchange rates; original casing; nulls preserved
+      - name: to_subsidiary_id
+        data_type: VARCHAR
+        description: Target subsidiary ID restricted to primary subsidiaries; non-null due to the filter; duplicates preserved
+      - name: to_subsidiary_name
+        data_type: VARCHAR
+        description: Name of the target primary subsidiary from subsidiaries; original casing and spacing; null if missing
+      - name: to_subsidiary_currency_symbol
+        data_type: VARCHAR
+        description: Currency symbol of the target primary subsidiary from currencies via subsidiaries; original casing; null if currency or symbol is missing
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier from accounts; cross-joined to all period exchange rate rows; pass-through with original casing; nulls preserved
+      - name: exchange_rate
+        data_type: DOUBLE
+        description: 'Selected rate per account based on general_rate_type (case-insensitive): historical uses historical_rate, current uses current_rate, average uses average_rate, otherwise null; no rounding or unit changes'
+
+
+## int_netsuite2__customers
+
+    - name: int_netsuite2__customers
+      description: Customer records enriched with city, state, zipcode, and country from the selected default address (billing preferred over shipping).
+      grain: One row per customer_id; duplicates may occur if multiple entity_address rows share the selected address key; no deduplication.
+      source_models:
+      - staging.stg_netsuite2__customers
+      - staging.stg_netsuite2__entity_address
+      business_logic: '- Load all fields from staging.stg_netsuite2__customers. - Select the default address key: use default_billing_address_id when present; otherwise use default_shipping_address_id; if both are NULL, no address key is available. - Left join staging.stg_netsuite2__entity_address on the chosen address key matching entity_address.nkey. - Include city, state, zipcode, and country from the matched address; if no match, these four fields are NULL. - No filtering, aggregation, or ordering is applied; row multiplicity follows the join and duplicates can occur if multiple address rows share the selected nkey.'
+      columns:
+      - name: customer_id
+        data_type: VARCHAR
+        description: Primary customer identifier sourced from customers staging.
+        tests:
+        - not_null
+        - unique
+      - name: entity_id
+        data_type: VARCHAR
+        description: Entity identifier sourced from customers staging.
+      - name: customer_external_id
+        data_type: VARCHAR
+        description: External identifier sourced from customers staging.
+      - name: parent_id
+        data_type: VARCHAR
+        description: Parent customer identifier sourced from customers staging.
+      - name: is_person
+        data_type: BOOLEAN
+        description: Person vs. company flag sourced from customers staging.
+      - name: alt_name
+        data_type: VARCHAR
+        description: Alternate display name sourced from customers staging.
+      - name: company_name
+        data_type: VARCHAR
+        description: Company name sourced from customers staging.
+      - name: first_name
+        data_type: VARCHAR
+        description: First name sourced from customers staging.
+      - name: last_name
+        data_type: VARCHAR
+        description: Last name sourced from customers staging.
+      - name: email_address
+        data_type: VARCHAR
+        description: Email address sourced from customers staging; no transformation applied.
+      - name: phone_number
+        data_type: VARCHAR
+        description: Phone number sourced from customers staging; no transformation applied.
+      - name: default_billing_address_id
+        data_type: VARCHAR
+        description: Default billing address ID; chosen first when determining the address key for the join.
+      - name: default_shipping_address_id
+        data_type: VARCHAR
+        description: Default shipping address ID; used as the address key only when billing ID is absent.
+      - name: receivables_account_id
+        data_type: VARCHAR
+        description: Receivables account identifier sourced from customers staging.
+      - name: currency_id
+        data_type: VARCHAR
+        description: Home currency identifier sourced from customers staging.
+      - name: date_first_order_at
+        data_type: DATE
+        description: Date of first order sourced from customers staging.
+      - name: city
+        data_type: VARCHAR
+        description: City from the matched default address; NULL if no address match.
+      - name: state
+        data_type: VARCHAR
+        description: State/region from the matched default address; NULL if no address match.
+      - name: zipcode
+        data_type: DOUBLE
+        description: Postal code from the matched default address; NULL if no address match.
+      - name: country
+        data_type: VARCHAR
+        description: Country from the matched default address; NULL if no address match.
+
+
+## int_netsuite2__locations
+
+    - name: int_netsuite2__locations
+      description: Locations joined to their main address fields without transformation
+      grain: One row per location; if multiple address rows match the main_address_id, one row per match; unmatched locations retain a single row with NULL address fields
+      source_models:
+      - staging.stg_netsuite2__locations
+      - staging.stg_netsuite2__location_main_address
+      business_logic: '- Begin with all rows and columns from staging.stg_netsuite2__locations (no filtering or casting). - Left join staging.stg_netsuite2__location_main_address using the location''s main_address_id matched to the address nkey. - Include all columns from the locations table and add city, state, zipcode, and country from the matched address row. - If no address matches, city/state/zipcode/country are NULL for that location. - If multiple address rows share the same nkey, return one output row per match (duplicates of the location row may occur). - No ordering, trimming, case normalization, or deduplication is applied; source types are preserved.'
+      columns:
+      - name: location_id
+        data_type: VARCHAR
+        description: Identifier from stg_netsuite2__locations; passed through unchanged; duplicates and NULLs are preserved
+      - name: name
+        data_type: VARCHAR
+        description: Location name from stg_netsuite2__locations; passed through unchanged
+      - name: full_name
+        data_type: VARCHAR
+        description: Full location name from stg_netsuite2__locations; passed through unchanged
+      - name: main_address_id
+        data_type: VARCHAR
+        description: Address key from stg_netsuite2__locations used to match to stg_netsuite2__location_main_address.nkey; NULLs allowed; duplicates preserved
+      - name: parent_id
+        data_type: VARCHAR
+        description: Parent location identifier from stg_netsuite2__locations; passed through unchanged
+      - name: subsidiary_id
+        data_type: VARCHAR
+        description: Subsidiary identifier from stg_netsuite2__locations; passed through unchanged
+      - name: city
+        data_type: DOUBLE
+        description: City from stg_netsuite2__location_main_address; NULL when no match; multiple matches yield multiple rows
+      - name: state
+        data_type: DOUBLE
+        description: State from stg_netsuite2__location_main_address; NULL when no match; multiple matches yield multiple rows
+      - name: zipcode
+        data_type: DOUBLE
+        description: Zip code from stg_netsuite2__location_main_address; NULL when no match; multiple matches yield multiple rows
+      - name: country
+        data_type: DOUBLE
+        description: Country from stg_netsuite2__location_main_address; NULL when no match; multiple matches yield multiple rows
+
+
+## int_netsuite2__tran_and_reporting_periods
+
+    - name: int_netsuite2__tran_and_reporting_periods
+      description: Identity mapping of accounting periods to reporting periods for mock data
+      grain: One row per source accounting_periods row (no deduplication)
+      source_models:
+      - intermediate.int_netsuite2__accounting_periods
+      business_logic: '- Read all rows from intermediate.int_netsuite2__accounting_periods (no filters, no joins). - For each input row, emit: - accounting_period_id = accounting_period_id from the source row. - reporting_accounting_period_id = the same accounting_period_id value (identity mapping). - No additional transformations: - Duplicates from the source are preserved; no DISTINCT or aggregation. - NULL values are preserved as-is. - No ordering is enforced.'
+      columns:
+      - name: accounting_period_id
+        data_type: VARCHAR
+        description: Accounting period identifier copied 1:1 from intermediate.int_netsuite2__accounting_periods; duplicates and NULLs are preserved
+      - name: reporting_accounting_period_id
+        data_type: VARCHAR
+        description: Reporting period identifier set equal to accounting_period_id for each row; duplicates and NULLs mirror the source accounting_period_id
+
+
+## int_netsuite2__tran_lines_w_accounting_period
+
+    - name: int_netsuite2__tran_lines_w_accounting_period
+      description: Transaction lines with a cyclically assigned accounting period and amount defaulted to 0 when NULL
+      grain: One row per transaction line record from intermediate.int_netsuite2__transaction_lines
+      source_models:
+      - intermediate.int_netsuite2__transaction_lines
+      - intermediate.int_netsuite2__accounting_periods
+      business_logic: '- Read all rows from intermediate.int_netsuite2__transaction_lines and assign each a sequential position (tl_row) with no specified ordering. - Read all rows from intermediate.int_netsuite2__accounting_periods and assign each a sequential position (period_row) with no specified ordering. - Let N be the number of available accounting periods. If N = 0 the query fails because the period assignment requires a modulo calculation. - For each transaction line at position k, assign the accounting period whose position is the remainder of (k - 1) divided by N, plus one. This cycles through the period list repeatedly in its arbitrary order, assigning exactly one period to each line when N >= 1. - Output one row per transaction line: pass through transaction_id, transaction_line_id, subsidiary_id, and account_id unchanged; set transaction_accounting_period_id to the assigned period’s accounting_period_id; set unconverted_amount to 0 when the source line amount is NULL, otherwise use the original amount. No aggregation, filtering, rounding, or de-duplication is applied.'
+      columns:
+      - name: transaction_id
+        data_type: VARCHAR
+        description: Identifier of the source transaction; passed through from transaction lines without transformation
+      - name: transaction_line_id
+        data_type: VARCHAR
+        description: Identifier of the transaction line; passed through from transaction lines without transformation
+      - name: subsidiary_id
+        data_type: VARCHAR
+        description: Subsidiary identifier for the line; passed through from transaction lines; may be NULL
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier for the line; passed through from transaction lines; may be NULL
+      - name: transaction_accounting_period_id
+        data_type: VARCHAR
+        description: Accounting period id assigned by cycling through available periods based on the transaction line’s position; ordering is arbitrary due to unordered row numbering; may be NULL if the source period id is NULL
+      - name: unconverted_amount
+        data_type: DOUBLE
+        description: Line amount with NULLs defaulted to 0; no rounding or currency conversion applied
+        tests:
+        - not_null
+
+
+## int_netsuite2__tran_with_converted_amounts
+
+    - name: int_netsuite2__tran_with_converted_amounts
+      description: Transaction lines replicated by reporting period with pass-through amounts and account classifications.
+      grain: One row per combination of transaction_line_id and reporting_accounting_period_id; if no mapping, reporting_accounting_period_id is NULL.
+      source_models:
+      - intermediate.int_netsuite2__tran_lines_w_accounting_period
+      - intermediate.int_netsuite2__tran_and_reporting_periods
+      - intermediate.int_netsuite2__accounts
+      business_logic: '- Start from all rows in intermediate.int_netsuite2__tran_lines_w_accounting_period. - Left join intermediate.int_netsuite2__tran_and_reporting_periods on transaction_accounting_period_id = accounting_period_id to add reporting_accounting_period_id; all transaction lines are retained, NULL is set when no mapping exists, and multiple rows can result if the mapping table has duplicates for a given accounting period. - Left join intermediate.int_netsuite2__accounts on account_id to classify accounts: * is_income_statement is TRUE when the account type (compared case-insensitively) is one of income, othincome, expense, othexpense, or cogs; otherwise FALSE, including when the type is missing. * account_category (case-insensitive type match): - Asset for acctrec, bank, deferexpense, fixedasset, othasset, othcurrasset, unbilledrec - Expense for cogs, expense, othexpense - Income for income, othincome - Liability for acctpay, credcard, deferrevenue, longtermliab, othcurrliab - Equity for equity, retained_earnings, net_income - Other for nonposting, stat - NULL when no type or no match. - Set converted_amount_using_transaction_accounting_period = unconverted_amount (no conversion; NULL propagates). - Set converted_amount_using_reporting_month = unconverted_amount (no conversion; NULL propagates). - Create tran_with_converted_amounts_id by MD5 hashing the concatenation of transaction_line_id, transaction_id, account_id, and reporting_accounting_period_id joined with "_" in that order; if any component is NULL, the concatenation and the id are NULL; component values are used as-is without trimming or case changes.'
+      columns:
+      - name: transaction_id
+        data_type: VARCHAR
+        description: Transaction identifier passed through from transaction lines.
+        tests:
+        - not_null
+      - name: transaction_line_id
+        data_type: VARCHAR
+        description: Transaction line identifier used for row grain and surrogate key.
+        tests:
+        - not_null
+      - name: subsidiary_id
+        data_type: VARCHAR
+        description: Subsidiary identifier from transaction lines; NULLs are preserved.
+      - name: account_id
+        data_type: VARCHAR
+        description: Account identifier used to join to account attributes; NULLs are preserved.
+      - name: transaction_accounting_period_id
+        data_type: VARCHAR
+        description: Accounting period of the transaction line used to map reporting periods; NULLs are preserved.
+      - name: unconverted_amount
+        data_type: DOUBLE
+        description: Original transaction amount in transaction currency; values are passed through; NULLs are preserved.
+      - name: reporting_accounting_period_id
+        data_type: VARCHAR
+        description: Reporting period derived from transaction_accounting_period_id; NULL if no mapping; duplicates possible if the mapping table has multiple rows per accounting period.
+      - name: converted_amount_using_transaction_accounting_period
+        data_type: DOUBLE
+        description: Equal to unconverted_amount with no exchange rate applied; NULL when unconverted_amount is NULL.
+      - name: converted_amount_using_reporting_month
+        data_type: DOUBLE
+        description: Equal to unconverted_amount with no exchange rate applied; NULL when unconverted_amount is NULL.
+      - name: is_income_statement
+        data_type: BOOLEAN
+        description: TRUE when account type is income, othincome, expense, othexpense, or cogs (case-insensitive); otherwise FALSE, including when type is missing.
+      - name: account_category
+        data_type: VARCHAR
+        description: Category derived from account type (case-insensitive) per defined sets; NULL when unmatched or type is missing.
+      - name: tran_with_converted_amounts_id
+        data_type: VARCHAR
+        description: MD5 of transaction_line_id, transaction_id, account_id, and reporting_accounting_period_id concatenated with '_' in that order; NULL if any component is NULL.
+
+
+
+
+=== Premises recorded in earlier reviews ===
+[
+  {
+    "statement": "The contract's raw source names for entities, classes, and consolidated exchange rates identify available tables without requiring name corrections.",
+    "about": "data",
+    "target": "stg_netsuite2__entities, stg_netsuite2__classes, stg_netsuite2__consolidated_exchange_rates",
+    "evidence_of_dependence": "source=t['source_table'].split('.')[-1]; ... f'\\n    FROM raw.{source} r\\n)'",
+    "alternative": "The contract names raw.netsuite2_entity_data, raw.netsuite2_class_data, and raw.netsuite2_exchange_rate_data, whereas the material index lists raw.netsuite2_entities_data, raw.netsuite2_classification_data, and raw.netsuite2_consolidated_exchange_rate_data.",
+    "importance": 5,
+    "reason": "Unresolved source-name differences can prevent all three models and their dependents from executing.",
+    "updates": null,
+    "id": "c2-1",
+    "call": 2
+  },
+  {
+    "statement": "Account balance-sheet and left-side classifications may be left NULL rather than derived from account-type data.",
+    "about": "requirement",
+    "target": "stg_netsuite2__accounts",
+    "evidence_of_dependence": "cols.append(f'    {expr(rawcol if rawcol in raw.get(source,{}) else None,typ)} AS {n}')",
+    "alternative": "The contract includes 'is_leftside' and 'is_balancesheet', and raw.netsuite2_account_type_data contains 'left' and 'balancesheet'; the comment says 'flags lookup via account type data' but no lookup is implemented.",
+    "importance": 5,
+    "reason": "Both account classifications would be missing throughout the chart of accounts.",
+    "updates": null,
+    "id": "c2-2",
+    "call": 2
+  },
+  {
+    "statement": "Accounting periods already satisfy every required start-date, end-date, and maximum-duration validation after casting.",
+    "about": "data",
+    "target": "stg_netsuite2__accounting_periods",
+    "evidence_of_dependence": "if rule.get('on_failure')=='delete_row' and n.endswith('_id'):",
+    "alternative": "The contract requires deleting rows unless starting_at and ending_at are non-null, within specified date bounds, ending_at > starting_at, and 'ENDING_AT <= STARTING_AT + INTERVAL '92 DAYS''.",
+    "importance": 5,
+    "reason": "The generator omits all period-date filters, potentially retaining entire quarters, years, or invalid periods.",
+    "updates": null,
+    "id": "c2-3",
+    "call": 2
+  },
+  {
+    "statement": "Every constrained unique key is already unique after projection, casting, and the implemented filters.",
+    "about": "data",
+    "target": "All generated staging models whose contract declares a unique constraint",
+    "evidence_of_dependence": "SELECT *\\nFROM source_data; if 'not_null' in col.get('constraints',[]):conditions.append(f'{n} IS NOT NULL')",
+    "alternative": "The contract declares 'constraints: [not_null, unique]' for these keys and describes 'Confirmed duplicates' as a delete_row case; the generator implements neither uniqueness checks nor deduplication.",
+    "importance": 4,
+    "reason": "Duplicate keys could violate staging grains and multiply downstream joins.",
+    "updates": null,
+    "id": "c2-4",
+    "call": 2
+  },
+  {
+    "statement": "No source row carrying date_deleted needs to be excluded from its generated staging model.",
+    "about": "data",
+    "target": "All generated NetSuite2 staging models sourced from tables containing date_deleted",
+    "evidence_of_dependence": "sql='WITH source_data AS (\\n    SELECT\\n'+',\\n'.join(cols)+f'\\n    FROM raw.{source} r\\n)\\nSELECT *\\nFROM source_data'",
+    "alternative": "The staging quality actions list 'Explicitly marked for deletion' under delete_row, and the material index shows date_deleted on these sources.",
+    "importance": 4,
+    "reason": "Retaining deleted records can materially change downstream balances and entity populations.",
+    "updates": null,
+    "id": "c2-5",
+    "call": 2
+  },
+  {
+    "statement": "All transaction due dates already satisfy the contractual bounds relative to the transaction date and current date.",
+    "about": "data",
+    "target": "stg_netsuite2__transactions",
+    "evidence_of_dependence": "due_date_at='duedate'; ... return f'TRY_CAST({x} AS {typ})'",
+    "alternative": "The contract requires nullifying due_date_at unless it is NULL or 'due_date_at >= transaction_date AND due_date_at <= CURRENT_DATE + INTERVAL '10 YEARS''.",
+    "importance": 4,
+    "reason": "Casting alone does not prevent invalid dates from affecting aging and overdue reporting.",
+    "updates": null,
+    "id": "c2-6",
+    "call": 2
+  },
+  {
+    "statement": "All employee emails are either NULL or match the contract's email pattern.",
+    "about": "data",
+    "target": "stg_netsuite2__employees",
+    "evidence_of_dependence": "return f'TRY_CAST({x} AS {typ})'; if name=='stg_netsuite2__customers':",
+    "alternative": "The employee contract specifies an email regular-expression validation with 'on_failure: nullify_field', but special email processing is limited to customers.",
+    "importance": 3,
+    "reason": "Malformed employee contact information would survive a required validation.",
+    "updates": null,
+    "id": "c2-7",
+    "call": 2
+  },
+  {
+    "statement": "Department names already meet the required nonempty, maximum-length, and allowed-character rules.",
+    "about": "data",
+    "target": "stg_netsuite2__departments",
+    "evidence_of_dependence": "name='name'; ... cols.append(f'    {expr(rawcol if rawcol in raw.get(source,{}) else None,typ)} AS {n}')",
+    "alternative": "The contract requires correcting names to satisfy 'LENGTH(name) > 0 AND LENGTH(name) <= 255' and an allowed-character pattern.",
+    "importance": 3,
+    "reason": "No name correction is generated despite explicit correction requirements.",
+    "updates": null,
+    "id": "c2-8",
+    "call": 2
+  },
+  {
+    "statement": "Returning NULL for the legacy customer external identifier is acceptable without consulting another source or deriving it.",
+    "about": "requirement",
+    "target": "stg_netsuite__customers",
+    "evidence_of_dependence": "customer_external_id='customer_external_id'; if not rawcol:return f'CAST(NULL AS {typ})'",
+    "alternative": "The contract includes 'customer_external_id' as BIGINT, but raw.netsuite_customers_data in the material index has no such column.",
+    "importance": 3,
+    "reason": "The implementation silently substitutes an entirely missing identifier field.",
+    "updates": null,
+    "id": "c2-9",
+    "call": 2
+  },
+  {
+    "statement": "Returning NULL for legacy subsidiary full_name is acceptable without deriving it from name or hierarchy data.",
+    "about": "requirement",
+    "target": "stg_netsuite__subsidiaries",
+    "evidence_of_dependence": "full_name='full_name'; ... expr(rawcol if rawcol in raw.get(source,{}) else None,typ)",
+    "alternative": "The contract requests 'full_name', while the indexed source contains 'name' and 'parent_id' but no full_name.",
+    "importance": 3,
+    "reason": "The entire subsidiary hierarchy-label field would be absent.",
+    "updates": null,
+    "id": "c2-10",
+    "call": 2
+  },
+  {
+    "statement": "Returning NULL for entity parent_id is acceptable instead of mapping the source parent field.",
+    "about": "requirement",
+    "target": "stg_netsuite2__entities",
+    "evidence_of_dependence": "'stg_netsuite2__entities':dict(entity_id='id',entity_name='entityid', ...); rawcol=maps.get(name,{}).get(n,n)",
+    "alternative": "The entity contract requests 'parent_id', and the indexed entities source contains 'parent'.",
+    "importance": 3,
+    "reason": "The omitted alias loses all entity-parent relationships even if the source-name issue is resolved.",
+    "updates": null,
+    "id": "c2-11",
+    "call": 2
+  },
+  {
+    "statement": "Source metadata in netsuite_start.yaml completely and accurately enumerates every usable column under the exact source-table keys used by the contract.",
+    "about": "data",
+    "target": "All generated staging models",
+    "evidence_of_dependence": "raw=yaml.safe_load(open('netsuite_start.yaml')); expr(rawcol if rawcol in raw.get(source,{}) else None,typ)",
+    "alternative": null,
+    "importance": 3,
+    "reason": "Any metadata omission silently replaces available source values with NULL rather than exposing the mismatch.",
+    "updates": null,
+    "id": "c2-12",
+    "call": 2
+  },
+  {
+    "statement": "Non-null source values that fail TRY_CAST may be discarded as NULL, or removed when the target is required, without additional recovery.",
+    "about": "requirement",
+    "target": "All generated staging models",
+    "evidence_of_dependence": "return f'TRY_CAST({x} AS {typ})'; conditions.append(f'{n} IS NOT NULL')",
+    "alternative": "The contract distinguishes deterministic issues to 'correct', severe issues to 'delete_row', and invalid noncritical values to 'nullify_field', rather than assigning one blanket casting policy.",
+    "importance": 3,
+    "reason": "Recoverable formatting errors could cause information loss or deletion across many models.",
+    "updates": null,
+    "id": "c2-13",
+    "call": 2
+  },
+  {
+    "statement": "The source transaction-line id alone identifies a globally unique transaction line in both source systems.",
+    "about": "data",
+    "target": "stg_netsuite2__transaction_lines, stg_netsuite__transaction_lines",
+    "evidence_of_dependence": "transaction_line_id='id',transaction_id='transaction'; transaction_line_id='transaction_line_id'",
+    "alternative": "The NetSuite2 source also contains 'uniquekey', and both sources contain transaction identifiers that could participate in a composite line key.",
+    "importance": 3,
+    "reason": "Transaction-local line numbering would make the selected identifier incompatible with the specified unique grain.",
+    "updates": null,
+    "id": "c2-14",
+    "call": 2
+  },
+  {
+    "statement": "NetSuite2 account_type_id denotes internalid rather than the source id field.",
+    "about": "data",
+    "target": "stg_netsuite2__account_types",
+    "evidence_of_dependence": "'stg_netsuite2__account_types':dict(account_type_id='internalid',type_name='longname', ...)",
+    "alternative": "The indexed account-type source contains both 'id' and 'internalid', while the contract names only the output account_type_id.",
+    "importance": 3,
+    "reason": "Selecting the wrong identifier could break account-type relationships or lose rows during BIGINT conversion.",
+    "updates": null,
+    "id": "c2-15",
+    "call": 2
+  },
+  {
+    "statement": "Customer emails with recoverable surrounding whitespace should be nullified if they fail the pattern before trimming.",
+    "about": "requirement",
+    "target": "stg_netsuite2__customers",
+    "evidence_of_dependence": "regexp_full_match(email_address, ...) THEN lower(trim(email_address)) ELSE NULL",
+    "alternative": "The contract requires 'email_address = LOWER(TRIM(email_address))' with 'on_failure: correct', which supports normalizing whitespace before deciding whether an address is malformed.",
+    "importance": 3,
+    "reason": "Otherwise valid customer emails can be lost solely because normalization occurs after validation.",
+    "updates": null,
+    "id": "c2-16",
+    "call": 2
+  },
+  {
+    "statement": "Replacing only the first disallowed phone character suffices to satisfy the required customer phone normalization.",
+    "about": "requirement",
+    "target": "stg_netsuite2__customers",
+    "evidence_of_dependence": "regexp_replace(trim(phone_number), '[^0-9+()-]', '')",
+    "alternative": "The contract says 'phone_number = REGEXP_REPLACE(TRIM(phone_number), '[^0-9+()-]', '')' as a correction rule; interpreting this as full normalization would require removing every disallowed character.",
+    "importance": 2,
+    "reason": "Multiple spaces or other disallowed characters may remain in cleaned phone values.",
+    "updates": null,
+    "id": "c2-17",
+    "call": 2
+  },
+  {
+    "statement": "Checking customer phone length before character removal is sufficient even when normalization changes its length.",
+    "about": "requirement",
+    "target": "stg_netsuite2__customers",
+    "evidence_of_dependence": "WHEN phone_number IS NULL OR (length(trim(phone_number)) BETWEEN 8 AND 20) THEN regexp_replace(...)",
+    "alternative": "The contract requires the resulting phone_number to satisfy 'LENGTH(TRIM(phone_number)) >= 8 AND LENGTH(TRIM(phone_number)) <= 20' as well as normalization.",
+    "importance": 2,
+    "reason": "A phone can pass the initial check and become too short after cleaning.",
+    "updates": null,
+    "id": "c2-18",
+    "call": 2
+  },
+  {
+    "statement": "Account name in the staging contract means fullname rather than one of the available display-name fields.",
+    "about": "requirement",
+    "target": "stg_netsuite2__accounts",
+    "evidence_of_dependence": "name='fullname'",
+    "alternative": "The source index also lists 'accountsearchdisplayname', 'accountsearchdisplaynamecopy', and 'displaynamewithhierarchy'; the contract only labels the output 'name'.",
+    "importance": 2,
+    "reason": "Different name fields may produce materially different account labels.",
+    "updates": null,
+    "id": "c2-19",
+    "call": 2
+  },
+  {
+    "statement": "Entity_id in customer, employee, and job staging denotes the source entityid label rather than the internal id used by transaction entity references.",
+    "about": "data",
+    "target": "stg_netsuite2__customers, stg_netsuite2__employees, stg_netsuite2__jobs",
+    "evidence_of_dependence": "entity_id='entityid'",
+    "alternative": "The entities mapping uses 'entity_id=\\'id\\'' and 'entity_name=\\'entityid\\'', while transactions map entity_id from 'entity'.",
+    "importance": 2,
+    "reason": "The same output field name may carry incompatible identifier domains across staging tables.",
+    "updates": null,
+    "id": "c2-20",
+    "call": 2
+  }
+]
+
+=== Agent steps since the last review ===
+### event 17
+
+## 命令原文
+
+cat > /tmp/inter.py <<'PY'
+from pathlib import Path
+base=Path('sql/intermediate')
+models={
+'int_netsuite2__accounts':'''SELECT account_id, parent_id, account_number, name, type_name, general_rate_type, is_leftside, is_balancesheet FROM staging.stg_netsuite2__accounts''',
+'int_netsuite2__accounting_periods':'''SELECT p.*, m.fiscal_calendar_id, CAST(date_trunc('year', p.starting_at) AS DATE) AS fiscal_year_trunc FROM staging.stg_netsuite2__accounting_periods p LEFT JOIN staging.stg_netsuite2__accounting_period_fiscal_cal m ON CAST(m.accounting_period_id AS VARCHAR) = p.accounting_period_id''',
+'int_netsuite2__customers':'''SELECT c.*, a.city, a.state, a.zipcode, a.country FROM staging.stg_netsuite2__customers c LEFT JOIN staging.stg_netsuite2__entity_address a ON a.nkey = TRY_CAST(COALESCE(c.default_billing_address_id, c.default_shipping_address_id) AS DOUBLE)''',
+'int_netsuite2__locations':'''SELECT l.*, a.city, a.state, a.zipcode, a.country FROM staging.stg_netsuite2__locations l LEFT JOIN staging.stg_netsuite2__location_main_address a ON a.nkey = TRY_CAST(l.main_address_id AS DOUBLE)''',
+'int_netsuite2__transaction_lines':'''WITH line_rows AS (SELECT row_number() OVER () AS tl_row, * FROM staging.stg_netsuite2__transaction_lines), account_rows AS (SELECT row_number() OVER () AS account_row, account_id FROM staging.stg_netsuite2__accounts), account_count AS (SELECT count(*) AS n FROM account_rows) SELECT l.transaction_line_id, l.transaction_id, l.transaction_line_number, l.memo, l.entity_id, l.item_id, COALESCE(a.account_id, l.class_id) AS class_id, l.location_id, l.subsidiary_id, l.department_id, l.is_closed, l.is_billable, l.is_cogs, l.is_cleared, l.is_commitment_firm, l.is_main_line, l.is_tax_line, l.is_eliminate, l.netamount, l.tl_row, a.account_id, CAST(1.0 AS DECIMAL(2,1)) AS exchange_rate, l.netamount AS amount, CASE WHEN l.netamount IS NULL THEN NULL WHEN l.netamount > 0 THEN 0 ELSE abs(l.netamount) END AS credit_amount, CASE WHEN l.netamount > 0 THEN l.netamount ELSE 0 END AS debit_amount, 0 AS paid_amount, 0 AS unpaid_amount, TRUE AS is_posting FROM line_rows l CROSS JOIN account_count n LEFT JOIN account_rows a ON a.account_row = ((l.tl_row - 1) % NULLIF(n.n, 0)) + 1''',
+'int_netsuite2__acctxperiod_exchange_rate_map':'''WITH rate_map AS (SELECT e.accounting_period_id, e.from_subsidiary_id, e.to_subsidiary_id, s.name AS to_subsidiary_name, c.symbol AS to_subsidiary_currency_symbol, e.average_rate, e.current_rate, e.historical_rate FROM staging.stg_netsuite2__consolidated_exchange_rates e JOIN staging.stg_netsuite2__subsidiaries s ON s.subsidiary_id=e.to_subsidiary_id LEFT JOIN staging.stg_netsuite2__currencies c ON c.currency_id=s.currency_id WHERE s.parent_id IS NULL) SELECT r.accounting_period_id, r.from_subsidiary_id, r.to_subsidiary_id, r.to_subsidiary_name, r.to_subsidiary_currency_symbol, a.account_id, CASE lower(a.general_rate_type) WHEN 'historical' THEN try_cast(r.historical_rate AS DOUBLE) WHEN 'current' THEN try_cast(r.current_rate AS DOUBLE) WHEN 'average' THEN try_cast(r.average_rate AS DOUBLE) END AS exchange_rate FROM int_accounts_placeholder a CROSS JOIN rate_map r''',
+'int_netsuite2__tran_lines_w_accounting_period':'''WITH lines AS (SELECT row_number() OVER () AS rn, * FROM intermediate.int_netsuite2__transaction_lines), periods AS (SELECT row_number() OVER () AS rn, accounting_period_id FROM intermediate.int_netsuite2__accounting_periods), period_count AS (SELECT count(*) n FROM periods) SELECT l.transaction_id, l.transaction_line_id, l.subsidiary_id, l.account_id, p.accounting_period_id AS transaction_accounting_period_id, COALESCE(l.amount, 0) AS unconverted_amount FROM lines l CROSS JOIN period_count pc LEFT JOIN periods p ON p.rn=((l.rn-1)%NULLIF(pc.n,0))+1''',
+'int_netsuite2__tran_and_reporting_periods':'''SELECT accounting_period_id, accounting_period_id AS reporting_accounting_period_id FROM intermediate.int_netsuite2__accounting_periods''',
+'int_netsuite2__tran_with_converted_amounts':'''WITH classified AS (SELECT t.*, p.reporting_accounting_period_id, a.type_name, lower(a.type_name) AS type_key FROM intermediate.int_netsuite2__tran_lines_w_accounting_period t LEFT JOIN intermediate.int_netsuite2__tran_and_reporting_periods p ON p.accounting_period_id=t.transaction_accounting_period_id LEFT JOIN intermediate.int_netsuite2__accounts a ON a.account_id=t.account_id) SELECT transaction_id, transaction_line_id, subsidiary_id, account_id, transaction_accounting_period_id, unconverted_amount, reporting_accounting_period_id, unconverted_amount AS converted_amount_using_transaction_accounting_period, unconverted_amount AS converted_amount_using_reporting_month, coalesce(type_key IN ('income','othincome','expense','othexpense','cogs'), FALSE) AS is_income_statement, CASE WHEN type_key IN ('acctrec','bank','deferexpense','fixedasset','othasset','othcurrasset','unbilledrec') THEN 'Asset' WHEN type_key IN ('cogs','expense','othexpense') THEN 'Expense' WHEN type_key IN ('income','othincome') THEN 'Income' WHEN type_key IN ('acctpay','credcard','deferrevenue','longtermliab','othcurrliab') THEN 'Liability' WHEN type_key IN ('equity','retained_earnings','net_income') THEN 'Equity' WHEN type_key IN ('nonposting','stat') THEN 'Other' END AS account_category, CASE WHEN transaction_line_id IS NULL OR transaction_id IS NULL OR account_id IS NULL OR reporting_accounting_period_id IS NULL THEN NULL ELSE md5(transaction_line_id || '_' || transaction_id || '_' || account_id || '_' || reporting_accounting_period_id) END AS tran_with_converted_amounts_id FROM classified''',
+'int_netsuite2__transaction_details':'''SELECT md5(t.transaction_line_id || '_' || t.transaction_id) AS transaction_details_id, t.transaction_line_id, t.transaction_id, t.subsidiary_id, t.account_id, a.name AS account_name, a.type_name AS account_type_name, a.account_number, a.is_leftside AS is_account_leftside, s.subsidiary_id AS sub_id, s.full_name AS subsidiary_full_name, s.name AS subsidiary_name, coalesce(c.converted_amount_using_transaction_accounting_period, 0)::DOUBLE AS converted_amount, coalesce(t.amount, 0)::DOUBLE AS transaction_amount, coalesce(t.netamount, 0)::DOUBLE AS transaction_line_amount, 'mock_period' AS accounting_period_name, current_date AS accounting_period_ending, FALSE AS is_accounting_period_adjustment, FALSE AS is_accounting_period_closed FROM intermediate.int_netsuite2__transaction_lines t LEFT JOIN intermediate.int_netsuite2__tran_with_converted_amounts c ON c.transaction_line_id=t.transaction_line_id LEFT JOIN intermediate.int_netsuite2__accounts a ON a.account_id=t.account_id LEFT JOIN staging.stg_netsuite2__subsidiaries s ON s.subsidiary_id=t.subsidiary_id''',
+'int_netsuite2__balance_sheet':'''WITH base AS (SELECT t.*, a.name, a.type_name, a.account_number, a.is_balancesheet, a.is_leftside, a.general_rate_type, p.ending_at, p.name AS period_name, p.is_adjustment, p.is_closed, p.fiscal_year_trunc, tp.fiscal_year_trunc AS transaction_fiscal_year, tp.fiscal_calendar_id AS transaction_calendar, p.fiscal_calendar_id, s.full_name AS subsidiary_full_name, s.name AS subsidiary_name, cur.symbol AS subsidiary_currency_symbol FROM intermediate.int_netsuite2__tran_with_converted_amounts t LEFT JOIN intermediate.int_netsuite2__accounts a ON a.account_id=t.account_id LEFT JOIN intermediate.int_netsuite2__accounting_periods p ON p.accounting_period_id=t.reporting_accounting_period_id LEFT JOIN intermediate.int_netsuite2__accounting_periods tp ON tp.accounting_period_id=t.transaction_accounting_period_id LEFT JOIN staging.stg_netsuite2__subsidiaries s ON s.subsidiary_id=t.subsidiary_id LEFT JOIN staging.stg_netsuite2__currencies cur ON cur.currency_id=s.currency_id WHERE a.is_balancesheet OR t.is_income_statement), presented AS (SELECT *, CASE WHEN NOT is_balancesheet AND fiscal_year_trunc=transaction_fiscal_year AND fiscal_calendar_id=transaction_calendar THEN 'Net Income' WHEN NOT is_balancesheet THEN 'Retained Earnings' ELSE name END AS out_name, CASE WHEN NOT is_balancesheet AND fiscal_year_trunc=transaction_fiscal_year AND fiscal_calendar_id=transaction_calendar THEN 'Net Income' WHEN NOT is_balancesheet THEN 'Retained Earnings' ELSE type_name END AS out_type FROM base) SELECT md5(transaction_line_id||'_'||transaction_id||'_'||reporting_accounting_period_id||'_'||out_name||'_'||coalesce(CASE WHEN is_balancesheet THEN account_id END,'')) AS balance_sheet_id, transaction_id, transaction_line_id, subsidiary_id, subsidiary_full_name, subsidiary_name, subsidiary_currency_symbol, reporting_accounting_period_id AS accounting_period_id, ending_at AS accounting_period_ending, period_name AS accounting_period_name, is_adjustment AS is_accounting_period_adjustment, is_closed AS is_accounting_period_closed, account_category, out_name AS account_name, out_name AS account_display_name, out_type AS account_type_name, lower(replace(out_type,' ', '_')) AS account_type_id, CASE WHEN is_balancesheet THEN account_id END AS account_id, CASE WHEN is_balancesheet THEN account_number END AS account_number, FALSE AS is_account_intercompany, CASE WHEN is_balancesheet THEN is_leftside ELSE FALSE END AS is_account_leftside, CASE WHEN NOT is_balancesheet OR is_leftside IS FALSE THEN -coalesce(converted_amount_using_transaction_accounting_period, converted_amount_using_reporting_month) ELSE coalesce(converted_amount_using_transaction_accounting_period, converted_amount_using_reporting_month) END AS converted_amount, CASE WHEN NOT is_balancesheet OR is_leftside IS FALSE THEN -unconverted_amount ELSE unconverted_amount END AS transaction_amount, CASE lower(type_name) WHEN 'bank' THEN 1 WHEN 'acctrec' THEN 2 WHEN 'unbilledrec' THEN 3 WHEN 'othcurrasset' THEN 4 WHEN 'fixedasset' THEN 5 WHEN 'othasset' THEN 6 WHEN 'deferexpense' THEN 7 WHEN 'acctpay' THEN 8 WHEN 'credcard' THEN 9 WHEN 'othcurrliab' THEN 10 WHEN 'longtermliab' THEN 11 WHEN 'deferrevenue' THEN 12 WHEN 'equity' THEN 13 ELSE CASE WHEN out_name='Retained Earnings' THEN 14 WHEN out_name='Net Income' THEN 15 END END::INTEGER AS balance_sheet_sort_helper FROM presented''',
+'int_netsuite2__income_statement':'''SELECT md5(t.transaction_line_id||'_'||t.transaction_id||'_'||p.accounting_period_id||'_'||a.name) AS income_statement_id, t.transaction_id, t.transaction_line_id, p.accounting_period_id, p.ending_at AS accounting_period_ending, p.name AS accounting_period_name, p.is_adjustment AS is_accounting_period_adjustment, p.is_closed AS is_accounting_period_closed, a.name AS account_name, a.type_name AS account_type_name, a.account_id, a.account_number, t.subsidiary_id, s.full_name AS subsidiary_full_name, s.name AS subsidiary_name, cur.symbol AS subsidiary_currency_symbol, CASE WHEN a.account_number IS NULL OR a.name IS NULL THEN NULL ELSE a.account_number||'-'||a.name END AS account_number_and_name, l.class_id, cl.full_name AS class_full_name, l.location_id, loc.full_name AS location_full_name, l.department_id, d.full_name AS department_full_name, t.account_category, CASE lower(a.type_name) WHEN 'income' THEN 1 WHEN 'cogs' THEN 2 WHEN 'expense' THEN 3 WHEN 'othincome' THEN 4 WHEN 'othexpense' THEN 5 END::INTEGER AS income_statement_sort_helper, -t.converted_amount_using_transaction_accounting_period AS converted_amount, -t.unconverted_amount AS transaction_amount FROM intermediate.int_netsuite2__tran_with_converted_amounts t JOIN intermediate.int_netsuite2__transaction_lines l ON l.transaction_id=t.transaction_id AND l.transaction_line_id=t.transaction_line_id LEFT JOIN intermediate.int_netsuite2__accounts a ON a.account_id=t.account_id JOIN intermediate.int_netsuite2__accounting_periods p ON p.accounting_period_id=t.reporting_accounting_period_id LEFT JOIN staging.stg_netsuite2__subsidiaries s ON s.subsidiary_id=t.subsidiary_id LEFT JOIN staging.stg_netsuite2__currencies cur ON cur.currency_id=s.currency_id LEFT JOIN staging.stg_netsuite2__classes cl ON cl.class_id=l.class_id LEFT JOIN staging.stg_netsuite2__locations loc ON loc.location_id=l.location_id LEFT JOIN staging.stg_netsuite2__departments d ON d.department_id=l.department_id WHERE t.is_income_statement AND t.transaction_accounting_period_id=t.reporting_accounting_period_id''',
+}
+# Correct cycle assignment class_id issue: actual staging transaction line class_id exists, account_id assigned cyclically contract says account_id cycle. generated above must preserve class_id and replace assigned account. amend
+models['int_netsuite2__transaction_lines']=models['int_netsuite2__transaction_lines'].replace("COALESCE(a.account_id, l.class_id) AS class_id, l.location_id", "l.class_id, l.location_id").replace("l.netamount, l.tl_row, a.account_id,", "l.netamount, l.tl_row, a.account_id,")
+for k,v in models.items():
+ if k.endswith('acctxperiod_exchange_rate_map'): v=v.replace('int_accounts_placeholder','intermediate.int_netsuite2__accounts')
+ (base/f'{k}.sql').write_text(v+'\n')
+PY
+python /tmp/inter.py
+
+## agent 实际看到的执行结果
+
+
+
+

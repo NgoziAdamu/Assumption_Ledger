@@ -1,0 +1,136 @@
+{
+  "premises": [
+    {
+      "statement": "The contract's row-deletion and field-nullification requirements are fully covered by the generator's hard-coded checks, with no additional validation rules needing implementation.",
+      "about": "requirement",
+      "target": "All generated staging tables",
+      "evidence_of_dependence": "The generator reads validation_rules only to test whether selected columns have a rule starting with 'LENGTH'; its other checks are hard-coded.",
+      "alternative": "The general contract calls for \"clean, validated staging tables\" with \"comprehensive quality checks\" and distinguishes correct, delete_row, and nullify_field actions.",
+      "importance": 5,
+      "reason": "Unimplemented contract rules could leave invalid records throughout the staging layer.",
+      "updates": null
+    },
+    {
+      "statement": "Every staging table containing a status column uses only open, closed, cancelled, draft, and pending as its acceptable statuses.",
+      "about": "requirement",
+      "target": "Generated staging tables containing status, including offer and requisition if selected by the contract",
+      "evidence_of_dependence": "'status':\"status IN ('open','closed','cancelled','draft','pending')\"",
+      "alternative": null,
+      "importance": 5,
+      "reason": "Applying a shared status vocabulary to different business entities could delete large portions of otherwise valid data.",
+      "updates": null
+    },
+    {
+      "statement": "The hard-coded raw-to-staging column mappings preserve the meanings of the corresponding contract fields.",
+      "about": "data",
+      "target": "Generated staging projections using rawmaps",
+      "evidence_of_dependence": "'feedback_form_field':{'field_text':'value_text','field_type':'value_index'}, 'opportunity':{'contact_id':'contact', ...}",
+      "alternative": null,
+      "importance": 4,
+      "reason": "A mistaken semantic mapping can populate an entire output column with plausible but incorrect values.",
+      "updates": null
+    },
+    {
+      "statement": "Every contract column absent from its source's explicit mapping has an identically named raw source column with the intended meaning.",
+      "about": "data",
+      "target": "All generated staging projections",
+      "evidence_of_dependence": "source=rawmaps.get(src,{}).get(col,col)",
+      "alternative": null,
+      "importance": 4,
+      "reason": "An unmatched name can prevent execution, while a coincidentally matching name can silently select the wrong field.",
+      "updates": null
+    },
+    {
+      "statement": "When multiple columns have individual unique constraints, enforcing uniqueness on their combined tuple satisfies the contract.",
+      "about": "requirement",
+      "target": "Generated staging tables with multiple columns marked unique",
+      "evidence_of_dependence": "unique=[c['name'] for c in t['columns'] if 'unique' in c.get('constraints',[])]; PARTITION BY {', '.join(unique)}",
+      "alternative": null,
+      "importance": 4,
+      "reason": "Composite deduplication can retain violations of individually unique columns.",
+      "updates": null
+    },
+    {
+      "statement": "Rows sharing a declared unique key are interchangeable, so retaining an arbitrary one satisfies the duplicate-resolution requirement.",
+      "about": "data",
+      "target": "Generated staging tables using the ranked CTE",
+      "evidence_of_dependence": "row_number() OVER (PARTITION BY {', '.join(unique)} ORDER BY {', '.join(unique)}) AS _row_num",
+      "alternative": null,
+      "importance": 4,
+      "reason": "Conflicting duplicate records could lose the current or otherwise authoritative version.",
+      "updates": null
+    },
+    {
+      "statement": "For tables without a column explicitly marked unique, retaining all otherwise accepted rows requires no further duplicate removal.",
+      "about": "requirement",
+      "target": "Generated staging tables taking the generator's non-unique branch",
+      "evidence_of_dependence": "q=... if unique else f\"\"\"SELECT ... FROM raw.{src} AS r ...\"\"\"",
+      "alternative": "The general contract lists \"Confirmed duplicates\" among records requiring delete_row.",
+      "importance": 4,
+      "reason": "Duplicate bridge or attribute rows can multiply downstream joins and aggregations.",
+      "updates": null
+    },
+    {
+      "statement": "Failed casts may be handled solely by returning NULL and then applying any declared not_null filter, without further repair or rejection.",
+      "about": "requirement",
+      "target": "All generated staging tables",
+      "evidence_of_dependence": "expr=f'try_cast(r.\"{source}\" AS {typ})'; if 'not_null' in constraints: where.append(f'        {col} IS NOT NULL')",
+      "alternative": "The contract distinguishes deterministic issues to \"Automatically fix\" from severe issues requiring removal and non-critical issues suitable for nullification.",
+      "importance": 4,
+      "reason": "This generic policy can discard repairable records or retain unusable records with newly missing fields.",
+      "updates": null
+    },
+    {
+      "statement": "The generator's selected trimming, lowercasing, and casting operations cover all required deterministic format corrections.",
+      "about": "requirement",
+      "target": "All generated staging tables",
+      "evidence_of_dependence": "Formatting is limited to selected column-name lists, while phone_number is assigned try_cast(... AS VARCHAR).",
+      "alternative": "The contract's correct action includes \"whitespace trimming\", \"standardize timezone formats\", and \"normalize phone numbers\".",
+      "importance": 4,
+      "reason": "Uncorrected formatting differences can cause inconsistent values and missed downstream matches.",
+      "updates": null
+    },
+    {
+      "statement": "Values tested against hard-coded enumerations and the requisition-code prefix are already in canonical case and whitespace form.",
+      "about": "data",
+      "target": "Generated staging tables filtered on access_role, status, employment_status, state, or requisition_code",
+      "evidence_of_dependence": "where.append(f'        {condition}'); where.append(\"        requisition_code LIKE 'REQ-%'\")",
+      "alternative": "The contract calls for automatic correction of deterministic formatting issues, including \"whitespace trimming\".",
+      "importance": 3,
+      "reason": "Otherwise repairable values would be deleted rather than normalized.",
+      "updates": null
+    },
+    {
+      "statement": "Direct casting to the contract timestamp type produces the required time interpretation without source-specific timezone or epoch conversion.",
+      "about": "data",
+      "target": "Timestamp columns in generated staging tables",
+      "evidence_of_dependence": "expr=f'try_cast(r.\"{source}\" AS {typ})' if typ in ('TIMESTAMP','DOUBLE','INT','BIGINT','BOOLEAN') else ...",
+      "alternative": null,
+      "importance": 3,
+      "reason": "Incorrect time interpretation can affect ordering, durations, and date-based reporting across many models.",
+      "updates": null
+    }
+  ],
+  "fewer": [
+    {
+      "target": "Staging tables using combined-key deduplication",
+      "count": 2,
+      "reason": "Two additional premises concern this conditional result specifically; the shared staging-generation premises are listed separately."
+    },
+    {
+      "target": "Staging tables without declared unique columns",
+      "count": 1,
+      "reason": "Only one additional premise concerns this conditional result specifically; the shared staging-generation premises are listed separately."
+    },
+    {
+      "target": "Staging tables with hard-coded enumeration or requisition-code filters",
+      "count": 2,
+      "reason": "Two additional premises concern these filters specifically; the shared staging-generation premises are listed separately."
+    },
+    {
+      "target": "Staging timestamp projections",
+      "count": 1,
+      "reason": "Only one additional timestamp-specific premise is supported by the visible work; general conversion and correction premises are listed separately."
+    }
+  ]
+}

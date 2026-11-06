@@ -1,0 +1,2088 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification (WHAT) for Intercom source system. Defines the single source of truth for raw-to-staging cleaning and business-ready models."
+  author: "Data Engineering Team"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Transform raw data into clean, validated staging tables.           #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw data into clean, validated, and standardized staging tables. Enforce deterministic corrections, strict validation, and removal of unusable records prior to modeling."
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues and perform standardization when the intended value can be inferred unambiguously."
+      examples: [
+        "Lowercase and trim emails",
+        "Normalize phone numbers to E.164 format",
+        "Trim names and normalize Unicode to NFC",
+        "Standardize timestamp types"
+      ]
+    delete_row:
+      description: "Remove the entire record when essential attributes are invalid, inconsistent, or violate defined temporal/domain guards."
+      examples: [
+        "Email fails RFC-like regex and cannot be trusted",
+        "Conversation state not in the allowed domain",
+        "Timestamps outside the valid window (future or pre-2010)",
+        "Inactive (_fivetran_active=false) or deleted records flagged by the source"
+      ]
+    nullify_field:
+      description: "Set non-essential attributes to NULL when values are malformed but the record remains usable for downstream logic."
+      examples: [
+        "Optional phone values that do not meet E.164 formatting",
+        "Overlength optional text fields beyond agreed limits"
+      ]
+
+  tables:
+
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Apply business logic and build analysis-ready models for reporting and analytics."
+  design_principles:
+    staging_layer: "Staging models only reference raw tables."
+    intermediate_layer: "Intermediate models only reference staging models."
+    marts_layer: "Marts models only reference intermediate models."
+    dependency_rules: "No cross-layer or same-layer dependencies are allowed. Each model clearly declares upstream sources."
+    grain_rules: "Every model must define a single, unambiguous grain (row-level entity)."
+
+  intermediate_models:
+
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-020/agent/dacomp-de-impl-020/intercom_start.duckdb
+{"table": "main.admin_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "job_title", "email", "name"]}
+{"table": "main.company_history_data", "columns": ["id", "updated_at", "_fivetran_synced", "company_id", "created_at", "industry", "last_request_at", "monthly_spend", "plan_id", "plan_name", "remote_created_at", "session_count", "size", "user_count", "website", "name", "_fivetran_active", "_fivetran_start", "_fivetran_end"]}
+{"table": "main.company_tag_history_data", "columns": ["company_id", "company_updated_at", "tag_id", "_fivetran_active", "_fivetran_synced", "_fivetran_start", "_fivetran_end"]}
+{"table": "main.contact_company_history_data", "columns": ["contact_id", "company_id", "_fivetran_active", "_fivetran_synced", "_fivetran_start", "_fivetran_end"]}
+{"table": "main.contact_history_data", "columns": ["id", "updated_at", "_fivetran_active", "_fivetran_synced", "admin_id", "android_app_name", "android_app_version", "android_device", "android_last_seen_at", "android_os_version", "android_sdk_version", "browser", "browser_language", "browser_version", "created_at", "custom_onboarding_step", "custom_organisation_id", "custom_organisation_name", "external_id", "has_hard_bounced", "ios_app_name", "ios_app_version", "ios_device", "ios_last_seen_at", "ios_os_version", "ios_sdk_version", "language_override", "last_contacted_at", "last_email_clicked_at", "last_email_opened_at", "last_replied_at", "last_seen_at", "location_city", "location_country", "location_region", "marked_email_as_spam", "os", "phone", "role", "signed_up_at", "unsubscribed_from_emails", "workspace_id", "avatar", "custom_job_title", "email", "name", "_fivetran_start", "_fivetran_end"]}
+{"table": "main.contact_tag_history_data", "columns": ["contact_id", "contact_updated_at", "tag_id", "_fivetran_active", "_fivetran_synced", "_fivetran_start", "_fivetran_end"]}
+{"table": "main.conversation_contact_history_data", "columns": ["conversation_id", "contact_id", "_fivetran_active", "_fivetran_synced", "_fivetran_start", "_fivetran_end"]}
+{"table": "main.conversation_history_data", "columns": ["id", "updated_at", "_fivetran_synced", "assignee_id", "assignee_type", "conversation_rating_created_at", "conversation_rating_remark", "conversation_rating_value", "created_at", "first_contact_reply_created_at", "first_contact_reply_type", "priority", "read", "sla_name", "sla_status", "snoozed_until", "source_author_id", "source_author_type", "source_delivered_as", "source_id", "source_type", "state", "waiting_since", "first_contact_reply_url", "source_body", "source_subject", "source_url", "_fivetran_start", "_fivetran_end", "_fivetran_active"]}
+{"table": "main.conversation_part_history_data", "columns": ["id", "updated_at", "_fivetran_synced", "author_id", "author_type", "body", "conversation_id", "created_at", "delivered_as", "external_id", "part_type", "rating_remark", "rating_state", "rating_value", "subject", "type", "_fivetran_start", "_fivetran_end", "_fivetran_active"]}
+{"table": "main.conversation_tag_history_data", "columns": ["conversation_id", "conversation_updated_at", "tag_id", "_fivetran_active", "_fivetran_synced", "_fivetran_start", "_fivetran_end"]}
+{"table": "main.tag_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "name"]}
+{"table": "main.team_admin_data", "columns": ["admin_id", "team_id", "_fivetran_deleted", "_fivetran_synced"]}
+{"table": "main.team_data", "columns": ["id", "name", "_fivetran_deleted", "_fivetran_synced"]}
+{"table": "raw.admin_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "job_title", "email", "name"]}
+{"table": "raw.company_history_data", "columns": ["id", "updated_at", "_fivetran_synced", "company_id", "created_at", "industry", "last_request_at", "monthly_spend", "plan_id", "plan_name", "remote_created_at", "session_count", "size", "user_count", "website", "name", "_fivetran_active", "_fivetran_start", "_fivetran_end"]}
+{"table": "raw.company_tag_history_data", "columns": ["company_id", "company_updated_at", "tag_id", "_fivetran_active", "_fivetran_synced", "_fivetran_start", "_fivetran_end"]}
+{"table": "raw.contact_company_history_data", "columns": ["contact_id", "company_id", "company_updated_at", "_fivetran_active", "_fivetran_synced", "_fivetran_start", "_fivetran_end"]}
+{"table": "raw.contact_history_data", "columns": ["id", "updated_at", "_fivetran_active", "_fivetran_synced", "admin_id", "android_app_name", "android_app_version", "android_device", "android_last_seen_at", "android_os_version", "android_sdk_version", "browser", "browser_language", "browser_version", "created_at", "custom_onboarding_step", "custom_organisation_id", "custom_organisation_name", "external_id", "has_hard_bounced", "ios_app_name", "ios_app_version", "ios_device", "ios_last_seen_at", "ios_os_version", "ios_sdk_version", "language_override", "last_contacted_at", "last_email_clicked_at", "last_email_opened_at", "last_replied_at", "last_seen_at", "location_city", "location_country", "location_region", "marked_email_as_spam", "os", "phone", "role", "signed_up_at", "unsubscribed_from_emails", "workspace_id", "avatar", "custom_job_title", "email", "name", "_fivetran_start", "_fivetran_end"]}
+{"table": "raw.contact_tag_history_data", "columns": ["contact_id", "contact_updated_at", "tag_id", "_fivetran_synced", "_fivetran_start", "_fivetran_end", "_fivetran_active"]}
+{"table": "raw.conversation_contact_history_data", "columns": ["contact_id", "conversation_id", "conversation_updated_at", "_fivetran_synced", "_fivetran_start", "_fivetran_end", "_fivetran_active"]}
+{"table": "raw.conversation_history_data", "columns": ["id", "updated_at", "_fivetran_synced", "assignee_id", "assignee_type", "conversation_rating_created_at", "conversation_rating_remark", "conversation_rating_value", "created_at", "first_contact_reply_created_at", "first_contact_reply_type", "priority", "read", "sla_name", "sla_status", "snoozed_until", "source_author_id", "source_author_type", "source_delivered_as", "source_id", "source_type", "state", "waiting_since", "first_contact_reply_url", "source_body", "source_subject", "source_url", "_fivetran_start", "_fivetran_end", "_fivetran_active"]}
+{"table": "raw.conversation_part_history_data", "columns": ["id", "updated_at", "_fivetran_synced", "author_id", "author_type", "body", "created_at", "conversation_id", "external_id", "part_type", "rating_remark", "rating_value", "redacted", "social_respond", "type", "updated_at_from_parts", "url", "_fivetran_start", "_fivetran_end", "_fivetran_active"]}
+{"table": "raw.conversation_tag_history_data", "columns": ["conversation_id", "conversation_updated_at", "tag_id", "_fivetran_active", "_fivetran_synced", "_fivetran_start", "_fivetran_end"]}
+{"table": "raw.tag_data", "columns": ["id", "_fivetran_deleted", "_fivetran_synced", "name"]}
+{"table": "raw.team_admin_data", "columns": ["team_id", "admin_id", "team_updated_at", "_fivetran_active", "_fivetran_synced", "_fivetran_start", "_fivetran_end"]}
+{"table": "raw.team_data", "columns": ["id", "name", "_fivetran_deleted", "_fivetran_synced"]}
+
+
+=== Relevant specification and documentation ===
+## stg_intercom__company_history
+
+    - name: stg_intercom__company_history
+      description: "Company attributes over time with basic typing and activity filtering."
+      source_table: raw.company_history_data
+      columns:
+        - name: company_id
+          data_type: VARCHAR
+        - name: company_name
+          data_type: VARCHAR
+        - name: website
+          data_type: VARCHAR
+        - name: industry
+          data_type: VARCHAR
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: updated_at
+          data_type: TIMESTAMP
+        - name: user_count
+          data_type: BIGINT
+        - name: session_count
+          data_type: BIGINT
+        - name: monthly_spend
+          data_type: BIGINT
+        - name: plan_id
+          data_type: VARCHAR
+        - name: plan_name
+          data_type: VARCHAR
+      row_filters:
+        - rule: "Retain record unless _fivetran_active is explicitly false after type coercion (null or missing treated as active)"
+          on_failure: delete_row
+
+
+
+## stg_intercom__company_tag_history
+
+    - name: stg_intercom__company_tag_history
+      description: "Mapping of companies to tags with activity filtering."
+      source_table: raw.company_tag_history_data
+      columns:
+        - name: company_id
+          data_type: VARCHAR
+        - name: company_updated_at
+          data_type: TIMESTAMP
+        - name: tag_id
+          data_type: BIGINT
+      row_filters:
+        - rule: "Retain record unless _fivetran_active is explicitly false after type coercion (null or missing treated as active)"
+          on_failure: delete_row
+
+
+
+## stg_intercom__contact_company_history
+
+    - name: stg_intercom__contact_company_history
+      description: "History of contact-to-company relationships with activity filtering."
+      source_table: raw.contact_company_history_data
+      columns:
+        - name: company_id
+          data_type: VARCHAR
+        - name: contact_id
+          data_type: VARCHAR
+      row_filters:
+        - rule: "coalesce(try_cast(_fivetran_active as BOOLEAN), true)"
+          on_failure: delete_row
+
+
+
+## stg_intercom__contact_history
+
+    - name: stg_intercom__contact_history
+      description: "Contact attributes over time with standardized identifiers, email, and phone normalization."
+      source_table: raw.contact_history_data
+      columns:
+        - name: contact_id
+          data_type: VARCHAR
+        - name: admin_id
+          data_type: BIGINT
+        - name: created_at
+          data_type: TIMESTAMP
+        - name: updated_at
+          data_type: TIMESTAMP
+        - name: signed_up_at
+          data_type: TIMESTAMP
+        - name: contact_name
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "contact_name = TRIM(contact_name)"
+              on_failure: correct
+        - name: contact_role
+          data_type: VARCHAR
+        - name: contact_email
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "contact_email = LOWER(TRIM(contact_email))"
+              on_failure: correct
+        - name: last_replied_at
+          data_type: TIMESTAMP
+        - name: last_email_clicked_at
+          data_type: TIMESTAMP
+        - name: last_email_opened_at
+          data_type: TIMESTAMP
+        - name: last_contacted_at
+          data_type: TIMESTAMP
+        - name: is_unsubscribed_from_emails
+          data_type: BOOLEAN
+        - name: phone
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "Normalize to E.164 where deterministically possible"
+              on_failure: correct
+            - rule: "phone IS NULL OR phone matches E.164 (^[+][1-9][0-9]{1,14}$)"
+              on_failure: nullify_field
+      row_filters:
+        - rule: "Retain record unless _fivetran_active is explicitly false after type coercion (null or missing treated as active)"
+          on_failure: delete_row
+
+
+
+## stg_intercom__contact_tag_history
+
+    - name: stg_intercom__contact_tag_history
+      description: "Mapping of contacts to tags with activity filtering."
+      source_table: raw.contact_tag_history_data
+      columns:
+        - name: contact_id
+          data_type: VARCHAR
+        - name: contact_updated_at
+          data_type: TIMESTAMP
+        - name: tag_id
+          data_type: BIGINT
+      row_filters:
+        - rule: "coalesce(try_cast(_fivetran_active as BOOLEAN), true)"
+          on_failure: delete_row
+
+
+
+## stg_intercom__conversation_history
+
+    - name: stg_intercom__conversation_history
+      description: "Conversation snapshots with strict temporal and state guards, typed attributes, and activity filtering."
+      source_table: raw.conversation_history_data
+      columns:
+        - name: conversation_id
+          data_type: BIGINT
+        - name: created_at
+          data_type: TIMESTAMP
+          constraints: [not_null]
+          validation_rules:
+            - rule: "created_at <= CURRENT_TIMESTAMP"
+              on_failure: delete_row
+            - rule: "created_at >= TIMESTAMP '2010-01-01 00:00:00'"
+              on_failure: delete_row
+        - name: assignee_id
+          data_type: BIGINT
+        - name: assignee_type
+          data_type: VARCHAR
+        - name: conversation_rating_value
+          data_type: BIGINT
+        - name: conversation_rating_remark
+          data_type: VARCHAR
+        - name: first_contact_reply_created_at
+          data_type: TIMESTAMP
+        - name: first_contact_reply_type
+          data_type: VARCHAR
+        - name: is_read
+          data_type: BOOLEAN
+        - name: source_author_id
+          data_type: VARCHAR
+        - name: source_author_type
+          data_type: VARCHAR
+        - name: source_delivered_as
+          data_type: VARCHAR
+        - name: source_type
+          data_type: VARCHAR
+        - name: source_subject
+          data_type: VARCHAR
+        - name: state
+          data_type: VARCHAR
+          constraints: [not_null]
+          validation_rules:
+            - rule: "state IN ('open', 'closed')"
+              on_failure: delete_row
+        - name: updated_at
+          data_type: TIMESTAMP
+        - name: waiting_since
+          data_type: TIMESTAMP
+        - name: snoozed_until
+          data_type: TIMESTAMP
+        - name: sla_name
+          data_type: VARCHAR
+        - name: sla_status
+          data_type: VARCHAR
+      row_filters:
+        - rule: "Retain record unless _fivetran_active is explicitly false after type coercion (null or missing treated as active)"
+          on_failure: delete_row
+
+
+
+## stg_intercom__conversation_part_history
+
+    - name: stg_intercom__conversation_part_history
+      description: "Conversation part events with typing and activity filtering."
+      source_table: raw.conversation_part_history_data
+      columns:
+        - name: conversation_part_id
+          data_type: VARCHAR
+          source_expression: "id"
+        - name: part_type
+          data_type: VARCHAR
+        - name: body
+          data_type: VARCHAR
+        - name: conversation_id
+          data_type: BIGINT
+        - name: author_id
+          data_type: VARCHAR
+        - name: author_type
+          data_type: VARCHAR
+        - name: created_at
+          data_type: TIMESTAMP
+          source_expression: "try_cast(created_at as timestamp)"
+        - name: updated_at
+          data_type: TIMESTAMP
+      row_filters:
+        - rule: "coalesce(try_cast(_fivetran_active as BOOLEAN), true)"
+          on_failure: delete_row
+
+
+
+## stg_intercom__conversation_tag_history
+
+    - name: stg_intercom__conversation_tag_history
+      description: "Mapping of conversations to tags with activity filtering."
+      source_table: raw.conversation_tag_history_data
+      columns:
+        - name: conversation_id
+          data_type: BIGINT
+        - name: conversation_updated_at
+          data_type: TIMESTAMP
+        - name: tag_id
+          data_type: BIGINT
+      row_filters:
+        - rule: "Retain record unless _fivetran_active is explicitly false after type coercion (null or missing treated as active)"
+          on_failure: delete_row
+
+
+
+## stg_intercom__tag
+
+    - name: stg_intercom__tag
+      description: "Tag dimension with deletion filtering and non-null identifiers."
+      source_table: raw.tag_data
+      columns:
+        - name: tag_id
+          data_type: BIGINT
+          constraints: [not_null]
+        - name: name
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "name = TRIM(name)"
+              on_failure: correct
+      row_filters:
+        - rule: "_fivetran_deleted is not true"
+          on_failure: delete_row
+
+
+
+## stg_intercom__team
+
+    - name: stg_intercom__team
+      description: "Team dimension with deletion filtering."
+      source_table: raw.team_data
+      columns:
+        - name: team_id
+          data_type: VARCHAR
+        - name: name
+          data_type: VARCHAR
+      row_filters:
+        - rule: "_fivetran_deleted is not true (null treated as false)"
+          on_failure: delete_row
+
+
+
+## stg_intercom__team_admin
+
+    - name: stg_intercom__team_admin
+      description: "Mapping of admins to teams with deletion filtering."
+      source_table: raw.team_admin_data
+      columns:
+        - name: admin_id
+          data_type: VARCHAR
+        - name: team_id
+          data_type: VARCHAR
+      row_filters:
+        - rule: "_fivetran_deleted is not true (null treated as false)"
+          on_failure: delete_row
+
+
+
+## stg_intercom__admin
+
+    - name: stg_intercom__admin
+      description: "Admin dimension with email-based inclusion checks and deletion filtering; outputs admin_id, name, job_title."
+      source_table: raw.admin_data
+      columns:
+        - name: admin_id
+          data_type: VARCHAR
+        - name: name
+          data_type: VARCHAR
+          validation_rules:
+            - rule: "name = TRIM(name)"
+              on_failure: correct
+        - name: job_title
+          data_type: VARCHAR
+      row_filters:
+        - rule: "Email must be present, length <= 255, and match RFC-like regex (^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$); otherwise drop the record"
+          on_failure: delete_row
+        - rule: "_fivetran_deleted is not true (null treated as false)"
+          on_failure: delete_row
+
+
+
+# --------------------------------------------------------------------------- #
+# PHASE 2: Transform staging data into business-ready models.                 #
+# --------------------------------------------------------------------------- #
+
+
+## int_intercom__company_history
+
+    - name: int_intercom__company_history
+      description: "Typed company snapshots with derived helpers such as website_domain and company_age_days."
+      grain: "One row per company_id per source snapshot"
+      source_models: [staging.stg_intercom__company_history]
+      business_logic: >
+        For each company snapshot sourced from staging, carry forward typed attributes and derive helper fields.
+        Extract website_domain from the website URL using hostname extraction and lowercase normalization.
+        Compute company_age_days when created_at is present as the day difference between created_at and the last updated timestamp.
+      columns:
+        - name: company_id
+          data_type: VARCHAR
+          description: "Company identifier."
+          tests: [not_null]
+        - name: company_name
+          data_type: VARCHAR
+          description: "Company name as recorded in Intercom."
+          tests: []
+        - name: website
+          data_type: VARCHAR
+          description: "Raw website value."
+          tests: []
+        - name: website_domain
+          data_type: VARCHAR
+          description: "Domain extracted from website and normalized to lowercase."
+          tests: []
+        - name: industry
+          data_type: VARCHAR
+          description: "Industry classification string."
+          tests: []
+        - name: created_at
+          data_type: TIMESTAMP
+          description: "Company record creation timestamp."
+          tests: []
+        - name: updated_at
+          data_type: TIMESTAMP
+          description: "Most recent update timestamp for the snapshot."
+          tests: []
+        - name: user_count
+          data_type: BIGINT
+          description: "User count metric derived from the source; negatives coerced to zero upstream."
+          tests: ["user_count >= 0"]
+        - name: session_count
+          data_type: BIGINT
+          description: "Session count metric; negatives coerced to zero upstream."
+          tests: ["session_count >= 0"]
+        - name: monthly_spend
+          data_type: BIGINT
+          description: "Monthly spend; negative values nulled upstream."
+          tests: ["monthly_spend >= 0"]
+        - name: plan_id
+          data_type: VARCHAR
+          description: "Commercial plan identifier."
+          tests: []
+        - name: plan_name
+          data_type: VARCHAR
+          description: "Commercial plan name."
+          tests: []
+        - name: company_age_days
+          data_type: BIGINT
+          description: "Age in days between creation and last update, when computable."
+          tests: ["company_age_days >= 0"]
+
+
+
+## int_intercom__company_tags_aggregate
+
+    - name: int_intercom__company_tags_aggregate
+      description: "Distinct tag names aggregated per company."
+      grain: "One row per company_id"
+      source_models: [staging.stg_intercom__company_tag_history, staging.stg_intercom__tag]
+      business_logic: >
+        Join company-to-tag mappings from staging with the tag dimension to resolve human-readable tag names.
+        Aggregate distinct tag names per company into a single comma-separated string ordered alphabetically.
+      columns:
+        - name: company_id
+          data_type: VARCHAR
+          description: "Company identifier."
+          tests: [not_null]
+        - name: all_company_tags
+          data_type: VARCHAR
+          description: "Comma-separated list of distinct tag names associated with the company."
+          tests: []
+
+
+
+## int_intercom__contact_company_history
+
+    - name: int_intercom__contact_company_history
+      description: "Pass-through contact-to-company relationships for downstream mapping."
+      grain: "One row per (contact_id, company_id) pair"
+      source_models: [staging.stg_intercom__contact_company_history]
+      business_logic: >
+        Provide the relationship between a contact and a company based on staging data with activity filtering already applied.
+      columns:
+        - name: contact_id
+          data_type: VARCHAR
+          description: "Contact identifier."
+          tests: [not_null]
+        - name: company_id
+          data_type: VARCHAR
+          description: "Company identifier."
+          tests: [not_null]
+
+
+
+## int_intercom__contact_company_names
+
+    - name: int_intercom__contact_company_names
+      description: "Distinct company names aggregated per contact."
+      grain: "One row per contact_id"
+      source_models: [staging.stg_intercom__contact_company_history, staging.stg_intercom__company_history]
+      business_logic: >
+        Map the contact-to-company relationships to company names and aggregate distinct names into a single comma-separated string ordered alphabetically.
+      columns:
+        - name: contact_id
+          data_type: VARCHAR
+          description: "Contact identifier."
+          tests: [not_null]
+        - name: all_contact_company_names
+          data_type: VARCHAR
+          description: "Comma-separated list of distinct company names associated with the contact."
+          tests: []
+
+
+
+## int_intercom__contact_tags_aggregate
+
+    - name: int_intercom__contact_tags_aggregate
+      description: "Distinct tag names aggregated per contact."
+      grain: "One row per contact_id"
+      source_models: [staging.stg_intercom__contact_tag_history, staging.stg_intercom__tag]
+      business_logic: >
+        Join contact-to-tag mappings with the tag dimension and aggregate distinct tag names per contact as a comma-separated string ordered alphabetically.
+      columns:
+        - name: contact_id
+          data_type: VARCHAR
+          description: "Contact identifier."
+          tests: [not_null]
+        - name: all_contact_tags
+          data_type: VARCHAR
+          description: "Comma-separated list of distinct tag names associated with the contact."
+          tests: []
+
+
+
+## int_intercom__latest_conversation
+
+    - name: int_intercom__latest_conversation
+      description: "Latest conversation snapshot with typed attributes and canonical field naming."
+      grain: "One row per conversation_id (latest snapshot)"
+      source_models: [staging.stg_intercom__conversation_history]
+      business_logic: >
+        Determine the latest snapshot per conversation using the most recent update timestamp (falling back to creation time).
+        Carry forward typed attributes and rename fields to a canonical naming scheme for downstream consumption.
+        Missing assignee types are set to a default category and rating values are typed for consistent analytics.
+      columns:
+        - name: conversation_id
+          data_type: BIGINT
+          description: "Conversation identifier."
+          tests: [not_null]
+        - name: conversation_created_at
+          data_type: TIMESTAMP
+          description: "Conversation creation timestamp."
+          tests: [not_null]
+        - name: conversation_last_updated_at
+          data_type: TIMESTAMP
+          description: "Latest update timestamp for the conversation."
+          tests: []
+        - name: conversation_type
+          data_type: VARCHAR
+          description: "Channel type as recorded by the source (e.g., email, messenger)."
+          tests: []
+        - name: conversation_initiated_type
+          data_type: VARCHAR
+          description: "How the conversation was initiated (e.g., delivered as system or user message)."
+          tests: []
+        - name: conversation_subject
+          data_type: VARCHAR
+          description: "Subject/title of the conversation when present."
+          tests: []
+        - name: conversation_assignee_type
+          data_type: VARCHAR
+          description: "Assignee category for the conversation; defaults to unassigned if missing."
+          tests: []
+        - name: conversation_author_type
+          data_type: VARCHAR
+          description: "Type of the source author (admin, user, lead)."
+          tests: []
+        - name: conversation_state
+          data_type: VARCHAR
+          description: "Conversation state ('open' or 'closed')."
+          tests: ["conversation_state IN ('open','closed')"]
+        - name: is_read
+          data_type: BOOLEAN
+          description: "Boolean indicator whether the conversation has been marked read."
+          tests: []
+        - name: waiting_since
+          data_type: TIMESTAMP
+          description: "Timestamp since the conversation has been waiting."
+          tests: []
+        - name: snoozed_until
+          data_type: TIMESTAMP
+          description: "Snoozed-until timestamp if applicable."
+          tests: []
+        - name: sla_name
+          data_type: VARCHAR
+          description: "Name of the SLA policy applied to the conversation."
+          tests: []
+        - name: sla_status
+          data_type: VARCHAR
+          description: "Status of SLA relative to thresholds."
+          tests: []
+        - name: conversation_rating
+          data_type: DOUBLE
+          description: "Numeric rating for the conversation when provided."
+          tests: ["conversation_rating >= 0"]
+        - name: conversation_rating_remark
+          data_type: VARCHAR
+          description: "Free-text remark accompanying the rating."
+          tests: []
+
+
+
+## int_intercom__conversation_part_aggregates
+
+    - name: int_intercom__conversation_part_aggregates
+      description: "Per-conversation aggregates and key event timestamps derived from conversation parts."
+      grain: "One row per conversation_id"
+      source_models: [staging.stg_intercom__conversation_part_history, staging.stg_intercom__conversation_history]
+      business_logic: >
+        For each conversation, compute counts of parts, assignments, and reopen events.
+        Identify first and last timestamps for assignments, contact replies, admin responses, and reopen events.
+        The first contact reply considers parts authored by a contact (user or lead) and is used for time-to-close metrics downstream.
+      columns:
+        - name: conversation_id
+          data_type: BIGINT
+          description: "Conversation identifier."
+          tests: [not_null]
+        - name: conversation_created_at
+          data_type: TIMESTAMP
+          description: "Creation time of the conversation carried forward for time-based metrics."
+          tests: [not_null]
+        - name: count_total_parts
+          data_type: BIGINT
+          description: "Total number of parts associated with the conversation."
+          tests: ["count_total_parts >= 0"]
+        - name: first_contact_reply_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the first reply authored by a contact (user or lead)."
+          tests: []
+        - name: first_assignment_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the first assignment-related part."
+          tests: []
+        - name: first_admin_response_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the first admin-authored comment with body content."
+          tests: []
+        - name: first_reopen_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the first reopen event for the conversation."
+          tests: []
+        - name: last_assignment_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the last assignment-related part."
+          tests: []
+        - name: last_contact_reply_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the last contact-authored reply."
+          tests: []
+        - name: last_admin_response_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the last admin-authored response with body content."
+          tests: []
+        - name: last_reopen_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the last reopen event for the conversation."
+          tests: []
+        - name: count_assignments
+          data_type: BIGINT
+          description: "Number of assignment-related parts."
+          tests: ["count_assignments >= 0"]
+        - name: count_reopens
+          data_type: BIGINT
+          description: "Number of reopen events."
+          tests: ["count_reopens >= 0"]
+
+
+
+## int_intercom__conversation_string_aggregates@L603
+
+    - name: int_intercom__conversation_string_aggregates
+      description: "String aggregates of unique admin and contact author identifiers per conversation."
+      grain: "One row per conversation_id"
+      source_models: [staging.stg_intercom__conversation_part_history]
+      business_logic: >
+        For each conversation, collect distinct admin author_ids and distinct contact author_ids (users and leads).
+        Aggregate each set into a comma-separated string ordered by identifier. These strings are used for attribution and context in downstream marts.
+      columns:
+        - name: conversation_id
+          data_type: BIGINT
+          description: "Conversation identifier."
+          tests: [not_null]
+        - name: conversation_admins
+          data_type: VARCHAR
+          description: "Comma-separated unique admin author_ids participating in the conversation."
+          tests: []
+        - name: conversation_contacts
+          data_type: VARCHAR
+          description: "Comma-separated unique contact author_ids (user or lead) participating in the conversation."
+          tests: []
+
+
+
+## int_intercom__conversation_tags_aggregate@L624
+
+    - name: int_intercom__conversation_tags_aggregate
+      description: "Distinct tag names aggregated per conversation."
+      grain: "One row per conversation_id"
+      source_models: [staging.stg_intercom__conversation_tag_history, staging.stg_intercom__tag]
+      business_logic: >
+        Join conversation-to-tag mappings with the tag dimension and aggregate distinct tag names per conversation as a comma-separated string ordered alphabetically.
+      columns:
+        - name: conversation_id
+          data_type: BIGINT
+          description: "Conversation identifier."
+          tests: [not_null]
+        - name: all_conversation_tags
+          data_type: VARCHAR
+          description: "Comma-separated list of distinct tag names associated with the conversation."
+          tests: []
+
+
+
+## int_intercom__contact_latest
+
+    - name: int_intercom__contact_latest
+      description: "Latest contact snapshot with activity windows, retention flags, and email-domain extraction."
+      grain: "One row per contact_id (latest snapshot)"
+      source_models: [staging.stg_intercom__contact_history]
+      business_logic: >
+        Determine the latest snapshot per contact using the most recent update timestamp (falling back to creation time).
+        Compute last_activity_at as the greatest of last_contacted_at, last_email_clicked_at, last_email_opened_at, and last_replied_at when present.
+        Derive activity window flags (1d, 7d, 30d) by comparing last_activity_at to now.
+        Set retention flags for 7d and 30d if last_activity_at occurs at least 7 or 30 days after signed_up_at respectively.
+        Extract the email_domain by taking the substring after '@' from the lowercase email, defaulting to a placeholder when missing.
+      columns:
+        - name: contact_id
+          data_type: VARCHAR
+          description: "Contact identifier."
+          tests: [not_null]
+        - name: admin_id
+          data_type: BIGINT
+          description: "Associated admin identifier when present."
+          tests: []
+        - name: created_at
+          data_type: TIMESTAMP
+          description: "Contact record creation timestamp."
+          tests: []
+        - name: updated_at
+          data_type: TIMESTAMP
+          description: "Most recent update timestamp for the contact snapshot."
+          tests: []
+        - name: signed_up_at
+          data_type: TIMESTAMP
+          description: "Contact registration timestamp when applicable."
+          tests: []
+        - name: contact_name
+          data_type: VARCHAR
+          description: "Trimmed contact name."
+          tests: []
+        - name: contact_role
+          data_type: VARCHAR
+          description: "Role classification for the contact."
+          tests: []
+        - name: contact_email
+          data_type: VARCHAR
+          description: "Lowercased and trimmed email address."
+          tests: []
+        - name: email_domain
+          data_type: VARCHAR
+          description: "Extracted domain part of the contact_email in lowercase."
+          tests: []
+        - name: last_replied_at
+          data_type: TIMESTAMP
+          description: "Last reply timestamp recorded for the contact."
+          tests: []
+        - name: last_email_clicked_at
+          data_type: TIMESTAMP
+          description: "Last email click timestamp recorded for the contact."
+          tests: []
+        - name: last_email_opened_at
+          data_type: TIMESTAMP
+          description: "Last email open timestamp recorded for the contact."
+          tests: []
+        - name: last_contacted_at
+          data_type: TIMESTAMP
+          description: "Last time the contact was contacted."
+          tests: []
+        - name: last_activity_at
+          data_type: TIMESTAMP
+          description: "Greatest of activity-related timestamps used for activity windows and retention."
+          tests: []
+        - name: is_active_1d
+          data_type: BOOLEAN
+          description: "True if last_activity_at within the past 1 day."
+          tests: []
+        - name: is_active_7d
+          data_type: BOOLEAN
+          description: "True if last_activity_at within the past 7 days."
+          tests: []
+        - name: is_active_30d
+          data_type: BOOLEAN
+          description: "True if last_activity_at within the past 30 days."
+          tests: []
+        - name: retained_7d
+          data_type: BOOLEAN
+          description: "True if last_activity_at occurs at least 7 days after signed_up_at."
+          tests: []
+        - name: retained_30d
+          data_type: BOOLEAN
+          description: "True if last_activity_at occurs at least 30 days after signed_up_at."
+          tests: []
+        - name: is_unsubscribed_from_emails
+          data_type: BOOLEAN
+          description: "Whether the contact unsubscribed from emails."
+          tests: []
+
+
+
+
+
+
+## int_intercom__conversation_string_aggregates@L735
+
+    - name: int_intercom__conversation_string_aggregates
+      description: "String aggregates of conversation actors (admins and contacts)."
+      grain: "One row per conversation_id"
+      source_models: [staging.stg_intercom__conversation_part_history]
+      business_logic: >
+        For each conversation, collect distinct admin author_ids and distinct contact author_ids (users and leads).
+        Aggregate each set into a comma-separated string ordered by identifier. These strings are used for attribution and context in downstream marts.
+      columns:
+        - name: conversation_id
+          data_type: BIGINT
+          description: "Conversation identifier."
+          tests: [not_null]
+        - name: conversation_admins
+          data_type: VARCHAR
+          description: "Comma-separated unique admin author_ids participating in the conversation."
+          tests: []
+        - name: conversation_contacts
+          data_type: VARCHAR
+          description: "Comma-separated unique contact author_ids (user or lead) participating in the conversation."
+          tests: []
+
+
+
+## int_intercom__conversation_tags_aggregate@L756
+
+    - name: int_intercom__conversation_tags_aggregate
+      description: "String aggregate of tag names per conversation."
+      grain: "One row per conversation_id"
+      source_models: [staging.stg_intercom__conversation_tag_history, staging.stg_intercom__tag]
+      business_logic: >
+        Join conversation-tag mappings with tag names and aggregate distinct names as a comma-separated list for each conversation.
+      columns:
+        - name: conversation_id
+          data_type: BIGINT
+          description: "Conversation identifier."
+          tests: [not_null]
+        - name: all_conversation_tags
+          data_type: VARCHAR
+          description: "Aggregated tag names."
+          tests: []
+
+
+
+
+## int_intercom__conversation_part_events
+
+    - name: int_intercom__conversation_part_events
+      description: "Event-level attribution for close/open actions per conversation."
+      grain: "One row per conversation_id"
+      source_models: [staging.stg_intercom__conversation_part_history]
+      business_logic: >
+        Identify the first and last close events (by any author and specifically by admins) and capture both the author_id and the timestamps.
+        Also derive the first and last contact author_id for the conversation based on parts authored by users or leads.
+      columns:
+        - name: conversation_id
+          data_type: BIGINT
+          description: "Conversation identifier."
+          tests: [not_null]
+        - name: first_close_by_admin_id
+          data_type: VARCHAR
+          description: "Admin author_id who performed the first close."
+          tests: []
+        - name: last_close_by_admin_id
+          data_type: VARCHAR
+          description: "Admin author_id who performed the last close."
+          tests: []
+        - name: first_close_by_author_id
+          data_type: VARCHAR
+          description: "Author_id of the first close event (any author type)."
+          tests: []
+        - name: last_close_by_author_id
+          data_type: VARCHAR
+          description: "Author_id of the last close event (any author type)."
+          tests: []
+        - name: first_contact_author_id
+          data_type: VARCHAR
+          description: "First author_id from a contact (user or lead)."
+          tests: []
+        - name: last_contact_author_id
+          data_type: VARCHAR
+          description: "Last author_id from a contact (user or lead)."
+          tests: []
+        - name: first_admin_close_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the first admin close event."
+          tests: []
+        - name: last_admin_close_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the last admin close event."
+          tests: []
+        - name: first_close_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the first close event irrespective of author type."
+          tests: []
+        - name: last_close_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the last close event irrespective of author type."
+          tests: []
+
+
+
+## intercom__company_enhanced
+
+    - name: intercom__company_enhanced
+      description: "Company snapshot augmented with aggregated tag names."
+      grain: "One row per company_id per source snapshot"
+      source_models: [intermediate.int_intercom__company_history, intermediate.int_intercom__company_tags_aggregate]
+      business_logic: >
+        Join the company history snapshots with the aggregated tag names per company. The output carries forward typed and derived attributes from the company history and augments them with tag context.
+      columns:
+        - name: company_id
+          data_type: VARCHAR
+          description: "Company identifier."
+          tests: [not_null]
+        - name: company_name
+          data_type: VARCHAR
+          description: "Company name."
+          tests: []
+        - name: website
+          data_type: VARCHAR
+          description: "Raw website value."
+          tests: []
+        - name: website_domain
+          data_type: VARCHAR
+          description: "Extracted and normalized website domain."
+          tests: []
+        - name: industry
+          data_type: VARCHAR
+          description: "Industry string."
+          tests: []
+        - name: created_at
+          data_type: TIMESTAMP
+          description: "Creation timestamp of the snapshot."
+          tests: []
+        - name: updated_at
+          data_type: TIMESTAMP
+          description: "Latest update timestamp for the snapshot."
+          tests: []
+        - name: user_count
+          data_type: BIGINT
+          description: "User count (non-negative)."
+          tests: ["user_count >= 0"]
+        - name: session_count
+          data_type: BIGINT
+          description: "Session count (non-negative)."
+          tests: ["session_count >= 0"]
+        - name: monthly_spend
+          data_type: BIGINT
+          description: "Monthly spend (non-negative when present)."
+          tests: ["monthly_spend >= 0"]
+        - name: plan_id
+          data_type: VARCHAR
+          description: "Plan identifier."
+          tests: []
+        - name: plan_name
+          data_type: VARCHAR
+          description: "Plan name."
+          tests: []
+        - name: company_age_days
+          data_type: BIGINT
+          description: "Age in days derived from timestamps."
+          tests: ["company_age_days >= 0"]
+        - name: all_company_tags
+          data_type: VARCHAR
+          description: "Aggregated tag names for the company."
+          tests: []
+
+
+
+## intercom__contact_enhanced
+
+    - name: intercom__contact_enhanced
+      description: "Contact latest snapshot enriched with aggregated tags and company names."
+      grain: "One row per contact_id (latest snapshot)"
+      source_models: [
+        intermediate.int_intercom__contact_latest,
+        intermediate.int_intercom__contact_tags_aggregate,
+        intermediate.int_intercom__contact_company_names
+      ]
+      business_logic: >
+        Combine the latest contact snapshot with aggregated contact tags and aggregated company names.
+        The result is an enriched, analysis-ready record for each contact with activity windows, retention flags, and attribution context.
+      columns:
+        - name: contact_id
+          data_type: VARCHAR
+          description: "Contact identifier."
+          tests: [not_null]
+        - name: admin_id
+          data_type: BIGINT
+          description: "Associated admin identifier, if available."
+          tests: []
+        - name: created_at
+          data_type: TIMESTAMP
+          description: "Contact record creation timestamp."
+          tests: []
+        - name: updated_at
+          data_type: TIMESTAMP
+          description: "Most recent update timestamp."
+          tests: []
+        - name: signed_up_at
+          data_type: TIMESTAMP
+          description: "Contact registration timestamp, if present."
+          tests: []
+        - name: contact_name
+          data_type: VARCHAR
+          description: "Contact name."
+          tests: []
+        - name: contact_role
+          data_type: VARCHAR
+          description: "Contact role classification."
+          tests: []
+        - name: contact_email
+          data_type: VARCHAR
+          description: "Lowercased and trimmed email."
+          tests: []
+        - name: email_domain
+          data_type: VARCHAR
+          description: "Derived email domain."
+          tests: []
+        - name: last_replied_at
+          data_type: TIMESTAMP
+          description: "Last reply timestamp."
+          tests: []
+        - name: last_email_clicked_at
+          data_type: TIMESTAMP
+          description: "Last email click timestamp."
+          tests: []
+        - name: last_email_opened_at
+          data_type: TIMESTAMP
+          description: "Last email open timestamp."
+          tests: []
+        - name: last_contacted_at
+          data_type: TIMESTAMP
+          description: "Last time the contact was contacted."
+          tests: []
+        - name: last_activity_at
+          data_type: TIMESTAMP
+          description: "Greatest of key activity timestamps."
+          tests: []
+        - name: is_active_1d
+          data_type: BOOLEAN
+          description: "Activity within 1 day flag."
+          tests: []
+        - name: is_active_7d
+          data_type: BOOLEAN
+          description: "Activity within 7 days flag."
+          tests: []
+        - name: is_active_30d
+          data_type: BOOLEAN
+          description: "Activity within 30 days flag."
+          tests: []
+        - name: retained_7d
+          data_type: BOOLEAN
+          description: "Retention at 7 days flag."
+          tests: []
+        - name: retained_30d
+          data_type: BOOLEAN
+          description: "Retention at 30 days flag."
+          tests: []
+        - name: is_unsubscribed_from_emails
+          data_type: BOOLEAN
+          description: "Unsubscribed flag."
+          tests: []
+        - name: all_contact_tags
+          data_type: VARCHAR
+          description: "Aggregated tag names for the contact."
+          tests: []
+        - name: all_contact_company_names
+          data_type: VARCHAR
+          description: "Aggregated company names linked to the contact."
+          tests: []
+
+
+
+## intercom__conversation_metrics
+
+    - name: intercom__conversation_metrics
+      description: "Per-conversation KPIs and durations derived from latest snapshot and part aggregates."
+      grain: "One row per conversation_id"
+      source_models: [
+        intermediate.int_intercom__latest_conversation,
+        intermediate.int_intercom__conversation_part_aggregates,
+        intermediate.int_intercom__conversation_part_events
+      ]
+      business_logic: >
+        Combine the latest conversation snapshot with part aggregates and event attributions.
+        Compute time-to-first assignment and time-to-first response from conversation creation, plus time-to-close metrics relative to the first contact reply.
+        Include counts of assignments and reopens for context, with appropriate guards to avoid division by zero or negative durations.
+      columns:
+        - name: conversation_id
+          data_type: BIGINT
+          description: "Conversation identifier."
+          tests: [not_null]
+        - name: conversation_created_at
+          data_type: TIMESTAMP
+          description: "Conversation creation timestamp."
+          tests: [not_null]
+        - name: count_reopens
+          data_type: BIGINT
+          description: "Number of reopen events."
+          tests: ["count_reopens >= 0"]
+        - name: count_total_parts
+          data_type: BIGINT
+          description: "Total number of parts in the conversation."
+          tests: ["count_total_parts >= 0"]
+        - name: count_assignments
+          data_type: BIGINT
+          description: "Total number of assignment events."
+          tests: ["count_assignments >= 0"]
+        - name: first_contact_reply_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the first contact reply used for time-to-close calculations."
+          tests: []
+        - name: first_assignment_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the first assignment."
+          tests: []
+        - name: time_to_first_assignment_minutes
+          data_type: DOUBLE
+          description: "Minutes from creation to the first assignment, when computable."
+          tests: ["time_to_first_assignment_minutes >= 0"]
+        - name: first_admin_response_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the first admin response."
+          tests: []
+        - name: time_to_first_response_minutes
+          data_type: DOUBLE
+          description: "Minutes from creation to the first admin response, when computable."
+          tests: ["time_to_first_response_minutes >= 0"]
+        - name: time_to_admin_first_close_minutes
+          data_type: DOUBLE
+          description: "Minutes from first contact reply to first admin close, when computable."
+          tests: ["time_to_admin_first_close_minutes >= 0"]
+        - name: time_to_first_close_minutes
+          data_type: DOUBLE
+          description: "Minutes from first contact reply to first close, when computable."
+          tests: ["time_to_first_close_minutes >= 0"]
+        - name: last_assignment_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the last assignment."
+          tests: []
+        - name: time_to_last_assignment_minutes
+          data_type: DOUBLE
+          description: "Minutes from creation to the last assignment, when computable."
+          tests: ["time_to_last_assignment_minutes >= 0"]
+        - name: last_contact_reply_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the last contact reply."
+          tests: []
+        - name: last_admin_response_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the last admin response."
+          tests: []
+        - name: last_reopen_at
+          data_type: TIMESTAMP
+          description: "Timestamp of the last reopen event."
+          tests: []
+        - name: time_to_admin_last_close_minutes
+          data_type: DOUBLE
+          description: "Minutes from first contact reply to the last admin close, when computable."
+          tests: ["time_to_admin_last_close_minutes >= 0"]
+        - name: time_to_last_close_minutes
+          data_type: DOUBLE
+          description: "Minutes from first contact reply to the last close, when computable."
+          tests: ["time_to_last_close_minutes >= 0"]
+        - name: first_close_by_admin_id
+          data_type: VARCHAR
+          description: "Admin author_id for the first close."
+          tests: []
+        - name: last_close_by_admin_id
+          data_type: VARCHAR
+          description: "Admin author_id for the last close."
+          tests: []
+        - name: first_close_by_author_id
+          data_type: VARCHAR
+          description: "Author_id for the first close event."
+          tests: []
+        - name: last_close_by_author_id
+          data_type: VARCHAR
+          description: "Author_id for the last close event."
+          tests: []
+        - name: first_contact_author_id
+          data_type: VARCHAR
+          description: "Author_id of the first contact participant."
+          tests: []
+        - name: last_contact_author_id
+          data_type: VARCHAR
+          description: "Author_id of the last contact participant."
+          tests: []
+        - name: conversation_assignee_type
+          data_type: VARCHAR
+          description: "Assignee type carried from latest conversation snapshot."
+          tests: []
+        - name: sla_status
+          data_type: VARCHAR
+          description: "SLA status from latest conversation snapshot."
+          tests: []
+        - name: sla_name
+          data_type: VARCHAR
+          description: "SLA name from latest conversation snapshot."
+          tests: []
+        - name: conversation_rating
+          data_type: DOUBLE
+          description: "Numeric rating from latest conversation snapshot."
+          tests: ["conversation_rating >= 0"]
+        - name: first_reopen_at
+          data_type: TIMESTAMP
+          description: "Timestamp of first reopen event derived from conversation parts."
+          tests: []
+        - name: waiting_since
+          data_type: TIMESTAMP
+          description: "Waiting since timestamp from latest conversation snapshot."
+          tests: []
+        - name: conversation_last_updated_at
+          data_type: TIMESTAMP
+          description: "Latest update timestamp from latest conversation snapshot."
+          tests: []
+        - name: conversation_initiated_type
+          data_type: VARCHAR
+          description: "How the conversation was initiated, from latest snapshot."
+          tests: []
+        - name: conversation_author_type
+          data_type: VARCHAR
+          description: "Author type from latest conversation snapshot."
+          tests: []
+        - name: conversation_rating_remark
+          data_type: VARCHAR
+          description: "Remark text accompanying rating from latest snapshot."
+          tests: []
+        - name: conversation_state
+          data_type: VARCHAR
+          description: "State from latest snapshot ('open' or 'closed')."
+          tests: ["conversation_state IN ('open','closed')"]
+        - name: snoozed_until
+          data_type: TIMESTAMP
+          description: "Snoozed until timestamp from latest snapshot."
+          tests: []
+        - name: conversation_type
+          data_type: VARCHAR
+          description: "Channel type from latest snapshot."
+          tests: []
+        - name: conversation_subject
+          data_type: VARCHAR
+          description: "Subject from latest snapshot."
+          tests: []
+        - name: is_read
+          data_type: BOOLEAN
+          description: "Read flag from latest snapshot."
+          tests: []
+
+
+
+## intercom__company_metrics
+
+    - name: intercom__company_metrics
+      description: "Company-level support and engagement KPIs aggregated across conversations and contacts."
+      grain: "One row per company_id"
+      source_models: [
+        intermediate.int_intercom__latest_conversation,
+        intermediate.int_intercom__conversation_part_aggregates,
+        intermediate.int_intercom__conversation_part_events,
+        intermediate.int_intercom__contact_company_history,
+        intermediate.int_intercom__contact_latest,
+        intermediate.int_intercom__company_history
+      ]
+      business_logic: >
+        Map conversations to companies via the first contact author and contact-to-company history.
+        Compute conversation totals, closed counts, average parts, and average rating for each company.
+        Derive conversion-by-channel counts and guarded conversion rates by dividing by the total number of contacts only when the denominator is positive.
+        Compute median time metrics per company based on per-conversation minutes and provide date continuity diagnostics using active day coverage within min..max ranges.
+        Provide active and retained contact counts based on 7-day and 30-day windows and registration-based retention ratios guarded by denominators.
+      columns:
+        - name: company_id
+          data_type: VARCHAR
+          description: "Company identifier."
+          tests: [not_null]
+        - name: company_name
+          data_type: VARCHAR
+          description: "Company name."
+          tests: []
+        - name: website
+          data_type: VARCHAR
+          description: "Company website."
+          tests: []
+        - name: industry
+          data_type: VARCHAR
+          description: "Industry classification."
+          tests: []
+        - name: plan_id
+          data_type: VARCHAR
+          description: "Plan identifier."
+          tests: []
+        - name: plan_name
+          data_type: VARCHAR
+          description: "Plan name."
+          tests: []
+        - name: total_conversations
+          data_type: BIGINT
+          description: "Total number of conversations mapped to the company."
+          tests: ["total_conversations >= 0"]
+        - name: total_conversations_closed
+          data_type: BIGINT
+          description: "Number of conversations in a closed state."
+          tests: ["total_conversations_closed >= 0"]
+        - name: avg_conversation_parts
+          data_type: DOUBLE
+          description: "Average number of parts per conversation."
+          tests: ["avg_conversation_parts >= 0"]
+        - name: avg_conversation_rating
+          data_type: DOUBLE
+          description: "Average conversation rating."
+          tests: ["avg_conversation_rating >= 0"]
+        - name: contacts_total
+          data_type: BIGINT
+          description: "Total number of contacts associated with the company."
+          tests: ["contacts_total >= 0"]
+        - name: conv_rate_overall
+          data_type: DOUBLE
+          description: "Conversations per contact overall (guarded by positive denominator)."
+          tests: ["conv_rate_overall >= 0"]
+        - name: conv_rate_email
+          data_type: DOUBLE
+          description: "Conversations per contact via email channel."
+          tests: ["conv_rate_email >= 0"]
+        - name: conv_rate_messenger
+          data_type: DOUBLE
+          description: "Conversations per contact via messenger channel."
+          tests: ["conv_rate_messenger >= 0"]
+        - name: conv_rate_other
+          data_type: DOUBLE
+          description: "Conversations per contact via other channels."
+          tests: ["conv_rate_other >= 0"]
+        - name: contacts_active_7d
+          data_type: BIGINT
+          description: "Active contacts in the past 7 days."
+          tests: ["contacts_active_7d >= 0"]
+        - name: contacts_active_30d
+          data_type: BIGINT
+          description: "Active contacts in the past 30 days."
+          tests: ["contacts_active_30d >= 0"]
+        - name: registration_retention_7d
+          data_type: DOUBLE
+          description: "Share of registered contacts retained at 7 days."
+          tests: ["registration_retention_7d BETWEEN 0 AND 1"]
+        - name: registration_retention_30d
+          data_type: DOUBLE
+          description: "Share of registered contacts retained at 30 days."
+          tests: ["registration_retention_30d BETWEEN 0 AND 1"]
+        - name: p50_time_to_first_response_min
+          data_type: DOUBLE
+          description: "Median minutes to first admin response across the company's conversations."
+          tests: ["p50_time_to_first_response_min >= 0"]
+        - name: p50_time_to_first_close_min
+          data_type: DOUBLE
+          description: "Median minutes from first contact reply to first close."
+          tests: ["p50_time_to_first_close_min >= 0"]
+        - name: p50_time_to_last_close_min
+          data_type: DOUBLE
+          description: "Median minutes from first contact reply to last close."
+          tests: ["p50_time_to_last_close_min >= 0"]
+        - name: p50_reopens
+          data_type: DOUBLE
+          description: "Median number of reopens per conversation."
+          tests: ["p50_reopens >= 0"]
+        - name: missing_days
+          data_type: BIGINT
+          description: "Count of missing active days within the min..max range of conversation days."
+          tests: ["missing_days >= 0"]
+        - name: is_date_continuous
+          data_type: BOOLEAN
+          description: "True if the company's conversations span continuous days without gaps within the observed range."
+          tests: []
+
+
+
+
+## intercom__conversation_enhanced
+
+    - name: intercom__conversation_enhanced
+      description: "Human-friendly conversation snapshot enriched with actors, tags, event timestamps, and company names."
+      grain: "One row per conversation_id"
+      source_models: [
+        intermediate.int_intercom__latest_conversation,
+        intermediate.int_intercom__conversation_part_events,
+        intermediate.int_intercom__conversation_string_aggregates,
+        intermediate.int_intercom__conversation_tags_aggregate,
+        intermediate.int_intercom__contact_company_names
+      ]
+      business_logic: >
+        Provide a consolidated conversation record including enriched fields: event timestamps for first/last close and admin close, aggregated tag names, aggregated admin and contact actors, and company names linked to the first contacting author.
+        This model is intended for BI consumption and ad hoc analysis where a single record per conversation is preferred.
+      columns:
+        - name: conversation_id
+          data_type: BIGINT
+          description: "Conversation identifier."
+          tests: [not_null]
+        - name: conversation_created_at
+          data_type: TIMESTAMP
+          description: "Creation timestamp of the conversation."
+          tests: [not_null]
+        - name: conversation_last_updated_at
+          data_type: TIMESTAMP
+          description: "Latest update timestamp."
+          tests: []
+        - name: conversation_type
+          data_type: VARCHAR
+          description: "Channel type."
+          tests: []
+        - name: conversation_initiated_type
+          data_type: VARCHAR
+          description: "Initiation type."
+          tests: []
+        - name: conversation_subject
+          data_type: VARCHAR
+          description: "Subject/title."
+          tests: []
+        - name: conversation_assignee_type
+          data_type: VARCHAR
+          description: "Assignee category."
+          tests: []
+        - name: conversation_author_type
+          data_type: VARCHAR
+          description: "Author type."
+          tests: []
+        - name: conversation_state
+          data_type: VARCHAR
+          description: "State ('open'/'closed')."
+          tests: ["conversation_state IN ('open','closed')"]
+        - name: is_read
+          data_type: BOOLEAN
+          description: "Read flag."
+          tests: []
+        - name: waiting_since
+          data_type: TIMESTAMP
+          description: "Waiting since timestamp."
+          tests: []
+        - name: snoozed_until
+          data_type: TIMESTAMP
+          description: "Snoozed until timestamp."
+          tests: []
+        - name: sla_name
+          data_type: VARCHAR
+          description: "SLA name."
+          tests: []
+        - name: sla_status
+          data_type: VARCHAR
+          description: "SLA status."
+          tests: []
+        - name: conversation_rating
+          data_type: DOUBLE
+          description: "Numeric rating."
+          tests: ["conversation_rating >= 0"]
+        - name: conversation_remark
+          data_type: VARCHAR
+          description: "Text remark accompanying rating."
+          tests: []
+        - name: first_close_at
+          data_type: TIMESTAMP
+          description: "First close timestamp."
+          tests: []
+        - name: last_close_at
+          data_type: TIMESTAMP
+          description: "Last close timestamp."
+          tests: []
+        - name: first_admin_close_at
+          data_type: TIMESTAMP
+          description: "First admin close timestamp."
+          tests: []
+        - name: last_admin_close_at
+          data_type: TIMESTAMP
+          description: "Last admin close timestamp."
+          tests: []
+        - name: all_conversation_tags
+          data_type: VARCHAR
+          description: "Aggregated tag names for the conversation."
+          tests: []
+        - name: all_conversation_admins
+          data_type: VARCHAR
+          description: "Aggregated admin author_ids for the conversation."
+          tests: []
+        - name: all_conversation_contacts
+          data_type: VARCHAR
+          description: "Aggregated contact author_ids for the conversation."
+          tests: []
+        - name: first_close_by_admin_id
+          data_type: VARCHAR
+          description: "Admin identifier for the first close."
+          tests: []
+        - name: last_close_by_admin_id
+          data_type: VARCHAR
+          description: "Admin identifier for the last close."
+          tests: []
+        - name: first_close_by_author_id
+          data_type: VARCHAR
+          description: "Identifier of the first closing author."
+          tests: []
+        - name: last_close_by_author_id
+          data_type: VARCHAR
+          description: "Identifier of the last closing author."
+          tests: []
+        - name: first_contact_author_id
+          data_type: VARCHAR
+          description: "Identifier of the first contact author."
+          tests: []
+        - name: last_contact_author_id
+          data_type: VARCHAR
+          description: "Identifier of the last contact author."
+          tests: []
+        - name: all_contact_company_names
+          data_type: VARCHAR
+          description: "Aggregated company names linked to the first contacting author."
+          tests: []
+
+
+
+
+=== Premises recorded in earlier reviews ===
+(none)
+
+=== Agent steps since the last review ===
+### event 25
+
+## 命令原文
+
+mkdir -p sql/staging sql/intermediate sql/marts && cat > /tmp/build.py <<'PY'
+from pathlib import Path
+S=Path('sql/staging'); I=Path('sql/intermediate'); M=Path('sql/marts')
+def put(path,sql): path.write_text(sql.strip()+"\n")
+# Staging models: explicit casts and aliases following the contract.
+put(S/'stg_intercom__company_history.sql', '''
+select
+    try_cast(company_id as varchar) as company_id,
+    try_cast(name as varchar) as company_name,
+    try_cast(website as varchar) as website,
+    try_cast(industry as varchar) as industry,
+    try_cast(created_at as timestamp) as created_at,
+    try_cast(updated_at as timestamp) as updated_at,
+    greatest(coalesce(try_cast(user_count as bigint), 0), 0)::bigint as user_count,
+    greatest(coalesce(try_cast(session_count as bigint), 0), 0)::bigint as session_count,
+    case when try_cast(monthly_spend as bigint) < 0 then null else try_cast(monthly_spend as bigint) end as monthly_spend,
+    try_cast(plan_id as varchar) as plan_id,
+    try_cast(plan_name as varchar) as plan_name
+from raw.company_history_data
+where coalesce(try_cast(_fivetran_active as boolean), true)
+''')
+for tbl,cols in [
+ ('company_tag_history','company_id::varchar as company_id, try_cast(company_updated_at as timestamp) as company_updated_at, try_cast(tag_id as bigint) as tag_id'),
+ ('contact_company_history','company_id::varchar as company_id, contact_id::varchar as contact_id'),
+ ('contact_tag_history','contact_id::varchar as contact_id, try_cast(contact_updated_at as timestamp) as contact_updated_at, try_cast(tag_id as bigint) as tag_id'),
+ ('conversation_contact_history','contact_id::varchar as contact_id, try_cast(conversation_id as bigint) as conversation_id'),
+ ('conversation_tag_history','try_cast(conversation_id as bigint) as conversation_id, try_cast(conversation_updated_at as timestamp) as conversation_updated_at, try_cast(tag_id as bigint) as tag_id')]:
+ source=tbl+'_data'
+ put(S/f'stg_intercom__{tbl}.sql',f'''select {cols}\nfrom raw.{source}\nwhere coalesce(try_cast(_fivetran_active as boolean), true)''')
+put(S/'stg_intercom__contact_history.sql', '''
+with typed as (
+    select
+        try_cast(id as varchar) as contact_id,
+        try_cast(admin_id as bigint) as admin_id,
+        try_cast(created_at as timestamp) as created_at,
+        try_cast(updated_at as timestamp) as updated_at,
+        try_cast(signed_up_at as timestamp) as signed_up_at,
+        trim(try_cast(name as varchar)) as contact_name,
+        try_cast(role as varchar) as contact_role,
+        lower(trim(try_cast(email as varchar))) as contact_email,
+        try_cast(last_replied_at as timestamp) as last_replied_at,
+        try_cast(last_email_clicked_at as timestamp) as last_email_clicked_at,
+        try_cast(last_email_opened_at as timestamp) as last_email_opened_at,
+        try_cast(last_contacted_at as timestamp) as last_contacted_at,
+        coalesce(try_cast(unsubscribed_from_emails as boolean), false) as is_unsubscribed_from_emails,
+        nullif(regexp_replace(trim(try_cast(phone as varchar)), '[^0-9+]', '', 'g'), '') as normalized_phone,
+        coalesce(try_cast(_fivetran_active as boolean), true) as is_active
+    from raw.contact_history_data
+), normalized as (
+    select *,
+        case
+            when normalized_phone is null then null
+            when regexp_matches(normalized_phone, '^\\+[1-9][0-9]{1,14}$') then normalized_phone
+            when regexp_matches(normalized_phone, '^[1-9][0-9]{1,14}$') then '+' || normalized_phone
+            else null
+        end as phone_e164
+    from typed
+)
+select contact_id, admin_id, created_at, updated_at, signed_up_at, contact_name, contact_role,
+       contact_email, last_replied_at, last_email_clicked_at, last_email_opened_at, last_contacted_at,
+       is_unsubscribed_from_emails, phone_e164 as phone
+from normalized
+where is_active
+''')
+put(S/'stg_intercom__conversation_history.sql', '''
+with typed as (
+    select
+        try_cast(id as bigint) as conversation_id,
+        try_cast(created_at as timestamp) as created_at,
+        try_cast(assignee_id as bigint) as assignee_id,
+        try_cast(assignee_type as varchar) as assignee_type,
+        try_cast(conversation_rating_value as double)::bigint as conversation_rating_value,
+        try_cast(conversation_rating_remark as varchar) as conversation_rating_remark,
+        try_cast(first_contact_reply_created_at as timestamp) as first_contact_reply_created_at,
+        try_cast(first_contact_reply_type as varchar) as first_contact_reply_type,
+        try_cast("read" as boolean) as is_read,
+        try_cast(source_author_id as varchar) as source_author_id,
+        try_cast(source_author_type as varchar) as source_author_type,
+        try_cast(source_delivered_as as varchar) as source_delivered_as,
+        try_cast(source_type as varchar) as source_type,
+        try_cast(source_subject as varchar) as source_subject,
+        lower(trim(try_cast(state as varchar))) as state,
+        try_cast(updated_at as timestamp) as updated_at,
+        try_cast(waiting_since as timestamp) as waiting_since,
+        try_cast(snoozed_until as timestamp) as snoozed_until,
+        try_cast(sla_name as varchar) as sla_name,
+        try_cast(sla_status as varchar) as sla_status,
+        coalesce(try_cast(_fivetran_active as boolean), true) as is_active
+    from raw.conversation_history_data
+)
+select conversation_id, created_at, assignee_id, assignee_type, conversation_rating_value,
+       conversation_rating_remark, first_contact_reply_created_at, first_contact_reply_type,
+       is_read, source_author_id, source_author_type, source_delivered_as, source_type, source_subject,
+       state, updated_at, waiting_since, snoozed_until, sla_name, sla_status
+from typed
+where is_active
+  and conversation_id is not null
+  and created_at is not null
+  and created_at <= current_timestamp
+  and created_at >= timestamp '2010-01-01 00:00:00'
+  and state in ('open', 'closed')
+''')
+put(S/'stg_intercom__conversation_part_history.sql', '''
+select
+    try_cast(id as varchar) as conversation_part_id,
+    try_cast(part_type as varchar) as part_type,
+    try_cast(body as varchar) as body,
+    try_cast(conversation_id as bigint) as conversation_id,
+    try_cast(author_id as varchar) as author_id,
+    try_cast(author_type as varchar) as author_type,
+    try_cast(created_at as timestamp) as created_at,
+    try_cast(updated_at as timestamp) as updated_at
+from raw.conversation_part_history_data
+where coalesce(try_cast(_fivetran_active as boolean), true)
+''')
+put(S/'stg_intercom__tag.sql', '''select try_cast(id as bigint) as tag_id, trim(try_cast(name as varchar)) as name
+from raw.tag_data
+where coalesce(try_cast(_fivetran_deleted as boolean), false) is not true
+  and try_cast(id as bigint) is not null''')
+# extra tables specified in the full staging contract but absent from execution_order
+put(S/'stg_intercom__team.sql', '''select try_cast(id as varchar) as team_id, try_cast(name as varchar) as name from raw.team_data where coalesce(try_cast(_fivetran_deleted as boolean), false) is not true''')
+put(S/'stg_intercom__team_admin.sql', '''select try_cast(admin_id as varchar) as admin_id, try_cast(team_id as varchar) as team_id from raw.team_admin_data where coalesce(try_cast(_fivetran_deleted as boolean), false) is not true''')
+put(S/'stg_intercom__admin.sql', r'''select try_cast(id as varchar) as admin_id, trim(try_cast(name as varchar)) as name, try_cast(job_title as varchar) as job_title from raw.admin_data where coalesce(try_cast(_fivetran_deleted as boolean), false) is not true and email is not null and length(trim(email)) <= 255 and regexp_matches(trim(email), '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')''')
+
+# Intermediate
+put(I/'int_intercom__company_history.sql', '''select company_id, company_name, website,
+       lower(regexp_extract(website, '^(?:[A-Za-z][A-Za-z0-9+.-]*://)?(?:[^/@]+@)?([^/:?#]+)', 1)) as website_domain,
+       industry, created_at, updated_at, user_count, session_count, monthly_spend, plan_id, plan_name,
+       case when created_at is not null and coalesce(updated_at, created_at) >= created_at
+            then date_diff('day', created_at, coalesce(updated_at, created_at))::bigint end as company_age_days
+from staging.stg_intercom__company_history''')
+put(I/'int_intercom__company_tags_aggregate.sql', '''select mapping.company_id,
+       string_agg(distinct tag.name, ', ' order by tag.name) as all_company_tags
+from staging.stg_intercom__company_tag_history as mapping
+join staging.stg_intercom__tag as tag on mapping.tag_id = tag.tag_id
+where mapping.company_id is not null
+group by mapping.company_id''')
+put(I/'int_intercom__contact_company_history.sql', '''select distinct contact_id, company_id from staging.stg_intercom__contact_company_history where contact_id is not null and company_id is not null''')
+put(I/'int_intercom__contact_company_names.sql', '''select rel.contact_id,
+       string_agg(distinct comp.company_name, ', ' order by comp.company_name) as all_contact_company_names
+from staging.stg_intercom__contact_company_history as rel
+join staging.stg_intercom__company_history as comp on rel.company_id = comp.company_id
+where rel.contact_id is not null and comp.company_name is not null
+group by rel.contact_id''')
+put(I/'int_intercom__contact_tags_aggregate.sql', '''select mapping.contact_id,
+       string_agg(distinct tag.name, ', ' order by tag.name) as all_contact_tags
+from staging.stg_intercom__contact_tag_history as mapping
+join staging.stg_intercom__tag as tag on mapping.tag_id = tag.tag_id
+where mapping.contact_id is not null
+group by mapping.contact_id''')
+put(I/'int_intercom__latest_conversation.sql', '''with ranked as (
+    select *, row_number() over (partition by conversation_id order by coalesce(updated_at, created_at) desc nulls last, created_at desc) as snapshot_rank
+    from staging.stg_intercom__conversation_history
+)
+select conversation_id, created_at as conversation_created_at, updated_at as conversation_last_updated_at,
+       source_type as conversation_type, source_delivered_as as conversation_initiated_type,
+       source_subject as conversation_subject, coalesce(assignee_type, 'unassigned') as conversation_assignee_type,
+       source_author_type as conversation_author_type, state as conversation_state, is_read, waiting_since,
+       snoozed_until, sla_name, sla_status, try_cast(conversation_rating_value as double) as conversation_rating,
+       conversation_rating_remark
+from ranked where snapshot_rank = 1''')
+# common event detection; event labels are matched case-insensitively, tolerating source-specific part-type naming.
+put(I/'int_intercom__conversation_part_aggregates.sql', '''with parts as (
+    select *, lower(coalesce(part_type, '')) as event_type
+    from staging.stg_intercom__conversation_part_history
+    where conversation_id is not null
+), rollup as (
+    select conversation_id, count(*)::bigint as count_total_parts,
+        min(created_at) filter (where author_type in ('user', 'lead')) as first_contact_reply_at,
+        min(created_at) filter (where event_type like '%assign%') as first_assignment_at,
+        min(created_at) filter (where author_type = 'admin' and event_type in ('comment','message','reply') and nullif(trim(body),'') is not null) as first_admin_response_at,
+        min(created_at) filter (where event_type like '%reopen%') as first_reopen_at,
+        max(created_at) filter (where event_type like '%assign%') as last_assignment_at,
+        max(created_at) filter (where author_type in ('user', 'lead')) as last_contact_reply_at,
+        max(created_at) filter (where author_type = 'admin' and event_type in ('comment','message','reply') and nullif(trim(body),'') is not null) as last_admin_response_at,
+        max(created_at) filter (where event_type like '%reopen%') as last_reopen_at,
+        count(*) filter (where event_type like '%assign%')::bigint as count_assignments,
+        count(*) filter (where event_type like '%reopen%')::bigint as count_reopens
+    from parts group by conversation_id
+)
+select r.conversation_id, c.created_at as conversation_created_at, r.count_total_parts,
+       r.first_contact_reply_at, r.first_assignment_at, r.first_admin_response_at, r.first_reopen_at,
+       r.last_assignment_at, r.last_contact_reply_at, r.last_admin_response_at, r.last_reopen_at,
+       r.count_assignments, r.count_reopens
+from rollup r join staging.stg_intercom__conversation_history c on r.conversation_id=c.conversation_id
+qualify row_number() over (partition by r.conversation_id order by coalesce(c.updated_at,c.created_at) desc nulls last)=1''')
+put(I/'int_intercom__conversation_string_aggregates.sql', '''select conversation_id,
+       string_agg(distinct author_id, ', ' order by author_id) filter (where author_type='admin' and author_id is not null) as conversation_admins,
+       string_agg(distinct author_id, ', ' order by author_id) filter (where author_type in ('user','lead') and author_id is not null) as conversation_contacts
+from staging.stg_intercom__conversation_part_history where conversation_id is not null group by conversation_id''')
+put(I/'int_intercom__conversation_tags_aggregate.sql', '''select mapping.conversation_id,
+       string_agg(distinct tag.name, ', ' order by tag.name) as all_conversation_tags
+from staging.stg_intercom__conversation_tag_history mapping
+join staging.stg_intercom__tag tag on mapping.tag_id=tag.tag_id
+where mapping.conversation_id is not null group by mapping.conversation_id''')
+put(I/'int_intercom__contact_latest.sql', '''with ranked as (
+    select *, row_number() over (partition by contact_id order by coalesce(updated_at,created_at) desc nulls last, created_at desc) as snapshot_rank
+    from staging.stg_intercom__contact_history
+), activity as (
+    select *, greatest(last_contacted_at,last_email_clicked_at,last_email_opened_at,last_replied_at) as last_activity_at
+    from ranked where snapshot_rank=1
+)
+select contact_id, admin_id, created_at, updated_at, signed_up_at, contact_name, contact_role, contact_email,
+       coalesce(lower(nullif(split_part(contact_email,'@',2),'')), 'unknown') as email_domain,
+       last_replied_at, last_email_clicked_at, last_email_opened_at, last_contacted_at, last_activity_at,
+       coalesce(last_activity_at >= current_timestamp - interval '1 day' and last_activity_at <= current_timestamp, false) as is_active_1d,
+       coalesce(last_activity_at >= current_timestamp - interval '7 days' and last_activity_at <= current_timestamp, false) as is_active_7d,
+       coalesce(last_activity_at >= current_timestamp - interval '30 days' and last_activity_at <= current_timestamp, false) as is_active_30d,
+       coalesce(last_activity_at >= signed_up_at + interval '7 days', false) as retained_7d,
+       coalesce(last_activity_at >= signed_up_at + interval '30 days', false) as retained_30d,
+       is_unsubscribed_from_emails
+from activity''')
+# event model
+put(I/'int_intercom__conversation_part_events.sql', '''with parts as (
+    select *, lower(coalesce(part_type,'')) as event_type from staging.stg_intercom__conversation_part_history where conversation_id is not null
+), first_last as (
+    select conversation_id,
+        arg_min(author_id, created_at) filter (where event_type like '%clos%' and author_type='admin') as first_close_by_admin_id,
+        arg_max(author_id, created_at) filter (where event_type like '%clos%' and author_type='admin') as last_close_by_admin_id,
+        arg_min(author_id, created_at) filter (where event_type like '%clos%') as first_close_by_author_id,
+        arg_max(author_id, created_at) filter (where event_type like '%clos%') as last_close_by_author_id,
+        arg_min(author_id, created_at) filter (where author_type in ('user','lead')) as first_contact_author_id,
+        arg_max(author_id, created_at) filter (where author_type in ('user','lead')) as last_contact_author_id,
+        min(created_at) filter (where event_type like '%clos%' and author_type='admin') as first_admin_close_at,
+        max(created_at) filter (where event_type like '%clos%' and author_type='admin') as last_admin_close_at,
+        min(created_at) filter (where event_type like '%clos%') as first_close_at,
+        max(created_at) filter (where event_type like '%clos%') as last_close_at
+    from parts group by conversation_id
+)
+select * from first_last''')
+PY
+
+## agent 实际看到的执行结果
+
+
+
+### event 27
+
+## 命令原文
+
+cat >> /tmp/build.py <<'PY'
+# Marts
+put(M/'intercom__company_enhanced.sql', '''select h.company_id, h.company_name, h.website, h.website_domain, h.industry, h.created_at, h.updated_at,
+       h.user_count, h.session_count, h.monthly_spend, h.plan_id, h.plan_name, h.company_age_days, t.all_company_tags
+from intermediate.int_intercom__company_history h
+left join intermediate.int_intercom__company_tags_aggregate t on h.company_id=t.company_id''')
+put(M/'intercom__contact_enhanced.sql', '''select c.contact_id, c.admin_id, c.created_at, c.updated_at, c.signed_up_at, c.contact_name, c.contact_role,
+       c.contact_email, c.email_domain, c.last_replied_at, c.last_email_clicked_at, c.last_email_opened_at,
+       c.last_contacted_at, c.last_activity_at, c.is_active_1d, c.is_active_7d, c.is_active_30d,
+       c.retained_7d, c.retained_30d, c.is_unsubscribed_from_emails, t.all_contact_tags, n.all_contact_company_names
+from intermediate.int_intercom__contact_latest c
+left join intermediate.int_intercom__contact_tags_aggregate t on c.contact_id=t.contact_id
+left join intermediate.int_intercom__contact_company_names n on c.contact_id=n.contact_id''')
+put(M/'intercom__conversation_enhanced.sql', '''select c.conversation_id, c.conversation_created_at, c.conversation_last_updated_at, c.conversation_type,
+       c.conversation_initiated_type, c.conversation_subject, c.conversation_assignee_type, c.conversation_author_type,
+       c.conversation_state, c.is_read, c.waiting_since, c.snoozed_until, c.sla_name, c.sla_status,
+       c.conversation_rating, c.conversation_rating_remark as conversation_remark,
+       e.first_close_at, e.last_close_at, e.first_admin_close_at, e.last_admin_close_at,
+       t.all_conversation_tags, s.conversation_admins as all_conversation_admins,
+       s.conversation_contacts as all_conversation_contacts,
+       e.first_close_by_admin_id, e.last_close_by_admin_id, e.first_close_by_author_id, e.last_close_by_author_id,
+       e.first_contact_author_id, e.last_contact_author_id, n.all_contact_company_names
+from intermediate.int_intercom__latest_conversation c
+left join intermediate.int_intercom__conversation_part_events e on c.conversation_id=e.conversation_id
+left join intermediate.int_intercom__conversation_string_aggregates s on c.conversation_id=s.conversation_id
+left join intermediate.int_intercom__conversation_tags_aggregate t on c.conversation_id=t.conversation_id
+left join intermediate.int_intercom__contact_company_names n on e.first_contact_author_id=n.contact_id''')
+put(M/'intercom__conversation_metrics.sql', '''with joined as (
+    select c.*, a.count_reopens, a.count_total_parts, a.count_assignments,
+           a.first_contact_reply_at, a.first_assignment_at, a.first_admin_response_at,
+           a.last_assignment_at, a.last_contact_reply_at, a.last_admin_response_at, a.last_reopen_at,
+           a.first_reopen_at, e.first_close_by_admin_id, e.last_close_by_admin_id,
+           e.first_close_by_author_id, e.last_close_by_author_id,
+           e.first_contact_author_id, e.last_contact_author_id,
+           e.first_admin_close_at, e.last_admin_close_at, e.first_close_at, e.last_close_at
+    from intermediate.int_intercom__latest_conversation c
+    left join intermediate.int_intercom__conversation_part_aggregates a on c.conversation_id=a.conversation_id
+    left join intermediate.int_intercom__conversation_part_events e on c.conversation_id=e.conversation_id
+), durations as (
+    select *,
+      case when first_assignment_at >= conversation_created_at then date_diff('second',conversation_created_at,first_assignment_at)/60.0 end as time_to_first_assignment_minutes,
+      case when first_admin_response_at >= conversation_created_at then date_diff('second',conversation_created_at,first_admin_response_at)/60.0 end as time_to_first_response_minutes,
+      case when first_admin_close_at >= first_contact_reply_at then date_diff('second',first_contact_reply_at,first_admin_close_at)/60.0 end as time_to_admin_first_close_minutes,
+      case when first_close_at >= first_contact_reply_at then date_diff('second',first_contact_reply_at,first_close_at)/60.0 end as time_to_first_close_minutes,
+      case when last_assignment_at >= conversation_created_at then date_diff('second',conversation_created_at,last_assignment_at)/60.0 end as time_to_last_assignment_minutes,
+      case when last_admin_close_at >= first_contact_reply_at then date_diff('second',first_contact_reply_at,last_admin_close_at)/60.0 end as time_to_admin_last_close_minutes,
+      case when last_close_at >= first_contact_reply_at then date_diff('second',first_contact_reply_at,last_close_at)/60.0 end as time_to_last_close_minutes
+    from joined
+)
+select conversation_id, conversation_created_at, coalesce(count_reopens,0)::bigint as count_reopens,
+       coalesce(count_total_parts,0)::bigint as count_total_parts, coalesce(count_assignments,0)::bigint as count_assignments,
+       first_contact_reply_at, first_assignment_at, time_to_first_assignment_minutes,
+       first_admin_response_at, time_to_first_response_minutes, time_to_admin_first_close_minutes,
+       time_to_first_close_minutes, last_assignment_at, time_to_last_assignment_minutes,
+       last_contact_reply_at, last_admin_response_at, last_reopen_at, time_to_admin_last_close_minutes,
+       time_to_last_close_minutes, first_close_by_admin_id, last_close_by_admin_id,
+       first_close_by_author_id, last_close_by_author_id, first_contact_author_id, last_contact_author_id,
+       conversation_assignee_type, sla_status, sla_name, conversation_rating, first_reopen_at, waiting_since,
+       conversation_last_updated_at, conversation_initiated_type, conversation_author_type,
+       conversation_rating_remark, conversation_state, snoozed_until, conversation_type, conversation_subject, is_read
+from durations''')
+put(M/'intercom__company_metrics.sql', '''with company_dim_ranked as (
+    select *, row_number() over(partition by company_id order by coalesce(updated_at,created_at) desc nulls last) as rn
+    from intermediate.int_intercom__company_history
+), company_dim as (
+    select company_id, company_name, website, industry, plan_id, plan_name from company_dim_ranked where rn=1
+), contact_base as (
+    select distinct rel.company_id, ct.contact_id, ct.signed_up_at, ct.is_active_7d, ct.is_active_30d, ct.retained_7d, ct.retained_30d
+    from intermediate.int_intercom__contact_company_history rel
+    join intermediate.int_intercom__contact_latest ct on rel.contact_id=ct.contact_id
+), contact_rollup as (
+    select company_id, count(distinct contact_id)::bigint as contacts_total,
+           count(distinct contact_id) filter(where is_active_7d)::bigint as contacts_active_7d,
+           count(distinct contact_id) filter(where is_active_30d)::bigint as contacts_active_30d,
+           count(distinct contact_id) filter(where signed_up_at is not null) as registered_contacts,
+           count(distinct contact_id) filter(where signed_up_at is not null and retained_7d) as registered_retained_7d,
+           count(distinct contact_id) filter(where signed_up_at is not null and retained_30d) as registered_retained_30d
+    from contact_base group by company_id
+), conv_to_company as (
+    select distinct rel.company_id, c.conversation_id, c.conversation_state, c.conversation_type,
+           a.count_total_parts, c.conversation_rating, a.count_reopens,
+           date_trunc('day', c.conversation_created_at)::date as conversation_day
+    from intermediate.int_intercom__latest_conversation c
+    join intermediate.int_intercom__conversation_part_events e on c.conversation_id=e.conversation_id
+    join intermediate.int_intercom__contact_company_history rel on e.first_contact_author_id=rel.contact_id
+    left join intermediate.int_intercom__conversation_part_aggregates a on c.conversation_id=a.conversation_id
+), conversation_rollup as (
+    select company_id, count(distinct conversation_id)::bigint as total_conversations,
+           count(distinct conversation_id) filter(where conversation_state='closed')::bigint as total_conversations_closed,
+           avg(count_total_parts)::double as avg_conversation_parts,
+           avg(conversation_rating)::double as avg_conversation_rating,
+           count(distinct conversation_id) filter(where lower(coalesce(conversation_type,''))='email') as email_conversations,
+           count(distinct conversation_id) filter(where lower(coalesce(conversation_type,''))='messenger') as messenger_conversations,
+           count(distinct conversation_id) filter(where lower(coalesce(conversation_type,'')) not in ('email','messenger')) as other_conversations,
+           min(conversation_day) as min_day, max(conversation_day) as max_day,
+           count(distinct conversation_day) as observed_days,
+           median(count_reopens)::double as p50_reopens
+    from conv_to_company group by company_id
+), convo_time_metrics as (
+    select cc.company_id,
+           median(cm.time_to_first_response_minutes)::double as p50_time_to_first_response_min,
+           median(cm.time_to_first_close_minutes)::double as p50_time_to_first_close_min,
+           median(cm.time_to_last_close_minutes)::double as p50_time_to_last_close_min
+    from conv_to_company cc join marts.intercom__conversation_metrics cm on cc.conversation_id=cm.conversation_id
+    group by cc.company_id
+)
+select d.company_id, d.company_name, d.website, d.industry, d.plan_id, d.plan_name,
+       coalesce(cr.total_conversations,0)::bigint as total_conversations,
+       coalesce(cr.total_conversations_closed,0)::bigint as total_conversations_closed,
+       cr.avg_conversation_parts, cr.avg_conversation_rating,
+       coalesce(co.contacts_total,0)::bigint as contacts_total,
+       case when co.contacts_total>0 then cr.total_conversations::double/co.contacts_total end as conv_rate_overall,
+       case when co.contacts_total>0 then cr.email_conversations::double/co.contacts_total end as conv_rate_email,
+       case when co.contacts_total>0 then cr.messenger_conversations::double/co.contacts_total end as conv_rate_messenger,
+       case when co.contacts_total>0 then cr.other_conversations::double/co.contacts_total end as conv_rate_other,
+       coalesce(co.contacts_active_7d,0)::bigint as contacts_active_7d,
+       coalesce(co.contacts_active_30d,0)::bigint as contacts_active_30d,
+       case when co.registered_contacts>0 then co.registered_retained_7d::double/co.registered_contacts end as registration_retention_7d,
+       case when co.registered_contacts>0 then co.registered_retained_30d::double/co.registered_contacts end as registration_retention_30d,
+       tm.p50_time_to_first_response_min, tm.p50_time_to_first_close_min, tm.p50_time_to_last_close_min,
+       cr.p50_reopens,
+       case when cr.min_day is not null then greatest(date_diff('day',cr.min_day,cr.max_day)+1-cr.observed_days,0)::bigint else 0::bigint end as missing_days,
+       case when cr.min_day is not null then date_diff('day',cr.min_day,cr.max_day)+1=cr.observed_days else null end as is_date_continuous
+from company_dim d
+left join contact_rollup co on d.company_id=co.company_id
+left join conversation_rollup cr on d.company_id=cr.company_id
+left join convo_time_metrics tm on d.company_id=tm.company_id''')
+PY
+python /tmp/build.py
+find sql -type f | sort
+
+## agent 实际看到的执行结果
+
+sql/intermediate/int_intercom__company_history.sql
+sql/intermediate/int_intercom__company_tags_aggregate.sql
+sql/intermediate/int_intercom__contact_company_history.sql
+sql/intermediate/int_intercom__contact_company_names.sql
+sql/intermediate/int_intercom__contact_latest.sql
+sql/intermediate/int_intercom__contact_tags_aggregate.sql
+sql/intermediate/int_intercom__conversation_part_aggregates.sql
+sql/intermediate/int_intercom__conversation_part_events.sql
+sql/intermediate/int_intercom__conversation_string_aggregates.sql
+sql/intermediate/int_intercom__conversation_tags_aggregate.sql
+sql/intermediate/int_intercom__latest_conversation.sql
+sql/marts/intercom__company_enhanced.sql
+sql/marts/intercom__company_metrics.sql
+sql/marts/intercom__contact_enhanced.sql
+sql/marts/intercom__conversation_enhanced.sql
+sql/marts/intercom__conversation_metrics.sql
+sql/staging/stg_intercom__admin.sql
+sql/staging/stg_intercom__company_history.sql
+sql/staging/stg_intercom__company_tag_history.sql
+sql/staging/stg_intercom__contact_company_history.sql
+sql/staging/stg_intercom__contact_history.sql
+sql/staging/stg_intercom__contact_tag_history.sql
+sql/staging/stg_intercom__conversation_contact_history.sql
+sql/staging/stg_intercom__conversation_history.sql
+sql/staging/stg_intercom__conversation_part_history.sql
+sql/staging/stg_intercom__conversation_tag_history.sql
+sql/staging/stg_intercom__tag.sql
+sql/staging/stg_intercom__team.sql
+sql/staging/stg_intercom__team_admin.sql
+
+
+

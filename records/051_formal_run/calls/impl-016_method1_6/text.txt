@@ -1,0 +1,51 @@
+{
+  "premises": [
+    {
+      "statement": "Each worker_id, source_relation, and position_id combination occurs at most once in the enhanced employee base, so omitting that base from the compensation CTE does not change the final join multiplicity.",
+      "about": "data",
+      "target": "marts.workday__employee_overview",
+      "evidence_of_dependence": "comp AS ( SELECT p.position_id,p.source_relation ... FROM staging.stg_workday__position_job_profile p ... ); LEFT JOIN comp ON b.position_id=comp.position_id AND b.source_relation=comp.source_relation",
+      "alternative": "The contract says compensation/benefits must \"Join ebe to position_job_profile\" and then join compensation back on \"worker_id, source_relation, position_id\"; the enhanced employee contract explicitly permits multiple personal or position matches to multiply base rows.",
+      "importance": 5,
+      "reason": "Repeated base records would make the specified compensation construction produce different row multiplicities from this simplified lookup.",
+      "updates": null
+    },
+    {
+      "statement": "The lifecycle model contains at most one matching record per worker_id and source_relation for workers included in the overview.",
+      "about": "data",
+      "target": "marts.workday__employee_overview",
+      "evidence_of_dependence": "LEFT JOIN intermediate.int_workday__employee_lifecycle l USING(worker_id,source_relation)",
+      "alternative": "Lifecycle has grain \"One row per worker_id record from intermediate.int_workday__worker_details\", whereas the overview declares \"One row per (worker_id, source_relation, position_id, position_start_date)\".",
+      "importance": 4,
+      "reason": "Multiple lifecycle records multiply overview rows and can attach different lifecycle metrics to the same employee identifier.",
+      "updates": null
+    },
+    {
+      "statement": "Each worker_id and source_relation has at most one current worker-position-organization relationship.",
+      "about": "data",
+      "target": "marts.workday__employee_overview",
+      "evidence_of_dependence": "WHERE w.effective_end IS NULL ... LEFT JOIN org o ON b.worker_id=o.worker_id AND b.source_relation=o.source_relation",
+      "alternative": "The contract requires current organization context to apply across the worker's positions but also declares one overview row per \"(worker_id, source_relation, position_id, position_start_date)\"; no supplied constraint guarantees a single current relationship.",
+      "importance": 4,
+      "reason": "Multiple current relationships, even to the same organization, can duplicate every overview position row.",
+      "updates": null
+    },
+    {
+      "statement": "Every first digit sequence extracted from a compensation_grade_id fits within DuckDB's INTEGER range.",
+      "about": "data",
+      "target": "marts.workday__employee_overview.compensation_tier",
+      "evidence_of_dependence": "WHEN try_cast(regexp_extract(compensation_grade_id,'([0-9]+)',1) AS INTEGER)<=15 THEN 'Senior Level' ELSE 'Executive Level'",
+      "alternative": "The contract requires conversion \"to a number\" and classifies \"missing/non-numeric → 'Ungraded'\", without limiting grade numbers to INTEGER.",
+      "importance": 1,
+      "reason": "An overflowing digit sequence becomes NULL during conversion and falls into Executive Level regardless of the intended conversion-failure policy.",
+      "updates": null
+    }
+  ],
+  "fewer": [
+    {
+      "target": "marts.workday__employee_overview",
+      "count": 4,
+      "reason": "Other transformations follow explicit contract rules, and the position-to-profile uniqueness dependency has already been recorded as c5-1; no fifth distinct unsupported premise was identified."
+    }
+  ]
+}

@@ -1,0 +1,968 @@
+You are reviewing the work of a data agent while it is solving a task. The agent writes code, runs it, and looks at results. You will see the steps it has taken since the last review, together with the task, the relevant parts of the specification and documentation, an index of all available data, and the list of premises already recorded in earlier reviews.
+
+Your job is to find the premises that the agent's work in these steps depends on but has not established with evidence, and to rank them by importance. Do not solve the task, do not write code, and do not judge whether the agent's final answer is correct.
+
+A premise is a single statement, true or false, about the data or about what the task requires, such that the agent's code or results in these steps would be wrong if the statement were false. Count it only if the agent has not established it: seeing a few rows, column names, or a sample does not establish a statement about the whole table.
+
+Listing a premise is not a claim that the agent is wrong. Most premises will turn out to be true; they are listed so that they can be checked later. A premise that is probably true but would change the result a lot if it were false should still be listed, ranked lower.
+
+Premises about the data include, for example: what a field or value means; what a row represents; whether a key is unique; whether every record finds a match in a join; what a null or empty value means; units, formats, and where counting starts; the time range or set of entities the data covers.
+
+Premises about the requirements include, for example: the scope and filters the task intends; how a metric is defined; which column a business term refers to; how special cases are handled (missing values, zero denominators, invalid values); the required form, granularity, and type of the output.
+
+Two kinds of premises are easy to miss, so check for them explicitly:
+- Omitted steps. If the specification or documentation for the table or result being produced requires some processing that the code does not perform, the agent is implicitly assuming that this processing is unnecessary. State that assumption.
+- Unused materials. If the material index shows a file, table, or column that bears on the task but the agent has not used it, the agent is implicitly assuming it is not needed. State that assumption.
+
+Rank premises by importance, combining two things: how likely the premise is to be false given the materials you can see, and how much the agent's result would change if it were false. A premise that is probably true but would change little should rank low.
+
+Do not repeat premises that are already in the recorded list, unless what you see now changes them; in that case, list the updated version and give the id of the earlier one.
+
+Return a JSON object with two keys:
+- "premises": a list of items. Each item has:
+  - "statement": the premise, as one sentence that can be true or false.
+  - "about": "data" or "requirement".
+  - "target": the table, column, variable, or result that depends on it.
+  - "evidence_of_dependence": a short quote from the agent's code or output in these steps that shows the dependence.
+  - "alternative": if the materials support a different reading, state it and quote the source; otherwise null.
+  - "importance": an integer from 1 (low) to 5 (high).
+  - "reason": one short sentence explaining the importance.
+  - "updates": the id of the earlier premise this item updates, or null.
+- "fewer": one entry for every table or result that the agent created or changed in these steps and for which you listed fewer than 5 premises, including none. Each entry has "target", "count", and "reason".
+
+For every table or result that the agent created or changed in these steps, list the 5 most important premises, most important first. List fewer only if you cannot find 5 premises that the work depends on, and in that case explain why in "fewer". There is no limit on the total number of items.
+
+Examples of premises (from an unrelated online-shop task; they show the form of a premise, not what to look for):
+- {"statement": "The amount column in payments is in US dollars.", "about": "data", "target": "daily_revenue", "evidence_of_dependence": "SUM(p.amount) AS revenue_usd", "alternative": null, "importance": 2, "reason": "The column name suggests dollars, but if amounts were in cents the revenue would be off by a factor of 100.", "updates": null}
+- {"statement": "Revenue in the task includes shipping fees.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "SUM(o.total_charged) AS revenue_usd", "alternative": "Revenue may mean item price times quantity only; the specification says \"revenue: sum of item_price * quantity\".", "importance": 4, "reason": "If the specification's definition applies, every row of revenue would be too high.", "updates": null}
+- {"statement": "Order timestamps are already in UTC, so no conversion is needed before taking the order date.", "about": "requirement", "target": "daily_revenue", "evidence_of_dependence": "CAST(o.created_at AS DATE) AS order_date", "alternative": "The specification says \"convert created_at to UTC before deriving order_date\".", "importance": 5, "reason": "The specification requires a conversion that the code does not perform, which would shift orders across days.", "updates": null}
+
+=== Task ===
+## Task Description:
+You are a professional Data Engineer responsible for implementing a complete SQL data pipeline based on data contract documents.
+
+## Objectives
+Populate the SQL files in the `./sql/` directory according to the specifications in `docs/data_contract.yaml` and `config/layer_dependencies.yaml`. Your task is clear: write the necessary SQL code to ensure `run.py` executes successfully.
+
+You MUST carefully review the content of `docs/data_contract.yaml`. You may use tools to view it. Since the file content is long, you can view it in chunks. Your task is to complete the SQL file writing based on the content of this file.
+
+## Project Background
+* Raw data has been loaded into `xxxx_start.duckdb` (Note: 'xxxx' is a placeholder for the project name, such as `greenhouse_start.duckdb` or `google_ads_start.duckdb`; 'xxxx' appearing below carries the same meaning).
+* Currently, running `python run.py` completes the data transformation and outputs `xxxx.duckdb`.
+* The existing SQL project is stored in the `sql/` folder.
+* The current requirements documentation is located in `docs/data_contract.yaml`.
+
+**Implementation Requirements:**
+1. **Strictly Adhere to Configuration**:
+    * All SQL logic and dependencies must be written strictly according to the `staging`, `intermediate`, and `marts` hierarchy defined in the YAML configuration files.
+
+2. **File and Directory Structure**:
+    * SQL files must be created in the corresponding level subdirectories (e.g., `sql/staging/`, `sql/intermediate/`, `sql/marts/`).
+    * Strictly follow predefined file naming conventions and coding styles.
+
+3. **Use Pure DuckDB Syntax**:
+    * All SQL code must be compatible with DuckDB.
+    * **Do NOT** end SQL statements with a semicolon (`;`) at the end of the file.
+
+4. **No dbt Syntax**:
+    * You must reference upstream tables directly using the `schema.table_name` format.
+    * **Do NOT** use the dbt `ref()` function.
+
+    **Examples**:
+    * **Correct ✅**:
+```sql
+    with account_base as (
+    select *
+    from staging.stg_salesforce__account
+    where not is_deleted
+    ),
+
+    account_enriched as (
+    select
+    account_id,
+    ...
+```
+
+* **Incorrect ❌**:
+```sql
+    WITH accounts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__account') }}}}
+    ),
+    contacts AS (
+    SELECT *
+    FROM {{{{ ref('stg_salesforce__contact') }}}}
+    ),
+    ...
+```
+Output Standard: Ensure the generated SQL files can be successfully executed by run.py to produce high-quality data results that meet business requirements.
+
+
+## Contract file paths:
+- ./docs/data_contract.yaml
+
+## Data Contract Documentation (docs/data_contract.yaml):
+
+```yaml
+
+
+version: "1.0"
+metadata:
+  description: "Complete data pipeline specification for Google Ads advertising data transformations"
+  author: "Data Engineering Team"
+  created_date: "2025-09-08"
+  pipeline_phases: ["staging_contract", "modeling_spec"]
+  source_system: "Google Ads API"
+
+# --------------------------------------------------------------------------- #
+# PHASE 1: Defines the transformation from raw data to clean staging tables.  #
+# --------------------------------------------------------------------------- #
+staging_contract:
+  purpose: "Transform raw Google Ads data into clean, validated, and standardized staging tables suitable for analytical processing. This phase handles data quality issues, standardizes formats, and ensures referential integrity across the hierarchical Google Ads data structure."
+
+  # IMPLEMENTATION NOTES:
+  # Due to raw data source limitations and complexity, tables are implemented using two approaches:
+  # 1. SIMPLIFIED 2-CTE structure: base -> validated (for basic config tables and performance metrics with limited source columns)
+  # 2. FULL 3-CTE structure: base -> validated -> metrics_calculated (for advanced analytics with comprehensive performance data)
+  #
+  # SIMPLIFIED Tables (2-CTE): account_history, campaign_history, campaign_stats, ad_history, ad_group_stats, ad_stats, ad_group_criterion_history, search_term_keyword_stats
+  # FULL Tables (3-CTE): account_stats, keyword_stats (these include complex calculated performance metrics)
+
+  quality_actions:
+    correct:
+      description: "Automatically fix deterministic format issues such as email casing, whitespace trimming, and standardized date formats"
+      examples: ["LOWER(TRIM(email))", "CAST(date_field AS DATE)", "normalize phone numbers"]
+
+    delete_row:
+      description: "Remove entire row when records contain severe data quality issues that make them unusable downstream."
+      examples: ["Explicitly marked for deletion", "Confirmed duplicates", "Invalid primary keys", "Essential business attributes contain irrecoverable errors"]
+
+    nullify_field:
+      description: "Set invalid field values to NULL when the field is non-critical and record can still be useful"
+      examples: ["malformed optional URLs", "invalid secondary contact information", "corrupted metadata fields"]
+
+    filter_row:
+      description: "Filter entire row when fields don't meet validation criteria, mainly used in simplified 2-CTE tables"
+      examples: ["WHERE ad_network_type IS NULL OR ad_network_type IN (...)"]
+
+  tables:
+[Per-table sections of the data contract are omitted here. The sections relevant to each review appear under "Relevant specification and documentation".]
+modeling_spec:
+  purpose: "Transform clean staging data into business-ready analytical models that support Google Ads performance analysis, optimization decisions, and executive reporting. This phase applies business logic to create reusable intermediate models and final analytical marts."
+  
+  design_principles:
+    intermediate_purpose: "Create reusable, business-centric data models that implement complex business logic and serve as building blocks for multiple marts."
+    mart_purpose: "Provide analysis-ready models optimized for specific business questions and reporting requirements."
+    grain_importance: "Every model must have an explicitly defined grain to ensure data consumers understand the level of aggregation and prevent misinterpretation."
+    performance_optimization: "Models should be designed for efficient querying with appropriate pre-aggregations and denormalization where beneficial."
+
+  intermediate_models:
+  marts_models:
+
+```
+
+Important: You can only interact with the provided environment. Do not ask a human for help.
+
+
+When you believe the task is completed, you must call the "finish" tool to end the session. If you still need to develop or debug code, do not call "finish"; continue and complete everything first.
+
+=== Index of all available data ===
+数据库：/home/katherine/dac/runs/20261025_de_official_batch_01/impl-005/agent/dacomp-de-impl-005/google_ads_start.duckdb
+{"table": "raw.account_history_data", "columns": ["id", "updated_at", "auto_tagging_enabled", "currency_code", "descriptive_name", "final_url_suffix", "hidden", "manager", "manager_customer_id", "optimization_score", "pay_per_conversion_eligibility_failure_reasons", "test_account", "time_zone", "tracking_url_template"]}
+{"table": "raw.account_stats_data", "columns": ["customer_id", "date", "active_view_impressions", "active_view_measurability", "active_view_measurable_cost_micros", "active_view_measurable_impressions", "active_view_viewability", "ad_network_type", "clicks", "conversions", "conversions_value", "cost_micros", "device", "impressions", "interaction_event_types", "interactions", "view_through_conversions"]}
+{"table": "raw.ad_group_criterion_history_data", "columns": ["id", "ad_group_id", "base_campaign_id", "updated_at", "type", "status", "keyword_match_type", "keyword_text"]}
+{"table": "raw.ad_group_history_data", "columns": ["id", "updated_at", "type", "campaign_id", "campaign_name", "name", "status"]}
+{"table": "raw.ad_group_stats_data", "columns": ["customer_id", "date", "active_view_impressions", "active_view_measurability", "active_view_measurable_cost_micros", "active_view_measurable_impressions", "active_view_viewability", "ad_network_type", "base_ad_group", "campaign_base_campaign", "campaign_id", "clicks", "conversions", "conversions_value", "cost_micros", "device", "id", "impressions", "interaction_event_types", "interactions", "view_through_conversions"]}
+{"table": "raw.ad_history_data", "columns": ["ad_group_id", "id", "name", "updated_at", "type", "status", "display_url", "final_urls"]}
+{"table": "raw.ad_stats_data", "columns": ["customer_id", "date", "ad_group_id", "ad_group", "keyword_ad_group_criterion", "ad_network_type", "device", "ad_id", "campaign_id", "clicks", "cost_micros", "impressions"]}
+{"table": "raw.campaign_history_data", "columns": ["id", "updated_at", "name", "customer_id", "advertising_channel_type", "advertising_channel_subtype", "start_date", "end_date", "serving_status", "status", "tracking_url_template"]}
+{"table": "raw.campaign_stats_data", "columns": ["customer_id", "date", "active_view_impressions", "active_view_measurability", "active_view_measurable_cost_micros", "active_view_measurable_impressions", "active_view_viewability", "ad_network_type", "base_campaign", "clicks", "conversions", "conversions_value", "cost_micros", "device", "id", "impressions", "interaction_event_types", "interactions", "view_through_conversions"]}
+{"table": "raw.keyword_stats_data", "columns": ["customer_id", "date", "active_view_impressions", "active_view_measurability", "active_view_measurable_cost_micros", "active_view_measurable_impressions", "active_view_viewability", "ad_group_base_ad_group", "ad_group_criterion_criterion_id", "ad_group_id", "ad_network_type", "campaign_base_campaign", "campaign_id", "clicks", "conversions", "conversions_value", "cost_micros", "device", "impressions", "interaction_event_types", "interactions", "view_through_conversions"]}
+{"table": "raw.search_term_keyword_stats_data", "columns": ["ad_group_id", "campaign_id", "clicks", "conversions", "conversions_value", "cost_micros", "customer_id", "date", "impressions", "info_text", "keyword_ad_group_criterion", "search_term", "search_term_match_type", "status", "view_through_conversions"]}
+
+
+=== Relevant specification and documentation ===
+## stg_google_ads__ad_stats
+
+    - name: stg_google_ads__ad_stats
+      description: "Cleaned and validated ad-level performance statistics using simplified 2-CTE structure due to limited raw data columns"
+      source_table: "raw.ad_stats_data"
+      implementation: "2-CTE structure: base -> validated (no metrics_calculated due to limited source columns)"
+      columns:
+        - name: source_relation
+          data_type: VARCHAR(100)
+          generation: "'google_ads' as platform and source_relation"
+        - name: account_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "customer_id"
+          casting: "CAST(customer_id AS VARCHAR(20))"
+        - name: date_day
+          data_type: DATE
+          constraints: [not_null]
+          source: "date"
+          casting: "CAST(date AS DATE)"
+          validation_rules:
+            - rule: "date_day <= CURRENT_DATE"
+              on_failure: delete_row
+            - rule: "date_day >= '2020-01-01'"
+              on_failure: delete_row
+        - name: ad_group_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "ad_group_id"
+          casting: "CAST(ad_group_id AS VARCHAR(20))"
+        - name: ad_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "ad_id"
+          casting: "CAST(ad_id AS VARCHAR(20))"
+        - name: campaign_id
+          data_type: VARCHAR(20)
+          constraints: [not_null]
+          source: "campaign_id"
+          casting: "CAST(campaign_id AS VARCHAR(20))"
+        - name: ad_network_type
+          data_type: VARCHAR(20)
+          validation_rules:
+            - rule: "ad_network_type IN ('SEARCH', 'DISPLAY', 'MIXED', 'YOUTUBE') OR ad_network_type IS NULL"
+              on_failure: delete_row  # Current implementation uses WHERE clause filtering
+        - name: device
+          data_type: VARCHAR(20)
+          source: "device"
+          casting: "CAST(device AS VARCHAR(20))"
+          default: "from validated: no transformation"
+        - name: clicks
+          data_type: BIGINT
+          source: "clicks"
+          quality_action: "coalesce(try_cast(clicks AS BIGINT), 0)"
+        - name: spend
+          data_type: DECIMAL(15,2)
+          source: "cost_micros"
+          calculation: "cost_micros / 1000000.0"
+          casting: "CAST(cost AS DECIMAL(15,2))"
+        - name: impressions
+          data_type: BIGINT
+          source: "impressions"
+          quality_action: "coalesce(try_cast(impressions AS BIGINT), 0)"
+        - name: conversions
+          data_type: DECIMAL(10,2)
+          notes: "Missing from source data - generated as NULL/0.0"
+          default: "CAST(0.0 AS DECIMAL(10,2)) as conversions"
+        - name: conversions_value
+          data_type: DECIMAL(15,2)
+          notes: "Missing from source data - generated as NULL/0.0"
+          default: "CAST(0.0 AS DECIMAL(15,2)) as conversions_value"
+        - name: view_through_conversions
+          data_type: BIGINT
+          notes: "Missing from source data - generated as NULL/0"
+          default: "CAST(0 AS BIGINT) as view_through_conversions"
+
+
+
+
+
+=== Premises recorded in earlier reviews ===
+[
+  {
+    "statement": "Campaign records whose advertising channel is outside the allowed set should be deleted rather than retained with a null channel.",
+    "about": "requirement",
+    "target": "stg_google_ads__campaign_history",
+    "evidence_of_dependence": "case when advertising_channel_type in (...) then advertising_channel_type end advertising_channel_type ... and advertising_channel_type is not null",
+    "alternative": "The channel validation explicitly specifies \"on_failure: nullify_field\", although the column also has a not_null constraint.",
+    "importance": 5,
+    "reason": "The implementation resolves conflicting instructions by removing entire records.",
+    "updates": null,
+    "id": "c2-1",
+    "call": 2
+  },
+  {
+    "statement": "Ad records with unrecognized statuses should be deleted rather than retained with a null status.",
+    "about": "requirement",
+    "target": "stg_google_ads__ad_history",
+    "evidence_of_dependence": "case when status in ('ENABLED','PAUSED','REMOVED') then status end status ... and status is not null",
+    "alternative": "The status validation specifies \"on_failure: nullify_field\", although status also has a not_null constraint.",
+    "importance": 5,
+    "reason": "This choice changes which ads survive staging.",
+    "updates": null,
+    "id": "c2-2",
+    "call": 2
+  },
+  {
+    "statement": "Replacing an invalid ad network with null before filtering is equivalent to deleting the invalid-network row.",
+    "about": "requirement",
+    "target": "stg_google_ads__ad_stats",
+    "evidence_of_dependence": "case when ad_network_type in ('SEARCH','DISPLAY','MIXED','YOUTUBE') or ad_network_type is null then ad_network_type end ad_network_type",
+    "alternative": "The contract requires \"on_failure: delete_row\" for invalid ad networks.",
+    "importance": 5,
+    "reason": "Invalid networks become null and pass the final null-network condition.",
+    "updates": null,
+    "id": "c2-3",
+    "call": 2
+  },
+  {
+    "statement": "Every ad-statistics record whose validated network is null already satisfies all required identifier and date checks.",
+    "about": "data",
+    "target": "stg_google_ads__ad_stats",
+    "evidence_of_dependence": "WHERE account_id is not null and date_day between DATE '2020-01-01' and current_date ... and ad_network_type in (...) or ad_network_type is null",
+    "alternative": "The contract requires non-null identifiers and date bounds independently of the network value.",
+    "importance": 5,
+    "reason": "The unparenthesized OR permits null-network records to bypass every preceding check.",
+    "updates": null,
+    "id": "c2-4",
+    "call": 2
+  },
+  {
+    "statement": "The campaign identifier required in campaign statistics is base_campaign rather than id.",
+    "about": "data",
+    "target": "stg_google_ads__campaign_stats",
+    "evidence_of_dependence": "CAST(base_campaign AS VARCHAR(20)) campaign_id",
+    "alternative": "The raw-table index also lists an \"id\" column, but the supplied specification does not resolve the mapping.",
+    "importance": 4,
+    "reason": "The choice determines campaign attribution for every performance record.",
+    "updates": null,
+    "id": "c2-5",
+    "call": 2
+  },
+  {
+    "statement": "The ad-group identifier required in ad-group statistics is base_ad_group rather than id.",
+    "about": "data",
+    "target": "stg_google_ads__ad_group_stats",
+    "evidence_of_dependence": "CAST(base_ad_group AS VARCHAR(20)) ad_group_id",
+    "alternative": "The raw-table index also lists \"id\" without documenting its relationship to base_ad_group.",
+    "importance": 4,
+    "reason": "A different identifier meaning would change hierarchical attribution throughout this table.",
+    "updates": null,
+    "id": "c2-6",
+    "call": 2
+  },
+  {
+    "statement": "The campaign identifier required in ad-group statistics is campaign_base_campaign rather than campaign_id.",
+    "about": "data",
+    "target": "stg_google_ads__ad_group_stats",
+    "evidence_of_dependence": "CAST(campaign_base_campaign AS VARCHAR(20)) campaign_id",
+    "alternative": "The raw-table index separately lists \"campaign_id\", which is not used.",
+    "importance": 4,
+    "reason": "The unused direct campaign field could associate records with different campaigns.",
+    "updates": null,
+    "id": "c2-7",
+    "call": 2
+  },
+  {
+    "statement": "A single raw id identifies an entity across all ad groups and other parent contexts when computing the most recent history record.",
+    "about": "data",
+    "target": "stg_google_ads__account_history; stg_google_ads__campaign_history; stg_google_ads__ad_group_history; stg_google_ads__ad_history; stg_google_ads__ad_group_criterion_history",
+    "evidence_of_dependence": "row_number() over(partition by id order by try_cast(updated_at AS TIMESTAMPTZ) desc nulls last)=1",
+    "alternative": null,
+    "importance": 4,
+    "reason": "If IDs are scoped to parents, unrelated entities compete for one current-record flag.",
+    "updates": null,
+    "id": "c2-8",
+    "call": 2
+  },
+  {
+    "statement": "The most recent history flag should be computed before validation even when the latest raw record is subsequently deleted.",
+    "about": "requirement",
+    "target": "stg_google_ads__account_history; stg_google_ads__campaign_history; stg_google_ads__ad_history; stg_google_ads__ad_group_criterion_history",
+    "evidence_of_dependence": "row_number() ... =1 is_most_recent_record ... SELECT * FROM validated WHERE",
+    "alternative": "The account-history description calls for \"current state tracking\", which could require marking the latest surviving valid record instead.",
+    "importance": 4,
+    "reason": "An entity can retain history without any row marked current.",
+    "updates": null,
+    "id": "c2-9",
+    "call": 2
+  },
+  {
+    "statement": "Equal latest timestamps do not require a deterministic tie-breaker or multiple current-record flags.",
+    "about": "requirement",
+    "target": "stg_google_ads__account_history; stg_google_ads__campaign_history; stg_google_ads__ad_group_history; stg_google_ads__ad_history; stg_google_ads__ad_group_criterion_history",
+    "evidence_of_dependence": "row_number() over(partition by id order by try_cast(updated_at AS TIMESTAMPTZ) desc nulls last)=1",
+    "alternative": null,
+    "importance": 3,
+    "reason": "Tied timestamps can produce an arbitrary current version.",
+    "updates": null,
+    "id": "c2-10",
+    "call": 2
+  },
+  {
+    "statement": "Converting raw temporal values through TIMESTAMPTZ and then to DATE or TIMESTAMP preserves the business date and update time intended by the contract.",
+    "about": "data",
+    "target": "All eleven generated staging tables",
+    "evidence_of_dependence": "try_cast(date AS TIMESTAMPTZ)::DATE; try_cast(updated_at AS TIMESTAMPTZ)::TIMESTAMP",
+    "alternative": "The search-term and ad-statistics specifications explicitly prescribe \"CAST(date AS DATE)\" rather than conversion through TIMESTAMPTZ.",
+    "importance": 4,
+    "reason": "Timezone interpretation can shift daily metrics and history ordering.",
+    "updates": null,
+    "id": "c2-11",
+    "call": 2
+  },
+  {
+    "statement": "Malformed temporal values should be treated as null and handled by the final filters rather than causing a cast failure or receiving other remediation.",
+    "about": "requirement",
+    "target": "All eleven generated staging tables",
+    "evidence_of_dependence": "try_cast(date AS TIMESTAMPTZ); try_cast(updated_at AS TIMESTAMPTZ); try_cast(start_date AS TIMESTAMPTZ)",
+    "alternative": null,
+    "importance": 3,
+    "reason": "The chosen fallback can silently remove records or erase optional dates.",
+    "updates": null,
+    "id": "c2-12",
+    "call": 2
+  },
+  {
+    "statement": "The required source_relation value is the constant google_ads without a platform suffix.",
+    "about": "requirement",
+    "target": "All eleven generated staging tables",
+    "evidence_of_dependence": "SELECT 'google_ads'::VARCHAR AS source_relation, *",
+    "alternative": "The search-term specification says \"source_relation || '-' || platform final concatenation\".",
+    "importance": 4,
+    "reason": "A different provenance convention changes an output field across every record.",
+    "updates": null,
+    "id": "c2-13",
+    "call": 2
+  },
+  {
+    "statement": "All pass-through string values already satisfy the contract's declared maximum lengths.",
+    "about": "data",
+    "target": "All eleven generated staging tables",
+    "evidence_of_dependence": "currency_code, auto_tagging_enabled, time_zone, descriptive_name account_name; name campaign_name; display_url, final_urls",
+    "alternative": null,
+    "importance": 2,
+    "reason": "Neither pass-through selection nor DuckDB VARCHAR length annotations establish the specified bounds.",
+    "updates": null,
+    "id": "c2-14",
+    "call": 2
+  },
+  {
+    "statement": "The retained raw clicks, impressions, and view-through conversion columns already have the required BIGINT representation.",
+    "about": "data",
+    "target": "stg_google_ads__campaign_stats; stg_google_ads__keyword_stats; stg_google_ads__account_stats; stg_google_ads__ad_group_stats",
+    "evidence_of_dependence": "device, clicks, ... impressions, ... view_through_conversions",
+    "alternative": null,
+    "importance": 3,
+    "reason": "The output types depend on raw schemas that are not established by the column index.",
+    "updates": null,
+    "id": "c2-15",
+    "call": 2
+  },
+  {
+    "statement": "All retained raw cost and conversion values are numerically usable and fit the target decimal ranges.",
+    "about": "data",
+    "target": "stg_google_ads__campaign_stats; stg_google_ads__keyword_stats; stg_google_ads__account_stats; stg_google_ads__ad_group_stats",
+    "evidence_of_dependence": "CAST(cost_micros / 1000000.0 AS DECIMAL(15,2)); CAST(conversions AS DECIMAL(10,2)); CAST(conversions_value AS DECIMAL(15,2))",
+    "alternative": null,
+    "importance": 3,
+    "reason": "Unusable or overflowing values can prevent pipeline execution.",
+    "updates": null,
+    "id": "c2-16",
+    "call": 2
+  },
+  {
+    "statement": "No metrics_calculated processing is needed for account statistics or keyword statistics.",
+    "about": "requirement",
+    "target": "stg_google_ads__account_stats; stg_google_ads__keyword_stats",
+    "evidence_of_dependence": "WITH base AS (...) , validated AS (...) SELECT * FROM validated",
+    "alternative": "The implementation notes specify \"FULL Tables (3-CTE): account_stats, keyword_stats\" and describe complex calculated performance metrics.",
+    "importance": 4,
+    "reason": "The implementation omits a processing phase explicitly called out for these tables.",
+    "updates": null,
+    "id": "c2-17",
+    "call": 2
+  },
+  {
+    "statement": "A campaign with a non-null end date but null start date should be retained.",
+    "about": "requirement",
+    "target": "stg_google_ads__campaign_history",
+    "evidence_of_dependence": "(end_date is null or start_date is null or end_date >= start_date)",
+    "alternative": "The contract's validation is \"end_date IS NULL OR end_date >= start_date\" and does not include the extra start_date-null exception.",
+    "importance": 3,
+    "reason": "The additional exception changes which incomplete campaign histories pass validation.",
+    "updates": null,
+    "id": "c2-18",
+    "call": 2
+  },
+  {
+    "statement": "Unusable or missing cost_micros should produce zero spend rather than null spend.",
+    "about": "requirement",
+    "target": "stg_google_ads__ad_stats; stg_google_ads__search_term_keyword_stats",
+    "evidence_of_dependence": "CAST(coalesce(try_cast(cost_micros AS DOUBLE),0)/1000000.0 AS DECIMAL(15,2))",
+    "alternative": "Both specifications give \"cost_micros / 1000000.0\" without prescribing a zero fallback for spend.",
+    "importance": 3,
+    "reason": "This conflates unknown spend with genuinely free activity.",
+    "updates": null,
+    "id": "c2-19",
+    "call": 2
+  },
+  {
+    "statement": "The latest ad-group history row should remain eligible for the current-record flag even if its update timestamp is missing.",
+    "about": "requirement",
+    "target": "stg_google_ads__ad_group_history",
+    "evidence_of_dependence": "order by try_cast(updated_at AS TIMESTAMPTZ) desc nulls last ... WHERE ad_group_id is not null and campaign_id is not null and status is not null",
+    "alternative": null,
+    "importance": 2,
+    "reason": "An entity with only undated history can be labeled current without a known update time.",
+    "updates": null,
+    "id": "c2-20",
+    "call": 2
+  },
+  {
+    "statement": "Null checks alone are sufficient to identify usable required IDs and required business strings.",
+    "about": "data",
+    "target": "All eleven generated staging tables",
+    "evidence_of_dependence": "account_id is not null; campaign_name is not null; status is not null",
+    "alternative": "The quality-action guidance identifies \"Invalid primary keys\" and irrecoverable essential attributes as grounds for deletion.",
+    "importance": 3,
+    "reason": "Empty or otherwise invalid non-null identifiers can survive all implemented checks.",
+    "updates": null,
+    "id": "c2-21",
+    "call": 2
+  },
+  {
+    "statement": "Account statistics contain at most one row per account_id, source_relation, and date_day, without additional device or ad-network segmentation.",
+    "about": "data",
+    "target": "int_google_ads__account_performance_metrics",
+    "evidence_of_dependence": "SELECT * FROM staging.stg_google_ads__account_stats",
+    "alternative": "The staging schema includes \"ad_network_type\" and \"device\", while the intermediate contract declares \"One row per account_id, source_relation, date_day\"; segmented statistics could require daily aggregation.",
+    "importance": 5,
+    "reason": "Multiple daily rows would violate the declared grain and make rolling averages and lags operate over segments rather than days.",
+    "updates": null,
+    "id": "c3-1",
+    "call": 3
+  },
+  {
+    "statement": "Each account_id and source_relation partition has consecutive daily observations, so row offsets correspond to calendar-day offsets.",
+    "about": "data",
+    "target": "int_google_ads__account_performance_metrics",
+    "evidence_of_dependence": "ROWS BETWEEN 6 PRECEDING AND CURRENT ROW; lag(spend, 30) OVER (PARTITION BY account_id, source_relation ORDER BY date_day)",
+    "alternative": "The contract describes \"7-day rolling averages\" and \"prior 30th-day values\"; missing dates would distinguish calendar-day windows and comparisons from seven observations and thirty-row offsets.",
+    "importance": 4,
+    "reason": "Date gaps would change both rolling-window coverage and the baseline used for month-over-month comparisons.",
+    "updates": null,
+    "id": "c3-2",
+    "call": 3
+  },
+  {
+    "statement": "Retaining staging decimal types for spend, conversions, and conversions_value is acceptable despite the intermediate contract declaring these outputs as DOUBLE.",
+    "about": "requirement",
+    "target": "int_google_ads__account_performance_metrics",
+    "evidence_of_dependence": "s.spend, s.clicks, s.impressions, s.conversions, s.conversions_value",
+    "alternative": "The staging contract declares DECIMAL types for these fields, whereas the intermediate column specifications declare \"data_type: DOUBLE\".",
+    "importance": 3,
+    "reason": "Without explicit conversion, the produced schema retains upstream types rather than the specified intermediate types.",
+    "updates": null,
+    "id": "c3-3",
+    "call": 3
+  },
+  {
+    "statement": "Campaign statistics contain at most one row per source_relation, campaign_id, and date_day.",
+    "about": "data",
+    "target": "int_google_ads__campaign_cohort_analysis",
+    "evidence_of_dependence": "SELECT * FROM staging.stg_google_ads__campaign_stats; FROM stats s INNER JOIN history h USING (campaign_id, source_relation)",
+    "alternative": "The staging schema includes \"ad_network_type\" and \"device\", which could distinguish multiple daily records, while the intermediate grain is \"One row per source_relation, campaign_id, and date_day\".",
+    "importance": 5,
+    "reason": "Multiple daily segments would change the output grain, cumulative totals per row, cohort averages, and tier assignments.",
+    "updates": null,
+    "id": "c4-1",
+    "call": 4
+  },
+  {
+    "statement": "ROAS values do not tie within any campaign launch cohort and lifecycle stage.",
+    "about": "data",
+    "target": "int_google_ads__campaign_cohort_analysis.roas_rank_in_cohort",
+    "evidence_of_dependence": "rank() OVER (PARTITION BY campaign_launch_cohort, lifecycle_stage ORDER BY roas DESC NULLS LAST) AS roas_rank_in_cohort",
+    "alternative": "The contract specifies a row's \"position\" and says \"ties are resolved arbitrarily\", whereas rank() gives tied rows the same rank and skips subsequent positions.",
+    "importance": 4,
+    "reason": "Ties would affect both the required ranks and the performance tiers derived from them.",
+    "updates": null,
+    "id": "c4-2",
+    "call": 4
+  },
+  {
+    "statement": "Every retained campaign row with positive spend and zero conversions has a non-null days_since_launch.",
+    "about": "data",
+    "target": "int_google_ads__campaign_cohort_analysis.underperforming_flag",
+    "evidence_of_dependence": "(spend > 0 AND conversions = 0 AND days_since_launch > 30) AS underperforming_flag",
+    "alternative": "The contract says \"NULL days_since_launch evaluates to false\" and requires underperforming_flag to be non-null.",
+    "importance": 4,
+    "reason": "A missing launch date for such a row would produce a null flag rather than false.",
+    "updates": null,
+    "id": "c4-3",
+    "call": 4
+  },
+  {
+    "statement": "The cost-per-conversion contribution to campaign_health_score decreases by 0.2 points per unit above 100.",
+    "about": "requirement",
+    "target": "int_google_ads__campaign_cohort_analysis.campaign_health_score",
+    "evidence_of_dependence": "greatest(0,20 - greatest(cost_per_conversion-100,0)*0.2)",
+    "alternative": "The contract says the contribution \"decreases linearly and does not go below 0\" but does not specify the slope.",
+    "importance": 3,
+    "reason": "The selected slope determines health scores for campaigns with cost per conversion above 100.",
+    "updates": null,
+    "id": "c4-4",
+    "call": 4
+  },
+  {
+    "statement": "Keyword statistics contain at most one row per source_relation, criterion_id, ad_group_id, campaign_id, and date_day.",
+    "about": "data",
+    "target": "int_google_ads__keyword_performance_segmentation",
+    "evidence_of_dependence": "SELECT * FROM staging.stg_google_ads__keyword_stats; ks.criterion_id AS keyword_id",
+    "alternative": "The staging schema includes \"ad_network_type\" and \"device\", which could distinguish multiple records at the declared intermediate grain; the contract also explicitly requires \"no de-duplication beyond the final filter\".",
+    "importance": 4,
+    "reason": "Additional segments would prevent the stated output grain even though retaining them follows the explicit row-preservation instruction.",
+    "updates": null,
+    "id": "c4-5",
+    "call": 4
+  },
+  {
+    "statement": "For URL-report rows, matching an ad by source_relation and ad_id alone selects exactly the same records as also matching ad_group_id.",
+    "about": "data",
+    "target": "google_ads__url_report",
+    "evidence_of_dependence": "FROM s LEFT JOIN ad USING(source_relation,ad_id)",
+    "alternative": "The URL-report contract says \"Join ads to stats on matching ad_id, ad_group_id, and source_relation from stats.\"",
+    "importance": 5,
+    "reason": "Omitting the parent key can attach another ad group's URL and duplicate or misattribute performance.",
+    "updates": null,
+    "id": "c5-1",
+    "call": 5
+  },
+  {
+    "statement": "For URL-report rows, joining campaigns using the campaign_id from stats is equivalent to joining using the campaign_id from the matched ad-group history.",
+    "about": "data",
+    "target": "google_ads__url_report",
+    "evidence_of_dependence": "LEFT JOIN ag USING(source_relation,ad_group_id) LEFT JOIN c USING(source_relation,campaign_id)",
+    "alternative": "The URL-report contract says \"Join campaigns to ad groups on matching campaign_id and source_relation.\"",
+    "importance": 5,
+    "reason": "Hierarchy differences would change campaign and account attributes and the resulting aggregation groups.",
+    "updates": null,
+    "id": "c5-2",
+    "call": 5
+  },
+  {
+    "statement": "Every campaign history record joined to campaign stats has a matching most-recent account history record.",
+    "about": "data",
+    "target": "google_ads__campaign_report.account_id",
+    "evidence_of_dependence": "SELECT s.source_relation,s.date_day,a.account_name,c.account_id",
+    "alternative": "The account_id specification says \"Account ID from the most recent account linked via the joined campaign; NULL if no matching campaign or account.\"",
+    "importance": 4,
+    "reason": "Without an account match, selecting the campaign's account_id preserves an identifier that the contract requires to be null.",
+    "updates": null,
+    "id": "c5-3",
+    "call": 5
+  },
+  {
+    "statement": "Keeping decimal aggregation results for monetary and fractional measures is acceptable where the report contracts specify DOUBLE outputs.",
+    "about": "requirement",
+    "target": "google_ads__account_report; google_ads__campaign_report; google_ads__ad_group_report; google_ads__keyword_report",
+    "evidence_of_dependence": "sum(s.spend) spend,...sum(s.conversions) conversions,sum(s.conversions_value) conversions_value",
+    "alternative": "These report contracts declare \"data_type: DOUBLE\" for spend, conversions, and conversions_value, whereas their staging inputs are declared DECIMAL.",
+    "importance": 3,
+    "reason": "Direct sums retain decimal output types rather than producing the specified report schemas.",
+    "updates": null,
+    "id": "c5-4",
+    "call": 5
+  },
+  {
+    "statement": "Every keyword-report group already has nonnegative sums for all six performance measures without additional validation or remediation.",
+    "about": "data",
+    "target": "google_ads__keyword_report",
+    "evidence_of_dependence": "sum(s.spend) spend,sum(s.clicks) clicks,sum(s.impressions) impressions,sum(s.conversions) conversions,sum(s.conversions_value) conversions_value,sum(s.view_through_conversions) view_through_conversions",
+    "alternative": "The keyword-report column tests require \"spend >= 0\", \"clicks >= 0\", \"impressions >= 0\", \"conversions >= 0\", \"conversions_value >= 0\", and \"view_through_conversions >= 0\".",
+    "importance": 3,
+    "reason": "The aggregation implements no checks to establish that the required nonnegative results hold.",
+    "updates": null,
+    "id": "c5-5",
+    "call": 5
+  },
+  {
+    "statement": "The required channel efficiency formula applies additional factors of 0.3 and 0.4 to the CTR and ROAS deltas before applying their respective blend weights.",
+    "about": "requirement",
+    "target": "google_ads__channel_performance_analysis.channel_efficiency_score",
+    "evidence_of_dependence": "coalesce(50+coalesce(ctr_vs_channel_benchmark_pct,0)*.3,50)*.3+coalesce(50+coalesce(roas_vs_channel_benchmark_pct,0)*.4,50)*.4",
+    "alternative": "The contract specifies a \"weighted blend of CTR delta (30%), ROAS delta (40%), and avg_campaign_health_score (30%)\" without specifying these additional inner multipliers.",
+    "importance": 5,
+    "reason": "The additional scaling changes scores and the growth-opportunity flags derived from them.",
+    "updates": null,
+    "id": "c6-1",
+    "call": 6
+  },
+  {
+    "statement": "Channel strategic recommendations require only the implemented ROI, underperforming-share, and momentum rules.",
+    "about": "requirement",
+    "target": "google_ads__channel_performance_analysis.strategic_recommendation",
+    "evidence_of_dependence": "CASE WHEN roas<.5 AND total_spend>1000 THEN 'Review ROI and reduce inefficient spend' WHEN underperforming_pct>50 ... WHEN high_momentum_pct>50 ...",
+    "alternative": "The column description specifies priority rules using \"ROAS vs channel benchmark, spend share, top-tier share, underperforming share, momentum, and health score\"; several of these inputs are unused.",
+    "importance": 4,
+    "reason": "Omitted decision inputs and unestablished thresholds can change recommendations across the report.",
+    "updates": null,
+    "id": "c6-2",
+    "call": 6
+  },
+  {
+    "statement": "Every retained channel group includes at least one campaign classified as Premium Investment.",
+    "about": "data",
+    "target": "google_ads__channel_performance_analysis.premium_spend; premium_spend_pct",
+    "evidence_of_dependence": "sum(spend) FILTER(WHERE investment_tier='Premium Investment') premium_spend",
+    "alternative": "The contract describes \"premium_spend for investment_tier = Premium Investment\" and its percentage of total spend; a group without such campaigns could require zero rather than the NULL returned by an empty filtered sum.",
+    "importance": 3,
+    "reason": "Groups without premium campaigns receive missing investment amounts and percentages instead of numeric zero.",
+    "updates": null,
+    "id": "c6-3",
+    "call": 6
+  },
+  {
+    "statement": "Averaging four-decimal rounded CPA values is an acceptable implementation of the unrounded device CPA benchmark.",
+    "about": "requirement",
+    "target": "google_ads__channel_performance_analysis.device_benchmark_cpa",
+    "evidence_of_dependence": "round(CASE WHEN total_conversions>0 THEN total_spend/total_conversions END,4) cost_per_conversion; avg(cost_per_conversion) over(partition by device,date_day)",
+    "alternative": "The contract says device_benchmark_cpa is \"not rounded\" and is the average CPA using rows with conversions.",
+    "importance": 3,
+    "reason": "Premature rounding changes benchmarks and their percentage deltas.",
+    "updates": null,
+    "id": "c6-4",
+    "call": 6
+  },
+  {
+    "statement": "Conversion-value sums are nonnegative for every retained channel group.",
+    "about": "data",
+    "target": "google_ads__channel_performance_analysis.total_conversions_value",
+    "evidence_of_dependence": "sum(conversions_value) total_conversions_value",
+    "alternative": "The output description requires a \"non-negative monetary amount\", but the upstream campaign model's final filter checks conversions rather than conversions_value.",
+    "importance": 3,
+    "reason": "No implemented validation establishes the required sign of this output.",
+    "updates": null,
+    "id": "c6-5",
+    "call": 6
+  },
+  {
+    "statement": "The implemented acquisition recommendation rules are complete without considering days since first conversion or active campaign count.",
+    "about": "requirement",
+    "target": "google_ads__customer_acquisition_analysis.acquisition_recommendation",
+    "evidence_of_dependence": "CASE WHEN ltv_cac_ratio>=3 AND cac_efficiency_percentile>=.8 ... WHEN channel_diversity_count<2 ... WHEN cac_vs_cohort_pct>30 ...",
+    "alternative": "The contract requires ordered rules using \"ltv_cac_ratio, cac_efficiency_percentile, channel_diversity_count, days_since_first_conversion, CAC vs cohort, and active_campaigns_count\".",
+    "importance": 4,
+    "reason": "Two explicitly named decision inputs are omitted and the chosen thresholds are not established.",
+    "updates": null,
+    "id": "c6-6",
+    "call": 6
+  },
+  {
+    "statement": "Acquisition sophistication awards one LTV point per 100 currency units and five points per unit of LTV:CAC before applying the specified caps.",
+    "about": "requirement",
+    "target": "google_ads__customer_acquisition_analysis.acquisition_sophistication_score",
+    "evidence_of_dependence": "least(average_customer_ltv/100,30)+least(ltv_cac_ratio*5,25)",
+    "alternative": "The contract specifies only \"up to 30 from average_customer_ltv, and up to 25 from ltv_cac_ratio\", without giving these scaling factors.",
+    "importance": 4,
+    "reason": "The selected scales determine how quickly customers reach high sophistication scores.",
+    "updates": null,
+    "id": "c6-7",
+    "call": 6
+  },
+  {
+    "statement": "Averages of rounded row-level CAC and LTV values satisfy the required unrounded cohort benchmarks.",
+    "about": "requirement",
+    "target": "google_ads__customer_acquisition_analysis.cohort_avg_cac; cohort_avg_ltv",
+    "evidence_of_dependence": "avg(customer_acquisition_cost) ... cohort_avg_cac; avg(average_customer_ltv) ... cohort_avg_ltv",
+    "alternative": "The contract requires averaging \"cumulative_acquisition_cost / cumulative_conversions\" and \"cumulative_ltv / cumulative_conversions\", with benchmarks \"not rounded\".",
+    "importance": 4,
+    "reason": "Using already-rounded economics changes cohort comparisons and potentially recommendations.",
+    "updates": null,
+    "id": "c6-8",
+    "call": 6
+  },
+  {
+    "statement": "Computing LTV:CAC from unrounded cumulative ratios is equivalent to dividing the rounded average_customer_ltv by the rounded customer_acquisition_cost.",
+    "about": "requirement",
+    "target": "google_ads__customer_acquisition_analysis.ltv_cac_ratio",
+    "evidence_of_dependence": "round((cumulative_ltv/cumulative_conversions)/(cumulative_acquisition_cost/cumulative_conversions),2)",
+    "alternative": "The business logic defines ltv_cac_ratio as \"average_customer_ltv divided by customer_acquisition_cost\", after specifying two-decimal rounding for both inputs.",
+    "importance": 3,
+    "reason": "Different rounding order can change ratio thresholds used in segmentation and alerts.",
+    "updates": null,
+    "id": "c6-9",
+    "call": 6
+  },
+  {
+    "statement": "Every retained acquisition row has positive cumulative conversions and a non-null cohort CAC benchmark.",
+    "about": "data",
+    "target": "google_ads__customer_acquisition_analysis.high_cac_alert; retention_risk",
+    "evidence_of_dependence": "(customer_acquisition_cost>cohort_avg_cac*2) high_cac_alert; (days_since_first_conversion>365 AND ltv_cac_ratio<1.5) retention_risk",
+    "alternative": "The contract permits spend-only accounts with no first conversion, while requiring these alerts to be non-null and \"else false\".",
+    "importance": 4,
+    "reason": "Spend-only accounts can produce NULL alerts because the comparisons are not given false fallbacks.",
+    "updates": null,
+    "id": "c6-10",
+    "call": 6
+  },
+  {
+    "statement": "Each account's executive-dashboard observations are consecutive daily rows, so a seven-row lag identifies the value seven calendar days earlier.",
+    "about": "data",
+    "target": "google_ads__executive_dashboard.spend_wow_growth_pct; conversions_wow_growth_pct",
+    "evidence_of_dependence": "lag(total_spend,7) over(partition by account_id order by date_day); lag(total_conversions,7) over(partition by account_id order by date_day)",
+    "alternative": "The executive contract specifies comparison with the \"value 7 days prior\", which differs from seven preceding observations when dates are missing or repeated.",
+    "importance": 4,
+    "reason": "This extends the earlier unverified row-offset assumption to executive weekly growth calculations.",
+    "updates": "c3-2",
+    "id": "c6-11",
+    "call": 6
+  },
+  {
+    "statement": "Every retained executive row has either two non-null weekly growth percentages or at least one weekly growth condition that evaluates to true.",
+    "about": "data",
+    "target": "google_ads__executive_dashboard.trending_alert",
+    "evidence_of_dependence": "(spend_wow_growth_pct>50 OR conversions_wow_growth_pct< -30) trending_alert",
+    "alternative": "The contract allows missing prior values to produce NULL growth percentages but requires trending_alert to be \"else false\" and non-null.",
+    "importance": 4,
+    "reason": "Early observations and missing lag baselines can otherwise produce NULL alert values.",
+    "updates": null,
+    "id": "c6-12",
+    "call": 6
+  },
+  {
+    "statement": "Every retained executive account-date has at least one globally observed keyword.",
+    "about": "data",
+    "target": "google_ads__executive_dashboard.scale_opportunity",
+    "evidence_of_dependence": "round(100.0*star_performer_keywords/nullif(active_keywords,0),2) star_pct; (star_pct>15) scale_opportunity",
+    "alternative": "The contract explicitly replaces missing keyword counts with zero and requires scale_opportunity to be \"else false\" and non-null.",
+    "importance": 4,
+    "reason": "Dates without keywords produce a NULL percentage and therefore a NULL flag.",
+    "updates": null,
+    "id": "c6-13",
+    "call": 6
+  },
+  {
+    "statement": "The executive rolling averages already have the required output precision before the additional rounded columns are appended.",
+    "about": "data",
+    "target": "google_ads__executive_dashboard.spend_30d_avg; roas_30d_avg; performance_score_30d_avg",
+    "evidence_of_dependence": "SELECT *,round(spend_30d_avg,2) spend_30d_avg,round(roas_30d_avg,4) roas_30d_avg,round(performance_score_30d_avg,1) performance_score_30d_avg",
+    "alternative": "The contract requires final rounding to 2, 4, and 1 decimal places respectively; SELECT * retains the original same-named columns alongside the rounded expressions.",
+    "importance": 3,
+    "reason": "The final name-based selection depends on retaining the intended rounded values rather than the original averages.",
+    "updates": null,
+    "id": "c6-14",
+    "call": 6
+  },
+  {
+    "statement": "Rounding portfolio percentages to two decimals before threshold comparisons does not change any executive recommendation or flag.",
+    "about": "data",
+    "target": "google_ads__executive_dashboard.performance_alert; strategic_recommendation; scale_opportunity",
+    "evidence_of_dependence": "round(100.0*star_performer_keywords/nullif(active_keywords,0),2) star_pct; WHEN star_pct>20; WHEN under_pct>30; (star_pct>15)",
+    "alternative": "The contract applies thresholds directly to safe-divided count ratios, such as \"star_performer_keywords/active_keywords > 0.15\", without intermediate rounding.",
+    "importance": 3,
+    "reason": "Ratios slightly above a boundary can round down to it and receive a different classification.",
+    "updates": null,
+    "id": "c6-15",
+    "call": 6
+  }
+]
+
+=== Agent steps since the last review ===
+### event 25
+
+## 命令原文
+
+sed -i "s/and ad_network_type in ('SEARCH','DISPLAY','MIXED','YOUTUBE') or ad_network_type is null/and (ad_network_type in ('SEARCH','DISPLAY','MIXED','YOUTUBE') or ad_network_type is null)/" sql/staging/stg_google_ads__ad_stats.sql && python run.py > /tmp/run.log 2>&1; tail -100 /tmp/run.log
+
+## agent 实际看到的执行结果
+
+2026-10-25 01:22:09,864 - INFO - Target database does not exist, starting initialization...
+2026-10-25 01:22:09,864 - INFO - 📥 Creating a new layered database: google_ads.duckdb
+2026-10-25 01:22:09,885 - INFO - 🏗️ Creating Schema layered architecture
+2026-10-25 01:22:09,926 - INFO -   ✓ Created schema: raw
+2026-10-25 01:22:09,929 - INFO -   ✓ Created schema: staging
+2026-10-25 01:22:09,932 - INFO -   ✓ Created schema: intermediate
+2026-10-25 01:22:09,936 - INFO -   ✓ Created schema: marts
+2026-10-25 01:22:09,936 - INFO - 📥 Importing raw data into the raw schema
+2026-10-25 01:22:09,979 - INFO - Found 11 raw tables
+2026-10-25 01:22:11,284 - INFO -   ✓ raw.account_history_data: 100 rows
+2026-10-25 01:22:53,435 - INFO -   ✓ raw.account_stats_data: 10000 rows
+2026-10-25 01:24:08,204 - INFO -   ✓ raw.ad_group_criterion_history_data: 20000 rows
+2026-10-25 01:24:26,132 - INFO -   ✓ raw.ad_group_history_data: 5000 rows
+2026-10-25 01:25:09,133 - INFO -   ✓ raw.ad_group_stats_data: 10000 rows
+2026-10-25 01:25:46,785 - INFO -   ✓ raw.ad_history_data: 10000 rows
+2026-10-25 01:26:25,585 - INFO -   ✓ raw.ad_stats_data: 10000 rows
+2026-10-25 01:26:29,039 - INFO -   ✓ raw.campaign_history_data: 1000 rows
+2026-10-25 01:27:10,270 - INFO -   ✓ raw.campaign_stats_data: 10000 rows
+2026-10-25 01:27:53,086 - INFO -   ✓ raw.keyword_stats_data: 10000 rows
+2026-10-25 01:28:34,090 - INFO -   ✓ raw.search_term_keyword_stats_data: 10000 rows
+2026-10-25 01:28:34,099 - INFO - ✓ Raw data import complete
+2026-10-25 01:28:34,101 - INFO - ✓ Layered database initialization complete: google_ads.duckdb
+2026-10-25 01:28:34,101 - INFO - 🧼 Cleaning up previously generated schemas and tables...
+2026-10-25 01:28:34,107 - INFO - ✓ Dropped schema: staging
+2026-10-25 01:28:34,111 - INFO - ✓ Dropped schema: intermediate
+2026-10-25 01:28:34,116 - INFO - ✓ Dropped schema: marts
+2026-10-25 01:28:34,116 - INFO - Cleanup complete
+2026-10-25 01:28:34,116 - INFO - 🏗️ Creating Schema layered architecture
+2026-10-25 01:28:34,116 - INFO -   ✓ Created schema: raw
+2026-10-25 01:28:34,120 - INFO -   ✓ Created schema: staging
+2026-10-25 01:28:34,123 - INFO -   ✓ Created schema: intermediate
+2026-10-25 01:28:34,126 - INFO -   ✓ Created schema: marts
+2026-10-25 01:28:34,126 - INFO - 
+=== Executing STAGING Layer ===
+2026-10-25 01:28:34,126 - INFO - Description: Raw Google Ads data standardization and cleaning
+2026-10-25 01:28:34,129 - INFO - Executing: staging.stg_google_ads__account_history
+2026-10-25 01:28:34,275 - INFO - ✓ staging.stg_google_ads__account_history: 0 rows
+2026-10-25 01:28:34,275 - INFO - Executing: staging.stg_google_ads__account_stats
+2026-10-25 01:28:37,864 - INFO - ✓ staging.stg_google_ads__account_stats: 0 rows
+2026-10-25 01:28:37,864 - INFO - Executing: staging.stg_google_ads__campaign_history
+2026-10-25 01:28:38,909 - INFO - ✓ staging.stg_google_ads__campaign_history: 0 rows
+2026-10-25 01:28:38,909 - INFO - Executing: staging.stg_google_ads__campaign_stats
+2026-10-25 01:28:42,598 - INFO - ✓ staging.stg_google_ads__campaign_stats: 0 rows
+2026-10-25 01:28:42,598 - INFO - Executing: staging.stg_google_ads__ad_group_history
+2026-10-25 01:28:48,508 - INFO - ✓ staging.stg_google_ads__ad_group_history: 5,000 rows
+2026-10-25 01:28:48,509 - INFO - Executing: staging.stg_google_ads__ad_group_stats
+2026-10-25 01:28:52,273 - INFO - ✓ staging.stg_google_ads__ad_group_stats: 0 rows
+2026-10-25 01:28:52,274 - INFO - Executing: staging.stg_google_ads__ad_history
+2026-10-25 01:29:04,214 - INFO - ✓ staging.stg_google_ads__ad_history: 0 rows
+2026-10-25 01:29:04,214 - INFO - Executing: staging.stg_google_ads__ad_stats
+2026-10-25 01:29:07,893 - INFO - ✓ staging.stg_google_ads__ad_stats: 0 rows
+2026-10-25 01:29:07,893 - INFO - Executing: staging.stg_google_ads__ad_group_criterion_history
+2026-10-25 01:29:34,495 - INFO - ✓ staging.stg_google_ads__ad_group_criterion_history: 0 rows
+2026-10-25 01:29:34,496 - INFO - Executing: staging.stg_google_ads__keyword_stats
+2026-10-25 01:29:38,244 - INFO - ✓ staging.stg_google_ads__keyword_stats: 0 rows
+2026-10-25 01:29:38,244 - INFO - Executing: staging.stg_google_ads__search_term_keyword_stats
+2026-10-25 01:29:42,076 - INFO - ✓ staging.stg_google_ads__search_term_keyword_stats: 0 rows
+2026-10-25 01:29:42,076 - INFO - STAGING Layer complete: 11/11 tables created successfully
+2026-10-25 01:29:42,076 - INFO - 
+=== Executing INTERMEDIATE Layer ===
+2026-10-25 01:29:42,076 - INFO - Description: Complex business logic and advanced analytics processing
+2026-10-25 01:29:42,078 - INFO - Executing: intermediate.int_google_ads__account_performance_metrics
+2026-10-25 01:29:42,088 - INFO - ✓ intermediate.int_google_ads__account_performance_metrics: 0 rows
+2026-10-25 01:29:42,090 - INFO - Executing: intermediate.int_google_ads__campaign_cohort_analysis
+2026-10-25 01:29:42,102 - INFO - ✓ intermediate.int_google_ads__campaign_cohort_analysis: 0 rows
+2026-10-25 01:29:42,104 - INFO - Executing: intermediate.int_google_ads__keyword_performance_segmentation
+2026-10-25 01:29:42,117 - INFO - ✓ intermediate.int_google_ads__keyword_performance_segmentation: 0 rows
+2026-10-25 01:29:42,117 - INFO - INTERMEDIATE Layer complete: 3/3 tables created successfully
+2026-10-25 01:29:42,117 - INFO - 
+=== Executing MARTS Layer ===
+2026-10-25 01:29:42,118 - INFO - Description: Executive-ready analysis and business intelligence reports
+2026-10-25 01:29:42,118 - INFO - Executing: marts.google_ads__account_report
+2026-10-25 01:29:42,124 - INFO - ✓ marts.google_ads__account_report: 0 rows
+2026-10-25 01:29:42,124 - INFO - Executing: marts.google_ads__campaign_report
+2026-10-25 01:29:42,131 - INFO - ✓ marts.google_ads__campaign_report: 0 rows
+2026-10-25 01:29:42,132 - INFO - Executing: marts.google_ads__ad_group_report
+2026-10-25 01:29:42,139 - ERROR - ✗ marts.google_ads__ad_group_report: Binder Error: Ambiguous reference to column name "campaign_id" (use: "s.campaign_id" or "ag.campaign_id")
+2026-10-25 01:29:42,139 - INFO - Executing: marts.google_ads__ad_report
+2026-10-25 01:29:42,140 - ERROR - ✗ marts.google_ads__ad_report: Binder Error: Ambiguous reference to column name "ad_group_id" (use: "s.ad_group_id" or "ad.ad_group_id")
+2026-10-25 01:29:42,141 - INFO - Executing: marts.google_ads__keyword_report
+2026-10-25 01:29:42,141 - ERROR - ✗ marts.google_ads__keyword_report: Binder Error: Ambiguous reference to column name "source_relation" (use: "s.source_relation" or "cr.source_relation")
+2026-10-25 01:29:42,142 - INFO - Executing: marts.google_ads__search_term_report
+2026-10-25 01:29:42,142 - ERROR - ✗ marts.google_ads__search_term_report: Binder Error: Ambiguous reference to column name "source_relation" (use: "s.source_relation" or "cr.source_relation")
+2026-10-25 01:29:42,143 - INFO - Executing: marts.google_ads__url_report
+2026-10-25 01:29:42,144 - ERROR - ✗ marts.google_ads__url_report: Binder Error: Ambiguous reference to column name "ad_group_id" (use: "s.ad_group_id" or "ad.ad_group_id")
+2026-10-25 01:29:42,145 - INFO - Executing: marts.google_ads__channel_performance_analysis
+2026-10-25 01:29:42,149 - ERROR - ✗ marts.google_ads__channel_performance_analysis: Binder Error: Referenced column "underperforming_pct" not found in FROM clause!
+Candidate bindings: "underperforming_campaigns", "spend_share_pct", "conversions_share_pct", "premium_spend", "source_relation"
+
+LINE 26: ...>1000 THEN 'Review ROI and reduce inefficient spend' WHEN underperforming_pct>50 THEN 'Improve underperforming campaign...
+                                                                      ^
+2026-10-25 01:29:42,151 - INFO - Executing: marts.google_ads__customer_acquisition_analysis
+2026-10-25 01:29:42,165 - INFO - ✓ marts.google_ads__customer_acquisition_analysis: 0 rows
+2026-10-25 01:29:42,167 - INFO - Executing: marts.google_ads__executive_dashboard
+2026-10-25 01:29:42,181 - INFO - ✓ marts.google_ads__executive_dashboard: 0 rows
+2026-10-25 01:29:42,181 - INFO - MARTS Layer complete: 4/10 tables created successfully
+2026-10-25 01:29:42,182 - ERROR - 
+❌ Errors occurred during data pipeline execution
+
+❌ Errors occurred during Google Ads data transformation, please check the logs
+
+
+

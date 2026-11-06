@@ -1,0 +1,155 @@
+{
+  "success": true,
+  "root_type": "dict",
+  "parsed": {
+    "premises": [
+      {
+        "statement": "The balance-sheet result does not need the additional CTA row for each included driving transaction line.",
+        "about": "requirement",
+        "target": "int_netsuite2__balance_sheet",
+        "evidence_of_dependence": "The model ends with `FROM presented` and contains no CTA `UNION ALL`.",
+        "alternative": "The contract requires: \"Union all a second row per included transaction line to represent Cumulative Translation Adjustment (CTA)\".",
+        "importance": 5,
+        "reason": "Omitting the second presentation row changes both the model population and reported amounts.",
+        "updates": null
+      },
+      {
+        "statement": "Existing balance-sheet account types need no special Retained Earnings or CTA presentation-name and type-ID mappings.",
+        "about": "requirement",
+        "target": "int_netsuite2__balance_sheet",
+        "evidence_of_dependence": "`ELSE type_name END AS out_type` and `lower(replace(out_type,' ', '_')) AS account_type_id`",
+        "alternative": "The contract maps `retearnings` to \"Retained Earnings\" and `retained_earnings`, and `cta-e`/`cumultransadj` to \"Cumulative Translation Adjustment\" and `cumulative_translation_adjustment`; other type IDs retain accounts.type_name.",
+        "importance": 4,
+        "reason": "These omissions change financial presentation classifications and normalize otherwise unchanged type identifiers.",
+        "updates": null
+      },
+      {
+        "statement": "Non-balance-sheet presentation rows may have a NULL account_number without looking up a Retained Earnings account.",
+        "about": "requirement",
+        "target": "int_netsuite2__balance_sheet",
+        "evidence_of_dependence": "`CASE WHEN is_balancesheet THEN account_number END AS account_number`",
+        "alternative": "The contract requires \"account_number is the Retained Earnings account_number selected from any account of type 'retearnings' when non-balance-sheet\".",
+        "importance": 3,
+        "reason": "All reclassified income-statement rows lose a required presentation account number.",
+        "updates": null
+      },
+      {
+        "statement": "A balance-sheet row with NULL is_leftside should receive positive amounts rather than the contract's fallback amount of zero.",
+        "about": "requirement",
+        "target": "int_netsuite2__balance_sheet",
+        "evidence_of_dependence": "`CASE WHEN NOT is_balancesheet OR is_leftside IS FALSE THEN -unconverted_amount ELSE unconverted_amount END`",
+        "alternative": "The contract specifies negative amounts for right-side balance-sheet accounts, positive amounts for left-side accounts, and \"Else → 0\".",
+        "importance": 3,
+        "reason": "Unknown account-side flags are treated as positive instead of following the specified fallback.",
+        "updates": null
+      },
+      {
+        "statement": "Choosing the first non-NULL converted amount is an acceptable substitute for selecting the amount according to general_rate_type.",
+        "about": "requirement",
+        "target": "int_netsuite2__balance_sheet",
+        "evidence_of_dependence": "`coalesce(converted_amount_using_transaction_accounting_period, converted_amount_using_reporting_month)`",
+        "alternative": "The contract requires using the transaction accounting period for historical/average rates and the reporting month otherwise.",
+        "importance": 2,
+        "reason": "The prescribed rate-selection logic is absent, although the current upstream contract makes both amount fields equal.",
+        "updates": null
+      },
+      {
+        "statement": "When no accounts are available, transaction-line processing may retain lines with NULL assigned accounts instead of failing.",
+        "about": "requirement",
+        "target": "int_netsuite2__transaction_lines",
+        "evidence_of_dependence": "`LEFT JOIN account_rows a ON a.account_row = ((l.tl_row - 1) % NULLIF(n.n, 0)) + 1`",
+        "alternative": "The contract says \"Requires total_accounts ≥ 1; if 0, the modulus-based selection causes the query to fail\".",
+        "importance": 3,
+        "reason": "The NULLIF and left join silently accommodate a condition the contract explicitly treats as a failure.",
+        "updates": null
+      },
+      {
+        "statement": "When no accounting periods are available, period assignment may retain transaction lines with NULL periods instead of failing.",
+        "about": "requirement",
+        "target": "int_netsuite2__tran_lines_w_accounting_period",
+        "evidence_of_dependence": "`LEFT JOIN periods p ON p.rn=((l.rn-1)%NULLIF(pc.n,0))+1`",
+        "alternative": "The contract states \"If N = 0 the query fails because the period assignment requires a modulo calculation\".",
+        "importance": 3,
+        "reason": "The implementation silently propagates missing periods rather than enforcing the specified failure condition.",
+        "updates": null
+      },
+      {
+        "statement": "Every non-NULL selected customer default-address key is convertible to DOUBLE.",
+        "about": "data",
+        "target": "int_netsuite2__customers",
+        "evidence_of_dependence": "`a.nkey = TRY_CAST(COALESCE(c.default_billing_address_id, c.default_shipping_address_id) AS DOUBLE)`",
+        "alternative": null,
+        "importance": 2,
+        "reason": "Unparseable keys silently become unmatched addresses without any established validation of this key format.",
+        "updates": null
+      },
+      {
+        "statement": "Every non-NULL location main_address_id is convertible to DOUBLE.",
+        "about": "data",
+        "target": "int_netsuite2__locations",
+        "evidence_of_dependence": "`a.nkey = TRY_CAST(l.main_address_id AS DOUBLE)`",
+        "alternative": "The contract describes matching main_address_id to nkey with \"no filtering or casting\" and says \"source types are preserved\".",
+        "importance": 2,
+        "reason": "The explicit TRY_CAST introduces silent unmatched-address handling for invalid keys that has not been established as necessary or permitted.",
+        "updates": null
+      }
+    ],
+    "fewer": [
+      {
+        "target": "int_netsuite2__accounts",
+        "count": 0,
+        "reason": "The SQL directly implements the specified pass-through; upstream staging concerns are already recorded."
+      },
+      {
+        "target": "int_netsuite2__accounting_periods",
+        "count": 0,
+        "reason": "The join, right-side text cast, duplicate preservation, and year derivation are explicitly prescribed."
+      },
+      {
+        "target": "int_netsuite2__customers",
+        "count": 1,
+        "reason": "Apart from address-key conversion handling, the projection, address preference, and left-join multiplicity follow the contract."
+      },
+      {
+        "target": "int_netsuite2__locations",
+        "count": 1,
+        "reason": "Apart from address-key conversion handling, the model preserves location fields and implements the required left join."
+      },
+      {
+        "target": "int_netsuite2__transaction_lines",
+        "count": 1,
+        "reason": "The final script corrects the temporary class_id substitution; remaining numbering, cycling, and derivations are specified, leaving only empty-account handling as a new premise."
+      },
+      {
+        "target": "int_netsuite2__acctxperiod_exchange_rate_map",
+        "count": 0,
+        "reason": "The primary-subsidiary restriction, cross join, rate selection, and duplicate preservation follow the documented logic."
+      },
+      {
+        "target": "int_netsuite2__tran_lines_w_accounting_period",
+        "count": 1,
+        "reason": "The cyclic assignment and amount default are explicitly required; only empty-period handling adds an unsupported requirement interpretation."
+      },
+      {
+        "target": "int_netsuite2__tran_and_reporting_periods",
+        "count": 0,
+        "reason": "The SQL is the specified identity projection without filtering or deduplication."
+      },
+      {
+        "target": "int_netsuite2__tran_with_converted_amounts",
+        "count": 0,
+        "reason": "The joins, classifications, pass-through amounts, and NULL-propagating hash follow the contract without new unsupported premises."
+      },
+      {
+        "target": "int_netsuite2__transaction_details",
+        "count": 0,
+        "reason": "The joins, defaults, placeholders, and hash are prescribed; both candidate upstream converted amounts are explicitly equal under the upstream contract."
+      },
+      {
+        "target": "int_netsuite2__income_statement",
+        "count": 0,
+        "reason": "The transformations follow the specification; the inner period join does not introduce an unestablished coverage assumption because qualifying reporting IDs originate from the same accounting-period model in this script."
+      }
+    ]
+  }
+}
