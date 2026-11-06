@@ -1018,6 +1018,17 @@ def report():
         '请用户和 Claude 查看本批条数及少列理由，决定剩余 19 道的执行方式；提示词继续冻结。\n']
     if (OUT/'STOP.json').exists():lines.append('停止记录：\n```json\n'+j(load(OUT/'STOP.json'))+'\n```\n')
     if delivery:lines.append(f'交付产物 commit：`{delivery["commit"]}`，时间 `{delivery["time"]}`。本报告的提交在其后；事先存档 commit 保持不变。\n')
+    archive=json.loads((PUB/'full_archive_manifest.json').read_bytes())
+    hashes={entry['full_path']:entry['sha256'] for entry in archive['files']};archive_rows=[]
+    for record in records_all():
+        paths=[('完整请求',record.get('request_path')),('原始返回 JSON',record.get('response_path'))]
+        if record.get('response_path'):
+            p=Path(record['response_path']);paths.append(('原始 HTTP 正文',str(p.with_name(p.stem+'_body.txt'))))
+        for label,path in paths:
+            if path:archive_rows.append([record['tag'],label,path,hashes[path]])
+    at=lines.index('## 证据来源\n')
+    lines.insert(at,'完整请求、原始返回 JSON 和原始 HTTP 正文的路径与 SHA256（SDK 返回和其他文件的校验值见完整清单）：\n')
+    lines.insert(at+1,table(['调用','文件类型','data/ 完整路径','SHA256'],archive_rows))
     target=ROOT/'notes/051_2026-11-06_小实验正式跑第一批.md'
     full=re.sub(r'(?m)^(#{1,6} .*)\n(?!\n)',r'\1\n\n',''.join(lines)).encode('utf-8');public=full;replacements={}
     mapping=load(OUT/'private_redaction_mapping.json')
